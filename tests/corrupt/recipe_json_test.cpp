@@ -328,3 +328,22 @@ TEST_SUITE("regions")
         CHECK(out.regions.at("a").first == 0x100);
     }
 }
+
+TEST_CASE("numbers typed in the panel parse like the ones in recipes")
+{
+    CHECK(parse_number("0x1F") == 0x1F);
+    CHECK(parse_number("0X1f") == 0x1F);
+    CHECK(parse_number("$7E") == 0x7E);
+    CHECK(parse_number("42") == 42);
+    CHECK(parse_number("-3") == -3);
+    CHECK(parse_number("  0x2000 ") == 0x2000);
+    CHECK_FALSE(parse_number(""));
+    CHECK_FALSE(parse_number("   "));
+    CHECK_FALSE(parse_number("0x"));
+    CHECK_FALSE(parse_number("$"));
+    CHECK_FALSE(parse_number("12a"));
+    CHECK_FALSE(parse_number("0x12g"));
+    CHECK_FALSE(parse_number("1 2"));
+    CHECK_FALSE(parse_number("0x10000000000000000")); // overflows 64 bits
+    CHECK_FALSE(parse_number("99999999999999999999"));
+}

@@ -34,6 +34,10 @@ ParseResult parse_recipe(std::string_view json_text, const Regions &regions);
 // defaults left out. parse -> write is idempotent, so diffs stay clean in git.
 std::string write_recipe(const Recipe &recipe);
 
+// "0x1F", "$1F" or "31", optionally negative, surrounding whitespace ignored.
+// The same rules recipes use for numbers written as strings.
+std::optional<int64_t> parse_number(std::string_view text);
+
 RegionsResult parse_regions(std::string_view json_text);
 std::string write_regions(const Regions &regions);
 

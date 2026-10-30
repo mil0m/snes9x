@@ -38,40 +38,7 @@ struct Ctx
 
 std::optional<int64_t> parse_number_string(const std::string &s)
 {
-    if (s.empty())
-        return std::nullopt;
-    size_t i = 0;
-    bool negative = false;
-    if (s[0] == '-')
-    {
-        negative = true;
-        i = 1;
-    }
-    int base = 10;
-    if (s.size() > i + 1 && s[i] == '0' && (s[i + 1] == 'x' || s[i + 1] == 'X'))
-    {
-        base = 16;
-        i += 2;
-    }
-    if (i >= s.size())
-        return std::nullopt;
-
-    uint64_t value = 0;
-    for (; i < s.size(); i++)
-    {
-        int digit;
-        char c = s[i];
-        if (c >= '0' && c <= '9')
-            digit = c - '0';
-        else if (base == 16 && c >= 'a' && c <= 'f')
-            digit = c - 'a' + 10;
-        else if (base == 16 && c >= 'A' && c <= 'F')
-            digit = c - 'A' + 10;
-        else
-            return std::nullopt;
-        value = value * uint64_t(base) + uint64_t(digit);
-    }
-    return negative ? -int64_t(value) : int64_t(value);
+    return parse_number(s);
 }
 
 // Integers may be JSON numbers, "0x.." hex strings or decimal strings.
@@ -545,6 +512,53 @@ ojson detection_json(const DetectorConfig &cfg)
 }
 
 } // namespace
+
+std::optional<int64_t> parse_number(std::string_view text)
+{
+    auto is_space = [](char c) { return c == ' ' || c == '\t' || c == '\n' || c == '\r'; };
+    while (!text.empty() && is_space(text.front()))
+        text.remove_prefix(1);
+    while (!text.empty() && is_space(text.back()))
+        text.remove_suffix(1);
+
+    bool negative = false;
+    if (!text.empty() && text.front() == '-')
+    {
+        negative = true;
+        text.remove_prefix(1);
+    }
+    int base = 10;
+    if (text.size() >= 2 && text[0] == '0' && (text[1] == 'x' || text[1] == 'X'))
+    {
+        base = 16;
+        text.remove_prefix(2);
+    }
+    else if (!text.empty() && text.front() == '$')
+    {
+        base = 16;
+        text.remove_prefix(1);
+    }
+    if (text.empty())
+        return std::nullopt;
+
+    uint64_t value = 0;
+    for (char c : text)
+    {
+        int digit;
+        if (c >= '0' && c <= '9')
+            digit = c - '0';
+        else if (base == 16 && c >= 'a' && c <= 'f')
+            digit = c - 'a' + 10;
+        else if (base == 16 && c >= 'A' && c <= 'F')
+            digit = c - 'A' + 10;
+        else
+            return std::nullopt;
+        if (value > (uint64_t(INT64_MAX) - uint64_t(digit)) / uint64_t(base))
+            return std::nullopt;
+        value = value * uint64_t(base) + uint64_t(digit);
+    }
+    return negative ? -int64_t(value) : int64_t(value);
+}
 
 ParseResult parse_recipe(std::string_view json_text, const Regions &regions)
 {
