@@ -31,6 +31,7 @@ struct MemorySource
     virtual corrupt::MemorySnapshot snapshot() = 0;
     virtual std::vector<corrupt::CopyRun> findCopies(corrupt::Target of) = 0; // copies in WRAM
     virtual std::vector<corrupt::MapArea> memoryMap(corrupt::Target target) = 0; // fixed and live areas
+    virtual std::vector<uint8_t> palette() = 0;                                  // CGRAM now, for the tile view
     virtual std::array<size_t, corrupt::kTargetCount> sizes() = 0;
     virtual corrupt::Regions regions() = 0;
     virtual std::string addRule(const corrupt::Rule &rule) = 0; // error or empty

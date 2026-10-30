@@ -102,6 +102,7 @@ class CorruptionSession
     corrupt::MemorySnapshot memorySnapshot();
     std::vector<corrupt::CopyRun> findCopies(corrupt::Target of); // copies of `of` in WRAM
     std::vector<corrupt::MapArea> memoryMap(corrupt::Target target); // fixed layout plus what the game uses now
+    std::vector<uint8_t> palette();                                  // CGRAM as it is now, for the tile view
 
     // Named regions of the loaded game (its regions.json). Each returns an error or empty.
     corrupt::Regions regions();

@@ -279,18 +279,31 @@ MemorySnapshot CorruptionSession::memorySnapshot()
     return watch.snapshot();
 }
 
+namespace
+{
+std::vector<uint8_t> read_all(MemoryAccess &memory, Target t)
+{
+    std::vector<uint8_t> bytes(memory.size(t));
+    for (uint32_t i = 0; i < bytes.size(); i++)
+        bytes[i] = memory.read(t, i);
+    return bytes;
+}
+} // namespace
+
 std::vector<CopyRun> CorruptionSession::findCopies(Target of)
 {
     std::lock_guard lock(mutex);
     if (!game_loaded)
         return {};
-    auto read = [this](Target t) {
-        std::vector<uint8_t> bytes(memory.size(t));
-        for (uint32_t i = 0; i < bytes.size(); i++)
-            bytes[i] = memory.read(t, i);
-        return bytes;
-    };
-    return find_copies(read(Target::WRAM), read(of));
+    return find_copies(read_all(memory, Target::WRAM), read_all(memory, of));
+}
+
+std::vector<uint8_t> CorruptionSession::palette()
+{
+    std::lock_guard lock(mutex);
+    if (!game_loaded)
+        return {};
+    return read_all(memory, Target::CGRAM);
 }
 
 std::vector<MapArea> CorruptionSession::memoryMap(Target target)

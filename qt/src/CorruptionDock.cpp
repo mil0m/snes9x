@@ -48,6 +48,7 @@ struct SessionMemorySource : MemorySource
     MemorySnapshot snapshot() override { return s.memorySnapshot(); }
     std::vector<CopyRun> findCopies(Target of) override { return s.findCopies(of); }
     std::vector<MapArea> memoryMap(Target t) override { return s.memoryMap(t); }
+    std::vector<uint8_t> palette() override { return s.palette(); }
     std::array<size_t, kTargetCount> sizes() override { return s.status().sizes; }
     Regions regions() override { return s.regions(); }
     std::string addRule(const Rule &rule) override { return s.addRule(rule); }

@@ -62,6 +62,22 @@ struct FakeSource : MemorySource
     {
         return t == Target::VRAM ? vram_live : fixed_map(t, nominal_size(t));
     }
+    int palette_reads = 0;
+    std::vector<uint8_t> cgram = [] {
+        std::vector<uint8_t> c(512);
+        for (int i = 0; i < 256; i++) // a ramp of colours
+        {
+            uint16_t bgr = uint16_t((i % 32) | ((i * 3) % 32) << 5 | ((31 - i % 32) << 10));
+            c[size_t(2 * i)] = uint8_t(bgr);
+            c[size_t(2 * i + 1)] = uint8_t(bgr >> 8);
+        }
+        return c;
+    }();
+    std::vector<uint8_t> palette() override
+    {
+        palette_reads++;
+        return cgram;
+    }
     Regions named;
     std::vector<std::string> users_of_stats{ "boss rush" };
     Regions regions() override { return named; }
