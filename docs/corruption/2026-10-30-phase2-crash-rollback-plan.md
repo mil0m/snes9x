@@ -80,6 +80,24 @@ continues, and every crash is written to the journal. Test-first throughout.
     count, last crash, per-rule crashes, policy override, *Mark crash*, detection toggle).
 12. Docs: README section, QA additions.
 
+## Findings while building
+
+- **STP stalls the frame hook.** After `STP` the core no longer reaches V=1, so the engine's
+  frame count stands still. The guard treats only a count that goes *backwards* as a
+  restart; a stalled count still gets checked, which is how hard crashes are caught.
+- **STP also trips the core's deadlock watchdog**, since STP never adds cycles. The
+  adapter reports the opcode at PC, so the verdict still says "CPU stopped (STP at …)".
+- **Runaway-PC sampling rarely fires.** Every jump into I/O space or open bus we tried
+  found its way back into ROM within a frame, so a once-per-frame PC sample never sees
+  it. Those crashes show up as STP, NMI off, a frozen picture, or a self-reboot. The
+  signal stays (it's cheap), but no test pretends it works.
+- **Still screens are not crashes.** Frozen and black screens only count when the player
+  pressed buttons at least 3 times and nothing reacted; otherwise every text box or menu
+  would have rolled back while a rule was active.
+- **Skipped frames keep the old picture.** The frozen check ignores frames that weren't
+  drawn (frameskip, fast-forward).
+
 ## Out of this phase
 Bisecting a suspect set across repeated crashes (until the journal shows we need it), the
-crash map (phase 4), sound CPU hang detection.
+crash map (phase 4), sound CPU hang detection, and **detecting a self-reboot** (the CPU
+re-entering the reset vector): a real crash mode the I/O-jump experiments turned up.

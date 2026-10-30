@@ -302,3 +302,21 @@ TEST_CASE("a definite crash with no rule to blame still rolls back")
     CHECK(rig.outcomes[0].suspects.empty());
     CHECK(rig.crash_byte() == 0);
 }
+
+TEST_CASE("a hard crash that stops frames from advancing is still caught")
+{
+    // After STP the real core stops reaching the frame hook, so the engine's frame
+    // count stalls; the guard must keep checking rather than mistake it for a restart.
+    Rig rig(recipe_of({ harmless_noise() }), PolicyKind::Skip);
+    rig.frames(100);
+    rig.mem.of(Target::WRAM)[kCrashByte] = kCrashValue;
+    for (int i = 0; i < 5; i++) // between_frames only: the hook no longer runs
+    {
+        auto out = rig.guard.between_frames(rig.engine, rig.core);
+        if (out.kind != GuardOutcome::Nothing)
+            rig.outcomes.push_back(out);
+    }
+    REQUIRE(rig.outcomes.size() == 1);
+    CHECK(rig.outcomes[0].verdict.signal == CrashSignal::CpuStopped);
+    CHECK(rig.crash_byte() == 0);
+}

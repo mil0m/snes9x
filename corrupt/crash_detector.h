@@ -19,7 +19,8 @@ struct FrameSignals
     bool cpu_halted = false;        // STP, or the core gave up on the CPU
     bool emulation_stopped = false; // the core's own fatal stop ("CPU is deadlocked")
     PcClass pc_class = PcClass::Ok;
-    uint32_t pc = 0; // 24-bit bank:address
+    uint32_t pc = 0;                 // 24-bit bank:address
+    std::optional<uint8_t> opcode;   // the byte at pc, when it is plain ROM/RAM
     bool nmi_enabled = true;
     bool forced_blank = false;
     uint8_t brightness = 15;
@@ -46,6 +47,8 @@ struct DetectorConfig
 {
     bool enabled = true;
     bool cpu_stopped = true;
+    // Sampled once per frame, so it rarely fires: a CPU running from open bus usually
+    // branches back into ROM within the frame (verified with generated test ROMs).
     uint32_t runaway_frames = 30;
     uint32_t nmi_off_frames = 180;
     uint32_t frozen_frames = 300;

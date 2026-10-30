@@ -47,6 +47,10 @@ build_test() {
   cmake -S tests -B build/tests -G Ninja -DCMAKE_BUILD_TYPE=Debug >/dev/null
   if ! out=$(cmake --build build/tests 2>&1); then echo "$out" | grep -v '^\[' >&2; exit 1; fi
   build/tests/corrupt-tests "$@"
+  if [ -x build/tests/corrupt-headless-tests ] && [ $# -eq 0 ]; then
+    # The core prints ROM info on every load; keep just the test results.
+    build/tests/corrupt-headless-tests | grep -E "ERROR|FATAL|values|test cases|Status"
+  fi
 }
 
 build_libretro() {

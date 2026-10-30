@@ -76,8 +76,8 @@ std::optional<CrashVerdict> CrashDetector::observe(uint64_t frame, const FrameSi
     if (config.cpu_stopped && s.cpu_halted)
     {
         reset();
-        if (s.emulation_stopped)
-            return CrashVerdict{ CrashSignal::Deadlock, frame, frame, false, "CPU deadlocked" };
+        if (s.emulation_stopped && s.opcode != uint8_t(0xDB)) // STP also trips the core's watchdog
+            return CrashVerdict{ CrashSignal::Deadlock, frame, frame, false, "CPU deadlocked at " + describe_pc(s.pc) };
         return CrashVerdict{ CrashSignal::CpuStopped, frame, frame, false, "CPU stopped (STP at " + describe_pc(s.pc) + ")" };
     }
 

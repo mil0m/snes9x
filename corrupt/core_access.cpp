@@ -64,6 +64,9 @@ FrameSignals SnesCoreAccess::sample()
     s.emulation_stopped = Settings.StopEmulation;
     s.pc = Registers.PBPC & 0xFFFFFF;
     s.pc_class = classify(s.pc);
+    auto block = Memory.Map[s.pc >> MEMMAP_SHIFT];
+    if (reinterpret_cast<uintptr_t>(block) >= CMemory::MAP_LAST) // a plain pointer, safe to read
+        s.opcode = block[s.pc & 0xFFFF];
     s.nmi_enabled = (Memory.FillRAM[0x4200] & 0x80) != 0;
     s.forced_blank = PPU.ForcedBlanking;
     s.brightness = PPU.Brightness;

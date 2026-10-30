@@ -192,3 +192,17 @@ TEST_CASE("a single press is not enough evidence")
     auto one_press = [](uint64_t f) { FrameSignals s; s.picture_hash = 42; s.input = f > 100 ? 0x0080 : 0; return s; };
     CHECK_FALSE(feed(d, 1, 2000, one_press));
 }
+
+TEST_CASE("an STP is named as such even when the core also calls it a deadlock")
+{
+    CrashDetector d;
+    auto s = healthy(5);
+    s.cpu_halted = true;
+    s.emulation_stopped = true; // STP never adds cycles, so the core's watchdog fires too
+    s.opcode = 0xDB;
+    s.pc = 0x008018;
+    auto v = d.observe(5, s);
+    REQUIRE(v);
+    CHECK(v->signal == CrashSignal::CpuStopped);
+    CHECK(v->text.find("STP at $00:8018") != std::string::npos);
+}

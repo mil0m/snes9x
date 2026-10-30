@@ -41,6 +41,10 @@ if(ZLIB_FOUND AND PNG_FOUND)
 
     add_executable(corrupt-smoke headless/corrupt_smoke.cpp)
     target_link_libraries(corrupt-smoke PRIVATE snes9x-headless)
+
+    add_executable(corrupt-headless-tests headless/guard_integration_test.cpp headless/test_rom.cpp)
+    target_link_libraries(corrupt-headless-tests PRIVATE snes9x-headless)
+    add_test(NAME corrupt-headless-tests COMMAND corrupt-headless-tests)
 else()
     message(STATUS "zlib/libpng not found: skipping the headless core tests")
 endif()

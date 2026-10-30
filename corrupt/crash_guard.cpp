@@ -47,8 +47,11 @@ GuardOutcome CrashGuard::between_frames(Engine &engine, CoreAccess &core)
     }
 
     uint64_t frame = engine.current_frame();
-    if (last_frame && frame <= *last_frame)
-        reset(); // the run restarted: re-activated, re-rolled or a new recipe
+    // Going backwards means the run restarted (re-activated, re-rolled, a new recipe).
+    // Standing still does not: after STP or a deadlock the frame hook stops running,
+    // and that is exactly when the guard must keep looking.
+    if (last_frame && frame < *last_frame)
+        reset();
     last_frame = frame;
     if (crashes_per_rule.size() != engine.recipe().rules.size())
         crashes_per_rule.assign(engine.recipe().rules.size(), 0);
