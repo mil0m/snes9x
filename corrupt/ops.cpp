@@ -21,7 +21,10 @@ struct Writer
         if (old == value)
             return;
         mem.write(t, offset, value);
-        events.push_back({ t, offset, old, value });
+        // Log what memory actually holds: hardware can drop bits (CGRAM has no bit 15).
+        uint8_t stored = mem.read(t, offset);
+        if (stored != old)
+            events.push_back({ t, offset, old, stored });
     }
 };
 

@@ -259,6 +259,33 @@ TEST_SUITE("shuffle")
     }
 }
 
+// Like real CGRAM: the high byte of each 15-bit colour has no bit 7.
+struct MaskingMemory : FakeMemory
+{
+    void write(Target t, uint32_t offset, uint8_t value) override
+    {
+        if (t == Target::CGRAM && (offset & 1))
+            value &= 0x7F;
+        FakeMemory::write(t, offset, value);
+    }
+};
+
+TEST_CASE("events record what memory actually holds, not what was attempted")
+{
+    MaskingMemory mem;
+    OpState state;
+    Rng rng(1);
+    const AddressRange cg{ Target::CGRAM, 0, 0x1FF };
+
+    auto events = apply_op({ .type = OpType::Random, .min = 0xFF, .max = 0xFF }, state, mem, cg, { 1 }, rng);
+    REQUIRE(events.size() == 1);
+    CHECK(events[0].new_value == 0x7F);
+
+    // A write the hardware drops entirely is not a change at all.
+    events = apply_op({ .type = OpType::Random, .min = 0x80, .max = 0x80 }, state, mem, cg, { 3 }, rng);
+    CHECK(events.empty());
+}
+
 TEST_CASE("same seed gives the same result")
 {
     FakeMemory a, b;
