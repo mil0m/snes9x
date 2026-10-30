@@ -599,3 +599,62 @@ TEST_SUITE("recipe intensity")
         CHECK(e.recipe().intensity == 0.3);
     }
 }
+
+TEST_SUITE("held starts")
+{
+    TEST_CASE("by default a run starts on the next frame")
+    {
+        FakeMemory mem;
+        Engine e;
+        e.set_recipe(noisy_recipe(1));
+        e.set_active(true);
+        CHECK_FALSE(e.waiting());
+        frames(e, mem, 5);
+        CHECK(e.current_frame() == 5);
+    }
+
+    TEST_CASE("a held run writes nothing and stays at frame 0 until released")
+    {
+        FakeMemory mem;
+        Engine e;
+        e.hold_starts(true);
+        e.set_recipe(noisy_recipe(1));
+        e.set_active(true);
+        CHECK(e.waiting());
+        frames(e, mem, 50);
+        CHECK(e.current_frame() == 0);
+        CHECK(mem.writes == 0);
+        e.release();
+        CHECK_FALSE(e.waiting());
+        frames(e, mem, 50);
+        CHECK(e.current_frame() == 50);
+        CHECK(mem.writes > 0);
+    }
+
+    TEST_CASE("every restart holds again; edits and rollbacks don't")
+    {
+        FakeMemory mem;
+        Engine e;
+        e.hold_starts(true);
+        e.set_recipe(noisy_recipe(1));
+        e.set_active(true);
+        e.release();
+        frames(e, mem, 10);
+        auto snap = e.snapshot();
+        e.add_rule(noisy_recipe(2).rules[0]);
+        e.set_intensity(0.5);
+        e.restore(snap);
+        CHECK_FALSE(e.waiting());
+
+        e.reroll(7);
+        CHECK(e.waiting());
+        e.release();
+        e.set_recipe(noisy_recipe(3));
+        CHECK(e.waiting());
+        e.release();
+        e.set_active(false);
+        CHECK_FALSE(e.waiting()); // an inactive engine waits for nothing
+        e.set_active(true);
+        CHECK(e.waiting());
+    }
+}

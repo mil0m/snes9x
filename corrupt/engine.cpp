@@ -103,11 +103,12 @@ void Engine::restart()
     log.clear();
     frame = 0;
     pending_hotkeys = 0;
+    released = false;
 }
 
 void Engine::on_frame(MemoryAccess &mem)
 {
-    if (!is_active)
+    if (!is_active || waiting())
         return;
 
     frame++;

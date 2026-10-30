@@ -57,6 +57,13 @@ class Engine
 
     void on_frame(MemoryAccess &mem);
 
+    // Held starts: with hold_starts(true), every (re)start waits at frame 0 until
+    // release(), so the front end can snapshot the state (or load a saved one) at a
+    // frame boundary first. Off by default.
+    void hold_starts(bool on) { hold = on; }
+    bool waiting() const { return is_active && hold && !released; }
+    void release() { released = true; }
+
     // Live edits. They leave the run and the other rules alone: no restart.
     // Every rule has a run-time id (never saved); a replaced rule gets a new one,
     // so snapshots taken before the edit don't hand it the old rule's runtime.
@@ -90,6 +97,8 @@ class Engine
     bool is_active = false;
     uint64_t frame = 0;
     uint16_t pending_hotkeys = 0;
+    bool hold = false;
+    bool released = false;
 };
 
 } // namespace corrupt
