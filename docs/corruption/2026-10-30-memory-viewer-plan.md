@@ -207,3 +207,24 @@ Tasks:
 5. Viewer: Tiles mode with format, palette and tiles-per-row controls; Map clicks set the
    format. Tests and a PNG.
 6. Docs: README, QA.md section 16, findings here.
+
+Done 2026-10-30 (QA.md section 16). Findings:
+
+- **Real graphics come out right.** With FF6's dumped VRAM and CGRAM, BG1 at 4 bpp shows
+  the title screen's clouds and the "1994-2017 T-EDITION" text in their colours, and the
+  sprite table its art; the same tiles with a sprite palette turn magenta and grey, as
+  they should.
+- **The palette spin box starts at Grey (-1)**, so its arrows walk from raw indices up
+  through every palette row, and its range follows the format (63 rows at 2 bpp, 15 at
+  4 bpp, none at 8 bpp).
+- **A selection tint vanishes in graphics**; selected tiles get a two-tone outline.
+- **The toolbar overflowed** with the tile controls (Go to was squeezed to "…"). Zoom and
+  the view settings moved to a second row that only Pixels and Tiles show; a test checks
+  Go to keeps its width.
+- **Launch checks: SIGTERM can hang the app.** Upstream's `quit_handler` (qt/src/main.cpp)
+  runs Qt code in a signal handler on whichever thread gets the signal. When `timeout`'s
+  SIGTERM lands on the emulation thread while it sleeps between frames, it waits for the
+  main thread, which waits for the emulation thread: a deadlock (seen once, with FF6).
+  Closing the window is unaffected. Not ours to fix in the fork; launch checks need
+  `timeout -s KILL` as a backstop.
+

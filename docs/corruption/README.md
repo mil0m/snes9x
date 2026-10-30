@@ -70,7 +70,7 @@ Loading another recipe or starting a new one asks before discarding unsaved edit
 
 ## The memory viewer
 
-**Memory Viewer…** in the panel opens a hex or pixel view of one target (WRAM, VRAM, the palette…):
+**Memory Viewer…** in the panel opens a hex, pixel or tile view of one target (WRAM, VRAM, the palette…):
 
 - The **Map** on the left lists what lives where in that memory; click an area to select
   it. Every memory has its fixed hardware layout (WRAM's direct page and stack area, the
@@ -118,6 +118,17 @@ Loading another recipe or starting a new one asks before discarding unsaved edit
   full colours. Hover a dot for its address and value. Selecting, the Map, named areas,
   copies and New Rule from Selection work the same as in hex, and switching keeps the
   selection and the place you were looking at.
+
+- **Tiles** (the third mode) decodes the memory as SNES graphics, 8x8 tiles in the game's
+  own colours, so you see the sprites, fonts and backgrounds themselves. It works on any
+  memory, not only VRAM: many games unpack graphics into WRAM first. On the second toolbar
+  row pick the **format** (2, 4 or 8 bpp, or mode 7), the **palette** (which row of the
+  game's colours, or **Grey** for the raw colour numbers; sprites use 8-15 at 4 bpp), and
+  how many tiles **per row** (big sprites and fonts often line up at 16 or 32). Easiest:
+  click a tile area in the **Map** (BG1 tiles, Sprite tiles…), which picks the right
+  format and palette for you. The colours are read live from the game, so corrupting the
+  palette shows here at once. Selecting is whole tiles: **New Rule from Selection…** then
+  corrupts exactly those graphics. Hover a tile for its number and address.
 
 The viewer only watches while its window is open, about 0.4 ms a frame for WRAM.
 
@@ -320,7 +331,7 @@ second run ends with identical memory and picture. With `--copies` it lists wher
 holds copies of the sprite table and palette after the warmup, `--map` prints the
 VRAM and ARAM map with how much of each area holds data, and `--dump <dir>` writes every
 memory's raw bytes to `<dir>/<target>.bin`. Point `CORRUPT_DUMP_DIR` at such a folder when
-running the widget tests and they draw it through the pixel view into the shots folder.
+running the widget tests and they draw it through the pixel and tile views into the shots folder.
 
 The real-core tests (`tests/headless/guard_integration_test.cpp`) boot tiny generated ROMs
 that crash on cue (`STP`, NMI off) and check that the guard catches, rolls back and plays

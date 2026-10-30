@@ -200,3 +200,22 @@ scratch folder. By default Snes9x writes the `.srm` next to the ROM.
    - [ ] Switch to **wram**: it's still on Auto. Back to **vram**: 64 again.
 10. Resize the window and scroll with the plain wheel.
    - [ ] On Auto, rows reflow to the new width, the view stays near the same place, and the plain wheel scrolls without zooming.
+
+## 16. Tile view
+1. During gameplay, open the memory viewer, choose **vram** and **Tiles**, and click **BG1 tiles** in the Map.
+   - [ ] Real graphics appear: pieces of the background you see on screen, in the right colours. The format and palette boxes changed to match.
+2. Click **Sprite tiles, first table**.
+   - [ ] The characters' sprite pieces appear in their colours (palette 8 or nearby). Step the palette with the arrows: the colours change row by row; **Grey** shows plain greys.
+3. Try **16** and **32 per row**, and zoom in and out (buttons and Ctrl+wheel).
+   - [ ] Multi-tile sprites and font letters come out whole at some width; the zoom stays sharp, with faint lines between tiles from 3×.
+4. Drag across a few sprite tiles.
+   - [ ] They get a blue-and-white outline. Switch to **Hex**: the same bytes are selected, a whole number of tiles.
+5. **New Rule from Selection…**: random, every 30 frames, count 4. Run it.
+   - [ ] Just that character's graphics get garbled, live in the tile view too (pick **Hits** to see where).
+6. Make a rule on **cgram** (palette drift) and watch the tile view.
+   - [ ] The tiles change colour within a fraction of a second.
+7. Hover a tile.
+   - [ ] The bottom row shows its number and address.
+8. Choose **wram** in Tiles mode, 4 bpp, and scroll through.
+   - [ ] Mostly noise, but some games show unpacked graphics somewhere; nothing slows down.
+
