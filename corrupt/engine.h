@@ -55,6 +55,7 @@ class Engine
     void set_info(std::string name, std::string notes); // no restart
     void set_intensity(double intensity);               // the whole recipe, 0..1, live
     void set_anchor_state(std::string file);            // the saved moment's file name; no restart
+    void rename_region(const std::string &from, const std::string &to); // empty `to`: unnamed; no restart
 
     void on_frame(MemoryAccess &mem);
 

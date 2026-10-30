@@ -670,3 +670,24 @@ TEST_CASE("naming the recipe's saved moment keeps the run going")
     CHECK(e.recipe().anchor_state == "noise.anchor.frz");
     CHECK(e.current_frame() == 12);
 }
+
+TEST_CASE("renaming a region in the running recipe keeps the run going")
+{
+    FakeMemory mem;
+    Engine e;
+    auto r = noisy_recipe(5);
+    r.rules[0].region = "stats";
+    r.rules[1].region = "palette";
+    e.set_recipe(r);
+    e.set_active(true);
+    frames(e, mem, 20);
+    auto id = e.rule_id(0);
+    e.rename_region("stats", "player stats");
+    CHECK(e.recipe().rules[0].region == "player stats");
+    CHECK(e.recipe().rules[1].region == "palette");
+    CHECK(e.rule_id(0) == id); // not replaced: same run
+    CHECK(e.current_frame() == 20);
+    e.rename_region("palette", ""); // deleted: the rule keeps its range, unnamed
+    CHECK(e.recipe().rules[1].region.empty());
+    CHECK(e.recipe().rules[1].range.target == Target::CGRAM);
+}

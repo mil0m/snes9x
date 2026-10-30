@@ -101,6 +101,13 @@ void Engine::set_anchor_state(std::string file)
     current.anchor_state = std::move(file);
 }
 
+void Engine::rename_region(const std::string &from, const std::string &to)
+{
+    for (auto &rule : current.rules)
+        if (rule.region == from)
+            rule.region = to;
+}
+
 void Engine::restart()
 {
     runtimes.assign(current.rules.size(), RuleRuntime{});
