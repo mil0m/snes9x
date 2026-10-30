@@ -100,6 +100,15 @@ std::string Library::ensure_game_dir(const GameId &game) const
     return write_file_atomic(ignore, "# Save backups are personal and stay out of the shared library.\nsave-backups/\n");
 }
 
+fs::path Library::backup_dir(const GameId &game) const
+{
+    ensure_game_dir(game);
+    auto dir = game_dir(game) / "save-backups";
+    std::error_code ec;
+    fs::create_directories(dir, ec);
+    return dir;
+}
+
 std::vector<RecipeEntry> Library::list_recipes(const GameId &game) const
 {
     std::vector<RecipeEntry> entries;

@@ -94,6 +94,18 @@ TEST_CASE("first save creates the game folder with a .gitignore for save backups
     CHECK(text.find("save-backups/") != std::string::npos);
 }
 
+TEST_CASE("the backup folder is git-ignored even before any recipe is saved")
+{
+    TempDir tmp;
+    Library lib(tmp.path);
+    auto dir = lib.backup_dir(kGame);
+    CHECK(dir == lib.game_dir(kGame) / "save-backups");
+    CHECK(fs::is_directory(dir));
+    std::ifstream ignore(lib.game_dir(kGame) / ".gitignore");
+    std::string text((std::istreambuf_iterator<char>(ignore)), {});
+    CHECK(text.find("save-backups/") != std::string::npos);
+}
+
 TEST_CASE("saving twice under the same name overwrites, leaving no temp files")
 {
     TempDir tmp;

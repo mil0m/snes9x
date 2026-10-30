@@ -44,6 +44,10 @@ class Library
     std::vector<RecipeEntry> list_recipes(const GameId &game) const; // sorted by name
     SaveResult save_recipe(const GameId &game, const Recipe &recipe) const;
 
+    // Where this game's save backups go. Creates it and makes sure the game folder's
+    // .gitignore keeps it out of the shared library.
+    std::filesystem::path backup_dir(const GameId &game) const;
+
     Regions load_regions(const GameId &game, std::vector<std::string> &errors) const;
     std::string save_regions(const GameId &game, const Regions &regions) const; // error or empty
 
