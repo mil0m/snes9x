@@ -755,20 +755,39 @@ RegionsResult parse_regions(std::string_view json_text)
             continue;
         }
         result.regions[name] = range->first;
+        if (entry.contains("notes") && entry["notes"].is_string())
+            result.notes[name] = entry["notes"].get<std::string>();
     }
     result.errors = ctx.errors;
     return result;
 }
 
-std::string write_regions(const Regions &regions)
+std::string write_regions(const Regions &regions, const std::map<std::string, std::string> &notes)
 {
     ojson doc;
     doc["format"] = 1;
     ojson all = ojson::object();
     for (auto &[name, r] : regions) // std::map: regions come out sorted by name
+    {
         all[name] = { { "target", target_name(r.target) }, { "range", range_json(r) } };
+        if (auto it = notes.find(name); it != notes.end() && !it->second.empty())
+            all[name]["notes"] = it->second;
+    }
     doc["regions"] = all;
     return dump_compact(doc);
+}
+
+std::optional<std::string> validate_region_name(std::string_view name)
+{
+    if (name.empty() || name.size() > 40)
+        return "a region name needs 1 to 40 characters";
+    auto letter = [](char c) { return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z'); };
+    if (!letter(name[0]))
+        return "a region name starts with a letter";
+    for (char c : name)
+        if (!letter(c) && !(c >= '0' && c <= '9') && c != ' ' && c != '_' && c != '-')
+            return std::string("a region name can't contain '") + c + "'";
+    return std::nullopt;
 }
 
 } // namespace corrupt

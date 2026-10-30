@@ -22,6 +22,7 @@ struct ParseResult
 struct RegionsResult
 {
     Regions regions; // the valid entries, even when some failed
+    std::map<std::string, std::string> notes; // a region's optional "notes"
     std::vector<std::string> errors;
 };
 
@@ -39,6 +40,9 @@ std::string write_recipe(const Recipe &recipe);
 std::optional<int64_t> parse_number(std::string_view text);
 
 RegionsResult parse_regions(std::string_view json_text);
-std::string write_regions(const Regions &regions);
+std::string write_regions(const Regions &regions, const std::map<std::string, std::string> &notes = {});
+
+// A region name: 1-40 characters, starting with a letter; letters, digits, spaces, _ and -.
+std::optional<std::string> validate_region_name(std::string_view name);
 
 } // namespace corrupt

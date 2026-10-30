@@ -26,6 +26,13 @@ struct RecipeEntry
     bool sha_mismatch = false;    // made for another version of the ROM; addresses may differ
 };
 
+// What a region rename or delete changed: the recipe files it rewrote.
+struct RegionChange
+{
+    std::string error; // empty on success
+    std::vector<std::filesystem::path> recipes;
+};
+
 struct SaveResult
 {
     std::filesystem::path path;
@@ -54,8 +61,17 @@ class Library
     Regions load_regions(const GameId &game, std::vector<std::string> &errors) const;
     std::string save_regions(const GameId &game, const Regions &regions) const; // error or empty
 
+    // Named regions, edited in place (notes in regions.json are kept).
+    std::string set_region(const GameId &game, const std::string &name, const AddressRange &range) const; // add or redefine
+    RegionChange rename_region(const GameId &game, const std::string &from, const std::string &to) const; // recipes follow
+    RegionChange delete_region(const GameId &game, const std::string &name) const; // recipes keep the range, unnamed
+    std::vector<std::string> recipes_using_region(const GameId &game, const std::string &name) const;
+
   private:
     std::string ensure_game_dir(const GameId &game) const;
+    RegionsResult read_regions(const GameId &game) const;
+    std::string write_regions_file(const GameId &game, const RegionsResult &regions) const;
+    RegionChange rewrite_region(const GameId &game, const std::string &from, const std::string &to) const;
 
     std::filesystem::path root;
 };

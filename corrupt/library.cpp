@@ -1,4 +1,5 @@
 #include "library.h"
+#include "rule_text.h"
 
 #include <algorithm>
 #include <cctype>
@@ -185,6 +186,122 @@ std::string Library::save_regions(const GameId &game, const Regions &regions) co
     if (auto err = ensure_game_dir(game); !err.empty())
         return err;
     return write_file_atomic(game_dir(game) / "regions.json", write_regions(regions));
+}
+
+RegionsResult Library::read_regions(const GameId &game) const
+{
+    auto text = read_file(game_dir(game) / "regions.json");
+    return text ? parse_regions(*text) : RegionsResult{};
+}
+
+std::string Library::write_regions_file(const GameId &game, const RegionsResult &regions) const
+{
+    if (auto err = ensure_game_dir(game); !err.empty())
+        return err;
+    return write_file_atomic(game_dir(game) / "regions.json", write_regions(regions.regions, regions.notes));
+}
+
+std::string Library::set_region(const GameId &game, const std::string &name, const AddressRange &range) const
+{
+    if (auto err = validate_region_name(name))
+        return *err;
+    SizedMemory nominal;
+    if (auto err = validate_range(range, nominal))
+        return *err;
+    auto regions = read_regions(game);
+    regions.regions[name] = range;
+    return write_regions_file(game, regions);
+}
+
+std::vector<std::string> Library::recipes_using_region(const GameId &game, const std::string &name) const
+{
+    std::vector<std::string> out;
+    for (auto &entry : list_recipes(game))
+        if (entry.recipe)
+            for (auto &rule : entry.recipe->rules)
+                if (rule.region == name)
+                {
+                    out.push_back(entry.name);
+                    break;
+                }
+    return out;
+}
+
+// Renames region `from` to `to` in regions.json and in every recipe that uses it;
+// an empty `to` deletes it, leaving those rules with its range and no name.
+RegionChange Library::rewrite_region(const GameId &game, const std::string &from, const std::string &to) const
+{
+    RegionChange change;
+    auto regions = read_regions(game);
+    auto it = regions.regions.find(from);
+    if (it == regions.regions.end())
+    {
+        change.error = "there's no region called '" + from + "'";
+        return change;
+    }
+
+    // Read the recipes while the old name still resolves.
+    std::vector<std::pair<std::filesystem::path, Recipe>> rewrites;
+    for (auto &entry : list_recipes(game))
+    {
+        if (!entry.recipe)
+            continue;
+        Recipe recipe = *entry.recipe;
+        bool uses = false;
+        for (auto &rule : recipe.rules)
+            if (rule.region == from)
+            {
+                rule.region = to;
+                uses = true;
+            }
+        if (uses)
+            rewrites.emplace_back(entry.path, std::move(recipe));
+    }
+
+    AddressRange range = it->second;
+    regions.regions.erase(it);
+    auto notes = regions.notes.find(from);
+    std::string note = notes == regions.notes.end() ? std::string() : notes->second;
+    if (notes != regions.notes.end())
+        regions.notes.erase(notes);
+    if (!to.empty())
+    {
+        regions.regions[to] = range;
+        if (!note.empty())
+            regions.notes[to] = note;
+    }
+    if (auto err = write_regions_file(game, regions); !err.empty())
+    {
+        change.error = err;
+        return change;
+    }
+    for (auto &[path, recipe] : rewrites)
+    {
+        if (auto err = write_file_atomic(path, write_recipe(recipe)); !err.empty())
+        {
+            change.error = err;
+            return change;
+        }
+        change.recipes.push_back(path);
+    }
+    return change;
+}
+
+RegionChange Library::rename_region(const GameId &game, const std::string &from, const std::string &to) const
+{
+    RegionChange change;
+    if (auto err = validate_region_name(to))
+        change.error = *err;
+    else if (read_regions(game).regions.count(to))
+        change.error = "there's already a region called '" + to + "'";
+    if (!change.error.empty())
+        return change;
+    return rewrite_region(game, from, to);
+}
+
+RegionChange Library::delete_region(const GameId &game, const std::string &name) const
+{
+    return rewrite_region(game, name, {});
 }
 
 fs::path anchor_path(const fs::path &recipe_path)

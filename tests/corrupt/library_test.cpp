@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <chrono>
 #include <fstream>
+#include <sstream>
 
 using namespace corrupt;
 namespace fs = std::filesystem;
@@ -218,5 +219,140 @@ TEST_SUITE("saved moments")
         std::string error;
         CHECK_FALSE(load_anchor("/nowhere/gone.anchor.frz", error));
         CHECK(error.find("gone.anchor.frz") != std::string::npos);
+    }
+}
+
+TEST_SUITE("named regions")
+{
+    std::string read(const fs::path &p)
+    {
+        std::ifstream in(p);
+        std::stringstream ss;
+        ss << in.rdbuf();
+        return ss.str();
+    }
+
+    // A library with regions "stats" and "enemies"; recipe A uses "stats", B uses nothing.
+    struct RegionLib
+    {
+        TempDir tmp;
+        Library lib{ tmp.path };
+        fs::path a, b;
+
+        RegionLib()
+        {
+            REQUIRE(lib.set_region(kGame, "stats", { Target::WRAM, 0x0F00, 0x0F3F }).empty());
+            REQUIRE(lib.set_region(kGame, "enemies", { Target::WRAM, 0x1200, 0x12FF }).empty());
+            write_file(lib.game_dir(kGame) / "recipes" / "a.json",
+                       R"({"format":1,"name":"a","rules":[{"name":"x","target":"wram","range":"stats","op":{"type":"random"},"when":{"hotkey":1}},)"
+                       R"({"name":"y","target":"wram","range":["0x10","0x20"],"op":{"type":"random"},"when":{"hotkey":2}}]})");
+            b = lib.save_recipe(kGame, sample("b")).path;
+            a = lib.game_dir(kGame) / "recipes" / "a.json";
+        }
+
+        Regions regions()
+        {
+            std::vector<std::string> errors;
+            auto r = lib.load_regions(kGame, errors);
+            CHECK(errors.empty());
+            return r;
+        }
+
+        const Recipe &recipe(const std::string &name)
+        {
+            static std::vector<RecipeEntry> keep;
+            keep = lib.list_recipes(kGame);
+            for (auto &e : keep)
+                if (e.name == name)
+                {
+                    REQUIRE_MESSAGE(e.recipe, (e.errors.empty() ? "" : e.errors[0]));
+                    return *e.recipe;
+                }
+            FAIL("no recipe " << name);
+            return *keep[0].recipe;
+        }
+    };
+
+    TEST_CASE("region names")
+    {
+        CHECK_FALSE(validate_region_name("player stats"));
+        CHECK_FALSE(validate_region_name("enemy_table-2"));
+        CHECK(validate_region_name(""));
+        CHECK(validate_region_name("2nd player"));
+        CHECK(validate_region_name("hp!"));
+        CHECK(validate_region_name(std::string(41, 'a')));
+    }
+
+    TEST_CASE("set adds and redefines; recipes pick the new range up")
+    {
+        RegionLib r;
+        CHECK(r.regions().size() == 2);
+        CHECK(r.recipe("a").rules[0].range.first == 0x0F00u);
+        CHECK(r.lib.set_region(kGame, "stats", { Target::WRAM, 0x0E00, 0x0E1F }).empty());
+        CHECK(r.regions().at("stats").first == 0x0E00u);
+        CHECK(r.recipe("a").rules[0].range.first == 0x0E00u);
+        CHECK_FALSE(r.lib.set_region(kGame, "bad!", { Target::WRAM, 0, 1 }).empty());
+        CHECK_FALSE(r.lib.set_region(kGame, "huge", { Target::OAM, 0, 0x300 }).empty()); // past the end
+    }
+
+    TEST_CASE("which recipes use a region")
+    {
+        RegionLib r;
+        CHECK(r.lib.recipes_using_region(kGame, "stats") == std::vector<std::string>{ "a" });
+        CHECK(r.lib.recipes_using_region(kGame, "enemies").empty());
+    }
+
+    TEST_CASE("rename rewrites the recipes that use it, and only those")
+    {
+        RegionLib r;
+        auto b_before = read(r.b);
+        auto change = r.lib.rename_region(kGame, "stats", "player stats");
+        CHECK(change.error.empty());
+        CHECK(change.recipes == std::vector<fs::path>{ r.a });
+        CHECK(r.regions().count("player stats") == 1);
+        CHECK(r.regions().count("stats") == 0);
+        CHECK(r.recipe("a").rules[0].region == "player stats");
+        CHECK(r.recipe("a").rules[0].range.first == 0x0F00u);
+        CHECK(r.recipe("a").rules[1].region.empty());
+        CHECK(read(r.b) == b_before);
+    }
+
+    TEST_CASE("rename refuses a taken, missing or bad name")
+    {
+        RegionLib r;
+        CHECK_FALSE(r.lib.rename_region(kGame, "stats", "enemies").error.empty());
+        CHECK_FALSE(r.lib.rename_region(kGame, "nope", "fine").error.empty());
+        CHECK_FALSE(r.lib.rename_region(kGame, "stats", "").error.empty());
+        CHECK(r.regions().count("stats") == 1);
+    }
+
+    TEST_CASE("delete writes the range into the recipes that used it")
+    {
+        RegionLib r;
+        auto change = r.lib.delete_region(kGame, "stats");
+        CHECK(change.error.empty());
+        CHECK(change.recipes == std::vector<fs::path>{ r.a });
+        CHECK(r.regions().count("stats") == 0);
+        auto &rule = r.recipe("a").rules[0];
+        CHECK(rule.region.empty());
+        CHECK(rule.range.first == 0x0F00u);
+        CHECK(rule.range.last == 0x0F3Fu);
+        CHECK_FALSE(r.lib.delete_region(kGame, "stats").error.empty()); // already gone
+    }
+
+    TEST_CASE("notes in regions.json survive every edit")
+    {
+        RegionLib r;
+        write_file(r.lib.game_dir(kGame) / "regions.json",
+                   R"({"format":1,"regions":{"stats":{"target":"wram","range":["0x0F00","0x0F3F"],"notes":"HP, MP, level"},)"
+                   R"("enemies":{"target":"wram","range":["0x1200","0x12FF"],"notes":"8 slots"}}})");
+        REQUIRE(r.lib.set_region(kGame, "gold", { Target::WRAM, 0x1600, 0x1602 }).empty());
+        REQUIRE(r.lib.rename_region(kGame, "stats", "player").error.empty());
+        REQUIRE(r.lib.delete_region(kGame, "gold").error.empty());
+        auto text = read(r.lib.game_dir(kGame) / "regions.json");
+        CHECK(text.find("HP, MP, level") != std::string::npos);
+        CHECK(text.find("8 slots") != std::string::npos);
+        auto parsed = parse_regions(text);
+        CHECK(parsed.notes.at("player") == "HP, MP, level");
     }
 }
