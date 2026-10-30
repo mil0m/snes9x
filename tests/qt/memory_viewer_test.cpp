@@ -11,6 +11,7 @@
 #include <QListWidget>
 #include <QMouseEvent>
 #include <QPushButton>
+#include <QSpinBox>
 
 using namespace corrupt;
 
@@ -414,6 +415,38 @@ TEST_SUITE("the pixel view in the viewer")
         CHECK(hover.contains("0x11"));
     }
 
+    TEST_CASE("the row width box sets the pixel rows, per memory")
+    {
+        FakeSource src;
+        MemoryViewer v(src);
+        v.show();
+        v.refresh();
+        auto width = child<QSpinBox>(v, "row_width");
+        CHECK_FALSE(width->isVisible());
+        choose(v, "mode", "pixels");
+        CHECK(width->isVisible());
+        CHECK(width->value() == 0);
+        CHECK(width->text().contains("Auto"));
+        auto pixels = child<PixelView>(v, "pixels");
+
+        width->setValue(48);
+        CHECK(pixels->rowWidth() == 48);
+        CHECK(pixels->columns() == 48);
+        width->stepBy(1); // the arrows step one byte, to hunt for the width that lines up
+        CHECK(pixels->columns() == 49);
+
+        choose(v, "target", "vram");
+        v.refresh();
+        CHECK(width->value() == 0); // vram has its own, still auto
+        width->setValue(64);
+        CHECK(pixels->columns() == 64);
+        choose(v, "target", "wram");
+        v.refresh();
+        CHECK(width->value() == 49);
+        CHECK(pixels->columns() == 49);
+        CHECK(pixels->snapshot().target == Target::WRAM);
+    }
+
     TEST_CASE("a picture of the viewer in pixel mode")
     {
         FakeSource src;
@@ -421,6 +454,7 @@ TEST_SUITE("the pixel view in the viewer")
         v.show();
         v.refresh();
         choose(v, "mode", "pixels");
+        child<QSpinBox>(v, "row_width")->setValue(64);
         auto map = child<QListWidget>(v, "map");
         map->setCurrentRow(1);
         emit map->itemActivated(map->item(1));

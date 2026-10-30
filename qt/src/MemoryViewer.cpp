@@ -14,6 +14,7 @@
 #include <QLineEdit>
 #include <QListWidget>
 #include <QPushButton>
+#include <QSpinBox>
 #include <QStackedWidget>
 #include <QVBoxLayout>
 
@@ -51,6 +52,14 @@ MemoryViewer::MemoryViewer(MemorySource &source, QWidget *parent)
     zoom_in_button->setToolTip(tr("Zoom in (Ctrl+wheel)"));
     zoom_label = new QLabel(this);
     zoom_label->setObjectName("zoom");
+    row_width = new QSpinBox(this);
+    row_width->setObjectName("row_width");
+    row_width->setRange(0, PixelView::kMaxRowWidth);
+    row_width->setPrefix(tr("Row "));
+    row_width->setSuffix(tr(" bytes"));
+    row_width->setSpecialValueText(tr("Row: Auto"));
+    row_width->setToolTip(tr("Bytes per row of dots. Step it one at a time (arrows or wheel) until the picture "
+                             "lines up into columns: then a row of dots is a row of the game's data. 0 is Auto."));
     for (auto b : { zoom_out_button, zoom_in_button })
         b->setFixedWidth(b->fontMetrics().horizontalAdvance("+") + 24);
     target_combo = new QComboBox(this);
@@ -72,6 +81,7 @@ MemoryViewer::MemoryViewer(MemorySource &source, QWidget *parent)
     top->addWidget(zoom_out_button);
     top->addWidget(zoom_label);
     top->addWidget(zoom_in_button);
+    top->addWidget(row_width);
     top->addWidget(target_combo);
     top->addWidget(overlay_combo, 1);
     top->addWidget(goto_edit);
@@ -199,6 +209,10 @@ MemoryViewer::MemoryViewer(MemorySource &source, QWidget *parent)
     pixels->onZoomChanged = [this] { zoomChanged(); };
     pixels->onHover = [this](std::optional<uint32_t> offset) { hovered(offset); };
     connect(mode_combo, &QComboBox::currentIndexChanged, this, [this] { modeChanged(); });
+    connect(row_width, &QSpinBox::valueChanged, this, [this](int bytes) {
+        row_widths[size_t(target())] = bytes;
+        pixels->setRowWidth(bytes);
+    });
     connect(zoom_in_button, &QPushButton::clicked, this, [this] { pixels->zoomIn(); });
     connect(zoom_out_button, &QPushButton::clicked, this, [this] { pixels->zoomOut(); });
     modeChanged();
@@ -226,7 +240,8 @@ void MemoryViewer::modeChanged()
     MemoryPane *from = pane();
     MemoryPane *to = to_pixels ? static_cast<MemoryPane *>(pixels) : view;
     for (QWidget *w : { static_cast<QWidget *>(zoom_out_button), static_cast<QWidget *>(zoom_in_button),
-                        static_cast<QWidget *>(zoom_label), static_cast<QWidget *>(hover_label) })
+                        static_cast<QWidget *>(zoom_label), static_cast<QWidget *>(hover_label),
+                        static_cast<QWidget *>(row_width) })
         w->setVisible(to_pixels);
     if (to == from)
         return;
@@ -277,6 +292,7 @@ void MemoryViewer::hideEvent(QHideEvent *event)
 
 void MemoryViewer::targetChanged()
 {
+    row_width->setValue(row_widths[size_t(target())]); // each memory keeps its own
     if (open)
         source.watch(target());
     refresh();

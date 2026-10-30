@@ -407,5 +407,13 @@ TEST_CASE("pictures of real memory, from corrupt-smoke --dump")
             QDir().mkpath(shots);
             v.grab().save(QString("%1/real-%2-%3x.png").arg(shots, target_name(t)).arg(zoom));
         }
+        if (t == Target::VRAM) // a 32-wide tile map is 64 bytes a row: it should line up at 64, not 66
+            for (int width : { 64, 66 })
+            {
+                v.setZoom(4);
+                v.setRowWidth(width);
+                v.scrollTo(0);
+                v.grab().save(QString("%1/real-vram-row%2.png").arg(shots).arg(width));
+            }
     }
 }

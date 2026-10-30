@@ -18,6 +18,7 @@ class QLabel;
 class QLineEdit;
 class QListWidget;
 class QPushButton;
+class QSpinBox;
 class QStackedWidget;
 
 // What the viewer needs from the running game. The app passes the corruption
@@ -91,6 +92,8 @@ class MemoryViewer : public QWidget
     QPushButton *zoom_out_button;
     QPushButton *zoom_in_button;
     QLabel *zoom_label;
+    QSpinBox *row_width;
+    std::array<int, corrupt::kTargetCount> row_widths{}; // chosen per memory, 0 = auto
     QStackedWidget *stack;
     MemoryView *view;
     PixelView *pixels;
