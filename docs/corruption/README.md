@@ -106,7 +106,14 @@ Loading another recipe or starting a new one asks before discarding unsaved edit
   patterns. **−** and **+** (or Ctrl+mouse wheel, which zooms around the mouse) set the
   dot size from 1 to 16 screen pixels; a row holds as many bytes as fit, always a power of
   two, so tables line up in columns. Small memories come out square-ish: the palette is
-  one 16-colour palette per row, the sprite table eight sprites per row. With **Activity**
+  one 16-colour palette per row, the sprite table eight sprites per row.
+- **Row** sets how many bytes a row of dots holds: **Auto** (as above) or any number from
+  1 to 4096. Data laid out in rows only lines up when a row of dots is exactly one row of
+  the data, so step it one byte at a time (arrows or the mouse wheel over the box) and
+  watch for the moment the picture stops leaning and snaps into columns. A 32-wide tile map
+  lines up at 64 (two bytes per tile); in FF6 the BG1 map turns into a picture of the level
+  at 64 and shears at 66. Each memory keeps its own width while the viewer is open; rows
+  wider than the window scroll sideways. With **Activity**
   or **Hits** on, the bytes go grey and the heat is painted over them; **Plain** shows the
   full colours. Hover a dot for its address and value. Selecting, the Map, named areas,
   copies and New Rule from Selection work the same as in hex, and switching keeps the

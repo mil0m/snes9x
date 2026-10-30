@@ -194,5 +194,9 @@ scratch folder. By default Snes9x writes the `.srm` next to the ROM.
    - [ ] VRAM shows tile patterns; cgram comes out 32 bytes a row (one palette each), oam too.
 8. Run a recipe with **Hits** on.
    - [ ] The recipe's writes show as purple dots on grey.
-9. Resize the window and scroll with the plain wheel.
-   - [ ] Rows reflow to the new width, the view stays near the same place, and the plain wheel scrolls without zooming.
+9. Switch to **vram** and set **Row** to 64, then 66, then step back to 64 with the arrows.
+   - [ ] At 64 the tile map areas (see the Map) look like upright blocky pictures; at 66 they lean. Each arrow click moves one byte.
+   - [ ] Type 300 at 8×: rows scroll sideways, the addresses stay on the left, and clicking a dot still selects the right byte (check in **Hex**).
+   - [ ] Switch to **wram**: it's still on Auto. Back to **vram**: 64 again.
+10. Resize the window and scroll with the plain wheel.
+   - [ ] On Auto, rows reflow to the new width, the view stays near the same place, and the plain wheel scrolls without zooming.

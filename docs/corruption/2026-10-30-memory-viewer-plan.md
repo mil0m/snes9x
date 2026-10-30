@@ -159,3 +159,13 @@ Tasks:
    the width, clamping.
 2. Viewer: the Row width box (pixel mode only), per target. Tests and a PNG.
 3. Docs: README, QA.md section 15, findings here.
+
+Done 2026-10-30 (QA.md section 15, step 9). Findings:
+
+- **It works on a real game.** FF6's BG1 tile map is upright at 64 bytes a row and shears
+  at 66; the alternating columns are each entry's tile number and attribute byte.
+- **A picture with a 4-byte table proves nothing at 36**: 36 is a multiple of 4, so the
+  entries line up there too. The test picture compares 32 with 34.
+- **The box is a spin box**, not a list of presets, because hunting for an unknown width
+  means stepping one byte at a time.
+
