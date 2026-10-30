@@ -74,8 +74,10 @@ set(SNES9X_CORE_SOURCES
     ../server.cpp
     ../loadzip.cpp
     ../fscompat.cpp)
+file(GLOB SNES9X_CORRUPT_SOURCES CONFIGURE_DEPENDS ../corrupt/*.cpp)
+list(APPEND SNES9X_CORE_SOURCES ${SNES9X_CORRUPT_SOURCES})
 add_library(snes9x-core ${SNES9X_CORE_SOURCES})
-target_include_directories(snes9x-core PRIVATE ../)
+target_include_directories(snes9x-core PRIVATE ../ ../external)
 target_compile_definitions(snes9x-core PRIVATE ${DEFINES} ZLIB HAVE_STDINT_H HAVE_LIBPNG ALLOW_CPU_OVERCLOCK)
 
 if(${CMAKE_SYSTEM_NAME} STREQUAL "Windows")

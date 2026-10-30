@@ -497,3 +497,8 @@ bool8 S9xSPCDump(const char *filename)
 
     return true;
 }
+
+uint8 *S9xAPUGetRAM (void)
+{
+    return SNES::smp.apuram;
+}
