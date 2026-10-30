@@ -8,7 +8,8 @@ corruption while playing": #14 rule editor, #15 intensity sliders, #16 named reg
 [plan 2](./2026-10-30-phase2-crash-rollback-plan.md)).
 
 **Status (2026-10-30):** #14 is done (tasks 1–9 below; see *Findings while building*), and
-it still needs a manual QA pass (QA.md section 8). #15–#17 are only outlined at the end;
+it still needs a manual QA pass (QA.md section 8). #15 is being built (its own section
+below). #16–#17 are only outlined at the end;
 each gets its own task list once the one before it has been play-tested. #14 was meant to
 wait for the first play-test (#12), so whatever that turns up feeds back in as fixes.
 
@@ -148,11 +149,35 @@ running, edit one and watch only that one change, remove one, Save, Reload, and 
   names gained plain labels (`cgram (palette)`), and the decimal fields drop trailing
   zeros.
 
+## #15: intensity sliders
+
+Goal: turn the chaos up and down while playing, per rule and for the whole recipe, with
+the mouse or a hotkey, without restarting the run.
+
+### Decision: below one address, intensity thins firings
+Today intensity scales `count` with a floor of one address, so for a count-1 rule (most
+`random` and `swap` rules, the default new rule) a slider would do nothing, and so does
+the crash guard's *dampen*. From now on, when `count × intensity` is below 1, the rule
+fires with that probability instead (count 1 at 30 %: about 3 firings in 10), hitting one
+address. The draw comes from its own random stream, and a skipped firing doesn't count as
+a firing, so the values a rule writes stay replayable. At 1 or more nothing changes.
+
+### Tasks
+1. **Thinning** in `tick_rule`. Tests: count 1 at 0.3 fires about 30 % of 10 000 frames;
+   the same seed thins the same frames; the values written when it does fire match an
+   unthinned run's firings in order; count 10 at 0.5 still hits 5.
+2. **Recipe intensity**: `Recipe::intensity` (0–1, default 1, written only when not 1),
+   multiplied into every rule's intensity at run time; `Engine::set_intensity`, live.
+   Tests: JSON round-trip and range errors; 0 stops every rule; 0.5 equals every rule at
+   half; changing it keeps the frame count.
+3. **Session and panel**: an *Intensity* column of sliders in the rule table, a *Chaos*
+   slider for the recipe in the run box, both live and both counted as edits for Save.
+   Two rebindable hotkeys, *Corruption: more* and *less* (10 % steps, unbound by default),
+   with an on-screen message. A crash-guard *dampen* moves the rule's slider.
+4. **Docs and QA**: README, QA.md section 9.
+
 ## Later in this phase (outlined, not yet planned in tasks)
 
-- **#15 Intensity sliders.** A slider per rule (in the table) and one for the recipe,
-  applied live through `set_rule_intensity`. The recipe slider multiplies the rule
-  sliders, so it needs one new recipe field (`intensity`, default 1).
 - **#16 Named regions.** Add, rename and delete entries in the game's `regions.json`
   from the panel, and use them in the editor (task 7 can already pick them). Easiest once
   the memory viewer (#18) can select a range, so it may move to phase 5.
