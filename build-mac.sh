@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
-# Build Snes9x on macOS: the native Cocoa app and the libretro core.
+# Build Snes9x on macOS: the Qt front end, the native Cocoa app and the libretro core.
 #
-#   ./build-mac.sh            # both
+#   ./build-mac.sh            # all three
+#   ./build-mac.sh qt         # snes9x-qt   -> build/qt/snes9x-qt  (needs: brew install qt pkgconf libpng ninja)
 #   ./build-mac.sh app        # Snes9x.app  -> build/xcode/Build/Products/Release/Snes9x.app
 #   ./build-mac.sh libretro   # core        -> libretro/snes9x_libretro.dylib
 #
@@ -31,14 +32,21 @@ build_app() {
   echo "App: $(pwd)/build/xcode/Build/Products/Release/Snes9x.app"
 }
 
+build_qt() {
+  cmake -S qt -B build/qt -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH="$(brew --prefix qt)" >/dev/null
+  cmake --build build/qt | tail -1
+  echo "Qt: $(pwd)/build/qt/snes9x-qt"
+}
+
 build_libretro() {
   make -C libretro -j"$(sysctl -n hw.ncpu)" >/dev/null
   echo "Core: $(pwd)/libretro/snes9x_libretro.dylib"
 }
 
 case "$target" in
+  qt) build_qt ;;
   app) build_app ;;
   libretro) build_libretro ;;
-  all) build_app; build_libretro ;;
-  *) echo "usage: $0 [app|libretro|all]" >&2; exit 2 ;;
+  all) build_qt; build_app; build_libretro ;;
+  *) echo "usage: $0 [qt|app|libretro|all]" >&2; exit 2 ;;
 esac

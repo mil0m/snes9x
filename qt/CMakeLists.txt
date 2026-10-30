@@ -99,6 +99,7 @@ list(APPEND LIBS Qt6::Widgets Qt6::Gui)
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(ZLIB REQUIRED zlib)
 pkg_check_modules(PNG REQUIRED libpng)
+target_include_directories(snes9x-core PRIVATE ${PNG_INCLUDE_DIRS} ${ZLIB_INCLUDE_DIRS})
 list(APPEND INCLUDES ${ZLIB_INCLUDE_DIRS})
 list(APPEND FLAGS ${ZLIB_COMPILE_FLAGS})
 
@@ -116,6 +117,10 @@ if(${CMAKE_SYSTEM_NAME} STREQUAL "Windows")
         ../common/video/opengl/wgl_context.cpp
         ../external/glad/src/wgl.c
         src/resources/snes9x_win32.rc)
+elseif(APPLE)
+    # macOS: only the Qt canvas is wired up, so no native GL/Vulkan window-system sources.
+    list(APPEND INCLUDES ${PNG_INCLUDE_DIRS})
+    list(APPEND LIBS ${PNG_LINK_LIBRARIES} ${ZLIB_LINK_LIBRARIES})
 else()
 
     pkg_check_modules(WAYLAND REQUIRED wayland-client wayland-egl)
@@ -266,7 +271,7 @@ list(APPEND LIBS
 
 if(${CMAKE_SYSTEM_NAME} STREQUAL "Windows")
     list(APPEND DEFINES "VK_USE_PLATFORM_WIN32_KHR")
-else()
+elseif(NOT APPLE)
     list(APPEND DEFINES
         "VK_USE_PLATFORM_XLIB_KHR"
         "VK_USE_PLATFORM_WAYLAND_KHR")

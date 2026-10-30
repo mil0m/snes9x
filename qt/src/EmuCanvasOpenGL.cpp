@@ -3,12 +3,12 @@
 #include <QMessageBox>
 #include "common/video/opengl/opengl_context.hpp"
 
-#ifndef _WIN32
+#if !defined(_WIN32) && !defined(__APPLE__)
 #include "common/video/opengl/glx_context.hpp"
 #include "common/video/opengl/wayland_egl_context.hpp"
 using namespace QNativeInterface;
 #include <X11/Xlib.h>
-#else
+#elif defined(_WIN32)
 #include "common/video/opengl/wgl_context.hpp"
 #endif
 #include "common/video/opengl/shaders/glsl.h"
@@ -141,7 +141,10 @@ bool EmuCanvasOpenGL::createContext()
     auto platform = QGuiApplication::platformName();
     auto app = reinterpret_cast<QGuiApplication *>(QGuiApplication::instance());
     QGuiApplication::sync();
-#ifndef _WIN32
+#if defined(__APPLE__)
+    // No native OpenGL context on macOS yet; the main window falls back to the Qt canvas.
+    return false;
+#elif !defined(_WIN32)
     if (platform == "wayland")
     {
         auto iface = app->nativeInterface<QNativeInterface::QWaylandApplication>();
@@ -321,7 +324,8 @@ void EmuCanvasOpenGL::resizeEvent(QResizeEvent *event)
 
     int s = devicePixelRatio();
     auto platform = QGuiApplication::platformName();
-#ifndef _WIN32
+#if defined(__APPLE__)
+#elif !defined(_WIN32)
     if (QGuiApplication::platformName() == "wayland")
         ((WaylandEGLContext *)context.get())->resize({ x() - parent->x(), y() - parent->y(), width(), height(), s });
     else if (platform == "xcb")

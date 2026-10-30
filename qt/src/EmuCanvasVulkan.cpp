@@ -83,7 +83,11 @@ bool EmuCanvasVulkan::createContext()
     context = std::make_unique<Vulkan::Context>();
     context->set_preferred_device(config.display_device_index);
 
-#ifdef _WIN32
+#if defined(__APPLE__)
+    // No native Vulkan surface on macOS yet; the main window falls back to the Qt canvas.
+    context.reset();
+    return false;
+#elif defined(_WIN32)
     auto hwnd = (HWND)winId();
     if (!context->init() ||
         !context->create_win32_surface(nullptr, hwnd) ||
@@ -230,7 +234,7 @@ void EmuCanvasVulkan::resizeEvent(QResizeEvent *event)
 
     context->swapchain->set_vsync(config.enable_vsync);
 
-#ifndef _WIN32
+#if !defined(_WIN32) && !defined(__APPLE__)
     if (platform == "wayland")
     {
         WaylandSurface::Metrics m = {
@@ -285,7 +289,7 @@ void EmuCanvasVulkan::deinit()
     simple_output.reset();
     shader_chain.reset();
     context.reset();
-#ifndef _WIN32
+#if !defined(_WIN32) && !defined(__APPLE__)
     wayland_surface.reset();
 #endif
 }

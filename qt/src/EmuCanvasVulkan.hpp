@@ -6,7 +6,7 @@
 #include "common/video/vulkan/vulkan_simple_output.hpp"
 #include "common/video/vulkan/vulkan_shader_chain.hpp"
 
-#ifndef _WIN32
+#if !defined(_WIN32) && !defined(__APPLE__)
 #include "common/video/wayland/wayland_surface.hpp"
 #endif
 
@@ -44,7 +44,7 @@ class EmuCanvasVulkan : public EmuCanvas
     std::unique_ptr<ShaderParametersDialog> shader_parameters_dialog = nullptr;
     QString platform;
 
-#ifndef _WIN32
+#if !defined(_WIN32) && !defined(__APPLE__)
     std::unique_ptr<WaylandSurface> wayland_surface;
 #endif
 };

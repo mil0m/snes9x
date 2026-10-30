@@ -85,6 +85,10 @@ void EmuMainWindow::destroyCanvas()
 
 bool EmuMainWindow::createCanvas()
 {
+#ifdef __APPLE__
+    // Only the Qt canvas has a macOS backend so far.
+    app.config->display_driver = "qt";
+#endif
     if (app.config->display_driver == "vulkan")
     {
         canvas = new EmuCanvasVulkan(app, this);
@@ -354,7 +358,7 @@ void EmuMainWindow::resizeToMultiple(int multiple)
 
 void EmuMainWindow::setBypassCompositor(bool bypass)
 {
-#ifndef _WIN32
+#if !defined(_WIN32) && !defined(__APPLE__)
     if (QGuiApplication::platformName() == "xcb")
     {
         uint32_t value = bypass;
