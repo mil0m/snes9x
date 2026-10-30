@@ -9,7 +9,7 @@ corruption while playing": #14 rule editor, #15 intensity sliders, #16 named reg
 
 **Status (2026-10-30):** #14 is done (tasks 1–9 below; see *Findings while building*), and
 it still needs a manual QA pass (QA.md section 8). #15 is done too (its own section
-below; QA.md section 9). #16–#17 are only outlined at the end;
+below; QA.md section 9). #17 is being built. #16 is only outlined at the end;
 each gets its own task list once the one before it has been play-tested. #14 was meant to
 wait for the first play-test (#12), so whatever that turns up feeds back in as fixes.
 
@@ -186,15 +186,52 @@ a firing, so the values a rule writes stay replayable. At 1 or more nothing chan
 - **Hotkeys are unbound by default.** F10–F12 are taken or risky (F11 is fullscreen), so
   More/Less Chaos wait for a binding instead of taking a key someone already uses.
 
+## #17: start a recipe from a saved moment
+
+Goal: a recipe can carry the moment its run started, so loading it puts the game back at
+that moment and the same seed replays the same chaos (until the player's own inputs
+differ). That's how Erik gets to see exactly the run Mikael saved.
+
+### Decisions
+- **The moment is the start of the run, not the time of saving.** Replays count from
+  activation, so the state worth keeping is the one from just before frame 1.
+- **Runs start at a frame boundary.** Activating, re-rolling or loading a recipe used to
+  restart the engine from the UI thread, so the first corrupted frame could fall in the
+  middle of an emulated frame. Now the engine holds a restarted run at frame 0 until
+  `RunControl` (Qt-free, called between frames, before the crash guard) takes a snapshot
+  of the state, or loads the recipe's saved one, and releases it. While the game is
+  paused, a start waits for it to run.
+- **Files:** `<recipe>.anchor.frz` next to `<recipe>.json`, written in Snes9x's own
+  save-state format; `anchor_state` holds the file name. It's only loaded when the
+  recipe's ROM SHA-256 matches the loaded game. A state from another version would
+  load the wrong code.
+- **One switch in the panel**, *Saved moments*, on by default: Save and Save As write the
+  moment the current run started (when it isn't the one already on disk), and Load
+  jumps to the recipe's moment. Off, recipes load and save as before.
+
+### Tasks
+1. `Engine::hold_starts` / `release` / `waiting`. Tests: a held run writes nothing and
+   stays at frame 0 until released; every restart holds again; off by default.
+2. `RunControl`: `request_start_from(state)`, `between_frames(engine, core)` that
+   captures or loads, releases, and reports what it did, plus `anchor()` and
+   `anchor_is_from_file()`. Tests over a fake core whose memory changes every frame:
+   the anchor is the state before the first corrupted frame; starting from it replays
+   the original run byte for byte; a broken state starts from the current moment and
+   says so.
+3. Library: `anchor_path(recipe_path)`, `save_anchor`, `load_anchor`. Tests: next to
+   the recipe, binary round-trip, a missing file is an error.
+4. Real core: a headless test that runs a recipe from a captured moment on the test
+   ROM, loads the moment, runs again, and gets identical WRAM.
+5. Session and panel: `RunControl` in `betweenFrames`; a guard reset after a loaded
+   moment; the *Saved moments* switch; Save/Save As/Load use it; status shows a
+   waiting start.
+6. Docs and QA.
+
 ## Later in this phase (outlined, not yet planned in tasks)
 
 - **#16 Named regions.** Add, rename and delete entries in the game's `regions.json`
   from the panel, and use them in the editor (task 7 can already pick them). Easiest once
   the memory viewer (#18) can select a range, so it may move to phase 5.
-- **#17 Start from a saved moment.** *Save As* can bundle a save state
-  (`<recipe>.anchor.frz`, `anchor_state` already parses), and loading such a recipe loads
-  the state before activating. Needs a check of how `S9xFreezeGame` handles a state
-  from another ROM version.
 
 ## Out of this phase
 The memory viewer and crash map (phase 4 in the design doc), undo for edits (Reload
