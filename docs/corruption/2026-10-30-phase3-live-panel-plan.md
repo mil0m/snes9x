@@ -9,7 +9,7 @@ corruption while playing": #14 rule editor, #15 intensity sliders, #16 named reg
 
 **Status (2026-10-30):** #14 is done (tasks 1–9 below; see *Findings while building*), and
 it still needs a manual QA pass (QA.md section 8). #15 is done too (its own section
-below; QA.md section 9). #17 is done too (QA.md section 10). #16 is only outlined at the end;
+below; QA.md section 9). #17 is done too (QA.md section 10). #16 is being built (its own section below);
 each gets its own task list once the one before it has been play-tested. #14 was meant to
 wait for the first play-test (#12), so whatever that turns up feeds back in as fixes.
 
@@ -243,9 +243,34 @@ differ). That's how Erik gets to see exactly the run Mikael saved.
 
 ## Later in this phase (outlined, not yet planned in tasks)
 
-- **#16 Named regions.** Add, rename and delete entries in the game's `regions.json`
-  from the panel, and use them in the editor (task 7 can already pick them). Easiest once
-  the memory viewer (#18) can select a range, so it may move to phase 5.
+## #16: named memory areas
+
+Goal: name a range once ("player stats", "enemy table") and use the name in any rule for
+that game, managed from the memory viewer.
+
+### Decisions
+- **Names live in the game's `regions.json`**, which recipes and the rule editor already
+  read. A recipe stores the name, so redefining a region moves every rule that uses it
+  the next time the recipe loads.
+- **Names:** 1–40 characters, starting with a letter; letters, digits, spaces, `_` and `-`.
+- **Rename updates the recipes** in the game's folder that use the name, and the running
+  recipe, so nothing breaks.
+- **Delete writes the region's range into the recipes that use it** (the rule keeps its
+  bytes, just without the name), instead of leaving them unloadable.
+- **Notes in `regions.json` survive** every edit (the reader used to drop them).
+
+### Tasks
+1. `validate_region_name`; `parse_regions` returns notes and `write_regions` writes them;
+   `Library::set_region`, `rename_region`, `delete_region`, `recipes_using_region`. Tests
+   in a temp library: add and redefine; rename rewrites the recipes that use it and leaves
+   the rest byte-identical; delete inlines the range and the recipe still loads; notes
+   survive; bad and duplicate names are errors.
+2. `Engine::rename_region(old, new)` (empty new = inline), no restart. Test.
+3. Session: region calls through to the library, the running recipe follows, and a
+   recipe file rewritten on disk doesn't count as an unsaved edit.
+4. Memory viewer: *Name Selection…*, and a Regions list (click to jump and select;
+   Rename, Delete, which says which recipes use it). Offscreen tests with the fake source.
+5. Docs and QA.
 
 ## Out of this phase
 The memory viewer and crash map (phase 4 in the design doc), undo for edits (Reload
