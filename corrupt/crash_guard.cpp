@@ -54,8 +54,6 @@ GuardOutcome CrashGuard::between_frames(Engine &engine, CoreAccess &core)
     if (last_frame && frame < *last_frame)
         reset();
     last_frame = frame;
-    if (crashes_per_rule.size() != engine.recipe().rules.size())
-        crashes_per_rule.assign(engine.recipe().rules.size(), 0);
 
     std::optional<CrashVerdict> verdict;
     if (manual_pending)
@@ -91,6 +89,22 @@ GuardOutcome CrashGuard::between_frames(Engine &engine, CoreAccess &core)
         journal(e, engine);
     }
     return {};
+}
+
+std::vector<unsigned> CrashGuard::rule_crashes(const Engine &engine) const
+{
+    std::vector<unsigned> out;
+    for (size_t i = 0; i < engine.recipe().rules.size(); i++)
+    {
+        auto it = crashes_per_rule.find(engine.rule_id(i));
+        out.push_back(it == crashes_per_rule.end() ? 0 : it->second);
+    }
+    return out;
+}
+
+unsigned &CrashGuard::crashes_of(const Engine &engine, uint32_t rule_index)
+{
+    return crashes_per_rule[engine.rule_id(rule_index)];
 }
 
 std::vector<uint32_t> CrashGuard::suspects_between(const Engine &engine, uint64_t after, uint64_t through) const
@@ -157,7 +171,7 @@ GuardOutcome CrashGuard::handle(const CrashVerdict &verdict, Engine &engine, Cor
     consecutive++;
     total++;
     for (auto s : suspects)
-        crashes_per_rule[s]++;
+        crashes_of(engine, s)++;
 
     GuardOutcome out;
     out.verdict = verdict;
@@ -190,13 +204,13 @@ GuardOutcome CrashGuard::handle(const CrashVerdict &verdict, Engine &engine, Cor
     }
 
     if (!suspects.empty())
-        out.action = decide(policy, crashes_per_rule[suspects.front()]);
+        out.action = decide(policy, crashes_of(engine, suspects.front()));
     uint64_t restored = cp->frame;
     restore(*cp, engine, core);
 
     for (auto s : suspects)
     {
-        switch (decide(policy, crashes_per_rule[s]))
+        switch (decide(policy, crashes_of(engine, s)))
         {
         case ActionKind::Reroll:
         {

@@ -248,7 +248,7 @@ TEST_CASE("per-rule crash counts and journal entries")
 {
     Rig rig(recipe_of({ harmless_noise(), poke_crash_byte(130, kCrashValue, kCrashValue) }), PolicyKind::Skip);
     rig.frames(400);
-    auto counts = rig.guard.rule_crashes();
+    auto counts = rig.guard.rule_crashes(rig.engine);
     REQUIRE(counts.size() == 2);
     CHECK(counts[1] == 1);
     REQUIRE_FALSE(rig.journal.empty());
@@ -350,4 +350,54 @@ TEST_CASE("repeat crashes step further back, past latent damage")
     CHECK(rig.outcomes.back().kind == GuardOutcome::RolledBack); // never had to give up
     CHECK(rig.engine.active());
     CHECK(rig.mem.of(Target::WRAM)[kLatentByte] != kCrashValue);
+}
+
+TEST_SUITE("rule edits")
+{
+    TEST_CASE("crash counts follow their rule when an earlier rule is removed or one is added")
+    {
+        Rig rig(recipe_of({ harmless_noise(), poke_crash_byte(130, kCrashValue, kCrashValue) }), PolicyKind::Skip);
+        rig.frames(200);
+        REQUIRE(rig.guard.rule_crashes(rig.engine).at(1) == 1);
+        rig.engine.add_rule(harmless_noise());
+        auto counts = rig.guard.rule_crashes(rig.engine);
+        REQUIRE(counts.size() == 3);
+        CHECK(counts[1] == 1);
+        CHECK(counts[2] == 0);
+        rig.engine.remove_rule(0);
+        counts = rig.guard.rule_crashes(rig.engine);
+        REQUIRE(counts.size() == 2);
+        CHECK(counts[0] == 1);
+        rig.frames(10); // a guard pass with the edited rule list keeps them too
+        CHECK(rig.guard.rule_crashes(rig.engine).at(0) == 1);
+    }
+
+    TEST_CASE("a replaced rule starts with no crashes")
+    {
+        Rig rig(recipe_of({ harmless_noise(), poke_crash_byte(130, kCrashValue, kCrashValue) }), PolicyKind::Skip);
+        rig.frames(200);
+        auto before = rig.guard.rule_crashes(rig.engine);
+        rig.engine.replace_rule(1, harmless_noise());
+        auto after = rig.guard.rule_crashes(rig.engine);
+        CHECK(after[0] == before[0]);
+        CHECK(after[1] == 0);
+    }
+
+    TEST_CASE("a crash from a rule added mid-run rolls back past the add and blames it")
+    {
+        Rig rig(recipe_of({ harmless_noise() }), PolicyKind::Skip);
+        rig.frames(100);
+        CHECK(rig.engine.add_rule(poke_crash_byte(130, kCrashValue, kCrashValue)) == 1u);
+        rig.frames(30);
+        REQUIRE(rig.outcomes.size() == 1);
+        auto &out = rig.outcomes[0];
+        CHECK(out.kind == GuardOutcome::RolledBack);
+        CHECK(out.restored_frame <= 100); // a checkpoint from before the rule existed
+        CHECK(std::find(out.suspects.begin(), out.suspects.end(), 1u) != out.suspects.end());
+        CHECK(rig.guard.rule_crashes(rig.engine).at(1) == 1);
+        CHECK(rig.engine.recipe().rules.size() == 2); // the rollback keeps the edit
+        rig.frames(600);
+        CHECK(rig.outcomes.size() == 1);
+        CHECK(rig.crash_byte() == 0);
+    }
 }

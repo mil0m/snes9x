@@ -5,6 +5,7 @@
 
 #include <deque>
 #include <functional>
+#include <map>
 #include <string>
 #include <vector>
 
@@ -87,7 +88,9 @@ class CrashGuard
     void reset(); // forget checkpoints and counts, e.g. for a new recipe
 
     size_t checkpoint_count() const { return ring.size(); }
-    const std::vector<unsigned> &rule_crashes() const { return crashes_per_rule; }
+    // Crashes per rule, in the engine's current rule order. Kept by rule id, so they
+    // follow a rule through edits; a replaced rule starts at 0.
+    std::vector<unsigned> rule_crashes(const Engine &engine) const;
     unsigned consecutive_crashes() const { return consecutive; }
     unsigned total_crashes() const { return total; }
 
@@ -109,7 +112,9 @@ class CrashGuard
     CrashDetector detector;
     PolicyKind policy = PolicyKind::Reroll;
     std::deque<Checkpoint> ring;
-    std::vector<unsigned> crashes_per_rule;
+    unsigned &crashes_of(const Engine &engine, uint32_t rule_index);
+
+    std::map<uint64_t, unsigned> crashes_per_rule; // by rule id
     std::optional<uint64_t> last_frame;
     std::optional<uint64_t> recovering_since; // frame we last rolled back to
     unsigned consecutive = 0;

@@ -325,7 +325,7 @@ CorruptionSession::Status CorruptionSession::status()
     s.detection_enabled = detection_enabled;
     s.crashes = guard.total_crashes();
     s.last_crash = last_crash;
-    s.rule_crashes = guard.rule_crashes();
+    s.rule_crashes = guard.rule_crashes(engine);
     s.message = message;
     return s;
 }
