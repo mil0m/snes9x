@@ -71,3 +71,24 @@ scratch folder. By default Snes9x writes the `.srm` next to the ROM.
    - [ ] Crashes are no longer caught.
 6. Fast-forward (Tab) with a rule active.
    - [ ] No false "frozen picture" rollbacks.
+
+## 8. Rule editor
+1. Load any recipe, tick **Active**, and select a rule.
+   - [ ] **Edit**, **Duplicate** and **Remove** become clickable; double-clicking the rule opens the editor too.
+2. **Add Rule**, then **OK** with the defaults.
+   - [ ] A `new rule` row appears and is selected; the status line says *(edited)*, and the frame count keeps going (no restart).
+3. Edit that rule: set **Memory** to `cgram (palette)`, **From** `0` **to** `0x1FF`, *What* `Add / subtract` −8..8, *When* every 10 frames.
+   - [ ] The summary line under the form updates as you type.
+   - [ ] Colours start changing within a second; any other rule carries on as before.
+4. In the editor, set **to** to `0x300`.
+   - [ ] **OK** greys out and a red line says cgram is only `0x200` bytes. Set it back.
+5. **Duplicate** the rule, then **Remove** the copy.
+   - [ ] Remove asks first; the table is back to how it was.
+6. **Save**.
+   - [ ] *(edited)* goes away, and the recipe's JSON file has the new rule.
+7. Edit something, then pick another recipe and **Load**.
+   - [ ] It asks before discarding the changes. **No** keeps them.
+8. **New**, name it `scratch`, **Add Rule**, **Save As…** `scratch`.
+   - [ ] `scratch.json` appears in the recipe list, and **Save** works on it afterwards.
+9. If the game has a `regions.json` (add one by hand; see README), open the editor.
+   - [ ] **Region** lists the names; picking one fills the range and greys it out, and the saved JSON uses the name.

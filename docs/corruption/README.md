@@ -5,7 +5,8 @@ scripts, a shared **recipe library**, and automatic **save-file backups**. The d
 in [`2026-10-30-ram-corruption-design.md`](./2026-10-30-ram-corruption-design.md).
 
 Phase 1 covers recipes, the panel, hotkeys and save backups. Phase 2 adds the **crash
-guard**: crashes are detected and rolled back automatically.
+guard**: crashes are detected and rolled back automatically. Phase 3 adds editing rules
+in the panel while the game runs.
 
 ## Build and run
 
@@ -40,10 +41,33 @@ like any repo; Snes9x never runs git itself.
    the moment it was activated.
 4. Rules with a `hotkey` trigger fire on **Corruption: Fire Hotkey N** (hotkey 1 is
    **F9**; bind the rest under *Settings > Shortcuts*).
-5. **Save As…** writes the current recipe and seed into the library.
+5. **Save** writes the recipe back to its file; **Save As…** writes a new one. The status
+   line says *(edited)* while there are unsaved changes, including a new seed and what the
+   crash guard changed.
 
-To change rules for now, edit the recipe's JSON and press **Rescan** then **Load**. A rule
-editor in the panel comes in phase 3.
+## Editing rules
+
+Edit rules in the panel while the game runs:
+
+- **Add Rule** starts from a gentle default (one random byte every 2 s in upper WRAM).
+- **Edit**, or double-click a rule, opens the editor:
+  - *Where*: the memory, and a range, or a named region from the game's `regions.json`.
+  - *What*: the op and its settings.
+  - *When*: the trigger, optionally only within a frame window.
+  - *How much*: count, pick, intensity and on/off.
+  - Every change is checked against the loaded game, and **OK** stays off until the rule
+    is valid. The reason is shown in red.
+- **Duplicate** copies the selected rule; **Remove** deletes it (it asks first).
+- **New** starts an empty recipe for the game; build it up with **Add Rule**, then
+  **Save As…**.
+
+An edit takes effect on the next frame and touches only that rule: the others keep their
+frame count, sticky addresses and freezes. The edited rule starts over, picking new
+addresses and releasing its freezes. One side effect: removing a rule gives the rules
+after it new random values, because a rule's randomness depends on its position.
+
+Loading another recipe or starting a new one asks before discarding unsaved edits.
+Editing the JSON by hand still works: **Rescan**, then **Load**.
 
 ## The crash guard
 
@@ -184,7 +208,7 @@ Any detection field can be left out to keep its default; `0` switches a signal o
 ## For developers
 
 ```sh
-./build-mac.sh test                                    # engine unit tests + real-core tests
+./build-mac.sh test                                    # engine, real-core and panel widget tests
 build/tests/corrupt-smoke game.sfc recipe.json 600 600 # a recipe in the real core, headless
 ```
 
@@ -195,3 +219,7 @@ the engine logged really landed in emulator memory.
 The real-core tests (`tests/headless/guard_integration_test.cpp`) boot tiny generated ROMs
 that crash on cue (`STP`, NMI off) and check that the guard catches, rolls back and plays
 on.
+
+The panel widget tests (`tests/qt/`, built when Qt 6 is found) run on Qt's offscreen
+platform, so they need no screen. They also write PNGs of the rule editor to
+`build/tests/shots/`, which shows the layout on a machine without a display.

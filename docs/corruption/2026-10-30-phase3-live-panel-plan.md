@@ -7,9 +7,10 @@ corruption while playing": #14 rule editor, #15 intensity sliders, #16 named reg
 ([plan 1](./2026-10-30-phase1-engine-recipes-plan.md),
 [plan 2](./2026-10-30-phase2-crash-rollback-plan.md)).
 
-**Status (2026-10-30):** #14 is being built. #15–#17 are only outlined at the end; each
-gets its own task list once the one before it has been play-tested. #14 was meant to wait
-for the first play-test (#12), so whatever that turns up feeds back in as fixes.
+**Status (2026-10-30):** #14 is done (tasks 1–9 below; see *Findings while building*), and
+it still needs a manual QA pass (QA.md section 8). #15–#17 are only outlined at the end;
+each gets its own task list once the one before it has been play-tested. #14 was meant to
+wait for the first play-test (#12), so whatever that turns up feeds back in as fixes.
 
 Goal of #14: while the game runs, add, change and remove rules in the panel, see the
 effect right away, and save the result over the recipe file or as a new one. Editing a
@@ -129,6 +130,23 @@ says so.
 ### 9. Docs and QA
 README: the editor and Save/New. QA.md: a section *8. Rule editor*: add a rule while
 running, edit one and watch only that one change, remove one, Save, Reload, and New.
+
+## Findings while building
+
+- **Tasks 2 and 3 landed as one commit.** Snapshots by id can only be tested with an
+  edit to cross, so the two were written test-first together.
+- **A bug fixed on the way.** The guard reset every per-rule crash count whenever the
+  rule count changed. Nothing could change the count before this phase, but adding a
+  rule would have wiped them.
+- **The dock (task 8) has no automated test.** It needs `EmuApplication` and the
+  emulator globals behind `CorruptionSession`, and a fake for them wasn't cheap. The
+  editor it opens is fully tested, the app is launched offscreen
+  (`QT_QPA_PLATFORM=offscreen`, muted scratch config) to check that it starts with the
+  panel, and QA.md section 8 covers the rest.
+- **Offscreen renders work.** `QWidget::grab()` on the offscreen platform gives real
+  PNGs of the dialog, so the layout was checked and polished without a screen: target
+  names gained plain labels (`cgram (palette)`), and the decimal fields drop trailing
+  zeros.
 
 ## Later in this phase (outlined, not yet planned in tasks)
 
