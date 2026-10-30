@@ -241,8 +241,6 @@ differ). That's how Erik gets to see exactly the run Mikael saved.
 - **Moments are about 800 KB, uncompressed.** Fine for a few, heavy for a shared repo full
   of them; compressing them (the core already links zlib) is a cheap follow-up.
 
-## Later in this phase (outlined, not yet planned in tasks)
-
 ## #16: named memory areas
 
 Goal: name a range once ("player stats", "enemy table") and use the name in any rule for
