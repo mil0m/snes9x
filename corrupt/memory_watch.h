@@ -42,4 +42,18 @@ class MemoryWatch
     uint64_t seen_frame = 0;
 };
 
+// Where `haystack` holds copies of (parts of) `needle`: for finding a game's WRAM copy of
+// its sprite table or palette, where corruption sticks. Runs of at least `min_run`
+// matching bytes, longest first. Matches have to start from stretches with at least
+// 3 different byte values, so zeros and fills never count as copies, and a run that
+// mostly overlaps a longer one (a repetitive table matching itself shifted) is dropped.
+struct CopyRun
+{
+    uint32_t haystack_offset;
+    uint32_t needle_offset;
+    uint32_t length;
+};
+std::vector<CopyRun> find_copies(const std::vector<uint8_t> &haystack, const std::vector<uint8_t> &needle,
+                                 uint32_t min_run = 32);
+
 } // namespace corrupt

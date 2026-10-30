@@ -1,7 +1,7 @@
 // End-to-end check of the corruption engine inside the real emulator, no window
 // needed:
 //
-//   corrupt-smoke <rom> <recipe.json> [frames=600] [warmup=600] [--guard | --replay]
+//   corrupt-smoke <rom> <recipe.json> [frames=600] [warmup=600] [--guard | --replay | --copies]
 //
 // Boots the ROM, runs `warmup` frames, saves a state, then runs `frames` twice
 // from that state: once clean, once with the recipe. Reports what the recipe
@@ -14,6 +14,9 @@
 // With --replay it starts the recipe at a frame boundary the way the Qt app does
 // (RunControl), runs it, plays on, then starts again from the saved moment and
 // checks that the second run ends with exactly the same memory and picture.
+//
+// With --copies it lists where WRAM holds copies of the sprite table and the palette
+// after the warmup (the recipe is only read, not run), as the memory viewer finds them.
 #include "headless_core.h"
 
 #include "corrupt/core_access.h"
@@ -23,6 +26,7 @@
 #include "corrupt/hook.h"
 #include "corrupt/recipe_json.h"
 #include "corrupt/run_control.h"
+#include "corrupt/memory_watch.h"
 
 #include "snes9x.h"
 #include "memmap.h"
@@ -196,6 +200,22 @@ int main(int argc, char **argv)
     headless::run_frames(warmup);
     if (argc > 5 && std::string(argv[5]) == "--guard")
         return run_guarded(*parsed.recipe, frames);
+    if (argc > 5 && std::string(argv[5]) == "--copies")
+    {
+        auto all = snapshot_targets();
+        auto &wram = all[size_t(Target::WRAM)];
+        for (auto t : { Target::OAM, Target::CGRAM })
+        {
+            auto runs = find_copies(wram, all[size_t(t)], 32);
+            printf("%-6s %zu copies in WRAM\n", target_name(t), runs.size());
+            for (size_t i = 0; i < runs.size() && i < 5; i++)
+                printf("  wram %s..%s  = %s %s..%s (%u bytes)\n", hex(runs[i].haystack_offset).c_str(),
+                       hex(runs[i].haystack_offset + runs[i].length - 1).c_str(), target_name(t),
+                       hex(runs[i].needle_offset).c_str(), hex(runs[i].needle_offset + runs[i].length - 1).c_str(),
+                       runs[i].length);
+        }
+        return 0;
+    }
     if (argc > 5 && std::string(argv[5]) == "--replay")
         return run_replay(*parsed.recipe, frames);
 

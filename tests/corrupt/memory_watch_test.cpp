@@ -116,3 +116,97 @@ TEST_CASE("a target that shrank (another game) is handled")
     w.observe(mem, {}, 2);
     CHECK(w.snapshot().bytes.size() == 16);
 }
+
+TEST_SUITE("finding copies")
+{
+    std::vector<uint8_t> palette_like(size_t n, uint32_t seed)
+    {
+        std::vector<uint8_t> out(n);
+        for (size_t i = 0; i < n; i++)
+        {
+            seed = seed * 1664525u + 1013904223u;
+            out[i] = uint8_t(seed >> 24);
+        }
+        return out;
+    }
+
+    void put(std::vector<uint8_t> & hay, size_t at, const std::vector<uint8_t> &src, size_t from, size_t len)
+    {
+        std::copy(src.begin() + long(from), src.begin() + long(from + len), hay.begin() + long(at));
+    }
+
+    TEST_CASE("a whole copy is found at its offset")
+    {
+        auto needle = palette_like(512, 1);
+        std::vector<uint8_t> hay(0x20000, 0);
+        put(hay, 0x3000, needle, 0, 512);
+        auto runs = find_copies(hay, needle, 32);
+        REQUIRE(runs.size() == 1);
+        CHECK(runs[0].haystack_offset == 0x3000u);
+        CHECK(runs[0].needle_offset == 0u);
+        CHECK(runs[0].length == 512u);
+    }
+
+    TEST_CASE("a partial copy reports which part of the needle it holds")
+    {
+        auto needle = palette_like(512, 2);
+        std::vector<uint8_t> hay(0x20000, 0);
+        put(hay, 0x5000, needle, 100, 200);
+        auto runs = find_copies(hay, needle, 32);
+        REQUIRE(runs.size() == 1);
+        CHECK(runs[0].haystack_offset == 0x5000u);
+        CHECK(runs[0].needle_offset == 100u);
+        CHECK(runs[0].length == 200u);
+    }
+
+    TEST_CASE("zeros and single-value stretches never count as copies")
+    {
+        std::vector<uint8_t> needle(512, 0);
+        auto tail = palette_like(16, 3);
+        std::copy(tail.begin(), tail.end(), needle.begin() + 300); // only 16 interesting bytes
+        std::vector<uint8_t> hay(0x20000, 0);
+        std::fill(hay.begin() + 0x100, hay.begin() + 0x400, 0x7F);
+        CHECK(find_copies(hay, needle, 32).empty());
+    }
+
+    TEST_CASE("short matches are ignored; several copies come longest first")
+    {
+        auto needle = palette_like(544, 4);
+        std::vector<uint8_t> hay(0x20000, 0);
+        put(hay, 0x100, needle, 0, 20);   // too short
+        put(hay, 0x8000, needle, 0, 64);
+        put(hay, 0xA000, needle, 0, 544);
+        auto runs = find_copies(hay, needle, 32);
+        REQUIRE(runs.size() == 2);
+        CHECK(runs[0].haystack_offset == 0xA000u);
+        CHECK(runs[0].length == 544u);
+        CHECK(runs[1].haystack_offset == 0x8000u);
+        CHECK(runs[1].length == 64u);
+    }
+
+    TEST_CASE("one changed byte splits a copy into two runs")
+    {
+        auto needle = palette_like(512, 5);
+        std::vector<uint8_t> hay(0x20000, 0);
+        put(hay, 0x2000, needle, 0, 512);
+        hay[0x2000 + 256] ^= 0xFF;
+        auto runs = find_copies(hay, needle, 32);
+        REQUIRE(runs.size() == 2);
+        CHECK(runs[0].length + runs[1].length == 511u);
+    }
+
+    TEST_CASE("a repetitive table is reported once, not once per shift")
+    {
+        // Sprite tables repeat: 4-byte entries that often look alike.
+        std::vector<uint8_t> needle;
+        for (int i = 0; i < 136; i++)
+            for (uint8_t b : { uint8_t(0x10 + i % 3), uint8_t(0x80), uint8_t(0x21), uint8_t(0x30) })
+                needle.push_back(b);
+        std::vector<uint8_t> hay(0x20000, 0);
+        put(hay, 0x300, needle, 0, needle.size());
+        auto runs = find_copies(hay, needle, 32);
+        REQUIRE(runs.size() == 1);
+        CHECK(runs[0].haystack_offset == 0x300u);
+        CHECK(runs[0].length == 544u);
+    }
+}

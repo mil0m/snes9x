@@ -1,5 +1,9 @@
 #include "memory_watch.h"
 
+#include <algorithm>
+#include <cstring>
+#include <unordered_map>
+
 namespace corrupt
 {
 
@@ -57,6 +61,96 @@ void MemoryWatch::observe(const MemoryAccess &mem, const std::deque<LoggedEvent>
         if (it->frame <= frame && it->write.target == snap.target && it->write.offset < size)
             snap.hits[it->write.offset]++;
     seen_frame = frame;
+}
+
+namespace
+{
+
+constexpr size_t kGram = 8;
+
+uint64_t gram_at(const std::vector<uint8_t> &v, size_t i)
+{
+    uint64_t g;
+    std::memcpy(&g, v.data() + i, kGram);
+    return g;
+}
+
+bool interesting(const std::vector<uint8_t> &v, size_t i)
+{
+    uint8_t a = v[i], b = a;
+    for (size_t k = 1; k < kGram; k++)
+    {
+        uint8_t x = v[i + k];
+        if (x == a || x == b)
+            continue;
+        if (a == b)
+            b = x;
+        else
+            return true; // a third value
+    }
+    return false;
+}
+
+} // namespace
+
+std::vector<CopyRun> find_copies(const std::vector<uint8_t> &haystack, const std::vector<uint8_t> &needle,
+                                 uint32_t min_run)
+{
+    std::vector<CopyRun> runs;
+    if (needle.size() < kGram || haystack.size() < kGram)
+        return runs;
+
+    std::unordered_map<uint64_t, std::vector<uint32_t>> seeds;
+    for (size_t n = 0; n + kGram <= needle.size(); n++)
+        if (interesting(needle, n))
+            seeds[gram_at(needle, n)].push_back(uint32_t(n));
+
+    // Per diagonal (haystack offset - needle offset): where the last run found ends,
+    // so a long copy is reported once, not once per seed inside it.
+    std::unordered_map<int64_t, size_t> covered;
+    for (size_t h = 0; h + kGram <= haystack.size(); h++)
+    {
+        auto it = seeds.find(gram_at(haystack, h));
+        if (it == seeds.end())
+            continue;
+        for (uint32_t n : it->second)
+        {
+            int64_t diagonal = int64_t(h) - int64_t(n);
+            if (auto c = covered.find(diagonal); c != covered.end() && h < c->second)
+                continue;
+            size_t start_h = h, start_n = n;
+            while (start_h > 0 && start_n > 0 && haystack[start_h - 1] == needle[start_n - 1])
+                start_h--, start_n--;
+            size_t end_h = h, end_n = n;
+            while (end_h < haystack.size() && end_n < needle.size() && haystack[end_h] == needle[end_n])
+                end_h++, end_n++;
+            covered[diagonal] = end_h;
+            if (end_h - start_h >= min_run)
+                runs.push_back({ uint32_t(start_h), uint32_t(start_n), uint32_t(end_h - start_h) });
+        }
+    }
+
+    std::sort(runs.begin(), runs.end(), [](const CopyRun &a, const CopyRun &b) {
+        return a.length != b.length ? a.length > b.length : a.haystack_offset < b.haystack_offset;
+    });
+
+    // Repetitive tables (sprite entries that look alike) match themselves at many
+    // shifts. Keep a run only if at least half of it lies outside the longer runs kept.
+    std::vector<CopyRun> kept;
+    for (auto &r : runs)
+    {
+        uint32_t inside = 0;
+        for (auto &k : kept)
+        {
+            uint32_t lo = std::max(r.haystack_offset, k.haystack_offset);
+            uint32_t hi = std::min(r.haystack_offset + r.length, k.haystack_offset + k.length);
+            if (hi > lo)
+                inside += hi - lo;
+        }
+        if (inside * 2 <= r.length)
+            kept.push_back(r);
+    }
+    return kept;
 }
 
 } // namespace corrupt
