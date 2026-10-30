@@ -3,7 +3,7 @@
 Spec: [`2026-10-30-ram-corruption-design.md`](./2026-10-30-ram-corruption-design.md),
 *Qt UI*, "Memory viewer" (design doc phase 4).
 
-**Status (2026-10-30):** done (tasks 1–6), pending QA.md section 12.
+**Status (2026-10-30):** done (tasks 1–6), pending QA.md section 12. Map and pixel view follow-ups done too (sections 14 and 15).
 
 Goal: see where a game keeps its live data, where the recipe has been writing, and where
 the game keeps copies of its sprites and palette (where corruption sticks), then turn a
@@ -121,3 +121,19 @@ Tasks:
    over; the Map, regions, copies and Go to select in the view that's showing. Tests and
    a PNG of the whole window in pixel mode.
 4. Docs: README, QA.md section 15, findings here.
+
+Done 2026-10-30 (QA.md section 15). Findings:
+
+- **The colours are cubehelix**, a ramp with a turning hue whose brightness rises
+  steadily, so 0x00 is black and 0xFF white and every value is distinct. On real dumps
+  (`corrupt-smoke --dump`, drawn by the widget tests) FF6's WRAM shows its fills, tables
+  and compressed buffers as clearly different bands, and VRAM its tile bitplanes.
+- **A row is no wider than square.** Sizing rows only by the window made a 512-byte
+  palette 4 rows high at 4×. Capping the row at the power of two at or above √size gives
+  cgram and oam 32 bytes a row (one palette, eight sprite entries), and leaves WRAM and
+  VRAM alone.
+- **A selection can be one pixel high at 1:1**, so a bar beside the selected rows marks it.
+  The image also gets a thin frame, or a 0xFF fill melts into a white window.
+- **1:1 is the default**, because that is where all of WRAM fits in the window.
+- Not done, maybe later: a chosen row width (stride), to line up a tile map's rows, and
+  the VRAM tile view that decodes graphics with the palette.

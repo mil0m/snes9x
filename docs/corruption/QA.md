@@ -176,3 +176,23 @@ scratch folder. By default Snes9x writes the `.srm` next to the ROM.
 5. Switch to **aram**.
    - [ ] **Echo buffer** and **Sample directory** appear. A rule on the echo buffer makes the sound smear or crackle, not crash.
 
+## 15. Pixel view
+1. In the memory viewer during gameplay, choose **Pixels** in the first menu, with **wram** and **Plain**.
+   - [ ] All of WRAM fits in the window: black and white bands, coloured stripes and noisy areas, with addresses down the left.
+   - [ ] The colours are easy to tell apart and nothing looks blurry or smeared.
+2. Hover a few dots.
+   - [ ] The bottom row shows the address and value, and the value matches the same byte in **Hex**.
+3. Click **+** a few times, then Ctrl+wheel over one spot.
+   - [ ] The dots get bigger, rows get shorter, and the spot under the mouse stays under the mouse. **−** stops at 1×, **+** at 16×.
+4. Choose **Activity**.
+   - [ ] The memory turns grey and the busy bytes glow orange; they flicker as the game runs.
+5. Drag across a band, then switch to **Hex** and back.
+   - [ ] The same range is selected in both, and each view shows it. **New Rule from Selection…** gets that range.
+6. Click areas in the **Map**, then a found copy (Find Copies in WRAM).
+   - [ ] Each is selected in the pixel view, with a blue bar beside its rows.
+7. Switch to **vram**, **cgram** and **oam** at a few zooms.
+   - [ ] VRAM shows tile patterns; cgram comes out 32 bytes a row (one palette each), oam too.
+8. Run a recipe with **Hits** on.
+   - [ ] The recipe's writes show as purple dots on grey.
+9. Resize the window and scroll with the plain wheel.
+   - [ ] Rows reflow to the new width, the view stays near the same place, and the plain wheel scrolls without zooming.

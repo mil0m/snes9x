@@ -70,7 +70,7 @@ Loading another recipe or starting a new one asks before discarding unsaved edit
 
 ## The memory viewer
 
-**Memory Viewer…** in the panel opens a hex view of one target (WRAM, VRAM, the palette…):
+**Memory Viewer…** in the panel opens a hex or pixel view of one target (WRAM, VRAM, the palette…):
 
 - The **Map** on the left lists what lives where in that memory; click an area to select
   it. Every memory has its fixed hardware layout (WRAM's direct page and stack area, the
@@ -98,6 +98,19 @@ Loading another recipe or starting a new one asks before discarding unsaved edit
   sticks where corrupting `oam` or `cgram` only flashes. In Goof Troop, palette drift on its
   WRAM copy changed 791 of 900 frames, against 19 on `cgram` itself. Click a result to select
   it.
+
+- **Pixels** (the first menu on the toolbar, next to **Hex**) draws every byte as one dot
+  coloured by its value, so a whole memory fits on screen: zero is black, 0xFF white, and
+  the values in between run through the colours as they get brighter. Fills show as solid
+  bands, tables as stripes, compressed data as noise, and VRAM's tiles as their bitplane
+  patterns. **−** and **+** (or Ctrl+mouse wheel, which zooms around the mouse) set the
+  dot size from 1 to 16 screen pixels; a row holds as many bytes as fit, always a power of
+  two, so tables line up in columns. Small memories come out square-ish: the palette is
+  one 16-colour palette per row, the sprite table eight sprites per row. With **Activity**
+  or **Hits** on, the bytes go grey and the heat is painted over them; **Plain** shows the
+  full colours. Hover a dot for its address and value. Selecting, the Map, named areas,
+  copies and New Rule from Selection work the same as in hex, and switching keeps the
+  selection and the place you were looking at.
 
 The viewer only watches while its window is open, about 0.4 ms a frame for WRAM.
 
@@ -297,8 +310,10 @@ how many frames look different and which memory changed. It also checks that eve
 the engine logged really landed in emulator memory. With `--replay` instead, it starts the
 recipe the way the app does, plays on, starts again from the saved moment, and checks the
 second run ends with identical memory and picture. With `--copies` it lists where WRAM
-holds copies of the sprite table and palette after the warmup, and `--map` prints the
-VRAM and ARAM map with how much of each area holds data.
+holds copies of the sprite table and palette after the warmup, `--map` prints the
+VRAM and ARAM map with how much of each area holds data, and `--dump <dir>` writes every
+memory's raw bytes to `<dir>/<target>.bin`. Point `CORRUPT_DUMP_DIR` at such a folder when
+running the widget tests and they draw it through the pixel view into the shots folder.
 
 The real-core tests (`tests/headless/guard_integration_test.cpp`) boot tiny generated ROMs
 that crash on cue (`STP`, NMI off) and check that the guard catches, rolls back and plays
