@@ -16,6 +16,12 @@ class SnesCoreAccess : public CoreAccess
     // (with frameskip it isn't, and the screen buffer keeps the last picture).
     void note_frame_start();
 
+    // Counts the game jumping back into its own reset code (FrameSignals::reboots).
+    // Wraps the reset handler's first opcode in the CPU's opcode tables, so call it
+    // after every ROM load (it re-targets itself) and unwatch when the game closes.
+    static void watch_resets();
+    static void unwatch_resets();
+
   private:
     bool drawing = true;
 };

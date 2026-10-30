@@ -13,6 +13,7 @@ enum class Crash
     None,    // never crashes, even with $42
     Stop,    // STP
     NmiOff,  // switches NMI off and spins
+    Reboot,  // jumps back to its own reset code, in native mode, and boots again
 };
 
 // No "runaway" program: every jump into I/O space or open bus we tried found its way back

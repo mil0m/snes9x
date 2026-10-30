@@ -11,6 +11,7 @@
 #include "corrupt/run_control.h"
 
 #include "snes9x.h"
+void S9xSoftReset(void); // cpuexec.h pulls in the whole CPU core
 
 using namespace corrupt;
 
@@ -35,6 +36,7 @@ struct Harness
     {
         REQUIRE(headless::init());
         REQUIRE(headless::load_rom_memory(testrom::build(crash)));
+        SnesCoreAccess::watch_resets();
         engine.set_recipe(std::move(recipe));
         engine.set_active(true);
         guard.set_policy(policy);
@@ -200,6 +202,50 @@ TEST_SUITE("saved moments in the real core")
         CHECK(all_wram(h) == wram);
         CHECK(headless::frame_hash() == picture);
         CHECK(h.outcomes.empty());
+    }
+}
+
+TEST_SUITE("reboots in the real core")
+{
+    TEST_CASE("booting and resetting the console are not reboots")
+    {
+        Harness h(testrom::Crash::None, trigger_at(100000), PolicyKind::Skip);
+        auto before = h.access.sample().reboots; // a process-wide count
+        h.run(120);
+        CHECK(h.access.sample().reboots == before);
+        S9xSoftReset();
+        h.run(120);
+        CHECK(h.access.sample().reboots == before);
+        CHECK(alive(h));
+    }
+
+    TEST_CASE("a game that reboots itself is caught, rolled back, and plays on")
+    {
+        Harness h(testrom::Crash::Reboot, trigger_at(120), PolicyKind::Skip);
+        auto before = h.access.sample().reboots;
+        h.run(130);
+        CHECK(h.access.sample().reboots == before + 1);
+        REQUIRE(h.outcomes.size() == 1);
+        CHECK(h.outcomes[0].kind == GuardOutcome::RolledBack);
+        CHECK(h.outcomes[0].verdict.signal == CrashSignal::Reboot);
+        CHECK(h.outcomes[0].restored_frame < 120);
+        h.run(600);
+        CHECK(h.outcomes.size() == 1);
+        CHECK(alive(h));
+        // Rolled back past the reboot: the frame counter never went back to zero.
+        CHECK(h.wram(testrom::kFrameCounterAddr) > 100);
+    }
+
+    TEST_CASE("a reboot with no corruption before it is left alone")
+    {
+        Harness h(testrom::Crash::Reboot, trigger_at(100000), PolicyKind::Skip);
+        auto before = h.access.sample().reboots;
+        h.run(100);
+        h.memory.write(Target::WRAM, testrom::kTriggerAddr, testrom::kTriggerValue); // the game's own doing
+        h.run(60);
+        CHECK(h.access.sample().reboots == before + 1);
+        CHECK(h.outcomes.empty());
+        CHECK(alive(h));
     }
 }
 

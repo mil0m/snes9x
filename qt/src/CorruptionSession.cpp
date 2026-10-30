@@ -164,6 +164,7 @@ void CorruptionSession::gameLoaded()
     last_backup_hash.reset();
     frames_since_check = 0;
     S9xCorruptFrameHook = &CorruptionSession::frameHook;
+    SnesCoreAccess::watch_resets(); // for this ROM's reset code
 
     backupNow("load"); // before the first frame runs
     message = "Loaded " + game_folder_name(game.title, game.sha256);
@@ -176,6 +177,7 @@ void CorruptionSession::gameClosing()
         return;
     backupNow("close");
     engine.set_active(false);
+    SnesCoreAccess::unwatch_resets();
     game_loaded = false;
 }
 

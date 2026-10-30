@@ -84,6 +84,7 @@ int run_guarded(const Recipe &recipe, int frames)
     S9xCorruptFrameHook = nullptr;
     printf("guard    %d crashes caught, %d gave up, engine %s, %d journal lines\n", caught, gave_up,
            engine.active() ? "still active" : "off", journal_lines);
+    printf("reboots  %u seen by the reset watch (rolled-back ones included)\n", access.sample().reboots);
     printf("writes   %zu verified in emulator memory, %zu mismatched\n", verified, mismatched);
     return mismatched == 0 ? 0 : 1;
 }
@@ -181,6 +182,7 @@ int main(int argc, char **argv)
         return 1;
     }
     printf("ROM      %s\n", Memory.ROMName);
+    SnesCoreAccess::watch_resets();
     printf("recipe   %s (seed %llu, %zu rules)\n", parsed.recipe->name.c_str(),
            (unsigned long long)parsed.recipe->seed, parsed.recipe->rules.size());
 

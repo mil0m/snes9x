@@ -53,6 +53,7 @@ std::vector<uint8_t> build(Crash crash)
     case Crash::None: put(rom, 0x8018, { 0x80, 0xF7 }); break;                          // BRA main
     case Crash::Stop: put(rom, 0x8018, { 0xDB }); break;                                // STP
     case Crash::NmiOff: put(rom, 0x8018, { 0x9C, 0x00, 0x42, 0x80, 0xFE }); break;      // STZ $4200; BRA *
+    case Crash::Reboot: put(rom, 0x8018, { 0x5C, 0x00, 0x80, 0x80 }); break;            // JML $80:8000 (a mirror of reset)
     }
     // nmi ($8030), and a bare RTI for every other vector ($8034):
     put(rom, 0x8030, { 0xE6, 0x11, 0x40 }); // INC $11; RTI
