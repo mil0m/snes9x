@@ -115,6 +115,42 @@ fs::path Library::journal_path(const GameId &game, const std::string &user) cons
     return game_dir(game) / ("journal." + recipe_file_stem(user) + ".jsonl");
 }
 
+fs::path Library::crash_map_path(const GameId &game, const std::string &user) const
+{
+    return game_dir(game) / ("crashmap." + recipe_file_stem(user) + ".json");
+}
+
+CrashMaps Library::load_crash_maps(const GameId &game, const std::string &user) const
+{
+    CrashMaps out;
+    std::error_code ec;
+    auto mine = crash_map_path(game, user).filename().string();
+    for (auto &entry : fs::directory_iterator(game_dir(game), ec))
+    {
+        auto name = entry.path().filename().string();
+        if (name.rfind("crashmap.", 0) != 0 || entry.path().extension() != ".json")
+            continue;
+        std::ifstream in(entry.path());
+        std::stringstream text;
+        text << in.rdbuf();
+        auto parsed = parse_crash_map(text.str());
+        if (!parsed.errors.empty())
+        {
+            out.errors.push_back(name + ": " + parsed.errors.front());
+            continue;
+        }
+        (name == mine ? out.mine : out.others).merge(parsed.map);
+    }
+    return out;
+}
+
+std::string Library::save_crash_map(const GameId &game, const std::string &user, const CrashMap &map) const
+{
+    if (auto err = ensure_game_dir(game); !err.empty())
+        return err;
+    return write_file_atomic(crash_map_path(game, user), crash_map_json(map));
+}
+
 std::vector<RecipeEntry> Library::list_recipes(const GameId &game) const
 {
     std::vector<RecipeEntry> entries;

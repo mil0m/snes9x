@@ -1,5 +1,6 @@
 #include "doctest/doctest.h"
 #include "corrupt/library.h"
+#include "corrupt/crash_map.h"
 
 #include <algorithm>
 #include <chrono>
@@ -354,5 +355,56 @@ TEST_SUITE("named regions")
         CHECK(text.find("8 slots") != std::string::npos);
         auto parsed = parse_regions(text);
         CHECK(parsed.notes.at("player") == "HP, MP, level");
+    }
+}
+
+TEST_SUITE("crash maps in the library")
+{
+    TEST_CASE("each person writes their own file; reading sums everyone's")
+    {
+        TempDir tmp;
+        Library lib(tmp.path);
+        CrashMaps none = lib.load_crash_maps(kGame, "Mikael");
+        CHECK(none.mine.empty());
+        CHECK(none.others.empty());
+        CHECK(none.errors.empty());
+
+        CrashMap mine;
+        mine.add_crash(Target::WRAM, 0x1F00, 2);
+        REQUIRE(lib.save_crash_map(kGame, "Mikael", mine).empty());
+        CHECK(fs::exists(tmp.path / "SUPER MARIOWORLD [a1b2c3d4]" / "crashmap.mikael.json"));
+
+        CrashMap eriks;
+        eriks.add_crash(Target::WRAM, 0x1F05);
+        eriks.add_survival(Target::ARAM, 0x10);
+        REQUIRE(lib.save_crash_map(kGame, "Erik", eriks).empty());
+
+        auto maps = lib.load_crash_maps(kGame, "Mikael");
+        CHECK(maps.errors.empty());
+        CHECK(maps.mine.counts(Target::WRAM, 0x1F00).crashes == 2);
+        CHECK(maps.mine.counts(Target::ARAM, 0x10).survivals == 0);
+        CHECK(maps.others.counts(Target::WRAM, 0x1F00).crashes == 1);
+        CHECK(maps.others.counts(Target::ARAM, 0x10).survivals == 1);
+        CrashMap all = maps.mine;
+        all.merge(maps.others);
+        CHECK(all.hot(Target::WRAM, 0x1F00)); // 3 crashes together
+    }
+
+    TEST_CASE("a broken crash map is reported and skipped; other files are ignored")
+    {
+        TempDir tmp;
+        Library lib(tmp.path);
+        auto dir = tmp.path / "SUPER MARIOWORLD [a1b2c3d4]";
+        write_file(dir / "crashmap.erik.json", "{ broken");
+        write_file(dir / "crashmap.json.bak", "{}");
+        write_file(dir / "regions.json", "{}");
+        CrashMap mine;
+        mine.add_crash(Target::WRAM, 0x40);
+        REQUIRE(lib.save_crash_map(kGame, "Mikael", mine).empty());
+        auto maps = lib.load_crash_maps(kGame, "mikael");
+        REQUIRE(maps.errors.size() == 1);
+        CHECK(maps.errors[0].find("crashmap.erik.json") != std::string::npos);
+        CHECK(maps.mine.counts(Target::WRAM, 0x40).crashes == 1);
+        CHECK(maps.others.empty());
     }
 }

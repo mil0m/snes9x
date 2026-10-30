@@ -1,4 +1,5 @@
 #pragma once
+#include "crash_map.h"
 #include "recipe.h"
 #include "recipe_json.h"
 
@@ -33,6 +34,14 @@ struct RegionChange
     std::vector<std::filesystem::path> recipes;
 };
 
+// A game's crash maps: this person's (the only one they write) and everyone else's, summed.
+struct CrashMaps
+{
+    CrashMap mine;
+    CrashMap others;
+    std::vector<std::string> errors; // files that couldn't be read
+};
+
 struct SaveResult
 {
     std::filesystem::path path;
@@ -57,6 +66,11 @@ class Library
 
     // This person's crash journal for the game: journal.<user>.jsonl.
     std::filesystem::path journal_path(const GameId &game, const std::string &user) const;
+
+    // Crash maps: crashmap.<user>.json, one per person, like the journal.
+    std::filesystem::path crash_map_path(const GameId &game, const std::string &user) const;
+    CrashMaps load_crash_maps(const GameId &game, const std::string &user) const;
+    std::string save_crash_map(const GameId &game, const std::string &user, const CrashMap &map) const; // error or empty
 
     Regions load_regions(const GameId &game, std::vector<std::string> &errors) const;
     std::string save_regions(const GameId &game, const Regions &regions) const; // error or empty
