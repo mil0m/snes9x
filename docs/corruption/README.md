@@ -215,8 +215,26 @@ once more and switches corruption off.
 action and how far back it went. It's one file per person, so a shared library never
 conflicts. It's the data for deciding which policy suits which game.
 
+**The crash map.** The guard also learns where corruption crashes each game. Every
+memory is split into 16-byte blocks, and each block counts writes followed by a crash
+(the last 3 s before the trouble) and writes followed by 15 calm seconds. A block with at
+least 2 crashes and a crash rate of 0.4 or more (counted with a small prior) is
+**dangerous**. Rules with **Avoid dangerous bytes** ticked (the rule editor; `avoid_hot`
+in the JSON) skip those bytes, so runs crash less and last longer. The memory viewer's
+**Danger** overlay shows the map in red, and the panel says how many dangerous areas it
+knows. It's kept in `<game>/crashmap.<you>.json`, one file per person like the journal;
+everyone's files add up when the game loads, so you and Erik teach each other's
+recipes. It learns slowly, because random writes hit any one block rarely: on Fire
+Emblem 4, five 5-minute sessions of the low-WRAM roulette marked 6 blocks, and avoiding
+them cut crashes on fresh seeds from 22 to 17. On Pocky & Rocky the crashes were too
+spread out to mark anything yet. Avoiding rules don't replay exactly once the map
+changes.
+
 **Things worth knowing:**
 
+- While a run is stuck crashing at the same spot (a crash loop), nothing survives long
+  enough to count, so the bytes written next to the real culprit collect crashes too. They
+  cool down once play moves on and they're written again without trouble.
 - Runaway-code detection samples the CPU once a frame, and a runaway CPU nearly always
   wanders back into ROM within that frame. So those crashes usually surface as one of the
   other signals.
@@ -329,7 +347,9 @@ the engine logged really landed in emulator memory. With `--replay` instead, it 
 recipe the way the app does, plays on, starts again from the saved moment, and checks the
 second run ends with identical memory and picture. With `--copies` it lists where WRAM
 holds copies of the sprite table and palette after the warmup, `--map` prints the
-VRAM and ARAM map with how much of each area holds data, and `--dump <dir>` writes every
+VRAM and ARAM map with how much of each area holds data, `--learn` learns a crash map
+over five seeds and then compares three other seeds with and without avoiding it, and
+`--dump <dir>` writes every
 memory's raw bytes to `<dir>/<target>.bin`. Point `CORRUPT_DUMP_DIR` at such a folder when
 running the widget tests and they draw it through the pixel and tile views into the shots folder.
 

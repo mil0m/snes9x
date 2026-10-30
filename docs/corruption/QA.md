@@ -219,3 +219,17 @@ scratch folder. By default Snes9x writes the `.srm` next to the ROM.
 8. Choose **wram** in Tiles mode, 4 bpp, and scroll through.
    - [ ] Mostly noise, but some games show unpacked graphics somewhere; nothing slows down.
 
+## 17. Crash map
+1. Load a game, pick **low-wram-roulette** (crash policy reroll), and turn it on. Play for 5 minutes.
+   - [ ] Crashes get caught as before. The panel's crash line adds whether the crash map has found dangerous areas.
+2. Open the library folder for the game.
+   - [ ] There's a `crashmap.<you>.json` with lines like `"0x0320": [3, 1]`, sorted by address.
+3. Open the memory viewer on **wram** with the **Danger** overlay, in Hex, Pixels and Tiles.
+   - [ ] Red marks where crashes happened, brighter where they happened more than once. Everything else is plain.
+4. Edit the roulette rule and tick **Avoid dangerous bytes**. Its summary ends with "avoiding danger".
+   - [ ] Over the next few minutes it crashes less than before (this is noisy; it's fine if it's only a little).
+5. Close and reopen the game.
+   - [ ] The Danger overlay and the panel's count come back (the file was saved on close).
+6. Copy the file to `crashmap.erik.json` in the same folder and reload the game.
+   - [ ] The red gets stronger: both files count.
+

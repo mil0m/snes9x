@@ -3,7 +3,7 @@
 Spec: [`2026-10-30-ram-corruption-design.md`](./2026-10-30-ram-corruption-design.md),
 "Crash map (learning safe ranges)".
 
-**Status (2026-10-30):** in progress.
+**Status (2026-10-30):** done (tasks 1–7), pending QA.md section 17.
 
 Goal: learn, per game, which memory crashes the game when corrupted, show it in the memory
 viewer, and let rules stay out of it on their own, so corruption runs last longer and get
@@ -52,3 +52,30 @@ weirder instead of ending in a crash.
    a real game.
 6. Qt: the Danger overlay, the rule editor checkbox, the panel line. Tests and PNGs.
 7. Docs: README, QA.md section 17, findings here.
+
+## Findings while building
+
+- **Long blame windows smear the blame.** On repeat crashes the guard rolls back up to
+  25 s to get past latent damage; counting every write in that stretch made bystanders
+  hot. The learner now only blames the last 180 frames (3 s) before the trouble.
+- **Crash loops teach nothing but blame.** A first test poked a fixed crash value: the
+  re-roll couldn't get past it, the run rolled back and crashed at the same frame twenty
+  times, and since no write ever got 15 s old, every bystander turned hot. With play moving
+  on (the Skip policy in the test), sixteen busy harmless blocks stay cool while the
+  culprit turns hot. Real re-rolls usually move on; the README warns about loops.
+- **Counts per episode, not per write.** A crash counts once per block, and survivals at
+  most once per block every 5 s, so a rule hammering one block doesn't drown its crashes.
+- **Real games learn slowly, and only some help.** `corrupt-smoke --learn` (five 5-minute
+  sessions of the low-WRAM roulette, then three held-out seeds with and without avoiding):
+  - FE4: 147 of 509 blocks were in some crash window, a few stood out (0x0320: 8 crashes,
+    1 survival). With hot at 0.5, held-out crashes went 22 → 20; at 0.4, 22 → 17 while
+    avoiding just 6 blocks. Hot is now 0.4.
+  - Pocky & Rocky: crashes spread over 82 blocks with no clear hot spot; 16 → 16.
+  - Reusing the learning seed instead (23 → 3) only showed that avoiding the exact writes
+    that crashed avoids those crashes. The held-out seeds are the honest number.
+- **Ideas for later, from the data:** a relative score (a block's crashes against how
+  often its neighbours were blamed alongside it) could pick culprits out of crash loops;
+  the guard's re-rolls are natural experiments (a crash that goes away when one rule's
+  writes change) that could feed the map more than co-occurrence; #21's bisecting blame
+  would sharpen it most.
+
