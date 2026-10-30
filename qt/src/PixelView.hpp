@@ -67,6 +67,6 @@ class PixelView : public QAbstractScrollArea, public MemoryPane
     std::optional<uint32_t> cursor;
     bool dragging = false;
     uint32_t max_hits = 1;
-    int zoom_ = 2;
+    int zoom_ = 1; // the whole of WRAM fits in the window
     int columns_ = 16;
 };

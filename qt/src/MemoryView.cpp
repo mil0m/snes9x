@@ -10,20 +10,6 @@
 
 using namespace corrupt;
 
-namespace
-{
-
-constexpr float kActivityFull = 50.0f; // a byte the game changes every frame
-
-QColor mix(const QColor &a, const QColor &b, float t)
-{
-    t = std::clamp(t, 0.0f, 1.0f);
-    return QColor::fromRgbF(a.redF() + (b.redF() - a.redF()) * t, a.greenF() + (b.greenF() - a.greenF()) * t,
-                            a.blueF() + (b.blueF() - a.blueF()) * t);
-}
-
-} // namespace
-
 MemoryView::MemoryView(QWidget *parent)
     : QAbstractScrollArea(parent)
 {
@@ -75,9 +61,7 @@ void MemoryView::setSnapshot(const MemorySnapshot &snapshot)
 {
     bool same = snapshot.target == snap.target && snapshot.bytes.size() == snap.bytes.size();
     snap = snapshot;
-    max_hits = 1;
-    for (auto h : snap.hits)
-        max_hits = std::max(max_hits, h);
+    max_hits = maxHits(snap);
     if (!same)
     {
         anchor.reset();
@@ -100,26 +84,13 @@ void MemoryView::setOverlay(Overlay o)
 
 float MemoryView::level(size_t offset) const
 {
-    switch (overlay)
-    {
-    case Overlay::Activity:
-        // Logarithmic, so a byte that changes once a second still shows.
-        return offset < snap.heat.size() ? std::log1p(snap.heat[offset]) / std::log1p(kActivityFull) : 0.0f;
-    case Overlay::Hits:
-        return offset < snap.hits.size() && snap.hits[offset]
-                   ? 0.25f + 0.75f * std::log1p(float(snap.hits[offset])) / std::log1p(float(max_hits))
-                   : 0.0f;
-    case Overlay::None:
-        return 0.0f;
-    }
-    return 0.0f;
+    return overlayLevel(snap, overlay, offset, max_hits);
 }
 
 QColor MemoryView::heatColor(float t) const
 {
     QColor base = palette().color(QPalette::Base);
-    QColor hot = overlay == Overlay::Hits ? QColor(150, 90, 230) : QColor(235, 110, 40);
-    return mix(base, hot, t);
+    return mix(base, overlayColor(overlay), t);
 }
 
 void MemoryView::rebuildOverview()

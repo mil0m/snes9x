@@ -1,6 +1,7 @@
 #include "doctest/doctest.h"
 #include "MemoryViewer.hpp"
 #include "MemoryView.hpp"
+#include "PixelView.hpp"
 
 #include <QApplication>
 #include <QComboBox>
@@ -8,6 +9,7 @@
 #include <QLabel>
 #include <QLineEdit>
 #include <QListWidget>
+#include <QMouseEvent>
 #include <QPushButton>
 
 using namespace corrupt;
@@ -31,6 +33,8 @@ struct FakeSource : MemorySource
         s.target = watched.empty() ? Target::WRAM : watched.back();
         size_t size = nominal_size(s.target);
         s.bytes.assign(size, 0x11);
+        for (size_t i = 0; i < size; i += 4) // some structure for the pictures
+            s.bytes[i] = uint8_t(i >> 6);
         s.heat.assign(size, 0.0f);
         s.hits.assign(size, 0);
         for (size_t i = 0x1C00; i < std::min<size_t>(0x1E20, size); i++)
@@ -302,3 +306,130 @@ TEST_SUITE("the memory map")
     }
 }
 
+
+TEST_SUITE("the pixel view in the viewer")
+{
+    TEST_CASE("switching to pixels and back keeps the selection and the place")
+    {
+        FakeSource src;
+        MemoryViewer v(src);
+        v.show();
+        v.refresh();
+        auto hex = child<MemoryView>(v, "view");
+        auto pixels = child<PixelView>(v, "pixels");
+        CHECK(hex->isVisible());
+        CHECK_FALSE(pixels->isVisible());
+        CHECK_FALSE(child<QPushButton>(v, "zoom_in")->isVisible());
+
+        hex->scrollTo(0x4000);
+        hex->select(0x4010, 0x404F);
+        choose(v, "mode", "pixels");
+        CHECK(pixels->isVisible());
+        CHECK_FALSE(hex->isVisible());
+        CHECK(child<QPushButton>(v, "zoom_in")->isVisible());
+        CHECK(pixels->snapshot().bytes.size() == 0x20000);
+        CHECK(pixels->selection() == std::pair{ 0x4010u, 0x404Fu });
+        CHECK(pixels->firstVisibleOffset() <= 0x4000u);
+        CHECK_FALSE(pixels->pixelRect(0x4010).isEmpty());
+        CHECK(child<QLabel>(v, "selection")->text().contains("0x4010"));
+
+        pixels->select(0x8000, 0x80FF);
+        choose(v, "mode", "hex");
+        CHECK(hex->selection() == std::pair{ 0x8000u, 0x80FFu });
+        CHECK_FALSE(hex->cellRect(0x8000).isEmpty());
+    }
+
+    TEST_CASE("in pixel mode the map, copies, go to and new rule use the pixel view")
+    {
+        FakeSource src;
+        MemoryViewer v(src);
+        v.show();
+        v.refresh();
+        choose(v, "mode", "pixels");
+        auto pixels = child<PixelView>(v, "pixels");
+
+        auto map = child<QListWidget>(v, "map");
+        emit map->itemActivated(map->item(3));
+        CHECK(pixels->selection() == std::pair{ 0x10000u, 0x1FFFFu });
+        Rule r = v.ruleFromSelection();
+        CHECK(r.range.first == 0x10000u);
+        CHECK(r.range.last == 0x1FFFFu);
+        CHECK(child<QPushButton>(v, "new_rule")->isEnabled());
+
+        child<QLineEdit>(v, "goto")->setText("$9000");
+        emit child<QLineEdit>(v, "goto")->returnPressed();
+        CHECK_FALSE(pixels->pixelRect(0x9000).isEmpty()); // at 1:1 all of WRAM fits, so nothing to scroll
+        pixels->setZoom(8);
+        emit child<QLineEdit>(v, "goto")->returnPressed();
+        CHECK(pixels->firstVisibleOffset() <= 0x9000u);
+        CHECK(pixels->firstVisibleOffset() + uint32_t(pixels->columns()) > 0x9000u);
+
+        choose(v, "target", "vram");
+        v.refresh();
+        child<QPushButton>(v, "find_copies")->click();
+        auto copies = child<QListWidget>(v, "copies");
+        emit copies->itemActivated(copies->item(0));
+        v.refresh();
+        CHECK(pixels->snapshot().target == Target::WRAM);
+        CHECK(pixels->selection() == std::pair{ 0x1C00u, 0x1C00u + 543u });
+        CHECK(child<QPushButton>(v, "name_selection")->isEnabled());
+        CHECK(v.nameSelection("sprite copy").isEmpty());
+        CHECK(src.named.at("sprite copy").first == 0x1C00u);
+    }
+
+    TEST_CASE("zoom buttons and the zoom label")
+    {
+        FakeSource src;
+        MemoryViewer v(src);
+        v.show();
+        v.refresh();
+        choose(v, "mode", "pixels");
+        auto pixels = child<PixelView>(v, "pixels");
+        int before = pixels->zoom();
+        child<QPushButton>(v, "zoom_in")->click();
+        CHECK(pixels->zoom() > before);
+        CHECK(child<QLabel>(v, "zoom")->text().contains(QString::number(pixels->zoom())));
+        for (int i = 0; i < 10; i++)
+            child<QPushButton>(v, "zoom_out")->click();
+        CHECK(pixels->zoom() == 1);
+        CHECK_FALSE(child<QPushButton>(v, "zoom_out")->isEnabled());
+        CHECK(child<QPushButton>(v, "zoom_in")->isEnabled());
+    }
+
+    TEST_CASE("hovering a pixel shows its address and value")
+    {
+        FakeSource src;
+        MemoryViewer v(src);
+        v.show();
+        v.refresh();
+        choose(v, "mode", "pixels");
+        auto pixels = child<PixelView>(v, "pixels");
+        QApplication::processEvents();
+        QPoint at = pixels->pixelRect(0x41).center();
+        QMouseEvent move(QEvent::MouseMove, QPointF(at), pixels->viewport()->mapToGlobal(QPointF(at)), Qt::NoButton,
+                         Qt::NoButton, Qt::NoModifier);
+        QApplication::sendEvent(pixels->viewport(), &move);
+        auto hover = child<QLabel>(v, "hover")->text();
+        CHECK(hover.contains("0x0041"));
+        CHECK(hover.contains("0x11"));
+    }
+
+    TEST_CASE("a picture of the viewer in pixel mode")
+    {
+        FakeSource src;
+        MemoryViewer v(src);
+        v.show();
+        v.refresh();
+        choose(v, "mode", "pixels");
+        auto map = child<QListWidget>(v, "map");
+        map->setCurrentRow(1);
+        emit map->itemActivated(map->item(1));
+        if (auto dir = getenv("CORRUPT_SHOTS_DIR"))
+        {
+            QDir().mkpath(dir);
+            v.grab().save(QString("%1/memory-viewer-pixels.png").arg(dir));
+            choose(v, "overlay", "none");
+            v.grab().save(QString("%1/memory-viewer-pixels-plain.png").arg(dir));
+        }
+    }
+}

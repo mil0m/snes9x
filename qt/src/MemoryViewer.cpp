@@ -1,9 +1,11 @@
 #include "MemoryViewer.hpp"
 #include "MemoryView.hpp"
+#include "PixelView.hpp"
 #include "RuleEditor.hpp"
 #include "corrupt/rule_text.h"
 
 #include <QComboBox>
+#include <QFontDatabase>
 #include <QInputDialog>
 #include <QMessageBox>
 #include <QGroupBox>
@@ -12,6 +14,7 @@
 #include <QLineEdit>
 #include <QListWidget>
 #include <QPushButton>
+#include <QStackedWidget>
 #include <QVBoxLayout>
 
 #include <algorithm>
@@ -35,6 +38,21 @@ MemoryViewer::MemoryViewer(MemorySource &source, QWidget *parent)
     auto layout = new QVBoxLayout(this);
 
     auto top = new QHBoxLayout;
+    mode_combo = new QComboBox(this);
+    mode_combo->setObjectName("mode");
+    mode_combo->addItem(tr("Hex"), QString("hex"));
+    mode_combo->addItem(tr("Pixels"), QString("pixels"));
+    mode_combo->setToolTip(tr("Pixels: every byte is one dot coloured by its value, so a whole memory fits on screen."));
+    zoom_out_button = new QPushButton(QStringLiteral("−"), this);
+    zoom_out_button->setObjectName("zoom_out");
+    zoom_out_button->setToolTip(tr("Zoom out (Ctrl+wheel)"));
+    zoom_in_button = new QPushButton(QStringLiteral("+"), this);
+    zoom_in_button->setObjectName("zoom_in");
+    zoom_in_button->setToolTip(tr("Zoom in (Ctrl+wheel)"));
+    zoom_label = new QLabel(this);
+    zoom_label->setObjectName("zoom");
+    for (auto b : { zoom_out_button, zoom_in_button })
+        b->setFixedWidth(b->fontMetrics().horizontalAdvance("+") + 24);
     target_combo = new QComboBox(this);
     target_combo->setObjectName("target");
     for (auto t : kAllTargets)
@@ -50,6 +68,10 @@ MemoryViewer::MemoryViewer(MemorySource &source, QWidget *parent)
     goto_edit->setMaximumWidth(110);
     auto clear = new QPushButton(tr("Clear Hits"), this);
     clear->setObjectName("clear_hits");
+    top->addWidget(mode_combo);
+    top->addWidget(zoom_out_button);
+    top->addWidget(zoom_label);
+    top->addWidget(zoom_in_button);
     top->addWidget(target_combo);
     top->addWidget(overlay_combo, 1);
     top->addWidget(goto_edit);
@@ -62,19 +84,28 @@ MemoryViewer::MemoryViewer(MemorySource &source, QWidget *parent)
     map_list->setMinimumWidth(190);
     map_list->setMaximumWidth(260);
     map_list->setToolTip(tr("What lives where. Click an area to select it."));
-    view = new MemoryView(this);
+    stack = new QStackedWidget(this);
+    view = new MemoryView(stack);
     view->setObjectName("view");
+    pixels = new PixelView(stack);
+    pixels->setObjectName("pixels");
+    stack->addWidget(view);
+    stack->addWidget(pixels);
     middle->addWidget(map_list);
-    middle->addWidget(view, 1);
+    middle->addWidget(stack, 1);
     layout->addLayout(middle, 1);
 
     auto bottom = new QHBoxLayout;
     selection_label = new QLabel(tr("Drag across bytes to select a range"), this);
     selection_label->setObjectName("selection");
+    hover_label = new QLabel(this);
+    hover_label->setObjectName("hover");
+    hover_label->setFont(QFontDatabase::systemFont(QFontDatabase::FixedFont));
     new_rule_button = new QPushButton(tr("New Rule from Selection..."), this);
     new_rule_button->setObjectName("new_rule");
     new_rule_button->setEnabled(false);
     bottom->addWidget(selection_label, 1);
+    bottom->addWidget(hover_label);
     bottom->addWidget(new_rule_button);
     layout->addLayout(bottom);
 
@@ -130,7 +161,7 @@ MemoryViewer::MemoryViewer(MemorySource &source, QWidget *parent)
     connect(map_list, &QListWidget::itemActivated, this, [this](QListWidgetItem *item) {
         int row = map_list->row(item);
         if (row >= 0 && row < int(shown_map.size()))
-            view->select(shown_map[size_t(row)].range.first, shown_map[size_t(row)].range.last);
+            pane()->select(shown_map[size_t(row)].range.first, shown_map[size_t(row)].range.last);
     });
     connect(map_list, &QListWidget::itemClicked, map_list, &QListWidget::itemActivated);
     connect(name_button, &QPushButton::clicked, this, [this] { askNameSelection(); });
@@ -140,9 +171,11 @@ MemoryViewer::MemoryViewer(MemorySource &source, QWidget *parent)
     connect(target_combo, &QComboBox::currentIndexChanged, this, [this] { targetChanged(); });
     connect(overlay_combo, &QComboBox::currentIndexChanged, this, [this] {
         auto o = overlay_combo->currentData().toString();
-        view->setOverlay(o == "hits" ? MemoryView::Overlay::Hits
-                         : o == "none" ? MemoryView::Overlay::None
-                                       : MemoryView::Overlay::Activity);
+        auto overlay = o == "hits"   ? MemoryPane::Overlay::Hits
+                       : o == "none" ? MemoryPane::Overlay::None
+                                     : MemoryPane::Overlay::Activity;
+        view->setOverlay(overlay);
+        pixels->setOverlay(overlay);
     });
     connect(goto_edit, &QLineEdit::returnPressed, this, [this] { goTo(); });
     connect(clear, &QPushButton::clicked, this, [this] { this->source.clearHits(); });
@@ -162,6 +195,14 @@ MemoryViewer::MemoryViewer(MemorySource &source, QWidget *parent)
     connect(copies_list, &QListWidget::itemClicked, copies_list, &QListWidget::itemActivated);
     connect(new_rule_button, &QPushButton::clicked, this, [this] { newRule(); });
     view->onSelectionChanged = [this] { selectionChanged(); };
+    pixels->onSelectionChanged = [this] { selectionChanged(); };
+    pixels->onZoomChanged = [this] { zoomChanged(); };
+    pixels->onHover = [this](std::optional<uint32_t> offset) { hovered(offset); };
+    connect(mode_combo, &QComboBox::currentIndexChanged, this, [this] { modeChanged(); });
+    connect(zoom_in_button, &QPushButton::clicked, this, [this] { pixels->zoomIn(); });
+    connect(zoom_out_button, &QPushButton::clicked, this, [this] { pixels->zoomOut(); });
+    modeChanged();
+    zoomChanged();
 
     connect(&timer, &QTimer::timeout, this, [this] { refresh(); });
     resize(std::max(900, view->sizeHint().width() + 260), 700);
@@ -170,6 +211,50 @@ MemoryViewer::MemoryViewer(MemorySource &source, QWidget *parent)
 Target MemoryViewer::target() const
 {
     return parse_target(target_combo->currentData().toString().toStdString()).value_or(Target::WRAM);
+}
+
+MemoryPane *MemoryViewer::pane() const
+{
+    if (stack->currentWidget() == pixels)
+        return pixels;
+    return view;
+}
+
+void MemoryViewer::modeChanged()
+{
+    bool to_pixels = mode_combo->currentData().toString() == "pixels";
+    MemoryPane *from = pane();
+    MemoryPane *to = to_pixels ? static_cast<MemoryPane *>(pixels) : view;
+    for (QWidget *w : { static_cast<QWidget *>(zoom_out_button), static_cast<QWidget *>(zoom_in_button),
+                        static_cast<QWidget *>(zoom_label), static_cast<QWidget *>(hover_label) })
+        w->setVisible(to_pixels);
+    if (to == from)
+        return;
+    // The other view picks up where this one is: same bytes, same place, same selection.
+    auto sel = from->selection();
+    uint32_t place = from->firstVisibleOffset();
+    to->setSnapshot(from->snapshot());
+    stack->setCurrentWidget(to_pixels ? static_cast<QWidget *>(pixels) : view);
+    to->scrollTo(place);
+    if (sel)
+        to->select(sel->first, sel->second);
+    else
+        to->clearSelection();
+}
+
+void MemoryViewer::zoomChanged()
+{
+    zoom_label->setText(tr("%1×").arg(pixels->zoom()));
+    zoom_out_button->setEnabled(pixels->zoom() > PixelView::kMinZoom);
+    zoom_in_button->setEnabled(pixels->zoom() < PixelView::kMaxZoom);
+}
+
+void MemoryViewer::hovered(std::optional<uint32_t> offset)
+{
+    auto &snap = pixels->snapshot();
+    if (!offset || *offset >= snap.bytes.size())
+        return hover_label->clear();
+    hover_label->setText(QString("%1 = 0x%2").arg(hex4(*offset)).arg(snap.bytes[*offset], 2, 16, QChar('0')).toUpper().replace("0X", "0x"));
 }
 
 void MemoryViewer::showEvent(QShowEvent *event)
@@ -202,11 +287,11 @@ void MemoryViewer::refresh()
     auto snap = source.snapshot();
     if (snap.target != target() && !snap.bytes.empty())
         return; // the switch hasn't reached the emulation thread yet
-    view->setSnapshot(snap);
+    pane()->setSnapshot(snap);
     refreshMap();
     if (pending_select && !snap.bytes.empty())
     {
-        view->select(pending_select->first, pending_select->second);
+        pane()->select(pending_select->first, pending_select->second);
         pending_select.reset();
     }
 }
@@ -215,12 +300,12 @@ void MemoryViewer::goTo()
 {
     auto n = parse_number(goto_edit->text().toStdString());
     if (n && *n >= 0)
-        view->scrollTo(uint32_t(*n));
+        pane()->scrollTo(uint32_t(*n));
 }
 
 void MemoryViewer::selectionChanged()
 {
-    auto sel = view->selection();
+    auto sel = pane()->selection();
     new_rule_button->setEnabled(sel.has_value());
     name_button->setEnabled(sel.has_value());
     if (!sel)
@@ -229,16 +314,16 @@ void MemoryViewer::selectionChanged()
         return;
     }
     selection_label->setText(QString("%1 %2..%3 (%4 bytes)")
-                                 .arg(target_name(view->snapshot().target), hex4(sel->first), hex4(sel->second))
+                                 .arg(target_name(pane()->snapshot().target), hex4(sel->first), hex4(sel->second))
                                  .arg(sel->second - sel->first + 1));
 }
 
 Rule MemoryViewer::ruleFromSelection() const
 {
     Rule r = default_rule();
-    if (auto sel = view->selection())
+    if (auto sel = pane()->selection())
     {
-        r.range = { view->snapshot().target, sel->first, sel->second };
+        r.range = { pane()->snapshot().target, sel->first, sel->second };
         r.name = std::string(target_name(r.range.target)) + " " + hex4(sel->first).toStdString();
     }
     return r;
@@ -246,7 +331,7 @@ Rule MemoryViewer::ruleFromSelection() const
 
 void MemoryViewer::newRule()
 {
-    if (!view->selection())
+    if (!pane()->selection())
         return;
     SizedMemory sizes;
     sizes.sizes = source.sizes();
@@ -297,12 +382,12 @@ void MemoryViewer::refreshRegions()
 
 QString MemoryViewer::nameSelection(const QString &name, bool overwrite)
 {
-    auto sel = view->selection();
+    auto sel = pane()->selection();
     if (!sel)
         return tr("select some bytes first");
     if (!overwrite && source.regions().count(name.toStdString()))
         return tr("there's already an area called '%1'").arg(name);
-    auto error = source.saveRegion(name.toStdString(), { view->snapshot().target, sel->first, sel->second });
+    auto error = source.saveRegion(name.toStdString(), { pane()->snapshot().target, sel->first, sel->second });
     refreshRegions();
     return QString::fromStdString(error);
 }

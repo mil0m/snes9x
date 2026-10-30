@@ -1,47 +1,33 @@
 #pragma once
 #include <QAbstractScrollArea>
 
-#include "corrupt/memory_watch.h"
-
-#include <functional>
-#include <optional>
-#include <utility>
+#include "MemoryPane.hpp"
 
 // A hex view of one memory target, 16 bytes a row, with each byte's background showing
 // how often the game changes it (Activity) or how often the recipe hit it (Hits). A
 // strip on the right shows the whole target at once; click it to jump. Drag, or click
 // and shift-click, to select a range. Only the visible rows are painted.
-class MemoryView : public QAbstractScrollArea
+class MemoryView : public QAbstractScrollArea, public MemoryPane
 {
     Q_OBJECT
 
   public:
-    enum class Overlay
-    {
-        Activity,
-        Hits,
-        None,
-    };
-
     explicit MemoryView(QWidget *parent = nullptr);
 
-    // Keeps the selection and scroll position while the target and size stay the same.
-    void setSnapshot(const corrupt::MemorySnapshot &snapshot);
-    const corrupt::MemorySnapshot &snapshot() const { return snap; }
-    void setOverlay(Overlay overlay);
+    void setSnapshot(const corrupt::MemorySnapshot &snapshot) override;
+    const corrupt::MemorySnapshot &snapshot() const override { return snap; }
+    void setOverlay(Overlay overlay) override;
 
-    std::optional<std::pair<uint32_t, uint32_t>> selection() const; // inclusive, first <= second
-    void select(uint32_t first, uint32_t last);                     // and scrolls it into view
-    void clearSelection();
-    void scrollTo(uint32_t offset);                                 // its row becomes the first one
-    uint32_t firstVisibleOffset() const;
+    std::optional<std::pair<uint32_t, uint32_t>> selection() const override;
+    void select(uint32_t first, uint32_t last) override;
+    void clearSelection() override;
+    void scrollTo(uint32_t offset) override;
+    uint32_t firstVisibleOffset() const override;
 
     // Geometry, in viewport coordinates.
     std::optional<uint32_t> offsetAt(QPoint pos) const;
     QRect cellRect(uint32_t offset) const; // empty when the cell isn't visible
     QRect overviewRect() const;
-
-    std::function<void()> onSelectionChanged;
 
     QSize minimumSizeHint() const override; // the whole grid and the strip, side by side
     QSize sizeHint() const override;

@@ -10,12 +10,15 @@
 #include <string>
 #include <vector>
 
+class MemoryPane;
 class MemoryView;
+class PixelView;
 class QComboBox;
 class QLabel;
 class QLineEdit;
 class QListWidget;
 class QPushButton;
+class QStackedWidget;
 
 // What the viewer needs from the running game. The app passes the corruption
 // session; tests pass a fake.
@@ -37,8 +40,8 @@ struct MemorySource
     virtual ~MemorySource() = default;
 };
 
-// The memory viewer window: one target as a hex grid with an activity or hits heatmap,
-// go to an address, find the game's WRAM copies of its sprites and palette, turn a
+// The memory viewer window: one target as a hex grid or as pixels (one byte each,
+// zoomable) with an activity or hits heatmap, go to an address, find the game's WRAM copies of its sprites and palette, turn a
 // selected range into a rule, and name ranges for the game. It watches only while shown.
 class MemoryViewer : public QWidget
 {
@@ -60,6 +63,10 @@ class MemoryViewer : public QWidget
 
   private:
     corrupt::Target target() const;
+    MemoryPane *pane() const; // the view that's showing
+    void modeChanged();
+    void zoomChanged();
+    void hovered(std::optional<uint32_t> offset);
     void targetChanged();
     void goTo();
     void selectionChanged();
@@ -80,7 +87,14 @@ class MemoryViewer : public QWidget
     QComboBox *target_combo;
     QComboBox *overlay_combo;
     QLineEdit *goto_edit;
+    QComboBox *mode_combo;
+    QPushButton *zoom_out_button;
+    QPushButton *zoom_in_button;
+    QLabel *zoom_label;
+    QStackedWidget *stack;
     MemoryView *view;
+    PixelView *pixels;
+    QLabel *hover_label;
     QLabel *selection_label;
     QPushButton *new_rule_button;
     QListWidget *copies_list;
