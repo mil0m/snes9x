@@ -15,6 +15,7 @@ struct MemorySnapshot
     std::vector<uint8_t> bytes;  // current contents
     std::vector<float> heat;     // how often the game changes each byte (about 50 = every frame)
     std::vector<uint32_t> hits;  // how often the recipe wrote each byte since watching (or clear_hits)
+    std::vector<float> danger;   // the crash map: how often corrupting each byte crashed the game, 0..1
 };
 
 // Watches one memory target for the memory viewer, once per frame between frames:

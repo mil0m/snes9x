@@ -22,6 +22,7 @@ class CrashMapKeeper
     bool crashed(const GuardOutcome &out);
 
     bool save_due() const;
+    bool unsaved() const { return dirty; } // anything learned since the last save, e.g. on close
     bool saved(); // call after writing mine(); true when the hot set changed meanwhile
 
     const CrashMap &mine() const { return own; }

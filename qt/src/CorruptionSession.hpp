@@ -2,6 +2,7 @@
 #include "corrupt/core_access.h"
 #include "corrupt/core_memory.h"
 #include "corrupt/crash_guard.h"
+#include "corrupt/crash_map_keeper.h"
 #include "corrupt/engine.h"
 #include "corrupt/library.h"
 #include "corrupt/memory_watch.h"
@@ -55,6 +56,7 @@ class CorruptionSession
         unsigned crashes = 0;
         std::string last_crash;
         std::vector<unsigned> rule_crashes;
+        size_t hot_blocks = 0; // crash map: 16-byte blocks rules with avoid_hot stay out of
     };
 
     // Called by Snes9xController around ROM loading (emulation thread suspended).
@@ -132,6 +134,8 @@ class CorruptionSession
     std::string writeMoment(corrupt::Recipe &recipe, const std::filesystem::path &recipe_path); // error or empty
     bool newMoment() const;
     void writeJournal(const corrupt::JournalEntry &entry);
+    void loadCrashMap();
+    void saveCrashMap();
 
     std::mutex mutex;
     corrupt::Engine engine;
@@ -140,6 +144,7 @@ class CorruptionSession
     corrupt::CrashGuard guard;
     corrupt::RunControl control;
     corrupt::MemoryWatch watch;
+    corrupt::CrashMapKeeper crash_map;
     std::vector<corrupt::MapArea> live_map; // VRAM or ARAM layout, re-read between frames while watched
     bool saved_moments = true;
     bool moment_on_disk = false; // the current run's start is the recipe's saved moment

@@ -78,6 +78,7 @@ TEST_SUITE("crash map keeper")
 
         f.frames(1000, 0x80); // survivals start after 900 frames
         CHECK_FALSE(f.keeper.save_due()); // not a minute yet
+        CHECK(f.keeper.unsaved());        // but closing the game would save
         f.frames(CrashMapKeeper::kSaveEveryFrames);
         CHECK(f.keeper.save_due());
         f.keeper.saved();

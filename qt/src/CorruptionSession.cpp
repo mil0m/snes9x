@@ -116,7 +116,13 @@ void CorruptionSession::betweenFrames()
     default:
         break;
     }
+    // The crash map collects this frame's writes before the guard can roll them back.
+    crash_map.observe(engine.event_log(), engine.current_frame());
     auto out = guard.between_frames(engine, access);
+    if (crash_map.crashed(out))
+        engine.set_hot_mask(crash_map.hot_mask());
+    if (crash_map.save_due())
+        saveCrashMap();
     watch.observe(memory, engine.event_log(), engine.current_frame());
     if (watch.watching())
         live_map = watch.target() == Target::VRAM   ? video_map(SnesCoreAccess::video_layout())
@@ -175,6 +181,28 @@ void CorruptionSession::gameLoaded()
 
     backupNow("load"); // before the first frame runs
     message = "Loaded " + game_folder_name(game.title, game.sha256);
+    loadCrashMap();
+}
+
+void CorruptionSession::loadCrashMap()
+{
+    CrashMaps maps;
+    if (!library_root.empty())
+        maps = Library(library_root).load_crash_maps(game, user_name());
+    for (auto &e : maps.errors)
+        note("Crash map skipped: " + e);
+    crash_map.reset(std::move(maps));
+    engine.set_hot_mask(crash_map.hot_mask());
+}
+
+void CorruptionSession::saveCrashMap()
+{
+    if (library_root.empty())
+        return; // nowhere shared to keep it; it still steers this session
+    if (auto err = Library(library_root).save_crash_map(game, user_name(), crash_map.mine()); !err.empty())
+        note("Couldn't save the crash map: " + err);
+    if (crash_map.saved())
+        engine.set_hot_mask(crash_map.hot_mask());
 }
 
 void CorruptionSession::gameClosing()
@@ -183,6 +211,8 @@ void CorruptionSession::gameClosing()
     if (!game_loaded)
         return;
     backupNow("close");
+    if (crash_map.unsaved())
+        saveCrashMap();
     engine.set_active(false);
     SnesCoreAccess::unwatch_resets();
     game_loaded = false;
@@ -191,7 +221,11 @@ void CorruptionSession::gameClosing()
 void CorruptionSession::setLibraryRoot(const fs::path &root)
 {
     std::lock_guard lock(mutex);
+    if (game_loaded && crash_map.unsaved())
+        saveCrashMap(); // to the old library, before switching
     library_root = root;
+    if (game_loaded)
+        loadCrashMap();
 }
 
 fs::path CorruptionSession::libraryRoot()
@@ -276,7 +310,9 @@ void CorruptionSession::clearHits()
 MemorySnapshot CorruptionSession::memorySnapshot()
 {
     std::lock_guard lock(mutex);
-    return watch.snapshot();
+    auto snap = watch.snapshot();
+    snap.danger = crash_map.danger(snap.target, snap.bytes.size());
+    return snap;
 }
 
 namespace
@@ -689,6 +725,7 @@ CorruptionSession::Status CorruptionSession::status()
     s.crashes = guard.total_crashes();
     s.last_crash = last_crash;
     s.rule_crashes = guard.rule_crashes(engine);
+    s.hot_blocks = crash_map.hot_blocks();
     s.message = message;
     return s;
 }
