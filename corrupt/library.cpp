@@ -187,4 +187,27 @@ std::string Library::save_regions(const GameId &game, const Regions &regions) co
     return write_file_atomic(game_dir(game) / "regions.json", write_regions(regions));
 }
 
+fs::path anchor_path(const fs::path &recipe_path)
+{
+    auto path = recipe_path;
+    path.replace_extension(".anchor.frz");
+    return path;
+}
+
+std::string save_anchor(const fs::path &path, const std::vector<uint8_t> &state)
+{
+    return write_file_atomic(path, std::string(state.begin(), state.end()));
+}
+
+std::optional<std::vector<uint8_t>> load_anchor(const fs::path &path, std::string &error)
+{
+    auto text = read_file(path);
+    if (!text)
+    {
+        error = "couldn't read " + path.filename().string();
+        return std::nullopt;
+    }
+    return std::vector<uint8_t>(text->begin(), text->end());
+}
+
 } // namespace corrupt

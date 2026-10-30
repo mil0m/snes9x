@@ -183,3 +183,40 @@ TEST_CASE("an unknown game has no recipes and no regions")
     CHECK(lib.load_regions(kGame, errors).empty());
     CHECK(errors.empty());
 }
+
+TEST_SUITE("saved moments")
+{
+    TEST_CASE("a recipe's moment lives next to it")
+    {
+        CHECK(anchor_path("/lib/G [1]/recipes/purple-link.json") == fs::path("/lib/G [1]/recipes/purple-link.anchor.frz"));
+        CHECK(anchor_path("x.json").filename() == "x.anchor.frz");
+    }
+
+    TEST_CASE("moments round-trip as binary, and don't show up as recipes")
+    {
+        TempDir tmp;
+        Library lib(tmp.path);
+        auto saved = lib.save_recipe(kGame, sample("with moment"));
+        REQUIRE(saved.error.empty());
+
+        std::vector<uint8_t> state;
+        for (int i = 0; i < 70000; i++)
+            state.push_back(uint8_t(i * 7)); // includes zero bytes and every value
+        auto path = anchor_path(saved.path);
+        CHECK(save_anchor(path, state).empty());
+
+        std::string error;
+        auto back = load_anchor(path, error);
+        REQUIRE(back);
+        CHECK(*back == state);
+        CHECK(error.empty());
+        CHECK(lib.list_recipes(kGame).size() == 1);
+    }
+
+    TEST_CASE("a missing moment is an error that names the file")
+    {
+        std::string error;
+        CHECK_FALSE(load_anchor("/nowhere/gone.anchor.frz", error));
+        CHECK(error.find("gone.anchor.frz") != std::string::npos);
+    }
+}

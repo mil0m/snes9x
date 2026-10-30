@@ -60,6 +60,12 @@ class Library
     std::filesystem::path root;
 };
 
+// A recipe's saved moment (the save state its run started from) sits next to it:
+// recipes/purple-link.json -> recipes/purple-link.anchor.frz.
+std::filesystem::path anchor_path(const std::filesystem::path &recipe_path);
+std::string save_anchor(const std::filesystem::path &path, const std::vector<uint8_t> &state); // error or empty
+std::optional<std::vector<uint8_t>> load_anchor(const std::filesystem::path &path, std::string &error);
+
 // Writes to a temporary file, then renames it into place.
 std::string write_file_atomic(const std::filesystem::path &path, const std::string &contents);
 
