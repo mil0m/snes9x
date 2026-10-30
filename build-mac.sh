@@ -5,6 +5,7 @@
 #   ./build-mac.sh qt         # snes9x-qt   -> build/qt/snes9x-qt  (needs: brew install qt pkgconf libpng ninja)
 #   ./build-mac.sh app        # Snes9x.app  -> build/xcode/Build/Products/Release/Snes9x.app
 #   ./build-mac.sh libretro   # core        -> libretro/snes9x_libretro.dylib
+#   ./build-mac.sh test       # build + run the corruption engine tests (tests/)
 #
 # Notes for current Xcode:
 #  - The project pins MACOSX_DEPLOYMENT_TARGET=10.12, which Xcode 26+ rejects; we override to 12.0.
@@ -15,10 +16,13 @@ cd "$(dirname "$0")"
 
 target="${1:-all}"
 
-git submodule update --init --recursive \
-  external/SPIRV-Cross external/glslang external/vulkan-headers external/cubeb
+submodules() {
+  git submodule update --init --recursive \
+    external/SPIRV-Cross external/glslang external/vulkan-headers external/cubeb
+}
 
 build_app() {
+  submodules
   if ! xcrun -f metal >/dev/null 2>&1 || ! xcrun metal --version >/dev/null 2>&1; then
     xcodebuild -downloadComponent MetalToolchain
   fi
@@ -33,9 +37,16 @@ build_app() {
 }
 
 build_qt() {
+  submodules
   cmake -S qt -B build/qt -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH="$(brew --prefix qt)" >/dev/null
   cmake --build build/qt | tail -1
   echo "Qt: $(pwd)/build/qt/snes9x-qt"
+}
+
+build_test() {
+  cmake -S tests -B build/tests -G Ninja -DCMAKE_BUILD_TYPE=Debug >/dev/null
+  cmake --build build/tests | tail -1
+  build/tests/corrupt-tests "$@"
 }
 
 build_libretro() {
@@ -45,8 +56,9 @@ build_libretro() {
 
 case "$target" in
   qt) build_qt ;;
+  test) shift; build_test "$@" ;;
   app) build_app ;;
   libretro) build_libretro ;;
   all) build_qt; build_app; build_libretro ;;
-  *) echo "usage: $0 [qt|app|libretro|all]" >&2; exit 2 ;;
+  *) echo "usage: $0 [qt|app|libretro|test|all]" >&2; exit 2 ;;
 esac
