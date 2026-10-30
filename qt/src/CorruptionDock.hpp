@@ -31,6 +31,15 @@ class CorruptionDock : public QDockWidget
     void chooseLibrary();
     void loadSelectedRecipe();
     void saveAs();
+    void save();
+    void newRecipe();
+    bool confirmDiscard(const QString &action); // true when there are no edits to lose, or the user agrees
+    int selectedRule();
+    void selectRule(int row);
+    void addRule();
+    void editRule(int row);
+    void duplicateRule();
+    void removeRule();
     void addExample();
     void restoreSelectedBackup();
     void showMessage(const QString &text, bool error = false);
@@ -39,6 +48,7 @@ class CorruptionDock : public QDockWidget
     QTimer timer;
     std::vector<corrupt::RecipeEntry> entries;
     uint64_t shown_generation = UINT64_MAX;
+    uint64_t shown_rules_generation = UINT64_MAX;
     std::string shown_game;
     std::string shown_message;
     int ticks = 0;
@@ -51,6 +61,11 @@ class CorruptionDock : public QDockWidget
     QCheckBox *active_check;
     QLineEdit *seed_edit;
     QTableWidget *rules_table;
+    QPushButton *save_button;
+    QPushButton *add_rule_button;
+    QPushButton *edit_rule_button;
+    QPushButton *duplicate_rule_button;
+    QPushButton *remove_rule_button;
     QCheckBox *detect_check;
     QComboBox *policy_combo;
     QLabel *crash_label;

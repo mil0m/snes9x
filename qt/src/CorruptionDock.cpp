@@ -2,6 +2,8 @@
 #include "CorruptionSession.hpp"
 #include "EmuApplication.hpp"
 #include "EmuConfig.hpp"
+#include "RuleEditor.hpp"
+#include "corrupt/rule_text.h"
 
 #include <QCheckBox>
 #include <QComboBox>
@@ -18,6 +20,7 @@
 #include <QLabel>
 #include <QLineEdit>
 #include <QListWidget>
+#include <QMessageBox>
 #include <QPushButton>
 #include <QTableWidget>
 #include <QUrl>
@@ -31,29 +34,6 @@ namespace
 QString qs(const std::string &s)
 {
     return QString::fromStdString(s);
-}
-
-QString describe_trigger(const Trigger &t)
-{
-    QString text;
-    switch (t.type)
-    {
-    case TriggerType::OnceAtFrame: text = QString("once at frame %1").arg(t.frame); break;
-    case TriggerType::EveryFrames: text = QString("every %1 frames").arg(t.every); break;
-    case TriggerType::ChancePerFrame: text = QString("%1% per frame").arg(t.chance * 100.0, 0, 'g', 3); break;
-    case TriggerType::Hotkey: text = QString("hotkey %1").arg(t.hotkey); break;
-    }
-    if (t.window)
-        text += QString(" (frames %1-%2)").arg(t.window->start).arg(t.window->end);
-    return text;
-}
-
-QString describe_op(const Rule &r)
-{
-    QString text = op_name(r.op.type);
-    if (r.op.type == OpType::Add || r.op.type == OpType::Random)
-        text += QString(" %1..%2").arg(r.op.min).arg(r.op.max);
-    return text + QString(" x%1").arg(r.count);
 }
 
 QPushButton *button(const QString &text, QWidget *parent)
@@ -101,6 +81,17 @@ CorruptionDock::CorruptionDock(EmuApplication &app, QWidget *parent)
     recipe_buttons->addWidget(rescan);
     recipe_buttons->addWidget(open_folder);
     recipe_layout->addLayout(recipe_buttons);
+    auto file_buttons = new QHBoxLayout;
+    auto new_recipe = button(tr("New"), recipe_box);
+    save_button = button(tr("Save"), recipe_box);
+    auto save_as = button(tr("Save As..."), recipe_box);
+    file_buttons->addWidget(new_recipe);
+    file_buttons->addWidget(save_button);
+    file_buttons->addWidget(save_as);
+    recipe_layout->addLayout(file_buttons);
+    connect(new_recipe, &QPushButton::clicked, this, &CorruptionDock::newRecipe);
+    connect(save_button, &QPushButton::clicked, this, &CorruptionDock::save);
+    connect(save_as, &QPushButton::clicked, this, &CorruptionDock::saveAs);
 
     auto example_row = new QHBoxLayout;
     example_combo = new QComboBox(recipe_box);
@@ -139,8 +130,6 @@ CorruptionDock::CorruptionDock(EmuApplication &app, QWidget *parent)
     run_layout->addRow(tr("Seed"), seed_row);
     status_label = new QLabel(run_box);
     run_layout->addRow(status_label);
-    auto save_as = button(tr("Save As..."), run_box);
-    run_layout->addRow(save_as);
     layout->addWidget(run_box);
 
     connect(active_check, &QCheckBox::clicked, [](bool on) { CorruptionSession::get().setActive(on); });
@@ -155,7 +144,6 @@ CorruptionDock::CorruptionDock(EmuApplication &app, QWidget *parent)
         else
             showMessage(tr("Seed must be a number"), true);
     });
-    connect(save_as, &QPushButton::clicked, this, &CorruptionDock::saveAs);
 
     // Crash guard
     auto guard_box = new QGroupBox(tr("Crash Guard"), root);
@@ -189,8 +177,28 @@ CorruptionDock::CorruptionDock(EmuApplication &app, QWidget *parent)
     rules_table->horizontalHeader()->setSectionResizeMode(QHeaderView::ResizeToContents);
     rules_table->horizontalHeader()->setStretchLastSection(true);
     rules_table->setEditTriggers(QAbstractItemView::NoEditTriggers);
-    rules_table->setSelectionMode(QAbstractItemView::NoSelection);
+    rules_table->setSelectionMode(QAbstractItemView::SingleSelection);
+    rules_table->setSelectionBehavior(QAbstractItemView::SelectRows);
     layout->addWidget(rules_table, 1);
+    connect(rules_table, &QTableWidget::cellDoubleClicked, [this](int row, int column) {
+        if (column != 0)
+            editRule(row);
+    });
+
+    auto rule_buttons = new QHBoxLayout;
+    add_rule_button = button(tr("Add Rule"), root);
+    edit_rule_button = button(tr("Edit"), root);
+    duplicate_rule_button = button(tr("Duplicate"), root);
+    remove_rule_button = button(tr("Remove"), root);
+    rule_buttons->addWidget(add_rule_button);
+    rule_buttons->addWidget(edit_rule_button);
+    rule_buttons->addWidget(duplicate_rule_button);
+    rule_buttons->addWidget(remove_rule_button);
+    layout->addLayout(rule_buttons);
+    connect(add_rule_button, &QPushButton::clicked, this, &CorruptionDock::addRule);
+    connect(edit_rule_button, &QPushButton::clicked, [this] { editRule(selectedRule()); });
+    connect(duplicate_rule_button, &QPushButton::clicked, this, &CorruptionDock::duplicateRule);
+    connect(remove_rule_button, &QPushButton::clicked, this, &CorruptionDock::removeRule);
     connect(rules_table, &QTableWidget::itemChanged, [this](QTableWidgetItem *item) {
         if (item->column() == 0)
             CorruptionSession::get().setRuleEnabled(size_t(item->row()), item->checkState() == Qt::Checked);
@@ -243,11 +251,19 @@ void CorruptionDock::refreshStatus()
         refreshBackups();
     }
 
-    if (status.recipe_generation != shown_generation)
+    if (status.recipe_generation != shown_generation || status.rules_generation != shown_rules_generation)
     {
         shown_generation = status.recipe_generation;
+        shown_rules_generation = status.rules_generation;
         rebuildRules();
     }
+
+    bool has_selection = selectedRule() >= 0;
+    save_button->setEnabled(status.has_recipe && status.edited && !status.recipe_path.empty());
+    add_rule_button->setEnabled(status.has_recipe);
+    edit_rule_button->setEnabled(has_selection);
+    duplicate_rule_button->setEnabled(has_selection);
+    remove_rule_button->setEnabled(has_selection);
 
     QSignalBlocker block(active_check);
     active_check->setEnabled(status.has_recipe);
@@ -256,8 +272,9 @@ void CorruptionDock::refreshStatus()
         seed_edit->setText(status.has_recipe ? QString::number(status.engine.seed) : QString());
 
     status_label->setText(status.has_recipe
-                              ? tr("%1 - frame %2 - %3 firings")
+                              ? tr("%1%2 - frame %3 - %4 firings")
                                     .arg(qs(status.engine.recipe_name))
+                                    .arg(status.edited ? tr(" (edited)") : QString())
                                     .arg(status.engine.frame)
                                     .arg(status.engine.firings)
                               : tr("No recipe loaded"));
@@ -291,6 +308,7 @@ void CorruptionDock::refreshStatus()
 void CorruptionDock::rebuildRules()
 {
     auto status = CorruptionSession::get().status();
+    int selected = selectedRule();
     QSignalBlocker block(rules_table);
     rules_table->setRowCount(int(status.rules.size()));
     for (int i = 0; i < int(status.rules.size()); i++)
@@ -301,14 +319,148 @@ void CorruptionDock::rebuildRules()
         on->setCheckState(r.enabled ? Qt::Checked : Qt::Unchecked);
         rules_table->setItem(i, 0, on);
         rules_table->setItem(i, 1, new QTableWidgetItem(qs(r.name)));
-        auto where = QString(target_name(r.range.target));
-        if (!r.region.empty())
-            where += " " + qs(r.region);
-        rules_table->setItem(i, 2, new QTableWidgetItem(where));
-        rules_table->setItem(i, 3, new QTableWidgetItem(describe_op(r)));
-        rules_table->setItem(i, 4, new QTableWidgetItem(describe_trigger(r.when)));
+        rules_table->setItem(i, 2, new QTableWidgetItem(qs(describe_range(r))));
+        rules_table->setItem(i, 3, new QTableWidgetItem(qs(describe_op(r))));
+        rules_table->setItem(i, 4, new QTableWidgetItem(qs(describe_trigger(r.when))));
         unsigned crashes = size_t(i) < status.rule_crashes.size() ? status.rule_crashes[size_t(i)] : 0;
         rules_table->setItem(i, 5, new QTableWidgetItem(QString::number(crashes)));
+    }
+    selectRule(std::min(selected, rules_table->rowCount() - 1));
+}
+
+int CorruptionDock::selectedRule()
+{
+    auto rows = rules_table->selectionModel()->selectedRows();
+    return rows.isEmpty() ? -1 : rows.first().row();
+}
+
+void CorruptionDock::selectRule(int row)
+{
+    if (row >= 0 && row < rules_table->rowCount())
+        rules_table->selectRow(row);
+    else
+        rules_table->clearSelection();
+}
+
+void CorruptionDock::addRule()
+{
+    auto &session = CorruptionSession::get();
+    auto status = session.status();
+    if (!status.has_recipe)
+    {
+        showMessage(tr("Load a recipe or start a new one first"), true);
+        return;
+    }
+    std::vector<std::string> region_errors;
+    auto regions = session.library().load_regions(status.game, region_errors);
+    SizedMemory sizes;
+    sizes.sizes = status.sizes;
+    RuleEditor editor(default_rule(), regions, sizes, this);
+    editor.setWindowTitle(tr("Add Rule"));
+    if (editor.exec() != QDialog::Accepted)
+        return;
+    auto error = session.addRule(editor.rule());
+    if (!error.empty())
+    {
+        showMessage(tr("Couldn't add the rule: %1").arg(qs(error)), true);
+        return;
+    }
+    rebuildRules();
+    selectRule(rules_table->rowCount() - 1);
+}
+
+void CorruptionDock::editRule(int row)
+{
+    auto &session = CorruptionSession::get();
+    auto status = session.status();
+    if (row < 0 || row >= int(status.rules.size()))
+        return;
+    std::vector<std::string> region_errors;
+    auto regions = session.library().load_regions(status.game, region_errors);
+    SizedMemory sizes;
+    sizes.sizes = status.sizes;
+    RuleEditor editor(status.rules[size_t(row)], regions, sizes, this);
+    if (editor.exec() != QDialog::Accepted)
+        return;
+    auto error = session.replaceRule(size_t(row), editor.rule());
+    if (!error.empty())
+        showMessage(tr("Couldn't change the rule: %1").arg(qs(error)), true);
+    rebuildRules();
+    selectRule(row);
+}
+
+void CorruptionDock::duplicateRule()
+{
+    auto &session = CorruptionSession::get();
+    auto status = session.status();
+    int row = selectedRule();
+    if (row < 0 || row >= int(status.rules.size()))
+        return;
+    Rule copy = status.rules[size_t(row)];
+    copy.name += " copy";
+    auto error = session.addRule(copy);
+    if (!error.empty())
+    {
+        showMessage(tr("Couldn't duplicate the rule: %1").arg(qs(error)), true);
+        return;
+    }
+    rebuildRules();
+    selectRule(rules_table->rowCount() - 1);
+}
+
+void CorruptionDock::removeRule()
+{
+    auto &session = CorruptionSession::get();
+    auto status = session.status();
+    int row = selectedRule();
+    if (row < 0 || row >= int(status.rules.size()))
+        return;
+    auto name = qs(status.rules[size_t(row)].name);
+    if (QMessageBox::question(this, tr("Remove rule"), tr("Remove the rule \"%1\"?").arg(name)) != QMessageBox::Yes)
+        return;
+    session.removeRule(size_t(row));
+    rebuildRules();
+    selectRule(row);
+}
+
+bool CorruptionDock::confirmDiscard(const QString &action)
+{
+    auto status = CorruptionSession::get().status();
+    bool worth_keeping = status.has_recipe && status.edited && (!status.recipe_path.empty() || !status.rules.empty());
+    if (!worth_keeping)
+        return true;
+    return QMessageBox::question(this, action,
+                                 tr("\"%1\" has unsaved changes. Discard them?").arg(qs(status.engine.recipe_name))) ==
+           QMessageBox::Yes;
+}
+
+void CorruptionDock::newRecipe()
+{
+    auto status = CorruptionSession::get().status();
+    if (!status.game_loaded)
+    {
+        showMessage(tr("Load a game first"), true);
+        return;
+    }
+    if (!confirmDiscard(tr("New recipe")))
+        return;
+    bool ok = false;
+    auto name = QInputDialog::getText(this, tr("New recipe"), tr("Name:"), QLineEdit::Normal, tr("My recipe"), &ok);
+    if (!ok || name.trimmed().isEmpty())
+        return;
+    CorruptionSession::get().newRecipe(name.trimmed().toStdString());
+    showMessage(tr("New recipe. Add rules, then Save As to keep it."));
+}
+
+void CorruptionDock::save()
+{
+    auto result = CorruptionSession::get().save();
+    if (!result.error.empty())
+        showMessage(tr("Couldn't save: %1").arg(qs(result.error)), true);
+    else
+    {
+        showMessage(tr("Saved %1").arg(qs(result.path.filename().string())));
+        refreshRecipes();
     }
 }
 
@@ -366,12 +518,14 @@ void CorruptionDock::loadSelectedRecipe()
     if (index < 0 || index >= int(entries.size()))
         return;
     auto &entry = entries[size_t(index)];
+    if (!confirmDiscard(tr("Load recipe")))
+        return;
     if (!entry.recipe)
     {
         showMessage(tr("Can't load %1:\n%2").arg(qs(entry.path.filename().string()), qs(entry.errors.empty() ? "" : entry.errors[0])), true);
         return;
     }
-    auto problems = CorruptionSession::get().loadRecipe(*entry.recipe);
+    auto problems = CorruptionSession::get().loadRecipe(*entry.recipe, entry.path);
     if (!problems.empty())
     {
         QStringList lines;
