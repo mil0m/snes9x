@@ -325,7 +325,7 @@ std::optional<Rule> parse_rule(Ctx &ctx, const json &r, size_t index, const Regi
         return std::nullopt;
 
     size_t errors_before = ctx.errors.size();
-    check_keys(ctx, r, path, { "name", "target", "range", "op", "when", "count", "pick", "enabled", "intensity", "avoid_hot" });
+    check_keys(ctx, r, path, { "name", "target", "range", "op", "when", "count", "pick", "enabled", "intensity", "avoid_hot", "salt" });
 
     Rule rule;
     rule.name = r.contains("name") && r["name"].is_string() ? r["name"].get<std::string>() : "rule " + std::to_string(index + 1);
@@ -375,6 +375,15 @@ std::optional<Rule> parse_rule(Ctx &ctx, const json &r, size_t index, const Regi
             else
                 ctx.fail(path + "." + key, "expected true or false");
         }
+
+    if (r.contains("salt"))
+    {
+        const json &s = r["salt"];
+        if (s.is_number_unsigned())
+            rule.salt = s.get<uint64_t>();
+        else if (auto n = get_int(ctx, s, path + ".salt"))
+            rule.salt = uint64_t(*n);
+    }
 
     if (r.contains("intensity"))
     {
@@ -596,6 +605,8 @@ std::string write_recipe(const Recipe &recipe)
             j["intensity"] = r.intensity;
         if (r.avoid_hot)
             j["avoid_hot"] = true;
+        if (r.salt)
+            j["salt"] = r.salt;
         rules.push_back(j);
     }
     doc["rules"] = rules;

@@ -140,6 +140,19 @@ TEST_CASE("every field survives a round trip")
     CHECK(write_recipe(*again.recipe) == write_recipe(*r.recipe));
 }
 
+TEST_CASE("rule salt round-trips and is omitted when zero")
+{
+    auto r = parse_recipe(R"({"format":1,"name":"s","rules":[
+        {"target":"wram","range":["0","9"],"op":{"type":"random"},"when":{"hotkey":1},"salt":987654321},
+        {"target":"wram","range":["0","9"],"op":{"type":"random"},"when":{"hotkey":1}}]})", {});
+    REQUIRE_MESSAGE(r.recipe, first_error(r));
+    CHECK(r.recipe->rules[0].salt == 987654321u);
+    CHECK(r.recipe->rules[1].salt == 0u);
+    auto text = write_recipe(*r.recipe);
+    CHECK(text.find("987654321") != std::string::npos);
+    CHECK(text.find("\"salt\"") == text.rfind("\"salt\"")); // only once: zero is left out
+}
+
 TEST_SUITE("errors")
 {
     TEST_CASE("broken JSON")

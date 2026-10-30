@@ -18,6 +18,11 @@ Rng Rng::for_firing(uint64_t seed, uint32_t rule_index, uint64_t firing_no)
     return Rng(state);
 }
 
+uint64_t Rng::rule_seed(uint64_t recipe_seed, uint64_t salt)
+{
+    return salt ? recipe_seed ^ mix(salt) : recipe_seed;
+}
+
 uint64_t Rng::next_u64()
 {
     state += 0x9e3779b97f4a7c15ULL;

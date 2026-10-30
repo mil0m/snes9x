@@ -199,3 +199,19 @@ TEST_CASE("status counts firings across rules")
     CHECK(s.firings >= 3); // the every-30 drift alone
     CHECK(s.recipe_name == "noise");
 }
+
+TEST_CASE("a rule's salt changes only that rule's choices")
+{
+    FakeMemory plain, salted;
+    Engine ep, es;
+    auto recipe = noisy_recipe(77);
+    ep.set_recipe(recipe);
+    recipe.rules[0].salt = 12345;
+    es.set_recipe(recipe);
+    ep.set_active(true);
+    es.set_active(true);
+    frames(ep, plain, 300);
+    frames(es, salted, 300);
+    CHECK(plain.of(Target::WRAM) != salted.of(Target::WRAM));   // rule 0 (wram) re-rolled
+    CHECK(plain.of(Target::CGRAM) == salted.of(Target::CGRAM)); // rule 1 (cgram) untouched
+}

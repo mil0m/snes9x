@@ -27,6 +27,7 @@ struct Rule
     bool enabled = true;
     double intensity = 1.0; // 0..1, scales count and the op's strength
     bool avoid_hot = false; // phase 4: skip addresses the crash map marks dangerous
+    uint64_t salt = 0;      // mixed into this rule's seed; re-rolling one rule changes it
 };
 
 // What a rule remembers between frames. Reset when the recipe is (re)started.

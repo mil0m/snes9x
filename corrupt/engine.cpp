@@ -54,7 +54,8 @@ void Engine::on_frame(MemoryAccess &mem)
 
     for (uint32_t i = 0; i < current.rules.size(); i++)
     {
-        auto events = tick_rule(current.rules[i], runtimes[i], mem, current.seed, i, frame, hotkeys);
+        auto &rule = current.rules[i];
+        auto events = tick_rule(rule, runtimes[i], mem, Rng::rule_seed(current.seed, rule.salt), i, frame, hotkeys);
         for (auto &e : events)
             log.push_back({ frame, i, e });
     }
