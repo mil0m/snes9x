@@ -20,15 +20,17 @@ TEST_SUITE("crash map")
         CHECK_FALSE(m.empty());
     }
 
-    TEST_CASE("danger is a crash rate with a small prior; hot needs two crashes and half")
+    TEST_CASE("danger is a crash rate with a small prior; hot needs two crashes and 0.4")
     {
         CHECK(CrashMap::danger_of({ 0, 0 }) == 0.0);
         CHECK(CrashMap::danger_of({ 1, 0 }) == doctest::Approx(1.0 / 3));
         CHECK(CrashMap::danger_of({ 2, 2 }) == doctest::Approx(2.0 / 6));
         CHECK_FALSE(CrashMap::hot_of({ 1, 0 })); // one crash is never enough
         CHECK(CrashMap::hot_of({ 2, 0 }));       // 2 / 4
-        CHECK_FALSE(CrashMap::hot_of({ 2, 1 })); // 2 / 5
-        CHECK(CrashMap::hot_of({ 4, 2 }));       // 4 / 8
+        CHECK(CrashMap::hot_of({ 2, 1 }));       // 2 / 5
+        CHECK_FALSE(CrashMap::hot_of({ 2, 2 })); // 2 / 6
+        CHECK(CrashMap::hot_of({ 4, 4 }));       // 4 / 10
+        CHECK_FALSE(CrashMap::hot_of({ 4, 5 })); // 4 / 11
         CHECK_FALSE(CrashMap::hot_of({ 5, 20 }));
 
         CrashMap m;
@@ -45,12 +47,12 @@ TEST_SUITE("crash map")
         a.add_crash(Target::WRAM, 0x200);
         a.add_survival(Target::ARAM, 0x40, 2);
         b.add_crash(Target::WRAM, 0x205);
-        b.add_survival(Target::WRAM, 0x200);
+        b.add_survival(Target::WRAM, 0x200, 2);
         a.merge(b);
         CHECK(a.counts(Target::WRAM, 0x200).crashes == 2);
-        CHECK(a.counts(Target::WRAM, 0x200).survivals == 1);
+        CHECK(a.counts(Target::WRAM, 0x200).survivals == 2);
         CHECK(a.counts(Target::ARAM, 0x40).survivals == 2);
-        CHECK(a.hot(Target::WRAM, 0x200) == false); // 2 / 5
+        CHECK(a.hot(Target::WRAM, 0x200) == false); // 2 / 6
     }
 
     TEST_CASE("the hot mask answers per byte, for hot blocks only")

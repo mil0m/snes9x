@@ -23,7 +23,7 @@ class CrashMap
   public:
     static constexpr uint32_t kBlock = 16;
     static constexpr uint32_t kHotCrashes = 2; // one crash is never enough
-    static constexpr double kHotDanger = 0.5;
+    static constexpr double kHotDanger = 0.4; // 0.5 helped less on held-out seeds in FE4
 
     void add_crash(Target t, uint32_t offset, uint32_t n = 1);
     void add_survival(Target t, uint32_t offset, uint32_t n = 1);

@@ -1,7 +1,7 @@
 // End-to-end check of the corruption engine inside the real emulator, no window
 // needed:
 //
-//   corrupt-smoke <rom> <recipe.json> [frames=600] [warmup=600] [--guard | --replay | --copies | --map | --dump <dir>]
+//   corrupt-smoke <rom> <recipe.json> [frames=600] [warmup=600] [--guard | --learn | --replay | --copies | --map | --dump <dir>]
 //
 // Boots the ROM, runs `warmup` frames, saves a state, then runs `frames` twice
 // from that state: once clean, once with the recipe. Reports what the recipe
@@ -24,6 +24,7 @@
 #include "corrupt/core_access.h"
 #include "corrupt/core_memory.h"
 #include "corrupt/crash_guard.h"
+#include "corrupt/crash_map_keeper.h"
 #include "corrupt/engine.h"
 #include "corrupt/hook.h"
 #include "corrupt/recipe_json.h"
@@ -97,6 +98,106 @@ int run_guarded(const Recipe &recipe, int frames)
 }
 
 std::vector<std::vector<uint8_t>> snapshot_targets();
+
+// One guarded run that also learns a crash map. Returns crashes caught.
+int guarded_learning(const Recipe &recipe, int frames, CrashMapKeeper &keeper, bool &gave_up)
+{
+    CrashGuard guard;
+    guard.set_policy(recipe.crash_policy.value_or(PolicyKind::Reroll));
+    guard.set_detector_config(recipe.crash_detection.value_or(DetectorConfig{}));
+    engine.set_recipe(recipe);
+    engine.set_hot_mask(keeper.hot_mask());
+    engine.set_active(true);
+    S9xCorruptFrameHook = &frame_hook;
+    int caught = 0;
+    gave_up = false;
+    for (int i = 0; i < frames && !gave_up; i++)
+    {
+        headless::run_frames(1);
+        keeper.observe(engine.event_log(), engine.current_frame());
+        auto out = guard.between_frames(engine, access);
+        if (out.kind == GuardOutcome::Nothing)
+            continue;
+        caught++;
+        gave_up = out.kind == GuardOutcome::GaveUp;
+        if (keeper.crashed(out))
+            engine.set_hot_mask(keeper.hot_mask());
+    }
+    S9xCorruptFrameHook = nullptr;
+    engine.set_active(false);
+    return caught;
+}
+
+// --learn: play the recipe guarded for five sessions (seeds) while learning a crash map,
+// then, as a fair test, three other seeds from the same start with and without every
+// rule avoiding what was learned.
+int run_learning(const Recipe &recipe, int frames)
+{
+    auto start = headless::save_state();
+    CrashMapKeeper first;
+    bool gave_up = false;
+    // Several sessions' worth, the way the map builds up over time.
+    for (uint64_t seed : { recipe.seed, 101ull, 202ull, 303ull, 404ull })
+    {
+        headless::load_state(start);
+        Recipe learning = recipe;
+        learning.seed = seed;
+        CrashMaps so_far;
+        so_far.mine = first.mine();
+        first.reset(so_far);
+        int crashes = guarded_learning(learning, frames, first, gave_up);
+        printf("learn    seed %-4llu %d crashes%s; %zu hot blocks so far\n", (unsigned long long)seed, crashes,
+               gave_up ? " (gave up)" : "", first.hot_blocks());
+    }
+    for (auto t : kAllTargets)
+    {
+        std::vector<std::pair<uint32_t, BlockCounts>> blocks(first.combined().blocks(t).begin(),
+                                                             first.combined().blocks(t).end());
+        if (blocks.empty())
+            continue;
+        size_t crashed = 0, hot = 0;
+        for (auto &[b, c] : blocks)
+        {
+            crashed += c.crashes > 0;
+            hot += CrashMap::hot_of(c);
+        }
+        printf("  %-5s %zu blocks seen, %zu in a crash window, %zu hot\n", target_name(t), blocks.size(), crashed, hot);
+        std::sort(blocks.begin(), blocks.end(), [](auto &a, auto &b) {
+            return CrashMap::danger_of(a.second) > CrashMap::danger_of(b.second);
+        });
+        for (size_t i = 0; i < blocks.size() && i < 8 && blocks[i].second.crashes; i++)
+            printf("    %s  %u crashes, %u survivals, danger %.2f%s\n", hex(blocks[i].first).c_str(),
+                   blocks[i].second.crashes, blocks[i].second.survivals, CrashMap::danger_of(blocks[i].second),
+                   CrashMap::hot_of(blocks[i].second) ? "  HOT" : "");
+    }
+
+    // Fair test: other seeds (so other writes than the ones learned from), each played
+    // from the same start with and without avoiding what was learned.
+    int plain_total = 0, avoid_total = 0;
+    for (uint64_t seed : { 11ull, 22ull, 33ull })
+    {
+        Recipe other = recipe;
+        other.seed = seed;
+        Recipe avoiding = other;
+        for (auto &r : avoiding.rules)
+            r.avoid_hot = true;
+        int plain = 0, avoided = 0;
+        for (auto *run : { &other, &avoiding })
+        {
+            headless::load_state(start);
+            CrashMapKeeper keeper;
+            CrashMaps learned;
+            learned.mine = first.mine();
+            keeper.reset(learned);
+            (run == &other ? plain : avoided) = guarded_learning(*run, frames, keeper, gave_up);
+        }
+        printf("seed %-3llu %d crashes plain, %d avoiding\n", (unsigned long long)seed, plain, avoided);
+        plain_total += plain;
+        avoid_total += avoided;
+    }
+    printf("total    %d crashes plain, %d avoiding the %zu hot blocks\n", plain_total, avoid_total, first.hot_blocks());
+    return 0;
+}
 
 int run_replay(const Recipe &recipe, int frames)
 {
@@ -250,6 +351,8 @@ int main(int argc, char **argv)
         }
         return 0;
     }
+    if (argc > 5 && std::string(argv[5]) == "--learn")
+        return run_learning(*parsed.recipe, frames);
     if (argc > 5 && std::string(argv[5]) == "--replay")
         return run_replay(*parsed.recipe, frames);
 

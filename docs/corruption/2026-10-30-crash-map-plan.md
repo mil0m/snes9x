@@ -23,8 +23,8 @@ weirder instead of ending in a crash.
   300 blocks a crash. The innocent ones keep surviving afterwards; the guilty ones crash
   nearly every time. Splitting the blame (1/300 each) would never let a culprit stand out.
 - **Danger** = crashes / (crashes + survivals + 2), a crash rate with a small prior.
-  **Hot** = at least 2 crashes and danger of at least 0.5. One crash never makes a block
-  hot. These are starting values to tune from play.
+  **Hot** = at least 2 crashes and danger of at least 0.4 (0.5 at first; see findings).
+  One crash never makes a block hot. Starting values, to tune from play.
 - **`avoid_hot` drops hot addresses** after a rule picks them (it doesn't draw new ones),
   so rules without it replay exactly as before, and avoiding rules do a little less in
   dangerous memory. With `avoid_hot`, replays only match while the map is the same. It
