@@ -56,6 +56,7 @@ class Engine
     void set_intensity(double intensity);               // the whole recipe, 0..1, live
     void set_anchor_state(std::string file);            // the saved moment's file name; no restart
     void rename_region(const std::string &from, const std::string &to); // empty `to`: unnamed; no restart
+    void set_hot_mask(HotMask mask) { hot = std::move(mask); } // for rules with avoid_hot; no restart
 
     void on_frame(MemoryAccess &mem);
 
@@ -96,6 +97,7 @@ class Engine
     uint64_t next_id = 1;
     std::vector<uint64_t> mutes; // per rule: quiet through this frame
     std::deque<LoggedEvent> log;
+    HotMask hot;
     bool is_active = false;
     uint64_t frame = 0;
     uint16_t pending_hotkeys = 0;

@@ -1,4 +1,5 @@
 #pragma once
+#include "crash_map.h"
 #include "memory.h"
 #include "ops.h"
 #include "trigger.h"
@@ -26,7 +27,7 @@ struct Rule
     Pick pick = Pick::Fresh;
     bool enabled = true;
     double intensity = 1.0; // 0..1, scales count and the op's strength
-    bool avoid_hot = false; // phase 4: skip addresses the crash map marks dangerous
+    bool avoid_hot = false; // skip addresses the crash map has learned are dangerous
     uint64_t salt = 0;      // mixed into this rule's seed; re-rolling one rule changes it
 };
 
@@ -39,10 +40,12 @@ struct RuleRuntime
 };
 
 // Runs one rule for one frame. `frame` counts from activation, starting at 1.
-// `scale` multiplies the rule's intensity (the recipe's intensity).
+// `scale` multiplies the rule's intensity (the recipe's intensity). With rule.avoid_hot,
+// picked addresses that `hot` marks are dropped (not redrawn), so rules without it, or
+// an empty mask, replay exactly as before.
 std::vector<WriteEvent> tick_rule(const Rule &rule, RuleRuntime &rt, MemoryAccess &mem,
                                   uint64_t seed, uint32_t rule_index, uint64_t frame,
-                                  uint16_t pressed_hotkeys, double scale = 1.0);
+                                  uint16_t pressed_hotkeys, double scale = 1.0, const HotMask *hot = nullptr);
 
 std::optional<std::string> validate_rule(const Rule &rule, const MemoryAccess &mem);
 

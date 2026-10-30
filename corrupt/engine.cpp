@@ -133,7 +133,7 @@ void Engine::on_frame(MemoryAccess &mem)
             continue;
         auto &rule = current.rules[i];
         auto events = tick_rule(rule, runtimes[i], mem, Rng::rule_seed(current.seed, rule.salt), i, frame, hotkeys,
-                                current.intensity);
+                                current.intensity, &hot);
         for (auto &e : events)
             log.push_back({ frame, i, e });
     }

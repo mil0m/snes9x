@@ -79,7 +79,7 @@ Op scaled_op(const Op &op, double intensity)
 
 std::vector<WriteEvent> tick_rule(const Rule &rule, RuleRuntime &rt, MemoryAccess &mem,
                                   uint64_t seed, uint32_t rule_index, uint64_t frame,
-                                  uint16_t pressed_hotkeys, double scale)
+                                  uint16_t pressed_hotkeys, double scale, const HotMask *hot)
 {
     double intensity = std::clamp(rule.intensity * scale, 0.0, 1.0);
     if (!rule.enabled || intensity <= 0.0)
@@ -112,6 +112,13 @@ std::vector<WriteEvent> tick_rule(const Rule &rule, RuleRuntime &rt, MemoryAcces
     }
     else
         addresses = pick_distinct(rule.range, count, rng);
+
+    if (rule.avoid_hot && hot && !hot->empty())
+    {
+        std::erase_if(addresses, [&](uint32_t a) { return hot->is_hot(rule.range.target, a); });
+        if (addresses.empty())
+            return {};
+    }
 
     return apply_op(scaled_op(rule.op, intensity), rt.op_state, mem, rule.range, addresses, rng);
 }

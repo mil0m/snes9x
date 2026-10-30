@@ -19,13 +19,18 @@ class CrashLearner
   public:
     static constexpr uint64_t kSurviveFrames = 900;   // 15 s without a crash
     static constexpr uint64_t kSurvivalSpacing = 300; // per block
+    // Only writes this close before the trouble count as crashes. On repeat crashes the
+    // guard rolls back much further to get past latent damage, but as evidence of which
+    // bytes crash the game those long windows mostly blame bystanders.
+    static constexpr uint64_t kBlameFrames = 180;
 
     // Collects writes from frames not seen yet, and turns writes old enough into
     // survivals. A frame earlier than the last one means the run was rewound or restarted:
     // writes after it never happened.
     void observe(const std::deque<LoggedEvent> &log, uint64_t frame, CrashMap &map);
 
-    // The guard blamed writes in frames (after, through] and rolled back to `restored`.
+    // The guard blamed writes in frames (after, through] and rolled back to `restored`;
+    // the last kBlameFrames of that window count.
     void crash(uint64_t after, uint64_t through, uint64_t restored, CrashMap &map);
 
     void reset(); // a new game

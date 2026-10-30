@@ -1,6 +1,9 @@
 #include "doctest/doctest.h"
 #include "fake_memory.h"
+#include "corrupt/crash_map.h"
 #include "corrupt/rule.h"
+
+#include <algorithm>
 
 #include <bit>
 #include <set>
@@ -251,4 +254,75 @@ TEST_CASE("validate_rule reports the failing part")
     r = incrementer(1, Pick::Fresh);
     r.intensity = 1.5;
     CHECK(validate_rule(r, mem));
+}
+
+TEST_SUITE("avoiding the crash map's hot bytes")
+{
+    HotMask hot_0x140()
+    {
+        CrashMap map;
+        map.add_crash(Target::WRAM, 0x140, 3); // 0x140-0x14F is hot
+        return hot_mask(map);
+    }
+
+    void run_avoiding(const Rule &r, RuleRuntime &rt, FakeMemory &mem, const HotMask &hot, int frames)
+    {
+        for (int f = 1; f <= frames; f++)
+            tick_rule(r, rt, mem, 42, 0, uint64_t(f), 0, 1.0, &hot);
+    }
+
+    TEST_CASE("a rule with avoid_hot never writes a hot byte")
+    {
+        FakeMemory mem;
+        RuleRuntime rt;
+        auto rule = incrementer(8, Pick::Fresh);
+        rule.avoid_hot = true;
+        auto hot = hot_0x140();
+        run_avoiding(rule, rt, mem, hot, 200);
+        auto hit = touched(mem);
+        CHECK(hit.size() > 200); // it still corrupts the rest of its range
+        for (auto a : hit)
+            CHECK_FALSE((a >= 0x140 && a <= 0x14F));
+    }
+
+    TEST_CASE("without avoid_hot the mask changes nothing, so old replays hold")
+    {
+        FakeMemory a, b;
+        RuleRuntime ra, rb;
+        auto rule = incrementer(8, Pick::Fresh);
+        auto hot = hot_0x140();
+        run(rule, ra, a, 200);
+        run_avoiding(rule, rb, b, hot, 200);
+        CHECK(a.of(Target::WRAM) == b.of(Target::WRAM));
+        auto hit = touched(a);
+        CHECK(std::any_of(hit.begin(), hit.end(), [](uint32_t x) { return x >= 0x140 && x <= 0x14F; }));
+    }
+
+    TEST_CASE("sticky picks skip hot bytes too, even ones that turn hot later")
+    {
+        FakeMemory mem;
+        RuleRuntime rt;
+        auto rule = incrementer(40, Pick::Sticky);
+        rule.avoid_hot = true;
+        HotMask none;
+        run_avoiding(rule, rt, mem, none, 1);
+        REQUIRE(std::any_of(rt.sticky.begin(), rt.sticky.end(), [](uint32_t x) { return x >= 0x140 && x <= 0x14F; }));
+        auto before = mem.of(Target::WRAM);
+        auto hot = hot_0x140();
+        run_avoiding(rule, rt, mem, hot, 10);
+        for (uint32_t x = 0x140; x <= 0x14F; x++)
+            CHECK(mem.of(Target::WRAM)[x] == before[x]);
+    }
+
+    TEST_CASE("a range that's all hot writes nothing")
+    {
+        FakeMemory mem;
+        RuleRuntime rt;
+        auto rule = incrementer(4, Pick::Fresh);
+        rule.range = { Target::WRAM, 0x140, 0x14F };
+        rule.avoid_hot = true;
+        auto hot = hot_0x140();
+        CHECK(tick_rule(rule, rt, mem, 42, 0, 1, 0, 1.0, &hot).empty());
+        CHECK(touched(mem).empty());
+    }
 }

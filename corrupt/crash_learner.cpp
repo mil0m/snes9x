@@ -1,5 +1,6 @@
 #include "crash_learner.h"
 
+#include <algorithm>
 #include <unordered_set>
 
 namespace corrupt
@@ -41,6 +42,7 @@ void CrashLearner::observe(const std::deque<LoggedEvent> &log, uint64_t frame, C
 
 void CrashLearner::crash(uint64_t after, uint64_t through, uint64_t restored, CrashMap &map)
 {
+    after = std::max(after, through > kBlameFrames ? through - kBlameFrames : 0);
     std::unordered_set<uint64_t> blamed;
     for (auto &w : writes)
         if (w.frame > after && w.frame <= through && blamed.insert(key(w.target, w.offset)).second)

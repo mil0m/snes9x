@@ -132,3 +132,15 @@ TEST_SUITE("crash learner")
         CHECK_FALSE(r.map.hot(Target::WRAM, 0x3000));
     }
 }
+
+TEST_CASE("only the last 180 frames before the trouble are blamed")
+{
+    Run r;
+    r.step_write(0x100); // frame 1: written long before
+    r.until(400);
+    r.step_write(0x200); // frame 401
+    r.until(500);
+    r.learner.crash(0, 500, 0, r.map); // a deep rollback, the guard's 5th try
+    CHECK(r.map.counts(Target::WRAM, 0x100).crashes == 0);
+    CHECK(r.map.counts(Target::WRAM, 0x200).crashes == 1);
+}

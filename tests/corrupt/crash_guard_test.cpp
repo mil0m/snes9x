@@ -1,6 +1,7 @@
 #include "doctest/doctest.h"
 #include "fake_memory.h"
 #include "corrupt/crash_guard.h"
+#include "corrupt/crash_learner.h"
 
 #include <algorithm>
 #include <cstring>
@@ -411,5 +412,73 @@ TEST_SUITE("rule edits")
         rig.frames(600);
         CHECK(rig.outcomes.size() == 1);
         CHECK(rig.crash_byte() == 0);
+    }
+}
+
+TEST_SUITE("the crash map with the guard")
+{
+    // Pokes the crash byte every 700 frames; busy noise in 16 blocks is harmless. The
+    // tests use Skip, so play moves on after each crash: a fixed poke can't be re-rolled
+    // past, and a run stuck in a crash loop never lets anything survive.
+    Rule repeat_poke(bool avoid)
+    {
+        Rule r = poke_crash_byte(0, kCrashValue, kCrashValue);
+        r.when = { .type = TriggerType::EveryFrames, .every = 700 };
+        r.avoid_hot = avoid;
+        return r;
+    }
+
+    Rule busy_noise()
+    {
+        Rule r = harmless_noise();
+        r.range = { Target::WRAM, 0x1000, 0x10FF };
+        return r;
+    }
+
+    // The session's order: learn from the frame, run the guard, count its crash.
+    struct Learning : Rig
+    {
+        CrashLearner learner;
+        CrashMap map;
+        using Rig::Rig;
+        void step()
+        {
+            engine.on_frame(mem);
+            learner.observe(engine.event_log(), engine.current_frame(), map);
+            auto out = guard.between_frames(engine, core);
+            if (out.kind == GuardOutcome::Nothing)
+                return;
+            outcomes.push_back(out);
+            learner.crash(out.blame_after, out.blame_through, out.restored_frame, map);
+            engine.set_hot_mask(hot_mask(map));
+        }
+        void steps(int n)
+        {
+            for (int i = 0; i < n; i++)
+                step();
+        }
+    };
+
+    TEST_CASE("repeat crashes mark the guilty block hot, and the noise stays cool")
+    {
+        Learning rig(recipe_of({ repeat_poke(false), busy_noise() }), PolicyKind::Skip);
+        rig.steps(7000);
+        REQUIRE(rig.outcomes.size() >= 5);
+        CHECK(rig.engine.active());
+        CHECK(rig.map.hot(Target::WRAM, kCrashByte));
+        for (auto &[block, counts] : rig.map.blocks(Target::WRAM))
+            if (block != kCrashByte / CrashMap::kBlock * CrashMap::kBlock)
+                CHECK_FALSE(CrashMap::hot_of(counts));
+    }
+
+    TEST_CASE("once the block is hot, a rule that avoids it stops crashing")
+    {
+        Learning rig(recipe_of({ repeat_poke(true), busy_noise() }), PolicyKind::Skip);
+        rig.steps(2500);
+        REQUIRE(rig.map.hot(Target::WRAM, kCrashByte));
+        size_t crashes = rig.outcomes.size();
+        rig.steps(5000);
+        CHECK(rig.outcomes.size() == crashes);
+        CHECK(rig.engine.active());
     }
 }
