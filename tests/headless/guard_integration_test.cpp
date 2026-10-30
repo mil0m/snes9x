@@ -9,6 +9,7 @@
 #include "corrupt/crash_guard.h"
 #include "corrupt/hook.h"
 #include "corrupt/run_control.h"
+#include "corrupt/memory_watch.h"
 
 #include "snes9x.h"
 void S9xSoftReset(void); // cpuexec.h pulls in the whole CPU core
@@ -247,5 +248,37 @@ TEST_SUITE("reboots in the real core")
         CHECK(h.outcomes.empty());
         CHECK(alive(h));
     }
+}
+
+TEST_CASE("the memory watch sees the game's frame counter and the recipe's writes")
+{
+    Rule noise;
+    noise.name = "noise";
+    noise.range = { Target::WRAM, 0x4000, 0x40FF };
+    noise.op = { .type = OpType::Random, .min = 0, .max = 255 };
+    noise.when = { .type = TriggerType::EveryFrames, .every = 2 };
+    noise.count = 4;
+    Recipe r;
+    r.name = "noise";
+    r.seed = 5;
+    r.rules = { noise };
+    Harness h(testrom::Crash::None, r, PolicyKind::Skip);
+
+    MemoryWatch watch;
+    watch.watch(Target::WRAM, h.memory.size(Target::WRAM));
+    for (int i = 0; i < 300; i++)
+    {
+        h.run(1);
+        watch.observe(h.memory, h.engine.event_log(), h.engine.current_frame());
+    }
+    auto &s = watch.snapshot();
+    CHECK(s.heat[testrom::kFrameCounterAddr] > 40.0f); // NMI counts every frame
+    CHECK(s.heat[0x3000] == 0.0f);                       // nobody touches it
+    uint64_t hits = 0;
+    for (uint32_t a = 0x4000; a <= 0x40FF; a++)
+        hits += s.hits[a];
+    CHECK(hits >= 590); // 150 firings x 4 bytes, minus the odd unchanged value
+    CHECK(s.hits[0x3000] == 0u);
+    CHECK(s.bytes[testrom::kFrameCounterAddr] == h.wram(testrom::kFrameCounterAddr));
 }
 

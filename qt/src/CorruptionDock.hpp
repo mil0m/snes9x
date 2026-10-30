@@ -2,6 +2,9 @@
 #include <QDockWidget>
 #include <QTimer>
 
+#include <memory>
+
+#include "MemoryViewer.hpp"
 #include "corrupt/library.h"
 
 class EmuApplication;
@@ -60,6 +63,8 @@ class CorruptionDock : public QDockWidget
     QComboBox *recipe_combo;
     QComboBox *example_combo;
     QCheckBox *moments_check;
+    MemoryViewer *memory_viewer = nullptr;
+    std::unique_ptr<MemorySource> memory_source;
     QCheckBox *active_check;
     QLineEdit *seed_edit;
     QTableWidget *rules_table;

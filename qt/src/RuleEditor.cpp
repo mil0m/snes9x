@@ -92,7 +92,9 @@ QLineEdit *line(QWidget *parent, const char *name, const QString &placeholder = 
     return e;
 }
 
-QString target_label(Target t)
+} // namespace
+
+QString targetLabel(Target t)
 {
     switch (t)
     {
@@ -106,10 +108,13 @@ QString target_label(Target t)
     return {};
 }
 
+namespace
+{
+
 void fill_targets(QComboBox *c)
 {
     for (auto t : kAllTargets)
-        c->addItem(target_label(t), QString(target_name(t)));
+        c->addItem(targetLabel(t), QString(target_name(t)));
 }
 
 // Shows "5 %" rather than "5.0000 %", but keeps four decimals for values like 0.0625.

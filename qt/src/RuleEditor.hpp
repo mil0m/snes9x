@@ -13,6 +13,9 @@ class QLineEdit;
 class QSpinBox;
 class QStackedWidget;
 
+// "wram (work RAM)", "cgram (palette)": a target's name with what it holds.
+QString targetLabel(corrupt::Target target);
+
 // Edits one corruption rule: where (target and range, or a named region), what
 // (the op and its settings), when (the trigger) and how much. Every change is
 // validated against the game's memory sizes, and OK stays off until the rule is

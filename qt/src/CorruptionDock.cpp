@@ -3,6 +3,7 @@
 #include "EmuApplication.hpp"
 #include "EmuConfig.hpp"
 #include "IntensitySlider.hpp"
+#include "MemoryViewer.hpp"
 #include "RuleEditor.hpp"
 #include "corrupt/rule_text.h"
 
@@ -36,6 +37,24 @@ QString qs(const std::string &s)
 {
     return QString::fromStdString(s);
 }
+
+// The memory viewer's window onto the running game.
+struct SessionMemorySource : MemorySource
+{
+    CorruptionSession &s = CorruptionSession::get();
+    void watch(Target t) override { s.watchMemory(t); }
+    void stop() override { s.stopWatching(); }
+    void clearHits() override { s.clearHits(); }
+    MemorySnapshot snapshot() override { return s.memorySnapshot(); }
+    std::vector<CopyRun> findCopies(Target of) override { return s.findCopies(of); }
+    std::array<size_t, kTargetCount> sizes() override { return s.status().sizes; }
+    Regions regions() override
+    {
+        std::vector<std::string> errors;
+        return s.library().load_regions(s.status().game, errors);
+    }
+    std::string addRule(const Rule &rule) override { return s.addRule(rule); }
+};
 
 QPushButton *button(const QString &text, QWidget *parent)
 {
@@ -213,6 +232,21 @@ CorruptionDock::CorruptionDock(EmuApplication &app, QWidget *parent)
     connect(edit_rule_button, &QPushButton::clicked, [this] { editRule(selectedRule()); });
     connect(duplicate_rule_button, &QPushButton::clicked, this, &CorruptionDock::duplicateRule);
     connect(remove_rule_button, &QPushButton::clicked, this, &CorruptionDock::removeRule);
+
+    auto viewer_button = button(tr("Memory Viewer..."), root);
+    viewer_button->setToolTip(tr("See what the game changes and what the recipe hits, find its sprite and "
+                                 "palette copies, and make rules from a selected range."));
+    layout->addWidget(viewer_button);
+    connect(viewer_button, &QPushButton::clicked, [this] {
+        if (!memory_viewer)
+        {
+            memory_source = std::make_unique<SessionMemorySource>();
+            memory_viewer = new MemoryViewer(*memory_source, this);
+        }
+        memory_viewer->show();
+        memory_viewer->raise();
+        memory_viewer->activateWindow();
+    });
     connect(rules_table, &QTableWidget::itemChanged, [this](QTableWidgetItem *item) {
         if (item->column() == 0)
             CorruptionSession::get().setRuleEnabled(size_t(item->row()), item->checkState() == Qt::Checked);

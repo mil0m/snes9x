@@ -13,6 +13,8 @@
 // and shift-click, to select a range. Only the visible rows are painted.
 class MemoryView : public QAbstractScrollArea
 {
+    Q_OBJECT
+
   public:
     enum class Overlay
     {
