@@ -1,0 +1,85 @@
+#pragma once
+#include <QDialog>
+
+#include "corrupt/recipe_json.h"
+#include "corrupt/rule.h"
+
+class QCheckBox;
+class QComboBox;
+class QDialogButtonBox;
+class QDoubleSpinBox;
+class QLabel;
+class QLineEdit;
+class QSpinBox;
+class QStackedWidget;
+
+// Edits one corruption rule: where (target and range, or a named region), what
+// (the op and its settings), when (the trigger) and how much. Every change is
+// validated against the game's memory sizes, and OK stays off until the rule is
+// valid. It doesn't know the session, so tests can drive it without a game.
+class RuleEditor : public QDialog
+{
+  public:
+    RuleEditor(const corrupt::Rule &rule, const corrupt::Regions &regions,
+               const corrupt::MemoryAccess &sizes, QWidget *parent = nullptr);
+
+    corrupt::Rule rule() const; // the rule as the form stands
+    QString error() const;      // why it isn't valid; empty when it is
+
+  private:
+    struct Built
+    {
+        corrupt::Rule rule;
+        QString error;
+    };
+
+    void buildForm();
+    void load(const corrupt::Rule &rule);
+    Built build() const;
+    void refresh();
+    void regionChosen();
+
+    corrupt::Rule original; // keeps what the form doesn't show (salt, avoid_hot)
+    corrupt::Regions regions;
+    const corrupt::MemoryAccess &sizes;
+
+    QLineEdit *name_edit;
+    QComboBox *target_combo;
+    QComboBox *region_combo;
+    QLineEdit *first_edit;
+    QLineEdit *last_edit;
+
+    QComboBox *op_combo;
+    QStackedWidget *op_pages;
+    QSpinBox *add_min, *add_max;
+    QCheckBox *add_clamp;
+    QSpinBox *random_min, *random_max;
+    QComboBox *bitflip_mode;
+    QSpinBox *bitflip_bits;
+    QLineEdit *bitflip_mask;
+    QComboBox *swap_mode;
+    QLineEdit *swap_a, *swap_b;
+    QComboBox *swap_width;
+    QComboBox *copy_target;
+    QLineEdit *copy_first, *copy_last;
+    QSpinBox *copy_length;
+    QComboBox *freeze_mode;
+    QLineEdit *freeze_value;
+    QSpinBox *shuffle_window;
+
+    QComboBox *when_combo;
+    QStackedWidget *when_pages;
+    QSpinBox *once_frame, *every_frames, *hotkey;
+    QDoubleSpinBox *chance;
+    QCheckBox *window_enabled;
+    QSpinBox *window_start, *window_end;
+
+    QSpinBox *count_spin;
+    QComboBox *pick_combo;
+    QDoubleSpinBox *intensity_spin;
+    QCheckBox *enabled_check;
+
+    QLabel *summary_label;
+    QLabel *error_label;
+    QDialogButtonBox *buttons;
+};

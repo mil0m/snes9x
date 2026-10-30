@@ -44,12 +44,18 @@ build_qt() {
 }
 
 build_test() {
-  cmake -S tests -B build/tests -G Ninja -DCMAKE_BUILD_TYPE=Debug >/dev/null
+  local qt_prefix=""
+  if command -v brew >/dev/null && brew --prefix qt >/dev/null 2>&1; then qt_prefix="$(brew --prefix qt)"; fi
+  cmake -S tests -B build/tests -G Ninja -DCMAKE_BUILD_TYPE=Debug -DCMAKE_PREFIX_PATH="$qt_prefix" >/dev/null
   if ! out=$(cmake --build build/tests 2>&1); then echo "$out" | grep -v '^\[' >&2; exit 1; fi
   build/tests/corrupt-tests "$@"
   if [ -x build/tests/corrupt-headless-tests ] && [ $# -eq 0 ]; then
     # The core prints ROM info on every load; keep just the test results.
     build/tests/corrupt-headless-tests | grep -E "ERROR|FATAL|values|test cases|Status"
+  fi
+  if [ -x build/tests/corrupt-qt-tests ] && [ $# -eq 0 ]; then
+    # Offscreen; PNGs of the dialogs land in build/tests/shots.
+    CORRUPT_SHOTS_DIR=build/tests/shots build/tests/corrupt-qt-tests 2>&1 | grep -vE "^qt\\.qpa|propagateSizeHints" | grep -E "ERROR|FATAL|CHECK|values|test cases|Status|error"
   fi
 }
 
