@@ -331,6 +331,66 @@
        <string>Seek to Frame</string>
       </property>
      </row>
+     <row>
+      <property name="text">
+       <string>Corruption: On/Off</string>
+      </property>
+     </row>
+     <row>
+      <property name="text">
+       <string>Corruption: Re-roll Seed</string>
+      </property>
+     </row>
+     <row>
+      <property name="text">
+       <string>Corruption: Save Recipe</string>
+      </property>
+     </row>
+     <row>
+      <property name="text">
+       <string>Corruption: Fire Hotkey 1</string>
+      </property>
+     </row>
+     <row>
+      <property name="text">
+       <string>Corruption: Fire Hotkey 2</string>
+      </property>
+     </row>
+     <row>
+      <property name="text">
+       <string>Corruption: Fire Hotkey 3</string>
+      </property>
+     </row>
+     <row>
+      <property name="text">
+       <string>Corruption: Fire Hotkey 4</string>
+      </property>
+     </row>
+     <row>
+      <property name="text">
+       <string>Corruption: Fire Hotkey 5</string>
+      </property>
+     </row>
+     <row>
+      <property name="text">
+       <string>Corruption: Fire Hotkey 6</string>
+      </property>
+     </row>
+     <row>
+      <property name="text">
+       <string>Corruption: Fire Hotkey 7</string>
+      </property>
+     </row>
+     <row>
+      <property name="text">
+       <string>Corruption: Fire Hotkey 8</string>
+      </property>
+     </row>
+     <row>
+      <property name="text">
+       <string>Corruption: Fire Hotkey 9</string>
+      </property>
+     </row>
      <column>
       <property name="text">
        <string>Binding #1</string>

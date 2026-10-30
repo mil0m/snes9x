@@ -1,0 +1,16 @@
+{
+  "format": 1,
+  "name": "Sprite jitter",
+  "notes": "Nudges 32 sprite table bytes every frame. Most games copy their sprite table from WRAM during every VBlank, so this only shows as jitter on sprites it happens to hit; for lasting sprite chaos, corrupt the game's WRAM copy instead.",
+  "seed": 1003,
+  "rules": [
+    {
+      "name": "jitter",
+      "target": "oam",
+      "range": [ "0x0000", "0x01FF" ],
+      "op": { "type": "add", "min": -2, "max": 2 },
+      "when": { "every_frames": 1 },
+      "count": 32
+    }
+  ]
+}

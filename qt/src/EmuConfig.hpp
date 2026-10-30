@@ -35,6 +35,10 @@ struct EmuConfig
     int shader_parameters_dialog_height = 0;
     std::vector<std::string> recently_used;
 
+    // Corruption tooling
+    std::string corruption_library_root; // the recipe library, e.g. a clone of the shared library repo
+    bool corruption_panel_visible = false;
+
     // General
     bool fullscreen_on_open;
     bool disable_screensaver;
@@ -167,7 +171,7 @@ struct EmuConfig
 
     static const int allowed_bindings = 4;
     static const int num_controller_bindings = 18;
-    static const int num_shortcuts = 55;
+    static const int num_shortcuts = 67;
 
     bool automap_gamepads;
 
@@ -248,5 +252,17 @@ struct EmuConfig
         eStartRecording,
         eStopRecording,
         eSeekToFrame,
+        eCorruptionToggle,
+        eCorruptionReroll,
+        eCorruptionSaveRecipe,
+        eCorruptionFire1,
+        eCorruptionFire2,
+        eCorruptionFire3,
+        eCorruptionFire4,
+        eCorruptionFire5,
+        eCorruptionFire6,
+        eCorruptionFire7,
+        eCorruptionFire8,
+        eCorruptionFire9,
     };
 };

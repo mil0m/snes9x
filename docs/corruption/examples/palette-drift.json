@@ -1,0 +1,16 @@
+{
+  "format": 1,
+  "name": "Palette drift",
+  "notes": "Nudges palette colours twice a second. Games that refresh their palette from WRAM every frame show this as brief flashes; games that don't will drift for good.",
+  "seed": 1002,
+  "rules": [
+    {
+      "name": "drift",
+      "target": "cgram",
+      "range": [ "0x0000", "0x01FF" ],
+      "op": { "type": "add", "min": -2, "max": 2 },
+      "when": { "every_frames": 30 },
+      "count": 4
+    }
+  ]
+}

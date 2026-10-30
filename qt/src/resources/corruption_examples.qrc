@@ -1,0 +1,10 @@
+<RCC>
+  <qresource prefix="/corruption-examples">
+    <file alias="gentle-wram-noise.json">../../../docs/corruption/examples/gentle-wram-noise.json</file>
+    <file alias="music-mangler.json">../../../docs/corruption/examples/music-mangler.json</file>
+    <file alias="palette-drift.json">../../../docs/corruption/examples/palette-drift.json</file>
+    <file alias="sprite-jitter.json">../../../docs/corruption/examples/sprite-jitter.json</file>
+    <file alias="stat-swap-hotkey.json">../../../docs/corruption/examples/stat-swap-hotkey.json</file>
+    <file alias="tile-rot.json">../../../docs/corruption/examples/tile-rot.json</file>
+  </qresource>
+</RCC>

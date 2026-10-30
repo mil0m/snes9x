@@ -7,6 +7,7 @@
 
 class EmuApplication;
 class CheatsDialog;
+class CorruptionDock;
 
 class EmuMainWindow : public QMainWindow
 {
@@ -50,6 +51,7 @@ class EmuMainWindow : public QMainWindow
     static const size_t state_items_size = 10;
 
     std::unique_ptr<CheatsDialog> cheats_dialog;
+    CorruptionDock *corruption_dock = nullptr;
 
     bool manual_pause = false;
     bool focus_pause = false;

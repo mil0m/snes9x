@@ -1,0 +1,16 @@
+{
+  "format": 1,
+  "name": "Tile rot",
+  "notes": "Flips a bit in 16 random VRAM bytes every second. Graphics slowly decay until the game reloads them.",
+  "seed": 1004,
+  "rules": [
+    {
+      "name": "rot",
+      "target": "vram",
+      "range": [ "0x0000", "0xFFFF" ],
+      "op": { "type": "bitflip", "bits": 1 },
+      "when": { "every_frames": 60 },
+      "count": 16
+    }
+  ]
+}

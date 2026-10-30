@@ -56,6 +56,7 @@ struct EmuApplication
     ~EmuApplication();
     bool openFile(const std::string &filename);
     void handleBinding(const std::string &name, bool pressed);
+    void handleCorruptionBinding(const std::string &name);
     void updateSettings();
     void updateBindings();
     bool isBound(const EmuBinding &b);

@@ -10,6 +10,7 @@
 #endif
 
 #include "CheatsDialog.hpp"
+#include "CorruptionDock.hpp"
 #include "EmuApplication.hpp"
 #include "EmuBinding.hpp"
 #include "EmuCanvasOpenGL.hpp"
@@ -276,6 +277,16 @@ void EmuMainWindow::createWidgets()
     core_actions.push_back(cheats_item);
 
     menuBar()->addMenu(emulation_menu);
+
+    corruption_dock = new CorruptionDock(app, this);
+    addDockWidget(Qt::RightDockWidgetArea, corruption_dock);
+    corruption_dock->setVisible(app.config->corruption_panel_visible);
+    auto corruption_menu = new QMenu(tr("&Corruption"));
+    auto panel_item = corruption_dock->toggleViewAction();
+    panel_item->setText(tr("Show &Panel"));
+    corruption_menu->addAction(panel_item);
+    connect(panel_item, &QAction::toggled, [&](bool visible) { app.config->corruption_panel_visible = visible; });
+    menuBar()->addMenu(corruption_menu);
 
     // View Menu
     auto view_menu = new QMenu(tr("&View"));

@@ -1,0 +1,16 @@
+{
+  "format": 1,
+  "name": "Gentle WRAM noise",
+  "notes": "Two random bytes every two seconds in upper work RAM. Skips $7E:0000-1FFF, where most games keep the stack and direct page.",
+  "seed": 1001,
+  "rules": [
+    {
+      "name": "noise",
+      "target": "wram",
+      "range": [ "0x2000", "0x1FFFF" ],
+      "op": { "type": "random", "min": 0, "max": 255 },
+      "when": { "every_frames": 120 },
+      "count": 2
+    }
+  ]
+}

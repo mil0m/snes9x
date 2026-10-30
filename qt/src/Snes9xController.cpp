@@ -1,4 +1,5 @@
 #include "Snes9xController.hpp"
+#include "CorruptionSession.hpp"
 #include "EmuConfig.hpp"
 #include "SoftwareScalers.hpp"
 #include "fscompat.h"
@@ -104,7 +105,10 @@ void Snes9xController::init()
 void Snes9xController::deinit()
 {
     if (active)
+    {
+        CorruptionSession::get().gameClosing();
         S9xAutoSaveSRAM();
+    }
     S9xGraphicsDeinit();
     S9xDeinitAPU();
 }
@@ -204,13 +208,17 @@ void Snes9xController::updateSettings(const EmuConfig * const config)
 bool Snes9xController::openFile(const std::string &filename)
 {
     if (active)
+    {
+        CorruptionSession::get().gameClosing();
         S9xAutoSaveSRAM();
+    }
     active = false;
     auto result = Memory.LoadROM(filename.c_str());
     if (result)
     {
         active = true;
         Memory.LoadSRAM(S9xGetFilename(".srm", SRAM_DIR).c_str());
+        CorruptionSession::get().gameLoaded();
     }
     return active;
 }

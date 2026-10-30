@@ -1,0 +1,16 @@
+{
+  "format": 1,
+  "name": "Stat swap on hotkey",
+  "notes": "Each press of corruption hotkey 1 swaps two random bytes in low work RAM, where many games keep player stats. Riskier than the others.",
+  "seed": 1006,
+  "rules": [
+    {
+      "name": "swap",
+      "target": "wram",
+      "range": [ "0x0100", "0x1EFF" ],
+      "op": { "type": "swap" },
+      "when": { "hotkey": 1 },
+      "count": 1
+    }
+  ]
+}

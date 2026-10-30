@@ -14,70 +14,7 @@ set(CMAKE_AUTORCC ON)
 set(CMAKE_GLOBAL_AUTOGEN_TARGET ON)
 
 set(DEFINES SNES9X_QT)
-set(SNES9X_CORE_SOURCES
-    ../fxinst.cpp
-    ../fxemu.cpp
-    ../fxdbg.cpp
-    ../c4.cpp
-    ../c4emu.cpp
-    ../apu/apu.cpp
-    ../apu/bapu/dsp/sdsp.cpp
-    ../apu/bapu/smp/smp.cpp
-    ../apu/bapu/smp/smp_state.cpp
-    ../msu1.cpp
-    ../msu1.h
-    ../dsp.cpp
-    ../dsp1.cpp
-    ../dsp2.cpp
-    ../dsp3.cpp
-    ../dsp4.cpp
-    ../spc7110.cpp
-    ../obc1.cpp
-    ../seta.cpp
-    ../seta010.cpp
-    ../seta011.cpp
-    ../seta018.cpp
-    ../controls.cpp
-    ../crosshairs.cpp
-    ../cpu.cpp
-    ../sa1.cpp
-    ../debug.cpp
-    ../sdd1.cpp
-    ../tile.cpp
-    ../tileimpl-n1x1.cpp
-    ../tileimpl-n2x1.cpp
-    ../tileimpl-h2x1.cpp
-    ../srtc.cpp
-    ../gfx.cpp
-    ../memmap.cpp
-    ../clip.cpp
-    ../ppu.cpp
-    ../dma.cpp
-    ../snes9x.cpp
-    ../globals.cpp
-    ../stream.cpp
-    ../conffile.cpp
-    ../bsx.cpp
-    ../snapshot.cpp
-    ../screenshot.cpp
-    ../movie.cpp
-    ../statemanager.cpp
-    ../sha256.cpp
-    ../bml.cpp
-    ../cpuops.cpp
-    ../cpuexec.cpp
-    ../sa1cpu.cpp
-    ../cheats.cpp
-    ../cheats2.cpp
-    ../sdd1emu.cpp
-    ../netplay.cpp
-    ../server.cpp
-    ../loadzip.cpp
-    ../fscompat.cpp)
-file(GLOB SNES9X_CORRUPT_SOURCES CONFIGURE_DEPENDS ../corrupt/*.cpp)
-list(APPEND SNES9X_CORE_SOURCES ${SNES9X_CORRUPT_SOURCES})
-add_library(snes9x-core ${SNES9X_CORE_SOURCES})
-target_include_directories(snes9x-core PRIVATE ../ ../external)
+include(../cmake/snes9x_core.cmake)
 target_compile_definitions(snes9x-core PRIVATE ${DEFINES} ZLIB HAVE_STDINT_H HAVE_LIBPNG ALLOW_CPU_OVERCLOCK)
 
 if(${CMAKE_SYSTEM_NAME} STREQUAL "Windows")
@@ -217,6 +154,8 @@ list(APPEND QT_GUI_SOURCES
     src/SDLInputManager.cpp
     src/ShaderParametersDialog.cpp
     src/CheatsDialog.cpp
+    src/CorruptionSession.cpp
+    src/CorruptionDock.cpp
     src/SoftwareScalers.cpp
     src/EmuCanvasQt.cpp
     src/EmuCanvasOpenGL.cpp
@@ -336,7 +275,7 @@ list(APPEND SOURCES ../external/imgui/imgui.cpp
     ../external/imgui/snes9x_imgui.cpp)
 list(APPEND INCLUDES ../external/imgui)
 
-add_executable(snes9x-qt ${QT_GUI_SOURCES} ${SOURCES} ${PLATFORM_SOURCES} src/resources/snes9x.qrc)
+add_executable(snes9x-qt ${QT_GUI_SOURCES} ${SOURCES} ${PLATFORM_SOURCES} src/resources/snes9x.qrc src/resources/corruption_examples.qrc)
 
 if(${CMAKE_SYSTEM_NAME} STREQUAL "Windows")
     set_target_properties(snes9x-qt PROPERTIES WIN32_EXECUTABLE True)

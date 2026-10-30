@@ -1,0 +1,16 @@
+{
+  "format": 1,
+  "name": "Music mangler",
+  "notes": "Flips one bit in sound CPU RAM every five seconds. Skips its zero page and stack. Can kill the music driver, which is part of the fun.",
+  "seed": 1005,
+  "rules": [
+    {
+      "name": "mangle",
+      "target": "aram",
+      "range": [ "0x0200", "0xFFFF" ],
+      "op": { "type": "bitflip", "bits": 1 },
+      "when": { "every_frames": 300 },
+      "count": 1
+    }
+  ]
+}

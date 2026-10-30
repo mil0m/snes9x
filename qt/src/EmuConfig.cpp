@@ -67,6 +67,18 @@ static const char *shortcut_names[] =
     "BeginRecordingMovie",
     "EndRecordingMovie",
     "SeekToFrame",
+    "CorruptionToggle",
+    "CorruptionReroll",
+    "CorruptionSaveRecipe",
+    "CorruptionFire1",
+    "CorruptionFire2",
+    "CorruptionFire3",
+    "CorruptionFire4",
+    "CorruptionFire5",
+    "CorruptionFire6",
+    "CorruptionFire7",
+    "CorruptionFire8",
+    "CorruptionFire9",
 };
 
 static const char *default_controller_keys[] =
@@ -125,7 +137,19 @@ static const char *default_controller_keys[] =
     "", //    eToggleAllSoundChannels
     "", //    eStartRecording
     "", //    eStopRecording
-    ""
+    "", //    eSeekToFrame
+    "Keyboard F7", //    eCorruptionToggle
+    "Keyboard F8", //    eCorruptionReroll
+    "", //    eCorruptionSaveRecipe
+    "Keyboard F9", //    eCorruptionFire1
+    "", //    eCorruptionFire2
+    "", //    eCorruptionFire3
+    "", //    eCorruptionFire4
+    "", //    eCorruptionFire5
+    "", //    eCorruptionFire6
+    "", //    eCorruptionFire7
+    "", //    eCorruptionFire8
+    "", //    eCorruptionFire9
 };
 
 const char **EmuConfig::getDefaultShortcutKeys()
@@ -195,6 +219,12 @@ bool EmuConfig::setDefaults(int section)
 {
     main_window_width = 640;
     main_window_height = 480;
+
+    if (section == -1)
+    {
+        corruption_library_root = (fs::path(QDir::homePath().toStdString()) / "Documents" / "Snes9x Corruptions").string();
+        corruption_panel_visible = false;
+    }
 
     bool restart = false;
     auto restart_set = [&](auto& dst, auto str) {
@@ -545,6 +575,11 @@ void EmuConfig::config(const std::string &filename, bool write)
     String("ExportFolder", export_folder);
 
     Int("SRAMSaveInterval", sram_save_interval);
+    EndSection();
+
+    BeginSection("Corruption");
+    String("LibraryRoot", corruption_library_root);
+    Bool("PanelVisible", corruption_panel_visible);
     EndSection();
 }
 

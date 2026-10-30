@@ -1,4 +1,5 @@
 #include "EmuApplication.hpp"
+#include "CorruptionSession.hpp"
 #include "EmuMainWindow.hpp"
 #include "SDLInputManager.hpp"
 #include "Snes9xController.hpp"
@@ -443,6 +444,10 @@ void EmuApplication::handleBinding(const std::string &name, bool pressed)
                 memcpy(config->binding.controller[1].buttons, temp, sizeof(temp));
                 updateBindings();
             }
+            else if (name.starts_with("Corruption"))
+            {
+                handleCorruptionBinding(name);
+            }
             else if (name == "GrabMouse")
             {
                 if (config->port_configuration == EmuConfig::eMousePlusController ||
@@ -466,6 +471,45 @@ void EmuApplication::handleBinding(const std::string &name, bool pressed)
     }
 }
 
+void EmuApplication::handleCorruptionBinding(const std::string &name)
+{
+    auto &session = CorruptionSession::get();
+    std::string text;
+
+    if (name == "CorruptionToggle")
+    {
+        bool on = session.toggleActive();
+        auto status = session.status();
+        if (!status.has_recipe)
+            text = "Corruption: no recipe loaded";
+        else
+            text = std::string("Corruption ") + (on ? "ON" : "OFF") + " - " + status.engine.recipe_name +
+                   " - seed " + std::to_string(status.engine.seed);
+    }
+    else if (name == "CorruptionReroll")
+    {
+        text = "Corruption seed " + std::to_string(session.reroll());
+    }
+    else if (name == "CorruptionSaveRecipe")
+    {
+        auto status = session.status();
+        auto recipe_name = status.engine.recipe_name.empty() ? "untitled" : status.engine.recipe_name;
+        recipe_name += " " + std::to_string(status.engine.seed);
+        auto result = session.saveRecipeAs(recipe_name, "");
+        text = result.error.empty() ? "Saved recipe " + result.path.filename().string() : "Couldn't save: " + result.error;
+    }
+    else if (name.starts_with("CorruptionFire"))
+    {
+        int n = name.back() - '0';
+        session.pressHotkey(n);
+        return; // the corruption itself is the feedback
+    }
+    else
+        return;
+
+    emu_thread->runOnThread([&, text] { core->setMessage(text); });
+}
+
 bool EmuApplication::isBound(const EmuBinding &b)
 {
     if (bindings.find(b.hash()) != bindings.end())
@@ -475,6 +519,8 @@ bool EmuApplication::isBound(const EmuBinding &b)
 
 void EmuApplication::updateSettings()
 {
+    CorruptionSession::get().setLibraryRoot(config->corruption_library_root);
+
     if (config->adjust_input_rate_automatically && !config->vrr_enabled)
     {
         constexpr double ir_ratio = 60.098813 / 32040.0;
