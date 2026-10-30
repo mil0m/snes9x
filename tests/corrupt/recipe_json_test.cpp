@@ -347,3 +347,26 @@ TEST_CASE("numbers typed in the panel parse like the ones in recipes")
     CHECK_FALSE(parse_number("0x10000000000000000")); // overflows 64 bits
     CHECK_FALSE(parse_number("99999999999999999999"));
 }
+
+TEST_CASE("recipe intensity round-trips, and is left out at full strength")
+{
+    auto parsed = parse_recipe(R"({"format":1,"name":"x","intensity":0.4,"rules":[]})", {});
+    REQUIRE(parsed.recipe);
+    CHECK(parsed.recipe->intensity == 0.4);
+    auto text = write_recipe(*parsed.recipe);
+    CHECK(text.find("\"intensity\": 0.4") != std::string::npos);
+    CHECK(parse_recipe(text, {}).recipe->intensity == 0.4);
+
+    parsed.recipe->intensity = 1.0;
+    CHECK(write_recipe(*parsed.recipe).find("intensity") == std::string::npos);
+    CHECK(parse_recipe(R"({"format":1,"name":"x","rules":[]})", {}).recipe->intensity == 1.0);
+}
+
+TEST_CASE("recipe intensity must be a number within 0..1")
+{
+    auto high = parse_recipe(R"({"format":1,"name":"x","intensity":1.5,"rules":[]})", {});
+    REQUIRE_FALSE(high.recipe);
+    CHECK(high.errors[0].find("recipe.intensity") != std::string::npos);
+    CHECK_FALSE(parse_recipe(R"({"format":1,"name":"x","intensity":-0.1,"rules":[]})", {}).recipe);
+    CHECK_FALSE(parse_recipe(R"({"format":1,"name":"x","intensity":"lots","rules":[]})", {}).recipe);
+}

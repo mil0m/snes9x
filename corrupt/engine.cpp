@@ -1,5 +1,7 @@
 #include "engine.h"
 
+#include <algorithm>
+
 namespace corrupt
 {
 
@@ -89,6 +91,11 @@ void Engine::set_info(std::string name, std::string notes)
     current.notes = std::move(notes);
 }
 
+void Engine::set_intensity(double intensity)
+{
+    current.intensity = std::clamp(intensity, 0.0, 1.0);
+}
+
 void Engine::restart()
 {
     runtimes.assign(current.rules.size(), RuleRuntime{});
@@ -112,7 +119,8 @@ void Engine::on_frame(MemoryAccess &mem)
         if (frame <= mutes[i])
             continue;
         auto &rule = current.rules[i];
-        auto events = tick_rule(rule, runtimes[i], mem, Rng::rule_seed(current.seed, rule.salt), i, frame, hotkeys);
+        auto events = tick_rule(rule, runtimes[i], mem, Rng::rule_seed(current.seed, rule.salt), i, frame, hotkeys,
+                                current.intensity);
         for (auto &e : events)
             log.push_back({ frame, i, e });
     }

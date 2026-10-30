@@ -581,7 +581,7 @@ ParseResult parse_recipe(std::string_view json_text, const Regions &regions)
         result.errors = ctx.errors;
         return result;
     }
-    check_keys(ctx, doc, "recipe", { "format", "name", "notes", "game", "seed", "anchor_state", "rules", "crash_policy", "crash_detection" });
+    check_keys(ctx, doc, "recipe", { "format", "name", "notes", "game", "seed", "intensity", "anchor_state", "rules", "crash_policy", "crash_detection" });
 
     if (!doc.contains("format") || !doc["format"].is_number_integer() || doc["format"].get<int>() != Recipe::kFormat)
     {
@@ -619,6 +619,15 @@ ParseResult parse_recipe(std::string_view json_text, const Regions &regions)
             recipe.seed = s.get<uint64_t>();
         else if (auto n = get_int(ctx, s, "recipe.seed"))
             recipe.seed = uint64_t(*n);
+    }
+
+    if (doc.contains("intensity"))
+    {
+        const json &v = doc["intensity"];
+        if (v.is_number() && v.get<double>() >= 0.0 && v.get<double>() <= 1.0)
+            recipe.intensity = v.get<double>();
+        else
+            ctx.fail("recipe.intensity", "expected a number within 0..1");
     }
 
     if (doc.contains("crash_policy"))
@@ -659,6 +668,8 @@ std::string write_recipe(const Recipe &recipe)
     if (!recipe.game.title.empty() || !recipe.game.sha256.empty() || !recipe.game.crc32.empty())
         doc["game"] = { { "title", recipe.game.title }, { "sha256", recipe.game.sha256 }, { "crc32", recipe.game.crc32 } };
     doc["seed"] = recipe.seed;
+    if (recipe.intensity != 1.0)
+        doc["intensity"] = recipe.intensity;
     if (!recipe.anchor_state.empty())
         doc["anchor_state"] = recipe.anchor_state;
     if (recipe.crash_policy)

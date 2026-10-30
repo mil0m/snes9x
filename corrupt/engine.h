@@ -53,6 +53,7 @@ class Engine
     void press_hotkey(int n);   // used on the next frame
     void set_rule_enabled(size_t index, bool enabled);
     void set_info(std::string name, std::string notes); // no restart
+    void set_intensity(double intensity);               // the whole recipe, 0..1, live
 
     void on_frame(MemoryAccess &mem);
 

@@ -25,6 +25,7 @@ struct Recipe
     std::string notes;
     GameId game;
     uint64_t seed = 0;
+    double intensity = 1.0; // 0..1, multiplies every rule's intensity (the panel's Chaos slider)
     std::string anchor_state; // phase 3: save state the recipe starts from
     std::vector<Rule> rules;
 

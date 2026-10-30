@@ -539,3 +539,63 @@ TEST_CASE("renaming the recipe keeps the run going")
     CHECK(e.current_frame() == 30);
     CHECK(e.status().recipe_name == "renamed");
 }
+
+TEST_SUITE("recipe intensity")
+{
+    TEST_CASE("half recipe intensity is the same as every rule at half")
+    {
+        auto by_recipe = noisy_recipe(11);
+        by_recipe.intensity = 0.5;
+        auto by_rules = noisy_recipe(11);
+        for (auto &r : by_rules.rules)
+            r.intensity = 0.5;
+        FakeMemory a, b, full;
+        Engine ea, eb, ef;
+        ea.set_recipe(by_recipe);
+        eb.set_recipe(by_rules);
+        ef.set_recipe(noisy_recipe(11));
+        ea.set_active(true);
+        eb.set_active(true);
+        ef.set_active(true);
+        frames(ea, a, 300);
+        frames(eb, b, 300);
+        frames(ef, full, 300);
+        CHECK(a.bytes == b.bytes);
+        CHECK(a.bytes != full.bytes);
+    }
+
+    TEST_CASE("intensity 0 stops every rule; changing it live keeps the run")
+    {
+        FakeMemory mem;
+        Engine e;
+        e.set_recipe(noisy_recipe(3));
+        e.set_active(true);
+        frames(e, mem, 30);
+        e.set_intensity(0.0);
+        CHECK(e.recipe().intensity == 0.0);
+        CHECK(e.current_frame() == 30);
+        auto before = mem.bytes;
+        frames(e, mem, 300);
+        CHECK(mem.bytes == before);
+        e.set_intensity(1.0);
+        frames(e, mem, 60);
+        CHECK(mem.bytes != before);
+    }
+
+    TEST_CASE("recipe intensity is clamped to 0..1 and survives restores and re-rolls")
+    {
+        Engine e;
+        e.set_recipe(noisy_recipe(3));
+        e.set_active(true);
+        auto snap = e.snapshot();
+        e.set_intensity(1.7);
+        CHECK(e.recipe().intensity == 1.0);
+        e.set_intensity(-1);
+        CHECK(e.recipe().intensity == 0.0);
+        e.set_intensity(0.3);
+        e.restore(snap);
+        CHECK(e.recipe().intensity == 0.3);
+        e.reroll(9);
+        CHECK(e.recipe().intensity == 0.3);
+    }
+}

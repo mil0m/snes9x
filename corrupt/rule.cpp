@@ -79,9 +79,10 @@ Op scaled_op(const Op &op, double intensity)
 
 std::vector<WriteEvent> tick_rule(const Rule &rule, RuleRuntime &rt, MemoryAccess &mem,
                                   uint64_t seed, uint32_t rule_index, uint64_t frame,
-                                  uint16_t pressed_hotkeys)
+                                  uint16_t pressed_hotkeys, double scale)
 {
-    if (!rule.enabled || rule.intensity <= 0.0)
+    double intensity = std::clamp(rule.intensity * scale, 0.0, 1.0);
+    if (!rule.enabled || intensity <= 0.0)
         return {};
 
     Rng trigger_rng = Rng::for_firing(seed ^ kTriggerSalt, rule_index, frame);
@@ -91,7 +92,7 @@ std::vector<WriteEvent> tick_rule(const Rule &rule, RuleRuntime &rt, MemoryAcces
     // Below one address, intensity becomes the chance to fire at all, so a gentle
     // setting still means "less" for count-1 rules. Skipped frames aren't firings,
     // which keeps the values of the firings that do happen replayable.
-    double expected = rule.count * std::min(rule.intensity, 1.0);
+    double expected = rule.count * intensity;
     if (expected < 1.0)
     {
         Rng thin = Rng::for_firing(seed ^ kThinSalt, rule_index, frame);
@@ -112,7 +113,7 @@ std::vector<WriteEvent> tick_rule(const Rule &rule, RuleRuntime &rt, MemoryAcces
     else
         addresses = pick_distinct(rule.range, count, rng);
 
-    return apply_op(scaled_op(rule.op, rule.intensity), rt.op_state, mem, rule.range, addresses, rng);
+    return apply_op(scaled_op(rule.op, intensity), rt.op_state, mem, rule.range, addresses, rng);
 }
 
 std::optional<std::string> validate_rule(const Rule &rule, const MemoryAccess &mem)

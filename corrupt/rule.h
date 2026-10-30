@@ -39,9 +39,10 @@ struct RuleRuntime
 };
 
 // Runs one rule for one frame. `frame` counts from activation, starting at 1.
+// `scale` multiplies the rule's intensity (the recipe's intensity).
 std::vector<WriteEvent> tick_rule(const Rule &rule, RuleRuntime &rt, MemoryAccess &mem,
                                   uint64_t seed, uint32_t rule_index, uint64_t frame,
-                                  uint16_t pressed_hotkeys);
+                                  uint16_t pressed_hotkeys, double scale = 1.0);
 
 std::optional<std::string> validate_rule(const Rule &rule, const MemoryAccess &mem);
 
