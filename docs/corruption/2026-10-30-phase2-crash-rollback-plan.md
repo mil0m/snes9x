@@ -34,7 +34,7 @@ continues, and every crash is written to the journal. Test-first throughout.
   |---|---|---|
   | CPU stopped / deadlocked | on, immediate | now |
   | runaway PC (I/O or open bus) | on, 30 frames | first bad frame |
-  | NMI off | on, 180 frames | when it went off |
+  | NMI off | on, 300 frames (raised from 180: clean runs reached 2.7 s) | when it went off |
   | frozen picture | on, 300 frames | first frozen frame |
   | black screen | on, 480 frames | when it went black |
 
@@ -96,6 +96,14 @@ continues, and every crash is written to the journal. Test-first throughout.
   would have rolled back while a rule was active.
 - **Skipped frames keep the old picture.** The frozen check ignores frames that weren't
   drawn (frameskip, fast-forward).
+
+- **Latent damage needs deeper rollbacks.** Running `low-wram-roulette` under the guard on
+  real games (`corrupt-smoke … --guard`) caught real STP, NMI-off and even runaway-PC
+  crashes, but the same NMI-off crash recurred every ~4.7 s until the guard gave up. The
+  harmful byte had been written long before the crash, so every recent checkpoint already
+  held it. Each crash in a row now goes 5 s further back (`kStepBackFrames`): in 5-minute
+  runs Pocky & Rocky then survived 24 crashes and FE4 survived 18, with no give-ups.
+- **NMI-off threshold raised to 5 s**: clean runs had natural stretches up to 2.7 s.
 
 ## Out of this phase
 Bisecting a suspect set across repeated crashes (until the journal shows we need it), the

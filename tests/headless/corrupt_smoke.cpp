@@ -1,15 +1,20 @@
 // End-to-end check of the corruption engine inside the real emulator, no window
 // needed:
 //
-//   corrupt-smoke <rom> <recipe.json> [frames=600] [warmup=600]
+//   corrupt-smoke <rom> <recipe.json> [frames=600] [warmup=600] [--guard]
 //
 // Boots the ROM, runs `warmup` frames, saves a state, then runs `frames` twice
 // from that state: once clean, once with the recipe. Reports what the recipe
 // changed, and checks after every frame that each byte the engine logged really
 // reads back from emulator memory (i.e. CoreMemory writes land).
+//
+// With --guard it instead runs the recipe once under the crash guard, wired like
+// the Qt app, and reports every crash caught and rollback made.
 #include "headless_core.h"
 
+#include "corrupt/core_access.h"
 #include "corrupt/core_memory.h"
+#include "corrupt/crash_guard.h"
 #include "corrupt/engine.h"
 #include "corrupt/hook.h"
 #include "corrupt/recipe_json.h"
@@ -28,14 +33,15 @@ namespace
 
 Engine engine;
 CoreMemory memory;
+SnesCoreAccess access;
 size_t verified = 0;
 size_t mismatched = 0;
 
 void frame_hook()
 {
-    size_t before = engine.event_log().size();
     uint64_t frame_before = engine.status().frame;
     engine.on_frame(memory);
+    access.note_frame_start();
     // Only this frame's events; the log is bounded, so count from the end.
     for (auto it = engine.event_log().rbegin(); it != engine.event_log().rend() && it->frame > frame_before; ++it)
     {
@@ -44,7 +50,37 @@ void frame_hook()
         else
             mismatched++;
     }
-    (void)before;
+}
+
+int run_guarded(const Recipe &recipe, int frames)
+{
+    CrashGuard guard;
+    guard.set_policy(recipe.crash_policy.value_or(PolicyKind::Reroll));
+    guard.set_detector_config(recipe.crash_detection.value_or(DetectorConfig{}));
+    int journal_lines = 0;
+    guard.on_journal = [&](const JournalEntry &) { journal_lines++; };
+
+    engine.set_recipe(recipe);
+    engine.set_active(true);
+    S9xCorruptFrameHook = &frame_hook;
+    int caught = 0, gave_up = 0;
+    for (int i = 0; i < frames; i++)
+    {
+        headless::run_frames(1);
+        auto out = guard.between_frames(engine, access);
+        if (out.kind == GuardOutcome::Nothing)
+            continue;
+        caught++;
+        gave_up += out.kind == GuardOutcome::GaveUp;
+        printf("  call %5d  %s\n", i + 1, out.summary.c_str());
+        if (out.kind == GuardOutcome::GaveUp)
+            break;
+    }
+    S9xCorruptFrameHook = nullptr;
+    printf("guard    %d crashes caught, %d gave up, engine %s, %d journal lines\n", caught, gave_up,
+           engine.active() ? "still active" : "off", journal_lines);
+    printf("writes   %zu verified in emulator memory, %zu mismatched\n", verified, mismatched);
+    return mismatched == 0 ? 0 : 1;
 }
 
 std::vector<std::vector<uint8_t>> snapshot_targets()
@@ -100,6 +136,9 @@ int main(int argc, char **argv)
         }
 
     headless::run_frames(warmup);
+    if (argc > 5 && std::string(argv[5]) == "--guard")
+        return run_guarded(*parsed.recipe, frames);
+
     auto start = headless::save_state();
     if (start.empty())
     {

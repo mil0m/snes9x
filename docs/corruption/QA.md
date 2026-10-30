@@ -55,3 +55,19 @@ scratch folder. By default Snes9x writes the `.srm` next to the ROM.
 ## 6. Sound
 1. Add, load and activate **music-mangler**, and wait a few firings (5 s each).
    - [ ] The music audibly glitches. It may also stop entirely; that's expected.
+
+## 7. Crash guard
+1. Add, load and activate **low-wram-roulette** in a game you know, and play.
+   - [ ] Within a minute or two, a crash is caught: the message `Crash caught (…): back N s, reroll roulette` appears, and the game continues from slightly earlier.
+   - [ ] The panel's crash count goes up, and the rule's *Crashes* column too.
+   - [ ] `journal.<you>.jsonl` in the game's library folder has a `crash` line, and a `recovered` line after about 10 calm seconds.
+2. Set the policy to **disable** and wait for a crash.
+   - [ ] The rule unticks itself.
+3. Open a text box or menu and leave it alone for 10+ s with a rule active.
+   - [ ] No rollback.
+4. Press **Mark Crash**.
+   - [ ] It rolls back about 2 s.
+5. Untick **Detect crashes**.
+   - [ ] Crashes are no longer caught.
+6. Fast-forward (Tab) with a rule active.
+   - [ ] No false "frozen picture" rollbacks.

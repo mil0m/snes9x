@@ -1,6 +1,7 @@
 <RCC>
   <qresource prefix="/corruption-examples">
     <file alias="gentle-wram-noise.json">../../../docs/corruption/examples/gentle-wram-noise.json</file>
+    <file alias="low-wram-roulette.json">../../../docs/corruption/examples/low-wram-roulette.json</file>
     <file alias="music-mangler.json">../../../docs/corruption/examples/music-mangler.json</file>
     <file alias="palette-drift.json">../../../docs/corruption/examples/palette-drift.json</file>
     <file alias="sprite-jitter.json">../../../docs/corruption/examples/sprite-jitter.json</file>

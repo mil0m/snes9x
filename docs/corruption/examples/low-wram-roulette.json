@@ -1,0 +1,17 @@
+{
+  "format": 1,
+  "name": "Low WRAM roulette",
+  "notes": "Pokes random bytes into $7E:0000-1FFF, where most games keep their stack and direct page. It crashes a lot, which makes it the quickest way to watch the crash guard catch and roll back.",
+  "seed": 1007,
+  "crash_policy": "reroll",
+  "rules": [
+    {
+      "name": "roulette",
+      "target": "wram",
+      "range": [ "0x0000", "0x1FFF" ],
+      "op": { "type": "random", "min": 0, "max": 255 },
+      "when": { "every_frames": 90 },
+      "count": 3
+    }
+  ]
+}

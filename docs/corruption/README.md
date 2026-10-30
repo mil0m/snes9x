@@ -4,8 +4,8 @@ This fork of Snes9x has built-in RAM corruption: data-driven **recipes** instead
 scripts, a shared **recipe library**, and automatic **save-file backups**. The design is
 in [`2026-10-30-ram-corruption-design.md`](./2026-10-30-ram-corruption-design.md).
 
-Phase 1 (this) covers recipes, the panel, hotkeys and save backups. Crash detection with
-automatic rollback is phase 2.
+Phase 1 covers recipes, the panel, hotkeys and save backups. Phase 2 adds the **crash
+guard**: crashes are detected and rolled back automatically.
 
 ## Build and run
 
@@ -44,6 +44,60 @@ like any repo; Snes9x never runs git itself.
 
 To change rules for now, edit the recipe's JSON and press **Rescan** then **Load**. A rule
 editor in the panel comes in phase 3.
+
+## The crash guard
+
+While a recipe is active, Snes9x keeps a checkpoint every second (the last 30). When the
+game crashes, it goes back to just before the corruption that caused it, changes what
+the guilty rules do, and plays on. You lose a second or two.
+
+**What counts as a crash:**
+
+| Signal | Caught when |
+|---|---|
+| CPU stopped | the game runs `STP`; caught at once |
+| Deadlock | the core gives up on the CPU; caught at once |
+| Frame interrupt off | NMI stays off for 5 s (games switch it off for up to ~3 s while loading) |
+| Frozen picture | the picture doesn't change for 5 s **while you press buttons** |
+| Black screen | forced blank or zero brightness for 8 s **while you press buttons** |
+| Runaway code | code runs from I/O or unmapped memory for 30 frames (rarely fires; see below) |
+| Mark Crash | you press **Mark Crash** (rolls back about 2 s) |
+
+A still screen nobody is touching (a text box, a menu, a pause screen) is never a crash.
+Heuristic signals (NMI, frozen, black) are also ignored when no corruption happened just
+before them.
+
+**What happens to the guilty rules** depends on the policy: the recipe's
+`crash_policy`, or the panel's override.
+
+| Policy | On a crash, the suspect rules… |
+|---|---|
+| `reroll` (default) | get fresh random values (a new `salt`, saved with the recipe) |
+| `skip` | sit out until the crash point, then carry on |
+| `dampen` | drop to half intensity |
+| `disable` | are switched off |
+| `escalate` | re-roll twice, then dampen twice, then switch off |
+
+If the same crash comes back right away, each repeat goes **5 s further back** (about
+0.5 s, then 5.5, 10.5, … up to the 30 s of checkpoints). Damage is often written long
+before the game trips over it, and every checkpoint after it carries the damage along.
+
+"Suspects" are all rules that wrote anything between the checkpoint and the crash, so a
+busy every-frame rule often shares the blame. That's harmless with `reroll` and blunt
+with `disable`. After 5 crashes without 10 calm seconds in between, the guard rolls back
+once more and switches corruption off.
+
+**The journal.** Every crash, recovery and give-up is appended to
+`<game>/journal.<you>.jsonl` in the library, with the time, recipe, seed, signal, suspects,
+action and how far back it went. It's one file per person, so a shared library never
+conflicts. It's the data for deciding which policy suits which game.
+
+**Things worth knowing:**
+
+- Runaway-code detection samples the CPU once a frame, and a runaway CPU nearly always
+  wanders back into ROM within that frame. So those crashes usually surface as one of the
+  other signals.
+- A game that crashes by **rebooting itself** isn't detected yet.
 
 ## Save backups
 
@@ -99,7 +153,18 @@ so typos fail loudly.
 starting at 1.
 
 **Also per rule**: `count` (bytes per firing), `pick` (`fresh`, or `sticky` to keep hitting
-the same bytes), `enabled`, `intensity` (0–1, scales count and add/bitflip strength).
+the same bytes), `enabled`, `intensity` (0–1, scales count and add/bitflip strength),
+`salt` (re-rolls this rule's randomness; the crash guard sets it).
+
+**Per recipe, optional**:
+
+```json
+"crash_policy": "escalate",
+"crash_detection": { "enabled": true, "cpu_stopped": true, "runaway_frames": 30,
+                     "nmi_off_seconds": 5, "frozen_seconds": 5, "black_seconds": 8, "min_presses": 3 }
+```
+
+Any detection field can be left out to keep its default; `0` switches a signal off.
 
 **`regions.json`**, per game:
 
@@ -119,10 +184,14 @@ the same bytes), `enabled`, `intensity` (0–1, scales count and add/bitflip str
 ## For developers
 
 ```sh
-./build-mac.sh test                                    # engine unit tests
+./build-mac.sh test                                    # engine unit tests + real-core tests
 build/tests/corrupt-smoke game.sfc recipe.json 600 600 # a recipe in the real core, headless
 ```
 
 `corrupt-smoke` runs the same frames clean and corrupted from one save state, and reports
 how many frames look different and which memory changed. It also checks that every write
 the engine logged really landed in emulator memory.
+
+The real-core tests (`tests/headless/guard_integration_test.cpp`) boot tiny generated ROMs
+that crash on cue (`STP`, NMI off) and check that the guard catches, rolls back and plays
+on.
