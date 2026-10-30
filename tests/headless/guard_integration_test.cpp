@@ -8,6 +8,7 @@
 #include "corrupt/core_memory.h"
 #include "corrupt/crash_guard.h"
 #include "corrupt/hook.h"
+#include "corrupt/run_control.h"
 
 #include "snes9x.h"
 
@@ -26,7 +27,9 @@ struct Harness
     CoreMemory memory;
     SnesCoreAccess access;
     CrashGuard guard;
+    RunControl control;
     std::vector<GuardOutcome> outcomes;
+    std::vector<RunControl::Started> starts;
 
     Harness(testrom::Crash crash, Recipe recipe, PolicyKind policy)
     {
@@ -53,6 +56,8 @@ struct Harness
         for (int i = 0; i < frames; i++)
         {
             headless::run_frames(1);
+            if (auto s = control.between_frames(engine, access); s != RunControl::Started::Nothing)
+                starts.push_back(s);
             auto out = guard.between_frames(engine, access);
             if (out.kind != GuardOutcome::Nothing)
                 outcomes.push_back(out);
@@ -137,3 +142,64 @@ TEST_CASE("a crash that keeps happening: gives up, corruption off, game alive")
     CHECK_FALSE(h.engine.active());
     CHECK(alive(h));
 }
+
+TEST_SUITE("saved moments in the real core")
+{
+    Recipe busy_noise()
+    {
+        Rule wram;
+        wram.name = "wram";
+        wram.range = { Target::WRAM, 0x4000, 0x4FFF };
+        wram.op = { .type = OpType::Random, .min = 0, .max = 255 };
+        wram.when = { .type = TriggerType::ChancePerFrame, .chance = 0.5 };
+        wram.count = 8;
+        Rule palette = wram;
+        palette.name = "palette";
+        palette.range = { Target::CGRAM, 0, 0x1FF };
+        palette.op = { .type = OpType::Add, .min = -3, .max = 3 };
+        palette.when = { .type = TriggerType::EveryFrames, .every = 4 };
+        Recipe r;
+        r.name = "busy";
+        r.seed = 2024;
+        r.rules = { wram, palette };
+        return r;
+    }
+
+    std::vector<uint8_t> all_wram(Harness & h)
+    {
+        std::vector<uint8_t> out;
+        for (uint32_t a = 0; a < 0x20000; a++)
+            out.push_back(h.wram(a));
+        return out;
+    }
+
+    TEST_CASE("starting from the saved moment replays the same run in the emulator")
+    {
+        Harness h(testrom::Crash::None, busy_noise(), PolicyKind::Skip);
+        h.engine.set_active(false);
+        h.engine.hold_starts(true);
+        h.run(45); // the game has been running for a while
+
+        h.engine.set_active(true);
+        h.run(1);
+        REQUIRE(h.starts == std::vector{ RunControl::Started::Fresh });
+        auto anchor = h.control.anchor();
+        h.run(240);
+        auto wram = all_wram(h);
+        auto picture = headless::frame_hash();
+        auto counter = h.wram(testrom::kFrameCounterAddr);
+
+        h.run(133); // play on
+        CHECK(h.wram(testrom::kFrameCounterAddr) != counter);
+        h.control.request_start_from(anchor);
+        h.engine.reroll(busy_noise().seed);
+        h.run(1);
+        CHECK(h.starts.back() == RunControl::Started::FromAnchor);
+        h.run(240);
+        CHECK(h.wram(testrom::kFrameCounterAddr) == counter);
+        CHECK(all_wram(h) == wram);
+        CHECK(headless::frame_hash() == picture);
+        CHECK(h.outcomes.empty());
+    }
+}
+

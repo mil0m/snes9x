@@ -1,7 +1,7 @@
 // End-to-end check of the corruption engine inside the real emulator, no window
 // needed:
 //
-//   corrupt-smoke <rom> <recipe.json> [frames=600] [warmup=600] [--guard]
+//   corrupt-smoke <rom> <recipe.json> [frames=600] [warmup=600] [--guard | --replay]
 //
 // Boots the ROM, runs `warmup` frames, saves a state, then runs `frames` twice
 // from that state: once clean, once with the recipe. Reports what the recipe
@@ -10,6 +10,10 @@
 //
 // With --guard it instead runs the recipe once under the crash guard, wired like
 // the Qt app, and reports every crash caught and rollback made.
+//
+// With --replay it starts the recipe at a frame boundary the way the Qt app does
+// (RunControl), runs it, plays on, then starts again from the saved moment and
+// checks that the second run ends with exactly the same memory and picture.
 #include "headless_core.h"
 
 #include "corrupt/core_access.h"
@@ -18,6 +22,7 @@
 #include "corrupt/engine.h"
 #include "corrupt/hook.h"
 #include "corrupt/recipe_json.h"
+#include "corrupt/run_control.h"
 
 #include "snes9x.h"
 #include "memmap.h"
@@ -83,6 +88,57 @@ int run_guarded(const Recipe &recipe, int frames)
     return mismatched == 0 ? 0 : 1;
 }
 
+std::vector<std::vector<uint8_t>> snapshot_targets();
+
+int run_replay(const Recipe &recipe, int frames)
+{
+    RunControl control;
+    engine.hold_starts(true);
+    engine.set_recipe(recipe);
+    engine.set_active(true);
+    S9xCorruptFrameHook = &frame_hook;
+    auto step = [&](int n) {
+        for (int i = 0; i < n; i++)
+        {
+            headless::run_frames(1);
+            control.between_frames(engine, access);
+        }
+    };
+
+    step(1);
+    auto anchor = control.anchor();
+    step(frames);
+    auto first = snapshot_targets();
+    auto first_picture = headless::frame_hash();
+    auto first_firings = engine.status().firings;
+
+    step(frames / 2 + 17); // play on, somewhere else
+    control.request_start_from(anchor);
+    engine.reroll(recipe.seed);
+    step(1);
+    bool loaded = control.anchor_is_from_saved();
+    step(frames);
+    auto second = snapshot_targets();
+    S9xCorruptFrameHook = nullptr;
+
+    printf("replay   moment of %zu bytes, %s\n", anchor.size(), loaded ? "loaded" : "NOT loaded");
+    printf("engine   %llu firings first run, %llu second\n", (unsigned long long)first_firings,
+           (unsigned long long)engine.status().firings);
+    bool same = loaded && first_firings == engine.status().firings;
+    for (size_t t = 0; t < kTargetCount; t++)
+    {
+        size_t diff = 0;
+        for (size_t i = 0; i < first[t].size(); i++)
+            diff += first[t][i] != second[t][i];
+        same = same && diff == 0;
+        printf("  %-6s %6zu bytes differ between the two runs\n", target_name(kAllTargets[t]), diff);
+    }
+    bool same_picture = headless::frame_hash() == first_picture;
+    printf("picture  %s\n", same_picture ? "identical" : "DIFFERENT");
+    printf("result   %s\n", same && same_picture ? "replayed exactly" : "did NOT replay exactly");
+    return same && same_picture ? 0 : 1;
+}
+
 std::vector<std::vector<uint8_t>> snapshot_targets()
 {
     std::vector<std::vector<uint8_t>> out;
@@ -138,6 +194,8 @@ int main(int argc, char **argv)
     headless::run_frames(warmup);
     if (argc > 5 && std::string(argv[5]) == "--guard")
         return run_guarded(*parsed.recipe, frames);
+    if (argc > 5 && std::string(argv[5]) == "--replay")
+        return run_replay(*parsed.recipe, frames);
 
     auto start = headless::save_state();
     if (start.empty())
