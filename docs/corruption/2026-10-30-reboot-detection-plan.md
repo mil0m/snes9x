@@ -49,7 +49,7 @@ looks like a normal title screen, so nothing is caught.
   ever counted.
 - **The count is process-wide** (the opcode tables are global), so the detector only ever
   compares it with its previous sample, and the tests compare against a baseline.
-- **The test ROM jumps to a mirror** (`JML $80:8000` for reset code at `$00:8000`), so the
-  memory-map comparison is what makes it count. A plain 16-bit PC compare would also
-  match in the right bank, but not by design.
-
+- **The test ROM jumps to a mirror** (`JML $80:8000` for reset code at `$00:8000`), so a
+  mirror entry is covered. The memory-map comparison matters the other way round: it keeps
+  the same 16-bit address in a bank holding other code (HiROM, or `$7E` RAM) from counting.
+  No test covers that case yet.
