@@ -46,6 +46,7 @@ class Engine
     // "recipe + seed from activation" replayable.
     void set_active(bool on);
     bool active() const { return is_active; }
+    uint64_t current_frame() const { return frame; }
 
     void reroll(uint64_t seed); // new seed, restarts the run
     void press_hotkey(int n);   // used on the next frame
