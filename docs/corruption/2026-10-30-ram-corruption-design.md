@@ -1,6 +1,6 @@
 # RAM corruption engine — design
 
-Status: draft for review (Mikael + Erik) · 2026-10-30
+Status: open questions answered, ready for the phase 1 plan · 2026-10-30
 
 ## Why
 
@@ -22,6 +22,9 @@ same engine with a different target.
 | Platforms | Mac, Windows, Linux. Engine in the shared core, UI in the **Qt** front end (now builds on macOS, commit `c87e91b4`). |
 | Lua | Not carried over. **Recipes** (data files) replace scripts; favourite old scripts get ported into recipes by hand. |
 | Controls | Live panel **and** hotkeys **and** a memory viewer/heatmap. |
+| Library | Any folder can be the library root. The intended setup is a **shared GitHub repo** for Mikael and Erik, cloned locally and used as the root. |
+| Crash policy | Not one fixed answer: **pluggable strategies** chosen per recipe (or per game), with a crash journal to compare them. The default is **re-roll** the suspect rule's values. |
+| SRAM | Allowed freely. Save files are **backed up automatically and continuously**, with no confirmation prompts. |
 
 ## Architecture
 
@@ -52,7 +55,7 @@ a few times per second. There are no locks inside the per-frame path.
 | Target | Source in the core | Size | Notes |
 |---|---|---|---|
 | `wram` | `Memory.RAM` | 128 KB | Main work RAM; the default and most fun target. |
-| `sram` | `Memory.SRAM` | per cart | Battery save RAM. Off by default: **it corrupts real save files**. |
+| `sram` | `Memory.SRAM` | per cart | Battery save RAM. Allowed freely; see *Save-file safety*. |
 | `vram` | `Memory.VRAM` | 64 KB | Tiles/tilemaps. Must mark the tile caches (`IPPU.TileCached`) dirty. |
 | `oam` | `PPU.OAMData` | 544 B | Sprite table. Must set `IPPU.OBJChanged`. |
 | `cgram` | `PPU.CGDATA` | 512 B | Palette. Must set `IPPU.ColorsChanged`. |
@@ -145,8 +148,16 @@ Snes9x's movie support) are a possible later extra, not part of v1.
     recipes/*.anchor.frz
 ```
 
-The root is configurable, so it can point at a shared Dropbox/iCloud/git folder for
-swapping recipes with Erik. Loading a ROM shows that game's recipes in the panel. A recipe
+The root can be any folder. The intended setup is a shared GitHub repo that Mikael and
+Erik both clone and point Snes9x at. The library is designed to stay **easy to merge in
+git**:
+- JSON is written with stable formatting (sorted keys, 2-space indent, one rule per block),
+  so diffs stay readable.
+- Learned data is written **per person** (`crashmap.<user>.json`, `journal.<user>.jsonl`),
+  and the engine merges every file it finds when it reads them. Two people playing the same
+  game never touch the same file, so there are no merge conflicts.
+- Snes9x never runs git itself in v1. You commit and pull as usual. A "sync library"
+  button is a possible later extra. Loading a ROM shows that game's recipes in the panel. A recipe
 whose SHA-256 doesn't match the loaded ROM opens with a warning, because the addresses may
 not mean the same thing in another version.
 
@@ -183,14 +194,41 @@ The panel can also mark the current state as a crash by hand ("this is broken, r
      and the crash itself, weighted towards the most recent.
   2. *Restore:* load the checkpoint from just before the suspects, so you lose about 1–2 s of
      play.
-  3. *Retry with a policy* (configurable): **re-roll** the suspect events with fresh random
-     values (the default), **skip** them, **lower** that rule's intensity, or **disable**
-     the rule.
+  3. *Retry with a policy.* Policies are **pluggable strategies** behind one small
+     interface (`suspects + history → action`). The policy is chosen per recipe, with a
+     per-game default, because what works will differ between games and needs lots of
+     iteration. The starting set:
+     - **re-roll** (the default): replay from the checkpoint with fresh random values for
+       the suspect rules only
+     - **skip**: drop the suspect events and carry on
+     - **dampen**: lower the suspect rule's intensity a step on each crash
+     - **disable**: turn the suspect rule off for the rest of the session
+     - **escalate**: re-roll first, dampen after two crashes, disable after four
   4. *Repeat crashes* from the same place step further back and **bisect** the suspect set
      to find the guilty event.
   5. Give up after M attempts (default 5): pause, show what kept crashing, and let the player
      decide.
 - The existing rewind hotkey stays separate. Rollback has its own ring and its own hotkey.
+- **Crash journal:** every crash is appended to `journal.<user>.jsonl` with its time,
+  recipe, suspect rule(s), detector signal, chosen policy and outcome (recovered, or crashed
+  again within N seconds). Per-rule crash counts show in the panel, so a crash always points
+  at a specific rule, and the journal lets us compare policies across games with real data.
+
+## Save-file safety
+
+Corrupting is never allowed to cost a real save, and this is handled with no prompts:
+- **On ROM load**, the existing `.srm` is copied to `<library>/<game>/save-backups/` with
+  a timestamp before anything runs.
+- **Continuously:** while a corruption session is active, the in-memory SRAM is checked once
+  per second. If it changed, a backup is written (at most one per minute, plus always the
+  last state before the game is closed).
+- **Retention:** the last 50 backups per game, plus one per day for 30 days.
+- **Restore:** the panel lists the backups with time and size, and restores one with a
+  single click (it pauses, loads it, and resets the game).
+- The backups are local only, never in the shared library repo (`save-backups/` is
+  git-ignored), because save files are personal.
+- Checkpoints already include SRAM (`S9xFreezeGameMem` stores it), so a rollback also
+  restores save RAM to its value before the crash.
 
 ## Crash map (learning safe ranges)
 
@@ -259,12 +297,11 @@ Each phase is test-first and ends in a playable build.
 Lua scripting · netplay · coprocessor RAM · bit-exact input replays · the Cocoa Mac app
 (only the Qt front end gets the UI) · pushing anything to the upstream Snes9x project.
 
-## Open questions
+## Answered questions (2026-10-30)
 
-1. **Library location and sharing:** is a shared Dropbox/iCloud folder enough, or should
-   the library be its own git repo that both of you push to?
-2. **Default crash policy:** re-roll (keeps the chaos going) or skip (more stable)?
-3. **SRAM:** keep it locked behind a confirmation, or allow it freely with an automatic
-   `.srm` backup?
-4. **Port first:** are there 2–3 favourite Lua scripts to port first? They're the best test
-   of whether the op list covers what you actually use.
+1. **Library:** any folder, with a shared GitHub repo between Mikael and Erik as the
+   intended setup. See *The corruption library*.
+2. **Crash policy:** many strategies to iterate on, possibly different per game. Default:
+   re-roll the suspect rule, so every crash points at a specific rule. See *Rollback*.
+3. **SRAM:** handled automatically, with continuous backups. See *Save-file safety*.
+4. **Lua scripts:** not needed; phase 1 starts from simple test recipes.
