@@ -8,8 +8,8 @@ corruption while playing": #14 rule editor, #15 intensity sliders, #16 named reg
 [plan 2](./2026-10-30-phase2-crash-rollback-plan.md)).
 
 **Status (2026-10-30):** #14 is done (tasks 1–9 below; see *Findings while building*), and
-it still needs a manual QA pass (QA.md section 8). #15 is being built (its own section
-below). #16–#17 are only outlined at the end;
+it still needs a manual QA pass (QA.md section 8). #15 is done too (its own section
+below; QA.md section 9). #16–#17 are only outlined at the end;
 each gets its own task list once the one before it has been play-tested. #14 was meant to
 wait for the first play-test (#12), so whatever that turns up feeds back in as fixes.
 
@@ -175,6 +175,16 @@ a firing, so the values a rule writes stay replayable. At 1 or more nothing chan
    Two rebindable hotkeys, *Corruption: more* and *less* (10 % steps, unbound by default),
    with an on-screen message. A crash-guard *dampen* moves the rule's slider.
 4. **Docs and QA**: README, QA.md section 9.
+
+### Findings
+- **The slider became its own widget** (`IntensitySlider`) so the Qt test target could
+  cover it: silent when the engine moves it, ignoring refreshes mid-drag, and keeping a
+  dampened 12.5 % exact until someone touches it.
+- **Two tests changed meaning.** "A floor of one address" became the thinning test,
+  and the delta-scaling test moved from count 1 to count 2 at half strength, the
+  smallest setting that still hits exactly one address.
+- **Hotkeys are unbound by default.** F10–F12 are taken or risky (F11 is fullscreen), so
+  More/Less Chaos wait for a binding instead of taking a key someone already uses.
 
 ## Later in this phase (outlined, not yet planned in tasks)
 

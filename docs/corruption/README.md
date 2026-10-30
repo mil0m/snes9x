@@ -67,6 +67,18 @@ addresses and releasing its freezes. One side effect: removing a rule gives the 
 after it new random values, because a rule's randomness depends on its position.
 
 Loading another recipe or starting a new one asks before discarding unsaved edits.
+
+## Turning it up and down
+
+- **Chaos** (in the run box) sets the whole recipe's intensity, and each rule has its own
+  **Intensity** slider in the table. They multiply: a rule at 50 % under 50 % Chaos runs at
+  25 %. Both act on the next frame and are saved with the recipe.
+- **Corruption: More Chaos / Less Chaos** step Chaos by 10 %. They have no keys by
+  default; bind them under *Settings > Shortcuts*.
+- Intensity scales how many bytes a rule hits per firing, and how hard `add` and
+  `bitflip` hit. Once that drops below one byte, the rule **fires less often** instead:
+  a one-byte rule at 30 % fires on about 3 of every 10 chances. That's also what lets the
+  crash guard's `dampen` calm a one-byte rule down. When the rule moves, its slider moves.
 Editing the JSON by hand still works: **Rescan**, then **Load**.
 
 ## The crash guard
@@ -177,10 +189,14 @@ so typos fail loudly.
 starting at 1.
 
 **Also per rule**: `count` (bytes per firing), `pick` (`fresh`, or `sticky` to keep hitting
-the same bytes), `enabled`, `intensity` (0–1, scales count and add/bitflip strength),
+the same bytes), `enabled`, `intensity` (0–1, scales count and add/bitflip strength; below one byte per
+firing it lowers the chance to fire),
 `salt` (re-rolls this rule's randomness; the crash guard sets it).
 
-**Per recipe, optional**:
+**Per recipe, optional**: `intensity` (0–1, default 1; the Chaos slider), which multiplies
+every rule's intensity.
+
+**Crash settings, per recipe, optional**:
 
 ```json
 "crash_policy": "escalate",

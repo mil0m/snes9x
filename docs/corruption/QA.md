@@ -92,3 +92,20 @@ scratch folder. By default Snes9x writes the `.srm` next to the ROM.
    - [ ] `scratch.json` appears in the recipe list, and **Save** works on it afterwards.
 9. If the game has a `regions.json` (add one by hand; see README), open the editor.
    - [ ] **Region** lists the names; picking one fills the range and greys it out, and the saved JSON uses the name.
+
+## 9. Intensity
+1. Load **tile-rot** (or any visible recipe), tick **Active**, and drag **Chaos** down to 20 %.
+   - [ ] The effect slows down right away, and the status line says *(edited)*.
+2. Drag it to 0 %.
+   - [ ] Firings stop counting up. Back to 100 %: they resume, and the frame count never reset.
+3. With two rules, drag one rule's **Intensity** slider to 0 %.
+   - [ ] Only that rule goes quiet.
+4. Bind **Corruption: More Chaos** and **Less Chaos** under *Settings > Shortcuts*, and press them.
+   - [ ] The message says `Corruption chaos 40%` and so on, and the Chaos slider follows.
+5. Load **music-mangler** (one byte per firing), set its rule to 20 %, and listen for a minute.
+   - [ ] Glitches come noticeably less often than at 100 %.
+6. Set the crash policy to **dampen** and play **low-wram-roulette** until a crash is caught.
+   - [ ] The guilty rule's slider drops to half.
+7. **Save**, then **Load** the recipe again.
+   - [ ] Chaos and the rule sliders come back where they were.
+
