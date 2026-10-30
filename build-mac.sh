@@ -45,7 +45,7 @@ build_qt() {
 
 build_test() {
   cmake -S tests -B build/tests -G Ninja -DCMAKE_BUILD_TYPE=Debug >/dev/null
-  cmake --build build/tests | tail -1
+  if ! out=$(cmake --build build/tests 2>&1); then echo "$out" | grep -v '^\[' >&2; exit 1; fi
   build/tests/corrupt-tests "$@"
 }
 
