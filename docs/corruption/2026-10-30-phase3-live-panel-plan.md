@@ -9,7 +9,7 @@ corruption while playing": #14 rule editor, #15 intensity sliders, #16 named reg
 
 **Status (2026-10-30):** #14 is done (tasks 1–9 below; see *Findings while building*), and
 it still needs a manual QA pass (QA.md section 8). #15 is done too (its own section
-below; QA.md section 9). #17 is being built. #16 is only outlined at the end;
+below; QA.md section 9). #17 is done too (QA.md section 10). #16 is only outlined at the end;
 each gets its own task list once the one before it has been play-tested. #14 was meant to
 wait for the first play-test (#12), so whatever that turns up feeds back in as fixes.
 
@@ -226,6 +226,20 @@ differ). That's how Erik gets to see exactly the run Mikael saved.
    moment; the *Saved moments* switch; Save/Save As/Load use it; status shows a
    waiting start.
 6. Docs and QA.
+
+### Findings
+- **Replays are exact in real games.** `corrupt-smoke --replay` (added for this) restores
+  the moment and replays 900 frames with every memory target and the picture identical:
+  Pocky & Rocky, FE4 Project Naga and FF6 T-Edition with gentle-wram-noise, and Pocky with
+  tile-rot, sprite-jitter and music-mangler.
+- **A stale moment bug, caught in review.** Loading a recipe kept the last run's moment
+  until the new run started, so Save in that window (or while paused) would have written
+  another recipe's moment. Loading or creating a recipe now forgets it, and nothing counts
+  as a new moment while a start is waiting.
+- **Load starts the run.** A recipe with a moment is about replaying it, so Load jumps and
+  activates; the *Saved moments* switch is the way out.
+- **Moments are about 800 KB, uncompressed.** Fine for a few, heavy for a shared repo full
+  of them; compressing them (the core already links zlib) is a cheap follow-up.
 
 ## Later in this phase (outlined, not yet planned in tasks)
 

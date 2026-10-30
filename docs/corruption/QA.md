@@ -109,3 +109,20 @@ scratch folder. By default Snes9x writes the `.srm` next to the ROM.
 7. **Save**, then **Load** the recipe again.
    - [ ] Chaos and the rule sliders come back where they were.
 
+## 10. Saved moments
+1. Make sure **Saved moments** is ticked. Load a recipe, play to a memorable spot, and tick **Active**.
+   - [ ] The status line says *new moment, not saved*, and **Save** is enabled.
+2. Play for 20 seconds with a visible recipe (tile-rot, palette-drift), then **Save**.
+   - [ ] `recipes/<name>.anchor.frz` appears next to the JSON, and the JSON has `"anchor_state"`.
+3. Walk somewhere else, then **Load** the same recipe.
+   - [ ] The game jumps back to the spot from step 1 and the run starts; the status says *from its saved moment*.
+   - [ ] Without touching the controller, the corruption looks the same as the first time (same tiles or colours at the same times).
+4. **Re-roll** (F8).
+   - [ ] The status says *new moment, not saved* again.
+5. Pause the game (P) and tick **Active** off and on.
+   - [ ] The status says *starting with the next frame* until you unpause.
+6. Untick **Saved moments** and **Load** the recipe.
+   - [ ] The game does not jump; the recipe starts where you are.
+7. **Save As…** a recipe that started from its moment, under a new name.
+   - [ ] The new name gets its own `.anchor.frz`, and loading it jumps to the same spot.
+

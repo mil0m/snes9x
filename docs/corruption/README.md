@@ -68,6 +68,27 @@ after it new random values, because a rule's randomness depends on its position.
 
 Loading another recipe or starting a new one asks before discarding unsaved edits.
 
+## Saved moments
+
+A recipe can carry the moment its run started, so loading it puts the game back there and
+the same seed replays the same chaos (until your own button presses differ). That's how
+you hand someone exactly the run you saw.
+
+- With **Saved moments** ticked (the default), **Save** and **Save As…** write the moment
+  the current run started to `recipes/<name>.anchor.frz`, next to the recipe.
+- **Load** on a recipe that has one jumps the game back to it and starts the run there.
+  The status line says *from its saved moment*.
+- A run starts at the next frame, so the moment and frame 1 line up exactly. While the game
+  is paused, a start waits (the status says *starting with the next frame*).
+- After a re-roll or switching the recipe off and on, the run has a *new moment, not
+  saved*: **Save** writes it over the old one.
+- A moment is only loaded into the same ROM version (same SHA-256); for another version the
+  recipe starts where you are.
+- Untick **Saved moments** to load and save recipes without touching the game's state.
+
+Moments are Snes9x save states, about 800 KB each, uncompressed for now. They're meant to
+be shared, so they're not git-ignored.
+
 ## Turning it up and down
 
 - **Chaos** (in the run box) sets the whole recipe's intensity, and each rule has its own
@@ -194,7 +215,7 @@ firing it lowers the chance to fire),
 `salt` (re-rolls this rule's randomness; the crash guard sets it).
 
 **Per recipe, optional**: `intensity` (0–1, default 1; the Chaos slider), which multiplies
-every rule's intensity.
+every rule's intensity, and `anchor_state`, the file name of the recipe's saved moment.
 
 **Crash settings, per recipe, optional**:
 
@@ -230,7 +251,9 @@ build/tests/corrupt-smoke game.sfc recipe.json 600 600 # a recipe in the real co
 
 `corrupt-smoke` runs the same frames clean and corrupted from one save state, and reports
 how many frames look different and which memory changed. It also checks that every write
-the engine logged really landed in emulator memory.
+the engine logged really landed in emulator memory. With `--replay` instead, it starts the
+recipe the way the app does, plays on, starts again from the saved moment, and checks the
+second run ends with identical memory and picture.
 
 The real-core tests (`tests/headless/guard_integration_test.cpp`) boot tiny generated ROMs
 that crash on cue (`STP`, NMI off) and check that the guard catches, rolls back and plays
