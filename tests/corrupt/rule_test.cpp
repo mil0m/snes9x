@@ -106,7 +106,7 @@ TEST_CASE("disabled rules and zero intensity write nothing")
     CHECK(rt.firings == 0);
 }
 
-TEST_CASE("intensity scales count, with a floor of one address")
+TEST_CASE("intensity scales count")
 {
     FakeMemory mem;
     RuleRuntime rt;
@@ -114,24 +114,87 @@ TEST_CASE("intensity scales count, with a floor of one address")
     r.intensity = 0.5;
     auto events = tick_rule(r, rt, mem, 1, 0, 1, 0);
     CHECK(events.size() == 5);
+}
 
-    r.intensity = 0.01;
-    events = tick_rule(r, rt, mem, 1, 0, 2, 0);
-    CHECK(events.size() == 1);
+TEST_CASE("below one address, intensity thins firings instead")
+{
+    Rule r = incrementer(1, Pick::Fresh);
+    r.op = { .type = OpType::Random, .min = 1, .max = 255 };
+    r.range = { Target::WRAM, 0, 0xFFFF };
+    r.intensity = 0.3;
+
+    FakeMemory mem;
+    RuleRuntime rt;
+    std::vector<uint64_t> fired_frames;
+    std::vector<WriteEvent> thinned;
+    for (uint64_t f = 1; f <= 10000; f++)
+    {
+        auto ev = tick_rule(r, rt, mem, 42, 0, f, 0);
+        CHECK(ev.size() <= 1);
+        if (!ev.empty())
+            fired_frames.push_back(f);
+        thinned.insert(thinned.end(), ev.begin(), ev.end());
+    }
+    CHECK(fired_frames.size() > 2700);
+    CHECK(fired_frames.size() < 3300);
+    CHECK(rt.firings == fired_frames.size()); // skipped frames aren't firings
+
+    // The same seed thins the same frames.
+    FakeMemory mem2;
+    RuleRuntime rt2;
+    std::vector<uint64_t> again;
+    for (uint64_t f = 1; f <= 10000; f++)
+        if (!tick_rule(r, rt2, mem2, 42, 0, f, 0).empty())
+            again.push_back(f);
+    CHECK(again == fired_frames);
+
+    // Each firing that happens writes what the same-numbered firing of a full-strength run writes.
+    Rule full = r;
+    full.intensity = 1.0;
+    FakeMemory mem3;
+    RuleRuntime rt3;
+    std::vector<WriteEvent> unthinned;
+    for (uint64_t f = 1; f <= 200; f++)
+    {
+        auto ev = tick_rule(full, rt3, mem3, 42, 0, f, 0);
+        unthinned.insert(unthinned.end(), ev.begin(), ev.end());
+    }
+    for (size_t i = 0; i < 100; i++)
+    {
+        CHECK(thinned[i].offset == unthinned[i].offset);
+        CHECK(thinned[i].new_value == unthinned[i].new_value);
+    }
+}
+
+TEST_CASE("count times intensity sets the firing chance: count 10 at 5 percent fires about half the time")
+{
+    Rule r = incrementer(10, Pick::Fresh);
+    r.intensity = 0.05;
+    FakeMemory mem;
+    RuleRuntime rt;
+    int fired = 0;
+    for (uint64_t f = 1; f <= 4000; f++)
+    {
+        auto ev = tick_rule(r, rt, mem, 7, 0, f, 0);
+        CHECK(ev.size() <= 1);
+        fired += !ev.empty();
+    }
+    CHECK(fired > 1800);
+    CHECK(fired < 2200);
 }
 
 TEST_CASE("intensity scales add deltas and bitflip bits")
 {
     FakeMemory mem;
     RuleRuntime rt;
-    auto r = incrementer(1, Pick::Sticky);
+    auto r = incrementer(2, Pick::Sticky); // 2 x 0.5: one address, no thinning
     r.op = { .type = OpType::Add, .min = 10, .max = 10 };
     r.intensity = 0.5;
     auto events = tick_rule(r, rt, mem, 1, 0, 1, 0);
     REQUIRE(events.size() == 1);
     CHECK(events[0].new_value == 5);
 
-    Rule flip = incrementer(1, Pick::Fresh);
+    Rule flip = incrementer(4, Pick::Fresh); // 4 x 0.25: one address
     flip.op = { .type = OpType::Bitflip, .bits = 8 };
     flip.intensity = 0.25;
     FakeMemory m2;

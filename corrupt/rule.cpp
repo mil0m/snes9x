@@ -12,6 +12,8 @@ namespace
 
 // Trigger draws (chance_per_frame) get their own stream so they never shift the op's values.
 constexpr uint64_t kTriggerSalt = 0x7472696767657221ULL;
+// Thinning draws (intensity below one address) get theirs too.
+constexpr uint64_t kThinSalt = 0x7468696e6e696e67ULL;
 
 std::vector<uint32_t> pick_distinct(const AddressRange &range, uint32_t count, Rng &rng)
 {
@@ -86,8 +88,19 @@ std::vector<WriteEvent> tick_rule(const Rule &rule, RuleRuntime &rt, MemoryAcces
     if (!should_fire(rule.when, frame, trigger_rng, pressed_hotkeys))
         return {};
 
+    // Below one address, intensity becomes the chance to fire at all, so a gentle
+    // setting still means "less" for count-1 rules. Skipped frames aren't firings,
+    // which keeps the values of the firings that do happen replayable.
+    double expected = rule.count * std::min(rule.intensity, 1.0);
+    if (expected < 1.0)
+    {
+        Rng thin = Rng::for_firing(seed ^ kThinSalt, rule_index, frame);
+        if (!thin.chance(expected))
+            return {};
+    }
+
     Rng rng = Rng::for_firing(seed, rule_index, rt.firings++);
-    uint32_t count = std::max<uint32_t>(1, uint32_t(std::lround(rule.count * std::min(rule.intensity, 1.0))));
+    uint32_t count = std::max<uint32_t>(1, uint32_t(std::lround(expected)));
 
     std::vector<uint32_t> addresses;
     if (rule.pick == Pick::Sticky)
