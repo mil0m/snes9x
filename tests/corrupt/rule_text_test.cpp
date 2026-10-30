@@ -55,6 +55,8 @@ TEST_CASE("a rule's summary names where, what and when")
     r.region = "enemy_table";
     CHECK(describe_range(r) == "wram enemy_table");
     CHECK(describe_rule(r) == "wram enemy_table: random 0..255 x2, every 120 frames");
+    r.avoid_hot = true;
+    CHECK(describe_rule(r) == "wram enemy_table: random 0..255 x2, every 120 frames, avoiding danger");
 }
 
 TEST_CASE("the default new rule is gentle and valid")

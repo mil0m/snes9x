@@ -204,6 +204,8 @@ TEST_CASE("overlay choice and clearing hits")
     v.show();
     choose(v, "overlay", "hits");
     child<QPushButton>(v, "clear_hits")->click();
+    choose(v, "overlay", "danger"); // the crash map
+    CHECK(child<QComboBox>(v, "overlay")->currentText().contains("crash"));
     CHECK(src.clears == 1);
 }
 

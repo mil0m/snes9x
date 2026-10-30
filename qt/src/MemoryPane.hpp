@@ -18,6 +18,7 @@ class MemoryPane
     {
         Activity,
         Hits,
+        Danger, // the crash map
         None,
     };
 
@@ -50,6 +51,9 @@ class MemoryPane
             return offset < snap.hits.size() && snap.hits[offset]
                        ? 0.25f + 0.75f * std::log1p(float(snap.hits[offset])) / std::log1p(float(max_hits))
                        : 0.0f;
+        case Overlay::Danger:
+            // Full strength from 0.6; a block that crashed once (1/3) shows at half.
+            return offset < snap.danger.size() ? std::min(1.0f, snap.danger[offset] / 0.6f) : 0.0f;
         case Overlay::None:
             return 0.0f;
         }
@@ -66,7 +70,9 @@ class MemoryPane
 
     static QColor overlayColor(Overlay overlay)
     {
-        return overlay == Overlay::Hits ? QColor(150, 90, 230) : QColor(235, 110, 40);
+        return overlay == Overlay::Hits     ? QColor(150, 90, 230)
+               : overlay == Overlay::Danger ? QColor(225, 40, 40)
+                                            : QColor(235, 110, 40);
     }
 
     static QColor mix(const QColor &a, const QColor &b, float t)

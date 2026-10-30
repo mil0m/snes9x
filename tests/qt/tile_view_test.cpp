@@ -201,6 +201,22 @@ TEST_CASE("the activity overlay tints busy tiles only")
     CHECK(colourAt(s.view, s.view.tileRect(3).center()) == plain3);
 }
 
+TEST_CASE("the danger overlay tints dangerous tiles red")
+{
+    Shown s(4);
+    s.view.setPaletteRow(TileView::kGrey);
+    auto snap = sample();
+    snap.danger.assign(snap.bytes.size(), 0.0f);
+    for (size_t i = 7 * 32; i < 7 * 32 + 16; i++)
+        snap.danger[i] = 0.8f;
+    s.view.setSnapshot(snap);
+    s.view.setOverlay(MemoryPane::Overlay::Danger);
+    QColor tinted = colourAt(s.view, s.view.tileRect(7).center());
+    QColor plain = colourAt(s.view, s.view.tileRect(6).center());
+    CHECK(tinted.red() > tinted.green() + 40);
+    CHECK(plain.red() == plain.green());
+}
+
 TEST_CASE("hover, ctrl+wheel zoom and tiles-per-row limits")
 {
     Shown s(2);

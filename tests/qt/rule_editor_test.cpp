@@ -305,3 +305,22 @@ TEST_CASE("an empty name is not allowed")
     CHECK_FALSE(ok_enabled(e));
     CHECK(child<QLabel>(e, "error")->text().contains("name"));
 }
+
+TEST_CASE("avoid dangerous bytes is a checkbox, kept both ways")
+{
+    SizedMemory sizes;
+    Rule r = default_rule();
+    RuleEditor e(r, sample_regions(), sizes);
+    auto avoid = child<QCheckBox>(e, "avoid_hot");
+    CHECK_FALSE(avoid->isChecked());
+    CHECK_FALSE(avoid->toolTip().isEmpty());
+    avoid->setChecked(true);
+    CHECK(e.rule().avoid_hot);
+
+    r.avoid_hot = true;
+    RuleEditor again(r, sample_regions(), sizes);
+    CHECK(child<QCheckBox>(again, "avoid_hot")->isChecked());
+    child<QCheckBox>(again, "avoid_hot")->setChecked(false);
+    CHECK_FALSE(again.rule().avoid_hot);
+    maybe_shot(again, "rule-editor-avoid");
+}

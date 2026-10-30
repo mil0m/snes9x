@@ -42,7 +42,7 @@ class RuleEditor : public QDialog
     void refresh();
     void regionChosen();
 
-    corrupt::Rule original; // keeps what the form doesn't show (salt, avoid_hot)
+    corrupt::Rule original; // keeps what the form doesn't show (salt)
     corrupt::Regions regions;
     const corrupt::MemoryAccess &sizes;
 
@@ -81,6 +81,7 @@ class RuleEditor : public QDialog
     QComboBox *pick_combo;
     QDoubleSpinBox *intensity_spin;
     QCheckBox *enabled_check;
+    QCheckBox *avoid_check;
 
     QLabel *summary_label;
     QLabel *error_label;

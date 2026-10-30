@@ -94,7 +94,8 @@ std::string describe_range(const Rule &rule)
 
 std::string describe_rule(const Rule &rule)
 {
-    return describe_range(rule) + ": " + describe_op(rule) + ", " + describe_trigger(rule.when);
+    return describe_range(rule) + ": " + describe_op(rule) + ", " + describe_trigger(rule.when) +
+           (rule.avoid_hot ? ", avoiding danger" : "");
 }
 
 Rule default_rule()

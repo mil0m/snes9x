@@ -351,6 +351,11 @@ void RuleEditor::buildForm()
     enabled_check = new QCheckBox(tr("Enabled"), how_box);
     enabled_check->setObjectName("enabled");
     how->addRow(enabled_check);
+    avoid_check = new QCheckBox(tr("Avoid dangerous bytes"), how_box);
+    avoid_check->setObjectName("avoid_hot");
+    avoid_check->setToolTip(tr("Skip bytes the crash map has learned crash this game (the memory viewer's "
+                               "Danger overlay). Fewer crashes, longer runs; the map grows as you play."));
+    how->addRow(avoid_check);
     layout->addWidget(how_box);
 
     summary_label = new QLabel(this);
@@ -468,6 +473,7 @@ void RuleEditor::load(const Rule &r)
     select(pick_combo, r.pick == Pick::Sticky ? "sticky" : "fresh");
     intensity_spin->setValue(r.intensity);
     enabled_check->setChecked(r.enabled);
+    avoid_check->setChecked(r.avoid_hot);
 
     // The region last: choosing it locks the range fields to it.
     if (!r.region.empty() && regions.count(r.region))
@@ -494,7 +500,7 @@ RuleEditor::Built RuleEditor::build() const
     Built b;
     Rule &r = b.rule;
     QString &err = b.error;
-    r = original; // salt, avoid_hot and anything else the form doesn't show
+    r = original; // salt and anything else the form doesn't show
 
     r.name = name_edit->text().trimmed().toStdString();
     if (r.name.empty())
@@ -577,6 +583,7 @@ RuleEditor::Built RuleEditor::build() const
     r.pick = pick_combo->currentData() == "sticky" ? Pick::Sticky : Pick::Fresh;
     r.intensity = intensity_spin->value();
     r.enabled = enabled_check->isChecked();
+    r.avoid_hot = avoid_check->isChecked();
 
     if (err.isEmpty())
         if (auto problem = validate_rule(r, sizes))

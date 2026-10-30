@@ -338,9 +338,14 @@ void CorruptionDock::refreshStatus()
                                     .arg(status.engine.firings)
                               : tr("No recipe loaded"));
 
-    crash_label->setText(status.crashes == 0
-                             ? tr("No crashes caught. Policy: %1").arg(policy_name(status.policy))
-                             : tr("%n crash(es) caught. Last: %1", "", int(status.crashes)).arg(qs(status.last_crash)));
+    QString learned = status.hot_blocks == 0
+                          ? tr("The crash map hasn't found dangerous bytes yet.")
+                          : tr("The crash map knows %n dangerous area(s); rules set to avoid them skip them.", "",
+                               int(status.hot_blocks));
+    crash_label->setText((status.crashes == 0
+                              ? tr("No crashes caught. Policy: %1").arg(policy_name(status.policy))
+                              : tr("%n crash(es) caught. Last: %1", "", int(status.crashes)).arg(qs(status.last_crash))) +
+                         "\n" + learned);
     if (status.rule_crashes != shown_rule_crashes)
     {
         shown_rule_crashes = status.rule_crashes;

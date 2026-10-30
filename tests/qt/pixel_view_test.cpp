@@ -360,6 +360,24 @@ TEST_SUITE("a chosen row width")
     }
 }
 
+TEST_CASE("the danger overlay paints the crash map in red")
+{
+    Shown s(8);
+    auto snap = sample();
+    snap.danger.assign(snap.bytes.size(), 0.0f);
+    for (size_t i = 0x20; i < 0x30; i++)
+        snap.danger[i] = 0.6f;
+    s.view.setSnapshot(snap);
+    s.view.setOverlay(MemoryPane::Overlay::Danger);
+    QImage img = s.view.viewport()->grab().toImage();
+    QColor hot = img.pixelColor(s.view.pixelRect(0x25).center());
+    QColor cool = img.pixelColor(s.view.pixelRect(0x45).center());
+    CHECK(hot.red() > hot.green() + 60);
+    CHECK(hot.red() > hot.blue() + 60);
+    CHECK(cool.red() == cool.green()); // grey: no danger there
+    shot(s.view, "pixel-view-danger");
+}
+
 TEST_CASE("pictures of the pixel view")
 {
     Shown s(1, QSize(600, 560));

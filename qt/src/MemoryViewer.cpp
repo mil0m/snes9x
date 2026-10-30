@@ -91,6 +91,7 @@ MemoryViewer::MemoryViewer(MemorySource &source, QWidget *parent)
     overlay_combo->setObjectName("overlay");
     overlay_combo->addItem(tr("Activity: what the game changes"), QString("activity"));
     overlay_combo->addItem(tr("Hits: what the recipe wrote"), QString("hits"));
+    overlay_combo->addItem(tr("Danger: where corruption crashed the game"), QString("danger"));
     overlay_combo->addItem(tr("Plain"), QString("none"));
     goto_edit = new QLineEdit(this);
     goto_edit->setObjectName("goto");
@@ -225,9 +226,10 @@ MemoryViewer::MemoryViewer(MemorySource &source, QWidget *parent)
     connect(target_combo, &QComboBox::currentIndexChanged, this, [this] { targetChanged(); });
     connect(overlay_combo, &QComboBox::currentIndexChanged, this, [this] {
         auto o = overlay_combo->currentData().toString();
-        auto overlay = o == "hits"   ? MemoryPane::Overlay::Hits
-                       : o == "none" ? MemoryPane::Overlay::None
-                                     : MemoryPane::Overlay::Activity;
+        auto overlay = o == "hits"     ? MemoryPane::Overlay::Hits
+                       : o == "danger" ? MemoryPane::Overlay::Danger
+                       : o == "none"   ? MemoryPane::Overlay::None
+                                       : MemoryPane::Overlay::Activity;
         view->setOverlay(overlay);
         pixels->setOverlay(overlay);
         tiles->setOverlay(overlay);
