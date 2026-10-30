@@ -13,6 +13,12 @@ FrameSignals healthy(uint64_t frame)
     return s;
 }
 
+// A player pressing buttons: input changes every 20 frames.
+uint16_t mashing(uint64_t f)
+{
+    return (f / 20) % 2 ? 0x0080 : 0x0000;
+}
+
 // Feeds `n` frames made by `make` starting at `from`; returns the first verdict.
 template <typename F>
 std::optional<CrashVerdict> feed(CrashDetector &d, uint64_t from, uint64_t n, F make)
@@ -88,10 +94,10 @@ TEST_CASE("NMI off for too long is a heuristic crash")
     CHECK(v->heuristic);
 }
 
-TEST_CASE("a frozen picture is a heuristic crash")
+TEST_CASE("a frozen picture while the player presses buttons is a heuristic crash")
 {
     CrashDetector d;
-    auto frozen = [](uint64_t) { FrameSignals s; s.picture_hash = 42; return s; };
+    auto frozen = [](uint64_t f) { FrameSignals s; s.picture_hash = 42; s.input = mashing(f); return s; };
     feed(d, 1, 10, healthy);
     auto v = feed(d, 11, 400, frozen);
     REQUIRE(v);
@@ -104,14 +110,14 @@ TEST_CASE("a frozen picture is a heuristic crash")
 TEST_CASE("a black screen uses its own, longer threshold")
 {
     CrashDetector d;
-    auto black = [](uint64_t) { FrameSignals s; s.forced_blank = true; s.picture_hash = 0; return s; };
+    auto black = [](uint64_t f) { FrameSignals s; s.forced_blank = true; s.picture_hash = 0; s.input = mashing(f); return s; };
     auto v = feed(d, 1, 1000, black);
     REQUIRE(v);
     CHECK(v->signal == CrashSignal::BlackScreen);
     CHECK(v->frame == 480);
 
     CrashDetector dim;
-    auto zero_brightness = [](uint64_t) { FrameSignals s; s.brightness = 0; s.picture_hash = 0; return s; };
+    auto zero_brightness = [](uint64_t f) { FrameSignals s; s.brightness = 0; s.picture_hash = 0; s.input = mashing(f); return s; };
     auto v2 = feed(dim, 1, 1000, zero_brightness);
     REQUIRE(v2);
     CHECK(v2->signal == CrashSignal::BlackScreen);
@@ -137,7 +143,7 @@ TEST_CASE("signals can be switched off")
 TEST_CASE("reset forgets everything, e.g. after a rollback")
 {
     CrashDetector d;
-    auto frozen = [](uint64_t) { FrameSignals s; s.picture_hash = 42; return s; };
+    auto frozen = [](uint64_t f) { FrameSignals s; s.picture_hash = 42; s.input = mashing(f); return s; };
     feed(d, 1, 299, frozen);
     d.reset();
     CHECK_FALSE(feed(d, 300, 299, frozen));
@@ -146,7 +152,43 @@ TEST_CASE("reset forgets everything, e.g. after a rollback")
 TEST_CASE("after reporting, a still-broken game reports again only after a fresh run")
 {
     CrashDetector d;
-    auto frozen = [](uint64_t) { FrameSignals s; s.picture_hash = 42; return s; };
+    auto frozen = [](uint64_t f) { FrameSignals s; s.picture_hash = 42; s.input = mashing(f); return s; };
     REQUIRE(feed(d, 1, 400, frozen));
     CHECK_FALSE(d.observe(302, frozen(302))); // no repeat on the very next frame
+}
+
+TEST_CASE("frames that weren't drawn (frameskip, fast-forward) never count as frozen")
+{
+    CrashDetector d;
+    // Every other frame skipped: the screen buffer keeps the old picture on those.
+    auto skipping = [](uint64_t f) {
+        FrameSignals s;
+        s.picture_valid = f % 2 == 0;
+        s.picture_hash = s.picture_valid ? f : 12345; // stale hash on skipped frames
+        return s;
+    };
+    CHECK_FALSE(feed(d, 1, 3000, skipping));
+
+    // All frames skipped: no picture information at all, so no verdict either.
+    CrashDetector blind;
+    auto none = [](uint64_t) { FrameSignals s; s.picture_valid = false; s.picture_hash = 7; return s; };
+    CHECK_FALSE(feed(blind, 1, 3000, none));
+}
+
+TEST_CASE("a still screen with nobody pressing anything is not a crash")
+{
+    // Reading a text box, sitting in a menu, a pause screen.
+    CrashDetector d;
+    auto calm = [](uint64_t) { FrameSignals s; s.picture_hash = 42; return s; };
+    CHECK_FALSE(feed(d, 1, 5000, calm));
+    CrashDetector dark;
+    auto black = [](uint64_t) { FrameSignals s; s.forced_blank = true; return s; };
+    CHECK_FALSE(feed(dark, 1, 5000, black));
+}
+
+TEST_CASE("a single press is not enough evidence")
+{
+    CrashDetector d;
+    auto one_press = [](uint64_t f) { FrameSignals s; s.picture_hash = 42; s.input = f > 100 ? 0x0080 : 0; return s; };
+    CHECK_FALSE(feed(d, 1, 2000, one_press));
 }

@@ -500,7 +500,7 @@ DetectorConfig parse_detection(Ctx &ctx, const json &d)
     const std::string path = "recipe.crash_detection";
     if (!require_object(ctx, d, path))
         return cfg;
-    check_keys(ctx, d, path, { "enabled", "cpu_stopped", "runaway_frames", "nmi_off_seconds", "frozen_seconds", "black_seconds" });
+    check_keys(ctx, d, path, { "enabled", "cpu_stopped", "runaway_frames", "nmi_off_seconds", "frozen_seconds", "black_seconds", "min_presses" });
 
     for (auto [key, out] : { std::pair{ "enabled", &cfg.enabled }, std::pair{ "cpu_stopped", &cfg.cpu_stopped } })
         if (d.contains(key))
@@ -514,6 +514,9 @@ DetectorConfig parse_detection(Ctx &ctx, const json &d)
     if (d.contains("runaway_frames"))
         if (auto n = get_int_in(ctx, d["runaway_frames"], path + ".runaway_frames", 0, 100000))
             cfg.runaway_frames = uint32_t(*n);
+    if (d.contains("min_presses"))
+        if (auto n = get_int_in(ctx, d["min_presses"], path + ".min_presses", 0, 1000))
+            cfg.min_presses = uint32_t(*n);
 
     for (auto [key, out] : { std::pair{ "nmi_off_seconds", &cfg.nmi_off_frames },
                              std::pair{ "frozen_seconds", &cfg.frozen_frames },
@@ -537,6 +540,7 @@ ojson detection_json(const DetectorConfig &cfg)
     d["nmi_off_seconds"] = cfg.nmi_off_frames / 60.0;
     d["frozen_seconds"] = cfg.frozen_frames / 60.0;
     d["black_seconds"] = cfg.black_frames / 60.0;
+    d["min_presses"] = cfg.min_presses;
     return d;
 }
 

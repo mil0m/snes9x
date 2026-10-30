@@ -20,6 +20,8 @@ struct FakeCore : CoreAccess
     FakeMemory &mem;
     uint64_t picture = 0;
     bool frozen = false;
+    bool pressing = false; // the player mashing buttons
+    uint64_t input_clock = 0;
     int loads = 0;
 
     explicit FakeCore(FakeMemory &mem) : mem(mem) {}
@@ -49,6 +51,7 @@ struct FakeCore : CoreAccess
         FrameSignals s;
         s.cpu_halted = mem.of(Target::WRAM)[kCrashByte] == kCrashValue;
         s.picture_hash = frozen ? 1 : ++picture;
+        s.input = pressing && (++input_clock / 20) % 2 ? 0x0080 : 0x0000;
         return s;
     }
 };
@@ -217,6 +220,7 @@ TEST_CASE("a heuristic signal with no corruption to blame is ignored")
     quiet.rules[0].when = { .type = TriggerType::Hotkey, .hotkey = 1 }; // never pressed
     Rig rig(quiet);
     rig.core.frozen = true;
+    rig.core.pressing = true;
     rig.frames(1200);
     CHECK(rig.outcomes.empty());
     CHECK(rig.core.loads == 0);
@@ -227,6 +231,7 @@ TEST_CASE("a frozen picture after corruption is rolled back")
     Rig rig(recipe_of({ harmless_noise() }));
     rig.frames(200);
     rig.core.frozen = true;
+    rig.core.pressing = true;
     rig.frames(400);
     REQUIRE_FALSE(rig.outcomes.empty());
     CHECK(rig.outcomes[0].verdict.signal == CrashSignal::FrozenPicture);

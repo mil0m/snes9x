@@ -24,6 +24,8 @@ struct FrameSignals
     bool forced_blank = false;
     uint8_t brightness = 15;
     uint64_t picture_hash = 0;
+    bool picture_valid = true; // false when the frame wasn't drawn (frameskip): the hash is stale
+    uint16_t input = 0;        // controller 1 buttons
 };
 
 enum class CrashSignal
@@ -48,6 +50,9 @@ struct DetectorConfig
     uint32_t nmi_off_frames = 180;
     uint32_t frozen_frames = 300;
     uint32_t black_frames = 480;
+    // Frozen and black screens only count while the player presses buttons and nothing
+    // reacts; a still screen nobody is touching (a text box, a menu) is not a crash.
+    uint32_t min_presses = 3;
 };
 
 struct CrashVerdict
@@ -77,6 +82,9 @@ class CrashDetector
     std::optional<uint64_t> black_since;
     std::optional<uint64_t> frozen_since;
     std::optional<uint64_t> last_hash;
+    std::optional<uint16_t> last_input;
+    uint32_t black_presses = 0;
+    uint32_t frozen_presses = 0;
 };
 
 std::string describe_pc(uint32_t pc); // "$80:1234"

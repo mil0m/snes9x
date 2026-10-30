@@ -9,7 +9,7 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 # Everything in corrupt/ except the glue to emulator globals.
 file(GLOB ENGINE_SOURCES CONFIGURE_DEPENDS ../corrupt/*.cpp)
-list(FILTER ENGINE_SOURCES EXCLUDE REGEX "(core_memory|hook)\\.cpp$")
+list(FILTER ENGINE_SOURCES EXCLUDE REGEX "(core_memory|core_access|hook)\\.cpp$")
 file(GLOB TEST_SOURCES CONFIGURE_DEPENDS corrupt/*.cpp)
 
 add_executable(corrupt-tests ${ENGINE_SOURCES} ${TEST_SOURCES})

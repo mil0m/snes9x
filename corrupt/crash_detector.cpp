@@ -59,12 +59,18 @@ void CrashDetector::reset()
     black_since.reset();
     frozen_since.reset();
     last_hash.reset();
+    last_input.reset();
+    black_presses = 0;
+    frozen_presses = 0;
 }
 
 std::optional<CrashVerdict> CrashDetector::observe(uint64_t frame, const FrameSignals &s)
 {
     if (!config.enabled)
         return std::nullopt;
+
+    bool pressed = last_input && *last_input != s.input;
+    last_input = s.input;
 
     // Definite crashes.
     if (config.cpu_stopped && s.cpu_halted)
@@ -92,23 +98,39 @@ std::optional<CrashVerdict> CrashDetector::observe(uint64_t frame, const FrameSi
     }
 
     bool black = s.forced_blank || s.brightness == 0;
-    if (auto since = track(black_since, config.black_frames && black, frame);
-        since && frame - *since + 1 >= config.black_frames)
+    bool was_black = black_since.has_value();
+    if (auto since = track(black_since, config.black_frames && black, frame))
     {
-        black_since.reset();
-        return CrashVerdict{ CrashSignal::BlackScreen, frame, *since, true, "black screen for " + seconds(frame - *since + 1) };
+        black_presses = was_black ? black_presses + pressed : 0;
+        if (frame - *since + 1 >= config.black_frames && black_presses >= config.min_presses)
+        {
+            black_since.reset();
+            return CrashVerdict{ CrashSignal::BlackScreen, frame, *since, true,
+                                 "black screen for " + seconds(frame - *since + 1) + " despite button presses" };
+        }
     }
 
-    // A frozen picture counts repeats of the same picture; black screens have their own check.
+    // A frozen picture counts repeats of the same picture; black screens have their own
+    // check, and frames that weren't drawn carry no picture information at all.
+    if (frozen_since && pressed)
+        frozen_presses++;
+    if (!s.picture_valid)
+        return std::nullopt;
     bool repeat = !black && last_hash && *last_hash == s.picture_hash;
     if (!repeat)
+    {
         frozen_since = black ? std::nullopt : std::optional<uint64_t>(frame);
+        frozen_presses = 0;
+    }
     last_hash = s.picture_hash;
-    if (config.frozen_frames && repeat && frozen_since && frame - *frozen_since >= config.frozen_frames)
+    if (config.frozen_frames && repeat && frozen_since && frame - *frozen_since >= config.frozen_frames &&
+        frozen_presses >= config.min_presses)
     {
         uint64_t since = *frozen_since;
         frozen_since = frame; // report again only after another full stretch
-        return CrashVerdict{ CrashSignal::FrozenPicture, frame, since, true, "picture frozen for " + seconds(frame - since) };
+        frozen_presses = 0;
+        return CrashVerdict{ CrashSignal::FrozenPicture, frame, since, true,
+                             "picture frozen for " + seconds(frame - since) + " despite button presses" };
     }
 
     return std::nullopt;
