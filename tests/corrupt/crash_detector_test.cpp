@@ -86,8 +86,8 @@ TEST_CASE("NMI off for too long is a heuristic crash")
     CrashDetector d;
     auto off = [](uint64_t f) { auto s = healthy(f); s.nmi_enabled = false; return s; };
     feed(d, 1, 50, healthy);
-    CHECK_FALSE(feed(d, 51, 179, off));
-    auto v = d.observe(230, off(230));
+    CHECK_FALSE(feed(d, 51, 299, off));
+    auto v = d.observe(350, off(350));
     REQUIRE(v);
     CHECK(v->signal == CrashSignal::NmiOff);
     CHECK(v->since_frame == 51);

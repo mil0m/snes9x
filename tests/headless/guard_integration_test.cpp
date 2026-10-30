@@ -119,7 +119,7 @@ TEST_CASE("STP: caught on the spot, rolled back, game keeps running")
 TEST_CASE("NMI switched off: caught after its threshold, rolled back")
 {
     Harness h(testrom::Crash::NmiOff, trigger_at(120), PolicyKind::Skip);
-    h.run(120 + 200);
+    h.run(120 + 330);
     REQUIRE(h.outcomes.size() == 1);
     CHECK(h.outcomes[0].verdict.signal == CrashSignal::NmiOff);
     h.run(600);

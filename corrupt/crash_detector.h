@@ -50,7 +50,8 @@ struct DetectorConfig
     // Sampled once per frame, so it rarely fires: a CPU running from open bus usually
     // branches back into ROM within the frame (verified with generated test ROMs).
     uint32_t runaway_frames = 30;
-    uint32_t nmi_off_frames = 180;
+    // Clean 5-minute runs of four games showed natural NMI-off stretches up to 2.7 s.
+    uint32_t nmi_off_frames = 300;
     uint32_t frozen_frames = 300;
     uint32_t black_frames = 480;
     // Frozen and black screens only count while the player presses buttons and nothing
