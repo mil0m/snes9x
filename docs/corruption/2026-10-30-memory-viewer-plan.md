@@ -66,3 +66,21 @@ selected range into a rule without typing addresses.
 - **Watching costs about 0.4 ms a frame** for WRAM in a release build, and nothing while
   the viewer is closed.
 
+## Follow-up: the memory map (2026-10-30)
+
+Asked for after #18: a list of what lives where, like other emulators' memory viewers.
+
+- `corrupt/memory_map.{h,cpp}`: `fixed_map(target)` for the hardware layout every game
+  shares; `video_map(VideoLayout)` and `sound_map(SoundLayout)` for what the game uses now.
+  Unit-tested, including mode 7, clipping at the end of VRAM, a wrapped second sprite table,
+  an echo buffer of length 0, and FF6's real layout.
+- `SnesCoreAccess::video_layout()` / `sound_layout()` read the PPU (layer bases are word
+  addresses in the core, sprite bases bytes) and the DSP (ESA, EDL, FLG, DIR).
+- **A layer's tiles end where the next area starts.** 1024 tiles is only the most a layer
+  can use, and games pack VRAM tightly; listing the maximum made BG1's tiles in FF6 run
+  over its sprite tiles.
+- `corrupt-smoke --map` prints the map with how much of each area holds data. On Goof
+  Troop and FF6 every area does (FF6: BG1 tiles 0x6000-0xBFFF, echo buffer 0xCD00-0xF4FF).
+- The viewer shows the map as a sidebar, live areas in italics; the session re-reads the
+  live layout between frames while VRAM or ARAM is watched. QA.md section 14.
+

@@ -164,3 +164,15 @@ scratch folder. By default Snes9x writes the `.srm` next to the ROM.
 5. **Delete…** it.
    - [ ] The question names the recipe that uses it; afterwards the recipe still loads, with the range written out.
 
+## 14. Memory map
+1. In the memory viewer, look at the **Map** on the left with **wram** chosen.
+   - [ ] It lists the direct page, low RAM, bank $7E upper and bank $7F; hovering shows what each is.
+2. Switch to **vram** during gameplay.
+   - [ ] Italic lines appear: BG tiles and tile maps for the current mode, and two sprite tile tables. Clicking one selects it in the grid.
+3. Make a rule from **BG1 tiles** (New Rule from Selection…, random, every 30 frames, count 4).
+   - [ ] Background graphics get garbled, sprites don't.
+4. Walk into another area or open a menu that changes the screen.
+   - [ ] If the game moves its layers, the italic lines update.
+5. Switch to **aram**.
+   - [ ] **Echo buffer** and **Sample directory** appear. A rule on the echo buffer makes the sound smear or crackle, not crash.
+

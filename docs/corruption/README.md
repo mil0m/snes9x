@@ -72,6 +72,12 @@ Loading another recipe or starting a new one asks before discarding unsaved edit
 
 **Memory Viewer…** in the panel opens a hex view of one target (WRAM, VRAM, the palette…):
 
+- The **Map** on the left lists what lives where in that memory; click an area to select
+  it. Every memory has its fixed hardware layout (WRAM's direct page and stack area, the
+  sprite table, background and sprite palettes, the sound CPU's registers…). VRAM and ARAM
+  also show what the game uses right now, read from the graphics and sound chips: each
+  background layer's tiles and tile map, the sprite tiles, the echo buffer and the sample
+  directory. Those are in italics, because they move when the game changes screens.
 - **Activity** colours each byte by how often the game changes it, so live data (timers,
   positions, the sprite buffer) glows and unused memory stays plain. A byte that changes
   every frame is fully orange; one that changes once a second is faint but visible.
@@ -291,7 +297,8 @@ how many frames look different and which memory changed. It also checks that eve
 the engine logged really landed in emulator memory. With `--replay` instead, it starts the
 recipe the way the app does, plays on, starts again from the saved moment, and checks the
 second run ends with identical memory and picture. With `--copies` it lists where WRAM
-holds copies of the sprite table and palette after the warmup.
+holds copies of the sprite table and palette after the warmup, and `--map` prints the
+VRAM and ARAM map with how much of each area holds data.
 
 The real-core tests (`tests/headless/guard_integration_test.cpp`) boot tiny generated ROMs
 that crash on cue (`STP`, NMI off) and check that the guard catches, rolls back and plays
