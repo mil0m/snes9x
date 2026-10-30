@@ -1,5 +1,6 @@
 #pragma once
 #include "crash_guard.h"
+#include "memory_map.h"
 
 namespace corrupt
 {
@@ -21,6 +22,11 @@ class SnesCoreAccess : public CoreAccess
     // after every ROM load (it re-targets itself) and unwatch when the game closes.
     static void watch_resets();
     static void unwatch_resets();
+
+    // The live layout for the memory viewer's map: where the PPU reads the picture
+    // from VRAM, and where the sound DSP keeps its echo buffer and samples in ARAM.
+    static VideoLayout video_layout();
+    static SoundLayout sound_layout();
 
   private:
     bool drawing = true;

@@ -91,7 +91,7 @@ std::vector<MapArea> video_map(const VideoLayout &v)
             auto &bg = v.bg[i];
             std::string layer = "BG" + std::to_string(i + 1);
             add(m, kSize, layer + " tiles (" + std::to_string(bpp) + " bpp)", Target::VRAM, bg.tiles,
-                uint64_t(bg.tiles) + 1024u * 8u * unsigned(bpp) - 1, "Up to 1024 tiles; " + shown(bg.shown), true);
+                uint64_t(bg.tiles) + 1024u * 8u * unsigned(bpp) - 1, "Up to the next area (1024 tiles at most); " + shown(bg.shown), true);
             int s = bg.map_size & 3;
             add(m, kSize, layer + " tile map (" + kMapSize[s] + ")", Target::VRAM, bg.map,
                 uint64_t(bg.map) + 2048u * unsigned(kScreens[s]) - 1, "Which tile goes where; " + shown(bg.shown), true);
@@ -101,6 +101,17 @@ std::vector<MapArea> video_map(const VideoLayout &v)
         "Sprite tiles 0-255 (4 bpp)", true);
     add(m, kSize, "Sprite tiles, second table", Target::VRAM, v.sprite_tiles2, uint64_t(v.sprite_tiles2) + 0x1FFF,
         "Sprite tiles 256-511 (4 bpp)", true);
+
+    // 1024 tiles is only the most a layer can use. Games pack VRAM tightly, so a layer's
+    // tiles are shown up to the next area that starts after them.
+    for (auto &a : m)
+    {
+        if (a.name.find(" tiles (") == std::string::npos)
+            continue;
+        for (auto &other : m)
+            if (other.range.first > a.range.first && other.range.first <= a.range.last)
+                a.range.last = other.range.first - 1;
+    }
     sort(m);
     return m;
 }

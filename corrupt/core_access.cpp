@@ -7,6 +7,7 @@
 #include "snapshot.h"
 #include "movie.h"
 #include "cpuexec.h"
+#include "apu/bapu/snes/snes.hpp"
 
 namespace corrupt
 {
@@ -109,6 +110,35 @@ void install()
 } // namespace reset_watch
 
 } // namespace
+
+VideoLayout SnesCoreAccess::video_layout()
+{
+    VideoLayout v;
+    v.mode = PPU.BGMode & 7;
+    uint8 screens = Memory.FillRAM[0x212C] | Memory.FillRAM[0x212D]; // main and sub screen layers
+    for (int i = 0; i < 4; i++)
+    {
+        // The core keeps these as VRAM word addresses.
+        v.bg[i].tiles = uint32_t(PPU.BG[i].NameBase << 1) & 0xFFFF;
+        v.bg[i].map = uint32_t(PPU.BG[i].SCBase << 1) & 0xFFFF;
+        v.bg[i].map_size = uint8_t(PPU.BG[i].SCSize & 3);
+        v.bg[i].shown = (screens >> i) & 1;
+    }
+    // Sprite bases are already byte addresses; tiles 256-511 sit 0x2000 on, plus the gap.
+    v.sprite_tiles = PPU.OBJNameBase & 0xFFFF;
+    v.sprite_tiles2 = (PPU.OBJNameBase + 0x2000 + PPU.OBJNameSelect) & 0xFFFF;
+    return v;
+}
+
+SoundLayout SnesCoreAccess::sound_layout()
+{
+    SoundLayout s;
+    s.echo_page = uint8_t(SNES::dsp.spc_dsp.read(0x6D));      // ESA
+    s.echo_delay = uint8_t(SNES::dsp.spc_dsp.read(0x7D) & 15); // EDL
+    s.echo_writes = !(SNES::dsp.spc_dsp.read(0x6C) & 0x20);    // FLG bit 5 switches echo writes off
+    s.sample_dir_page = uint8_t(SNES::dsp.spc_dsp.read(0x5D)); // DIR
+    return s;
+}
 
 void SnesCoreAccess::watch_resets()
 {

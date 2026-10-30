@@ -1,7 +1,7 @@
 // End-to-end check of the corruption engine inside the real emulator, no window
 // needed:
 //
-//   corrupt-smoke <rom> <recipe.json> [frames=600] [warmup=600] [--guard | --replay | --copies]
+//   corrupt-smoke <rom> <recipe.json> [frames=600] [warmup=600] [--guard | --replay | --copies | --map]
 //
 // Boots the ROM, runs `warmup` frames, saves a state, then runs `frames` twice
 // from that state: once clean, once with the recipe. Reports what the recipe
@@ -17,6 +17,8 @@
 //
 // With --copies it lists where WRAM holds copies of the sprite table and the palette
 // after the warmup (the recipe is only read, not run), as the memory viewer finds them.
+// With --map it prints the memory viewer's map of VRAM and ARAM after the warmup, with
+// how many bytes in each area are nonzero (graphics and sound data actually there).
 #include "headless_core.h"
 
 #include "corrupt/core_access.h"
@@ -27,6 +29,7 @@
 #include "corrupt/recipe_json.h"
 #include "corrupt/run_control.h"
 #include "corrupt/memory_watch.h"
+#include "corrupt/memory_map.h"
 
 #include "snes9x.h"
 #include "memmap.h"
@@ -200,6 +203,24 @@ int main(int argc, char **argv)
     headless::run_frames(warmup);
     if (argc > 5 && std::string(argv[5]) == "--guard")
         return run_guarded(*parsed.recipe, frames);
+    if (argc > 5 && std::string(argv[5]) == "--map")
+    {
+        auto all = snapshot_targets();
+        auto video = SnesCoreAccess::video_layout();
+        printf("mode     %d\n", video.mode);
+        for (auto [t, map] : { std::pair{ Target::VRAM, video_map(video) },
+                               std::pair{ Target::ARAM, merge_maps(fixed_map(Target::ARAM, 0x10000),
+                                                                   sound_map(SnesCoreAccess::sound_layout())) } })
+            for (auto &a : map)
+            {
+                size_t nonzero = 0;
+                for (uint32_t i = a.range.first; i <= a.range.last; i++)
+                    nonzero += all[size_t(t)][i] != 0;
+                printf("  %-5s %s..%s  %-30s %3zu%% nonzero  %s\n", target_name(t), hex(a.range.first).c_str(),
+                       hex(a.range.last).c_str(), a.name.c_str(), nonzero * 100 / a.range.length(), a.about.c_str());
+            }
+        return 0;
+    }
     if (argc > 5 && std::string(argv[5]) == "--copies")
     {
         auto all = snapshot_targets();

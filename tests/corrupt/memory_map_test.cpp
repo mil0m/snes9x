@@ -96,7 +96,7 @@ TEST_CASE("video map: mode 1 layers, their depth, and which are on screen")
     REQUIRE(bg1);
     CHECK(bg1->name.find("4 bpp") != std::string::npos);
     CHECK(bg1->range.first == 0u);
-    CHECK(bg1->range.last == 0x7FFFu); // 1024 tiles x 32 bytes
+    CHECK(bg1->range.last == 0x3FFFu); // up to BG2's tiles at 0x4000
     CHECK(bg1->live);
 
     auto bg1map = find(map, "BG1 tile map");
@@ -121,14 +121,14 @@ TEST_CASE("video map: mode 1 layers, their depth, and which are on screen")
 TEST_CASE("video map: areas running past the end of VRAM are clipped")
 {
     VideoLayout v;
-    v.mode = 3; // BG1 is 8 bpp: 64 KB of tiles from its base
+    v.mode = 3; // BG1 is 8 bpp: up to 64 KB of tiles from its base
     v.bg[0] = { .tiles = 0x8000, .map = 0x0000, .map_size = 3, .shown = true };
     v.bg[1] = { .tiles = 0x0000, .map = 0xF800, .map_size = 3, .shown = true };
     v.sprite_tiles = 0xE000;
     v.sprite_tiles2 = 0x0000; // the second table wrapped to the start
     auto map = video_map(v);
     check_sane(map, Target::VRAM, 0x10000);
-    CHECK(find(map, "BG1 tiles")->range.last == 0xFFFFu);
+    CHECK(find(map, "BG1 tiles")->range.last == 0xDFFFu); // up to the sprite tiles
     CHECK(find(map, "BG2 tile map")->range.last == 0xFFFFu);
     CHECK(find(map, "Sprite tiles, second")->range.first == 0u);
 }
@@ -185,4 +185,21 @@ TEST_CASE("fixed and live areas merge in address order")
     auto map = merge_maps(fixed_map(Target::ARAM, 0x10000), sound_map(s));
     check_sane(map, Target::ARAM, 0x10000);
     CHECK(map.size() == 7);
+}
+
+TEST_CASE("video map: a layer's tiles end where the next area starts (FF6's field)")
+{
+    // FF6's field screen: tiles for BG2 and BG3 share a base, BG1's start 8 KB later.
+    VideoLayout v;
+    v.mode = 1;
+    v.bg[0] = { .tiles = 0x6000, .map = 0x0000, .map_size = 3, .shown = true };
+    v.bg[1] = { .tiles = 0x4000, .map = 0x2000, .map_size = 1, .shown = true };
+    v.bg[2] = { .tiles = 0x4000, .map = 0x3000, .map_size = 1, .shown = true };
+    v.sprite_tiles = 0xC000;
+    v.sprite_tiles2 = 0xE000;
+    auto map = video_map(v);
+    CHECK(find(map, "BG1 tiles")->range.last == 0xBFFFu); // up to the sprite tiles
+    CHECK(find(map, "BG2 tiles")->range.last == 0x5FFFu); // up to BG1's tiles
+    CHECK(find(map, "BG3 tiles")->range.last == 0x5FFFu);
+    CHECK(find(map, "BG1 tile map")->range.last == 0x1FFFu); // maps keep their exact size
 }
