@@ -137,3 +137,25 @@ Done 2026-10-30 (QA.md section 15). Findings:
 - **1:1 is the default**, because that is where all of WRAM fits in the window.
 - Not done, maybe later: a chosen row width (stride), to line up a tile map's rows, and
   the VRAM tile view that decodes graphics with the palette.
+
+## Follow-up: choosing the row width (2026-10-30)
+
+Asked for right after the pixel view: "row width is crucial to be able to set". Data laid
+out in rows (a tile map, a game's own grids, tables of records) only lines up when a row
+of dots is exactly one row of the data, and the width that does it isn't known up front.
+
+- **Row width: Auto, or any number of bytes from 1 to 4096.** A spin box in pixel mode;
+  type a number, or step it by 1 with the arrows, the keyboard or the wheel, and watch for
+  the moment the picture snaps into columns. Auto is the power-of-two width from before.
+- **A chosen width doesn't follow the window or the zoom.** When it's wider than the view,
+  a horizontal scrollbar appears; the address column stays put.
+- **Remembered per memory** while the viewer is open, so VRAM can stay at 64 (a 32-wide
+  tile map) while WRAM is on Auto.
+
+Tasks:
+
+1. `PixelView::setRowWidth(n)` (0 = Auto): columns, both-way mapping at odd widths, wider
+   than the view with horizontal scrolling, the address column never selects, zoom keeps
+   the width, clamping.
+2. Viewer: the Row width box (pixel mode only), per target. Tests and a PNG.
+3. Docs: README, QA.md section 15, findings here.
