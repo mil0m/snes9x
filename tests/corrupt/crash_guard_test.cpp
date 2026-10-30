@@ -12,6 +12,7 @@ namespace
 
 constexpr uint32_t kCrashByte = 0x10; // WRAM: 0xEE here means "the CPU stopped"
 constexpr uint8_t kCrashValue = 0xEE;
+constexpr uint32_t kLatentByte = 0x20; // 0xEE here crashes only later (see FakeCore::latent_from)
 
 // A pretend emulator: its state is FakeMemory, its picture always animates,
 // and it "crashes" when the crash byte holds 0xEE.
@@ -21,6 +22,9 @@ struct FakeCore : CoreAccess
     uint64_t picture = 0;
     bool frozen = false;
     bool pressing = false; // the player mashing buttons
+    // Latent damage: crash only once the game reaches `latent_from` and reads the byte.
+    const Engine *engine = nullptr;
+    uint64_t latent_from = 0;
     uint64_t input_clock = 0;
     int loads = 0;
 
@@ -50,6 +54,8 @@ struct FakeCore : CoreAccess
     {
         FrameSignals s;
         s.cpu_halted = mem.of(Target::WRAM)[kCrashByte] == kCrashValue;
+        if (latent_from && engine->current_frame() >= latent_from && mem.of(Target::WRAM)[kLatentByte] == kCrashValue)
+            s.cpu_halted = true;
         s.picture_hash = frozen ? 1 : ++picture;
         s.input = pressing && (++input_clock / 20) % 2 ? 0x0080 : 0x0000;
         return s;
@@ -319,4 +325,29 @@ TEST_CASE("a hard crash that stops frames from advancing is still caught")
     REQUIRE(rig.outcomes.size() == 1);
     CHECK(rig.outcomes[0].verdict.signal == CrashSignal::CpuStopped);
     CHECK(rig.crash_byte() == 0);
+}
+
+TEST_CASE("repeat crashes step further back, past latent damage")
+{
+    // The poke at frame 130 does nothing until the game reads it at frame 400, so a
+    // short rollback lands after the damage. Each repeat must go further back.
+    Rule latent = poke_crash_byte(130, kCrashValue, kCrashValue);
+    latent.name = "latent";
+    latent.range = { Target::WRAM, kLatentByte, kLatentByte };
+    latent.op = { .type = OpType::Add, .min = kCrashValue, .max = kCrashValue }; // dampen halves it
+    // Dampen keeps the noise rule writing on replay, so blame never runs out on its own.
+    Rig rig(recipe_of({ harmless_noise(), latent }), PolicyKind::Dampen);
+    rig.core.engine = &rig.engine;
+    rig.core.latent_from = 400;
+    rig.frames(2000);
+
+    REQUIRE(rig.outcomes.size() >= 2);
+    CHECK(rig.outcomes[0].restored_frame > 130); // the first, short rollback can't reach it
+    bool reached = false;
+    for (auto &o : rig.outcomes)
+        reached |= o.restored_frame < 130;
+    CHECK(reached);
+    CHECK(rig.outcomes.back().kind == GuardOutcome::RolledBack); // never had to give up
+    CHECK(rig.engine.active());
+    CHECK(rig.mem.of(Target::WRAM)[kLatentByte] != kCrashValue);
 }

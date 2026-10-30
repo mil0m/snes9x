@@ -121,7 +121,8 @@ void CrashGuard::restore(const Checkpoint &cp, Engine &engine, CoreAccess &core)
 
 GuardOutcome CrashGuard::handle(const CrashVerdict &verdict, Engine &engine, CoreAccess &core)
 {
-    uint64_t target = verdict.since_frame > kRollbackMargin ? verdict.since_frame - kRollbackMargin : 0;
+    uint64_t back = kRollbackMargin + uint64_t(consecutive) * kStepBackFrames;
+    uint64_t target = verdict.since_frame > back ? verdict.since_frame - back : 0;
     uint64_t through = verdict.signal == CrashSignal::Manual ? verdict.frame : verdict.since_frame;
 
     // The newest checkpoint before the trouble that has corruption to blame after it.

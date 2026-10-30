@@ -73,6 +73,9 @@ class CrashGuard
     static constexpr uint64_t kCleanFrames = 600;         // 10 s without a crash resets the attempt count
     static constexpr unsigned kMaxAttempts = 5;
     static constexpr uint64_t kManualLookback = 120;      // a hand-marked crash blames the last 2 s
+    // Each crash in a row goes this much further back: damage is often written long
+    // before the game trips over it, and every checkpoint after it carries it along.
+    static constexpr uint64_t kStepBackFrames = 300;
 
     GuardOutcome between_frames(Engine &engine, CoreAccess &core);
 
