@@ -5,7 +5,8 @@
 
 // One memory target with each byte drawn as a square pixel coloured by its value, so a
 // whole memory fits on screen and fills, tables and graphics show as patterns. Zoom sets
-// the pixel size; a row holds as many bytes as fit (a power of two). With the Activity or
+// the pixel size; a row holds as many bytes as fit (a power of two), or a chosen number
+// of bytes, scrolling sideways when that's wider than the view. With the Activity or
 // Hits overlay the bytes turn grey and the heat is painted over them. Drag, or click and
 // shift-click, to select; Ctrl+wheel zooms around the mouse.
 class PixelView : public QAbstractScrollArea, public MemoryPane
@@ -15,6 +16,7 @@ class PixelView : public QAbstractScrollArea, public MemoryPane
   public:
     static constexpr int kMinZoom = 1;
     static constexpr int kMaxZoom = 16;
+    static constexpr int kMaxRowWidth = 4096;
 
     explicit PixelView(QWidget *parent = nullptr);
 
@@ -33,6 +35,8 @@ class PixelView : public QAbstractScrollArea, public MemoryPane
     void zoomIn();
     void zoomOut();
     int columns() const { return columns_; } // bytes per row
+    int rowWidth() const { return row_width_; } // the chosen bytes per row, 0 = as many as fit
+    void setRowWidth(int bytes);                // keeps the first visible byte on screen
 
     // Geometry, in viewport coordinates.
     std::optional<uint32_t> offsetAt(QPoint pos) const;
@@ -57,6 +61,7 @@ class PixelView : public QAbstractScrollArea, public MemoryPane
     int rowCount() const;
     int visibleRows() const;
     int addressWidth() const;
+    int imageLeft() const; // where column 0 is drawn, after scrolling sideways
     void relayout(uint32_t keep_offset); // columns and scroll range for the zoom and width
     void setSelectionTo(uint32_t anchor, uint32_t end);
     void zoomTo(int zoom, std::optional<QPoint> around);
@@ -69,4 +74,5 @@ class PixelView : public QAbstractScrollArea, public MemoryPane
     uint32_t max_hits = 1;
     int zoom_ = 1; // the whole of WRAM fits in the window
     int columns_ = 16;
+    int row_width_ = 0;
 };

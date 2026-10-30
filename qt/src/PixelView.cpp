@@ -45,14 +45,20 @@ PixelView::PixelView(QWidget *parent)
     setFont(mono);
     viewport()->setFont(mono);
     viewport()->setMouseTracking(true);
-    setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
-    setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOn); // a steady width, so the columns don't jump
+    setHorizontalScrollBarPolicy(Qt::ScrollBarAsNeeded); // only a chosen row width can be too wide
+    setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOn);    // a steady width, so the columns don't jump
     connect(verticalScrollBar(), &QScrollBar::valueChanged, viewport(), [this] { viewport()->update(); });
+    connect(horizontalScrollBar(), &QScrollBar::valueChanged, viewport(), [this] { viewport()->update(); });
 }
 
 int PixelView::addressWidth() const
 {
     return fontMetrics().horizontalAdvance("0x00000") + 10;
+}
+
+int PixelView::imageLeft() const
+{
+    return addressWidth() - horizontalScrollBar()->value();
 }
 
 int PixelView::rowCount() const
@@ -79,23 +85,41 @@ QSize PixelView::sizeHint() const
 
 void PixelView::relayout(uint32_t keep_offset)
 {
-    int fit = std::max(1, (viewport()->width() - addressWidth()) / zoom_);
-    int cols = std::max(16, floorPowerOfTwo(fit));
-    if (!snap.bytes.empty())
+    int room = std::max(1, viewport()->width() - addressWidth());
+    if (row_width_ > 0)
+        columns_ = row_width_;
+    else
     {
-        // No wider than a square: a small target gets rows rather than one thin line (cgram
-        // comes out one 16-colour palette a row, oam eight sprite entries a row).
-        int square = 16;
-        while (size_t(square) * size_t(square) < snap.bytes.size())
-            square *= 2;
-        cols = std::min(cols, square);
+        int cols = std::max(16, floorPowerOfTwo(room / zoom_));
+        if (!snap.bytes.empty())
+        {
+            // No wider than a square: a small target gets rows rather than one thin line (cgram
+            // comes out one 16-colour palette a row, oam eight sprite entries a row).
+            int square = 16;
+            while (size_t(square) * size_t(square) < snap.bytes.size())
+                square *= 2;
+            cols = std::min(cols, square);
+        }
+        columns_ = cols;
     }
-    columns_ = cols;
+    horizontalScrollBar()->setRange(0, std::max(0, columns_ * zoom_ - room));
+    horizontalScrollBar()->setPageStep(room);
+    horizontalScrollBar()->setSingleStep(std::max(8, 8 * zoom_));
     verticalScrollBar()->setRange(0, std::max(0, rowCount() - visibleRows()));
     verticalScrollBar()->setPageStep(visibleRows());
     verticalScrollBar()->setSingleStep(std::max(1, 24 / zoom_));
     verticalScrollBar()->setValue(int(keep_offset / uint32_t(columns_)));
     viewport()->update();
+}
+
+void PixelView::setRowWidth(int bytes)
+{
+    bytes = bytes <= 0 ? 0 : std::min(bytes, kMaxRowWidth);
+    if (bytes == row_width_)
+        return;
+    uint32_t keep = firstVisibleOffset();
+    row_width_ = bytes;
+    relayout(keep);
 }
 
 void PixelView::setSnapshot(const MemorySnapshot &snapshot)
@@ -169,15 +193,17 @@ QRect PixelView::pixelRect(uint32_t offset) const
     int row = int(offset / uint32_t(columns_)) - verticalScrollBar()->value();
     if (row < 0 || row >= visibleRows())
         return {};
-    int column = int(offset % uint32_t(columns_));
-    return QRect(addressWidth() + column * zoom_, row * zoom_, zoom_, zoom_);
+    int x = imageLeft() + int(offset % uint32_t(columns_)) * zoom_;
+    if (x < addressWidth() || x + zoom_ > viewport()->width())
+        return {}; // scrolled off sideways
+    return QRect(x, row * zoom_, zoom_, zoom_);
 }
 
 std::optional<uint32_t> PixelView::offsetAt(QPoint pos) const
 {
     if (snap.bytes.empty() || pos.x() < addressWidth() || pos.y() < 0)
         return std::nullopt;
-    int column = (pos.x() - addressWidth()) / zoom_;
+    int column = (pos.x() - imageLeft()) / zoom_;
     if (column >= columns_)
         return std::nullopt;
     size_t offset = size_t(pos.y() / zoom_ + verticalScrollBar()->value()) * size_t(columns_) + size_t(column);
@@ -213,6 +239,8 @@ void PixelView::select(uint32_t first, uint32_t last)
         uint32_t context = uint32_t(std::max(2, visibleRows() / 8) * columns_); // a little above it
         scrollTo(first >= context ? first - context : 0);
     }
+    if (pixelRect(first).isEmpty()) // off to the side
+        horizontalScrollBar()->setValue(int(first % uint32_t(columns_)) * zoom_ - 8 * zoom_);
     setSelectionTo(first, last);
 }
 
@@ -317,8 +345,12 @@ void PixelView::paintEvent(QPaintEvent *)
     if (rows <= 0)
         return;
 
-    // One image pixel per byte, then scaled up without smoothing.
-    QImage image(columns_, rows, QImage::Format_RGB32);
+    // One image pixel per visible byte, then scaled up without smoothing.
+    int first_col = horizontalScrollBar()->value() / zoom_;
+    int cols = std::min(columns_ - first_col, (viewport()->width() - addressWidth()) / zoom_ + 2);
+    if (cols <= 0)
+        return;
+    QImage image(cols, rows, QImage::Format_RGB32);
     QRgb empty = background.rgb();
     QRgb hot = overlayColor(overlay).rgb();
     QRgb highlight = palette().color(QPalette::Highlight).rgb();
@@ -326,8 +358,8 @@ void PixelView::paintEvent(QPaintEvent *)
     for (int r = 0; r < rows; r++)
     {
         auto line = reinterpret_cast<QRgb *>(image.scanLine(r));
-        size_t start = size_t(first_row + r) * size_t(columns_);
-        for (int c = 0; c < columns_; c++)
+        size_t start = size_t(first_row + r) * size_t(columns_) + size_t(first_col);
+        for (int c = 0; c < cols; c++)
         {
             size_t offset = start + size_t(c);
             if (offset >= snap.bytes.size())
@@ -349,10 +381,11 @@ void PixelView::paintEvent(QPaintEvent *)
             line[c] = colour;
         }
     }
-    QRect area(addressWidth(), 0, columns_ * zoom_, rows * zoom_);
+    QRect area(imageLeft() + first_col * zoom_, 0, cols * zoom_, rows * zoom_);
     p.drawImage(area, image);
     p.setPen(palette().color(QPalette::Mid)); // so a white fill doesn't melt into the page
-    p.drawRect(area.adjusted(-1, -1, 0, 0));
+    p.drawRect(QRect(imageLeft(), 0, columns_ * zoom_, rows * zoom_).adjusted(-1, -1, 0, 0));
+    p.fillRect(QRect(0, 0, addressWidth() - 1, viewport()->height()), background); // rows scroll under it
 
     // A bar beside the rows the selection covers: at 1:1 a selection can be a pixel high.
     if (sel)

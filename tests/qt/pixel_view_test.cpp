@@ -259,6 +259,107 @@ TEST_CASE("an empty snapshot draws nothing and selects nothing")
     shot(v, "pixel-view-empty");
 }
 
+TEST_SUITE("a chosen row width")
+{
+    TEST_CASE("a chosen width holds at every zoom and window size; 0 goes back to auto")
+    {
+        Shown s(2);
+        int automatic = s.view.columns();
+        s.view.setRowWidth(48);
+        CHECK(s.view.rowWidth() == 48);
+        CHECK(s.view.columns() == 48);
+        s.view.setZoom(1);
+        CHECK(s.view.columns() == 48);
+        s.view.resize(300, 300);
+        QApplication::processEvents();
+        CHECK(s.view.columns() == 48);
+        s.view.resize(700, 500);
+        QApplication::processEvents();
+        s.view.setZoom(2);
+        s.view.setRowWidth(0);
+        CHECK(s.view.rowWidth() == 0);
+        CHECK(s.view.columns() == automatic);
+    }
+
+    TEST_CASE("bytes and pixels map both ways at odd widths")
+    {
+        Shown s(3);
+        for (int width : { 1, 7, 48, 100 })
+        {
+            CAPTURE(width);
+            s.view.setRowWidth(width);
+            uint32_t w = uint32_t(width);
+            for (uint32_t offset : { 0u, w - 1, w, 3 * w + w / 2 })
+            {
+                CAPTURE(offset);
+                auto rect = s.view.pixelRect(offset);
+                REQUIRE_FALSE(rect.isEmpty());
+                CHECK(s.view.offsetAt(rect.topLeft()) == offset);
+                CHECK(s.view.offsetAt(rect.bottomRight()) == offset);
+            }
+            CHECK(s.view.pixelRect(w).top() == s.view.pixelRect(0).top() + 3);
+            CHECK(s.view.pixelRect(w).left() == s.view.pixelRect(0).left());
+        }
+    }
+
+    TEST_CASE("changing the width keeps the place")
+    {
+        Shown s(4);
+        s.view.scrollTo(0x6000);
+        s.view.setRowWidth(48);
+        CHECK(s.view.firstVisibleOffset() <= 0x6000u);
+        CHECK(s.view.firstVisibleOffset() + 48 > 0x6000u);
+    }
+
+    TEST_CASE("rows wider than the view scroll sideways, under a fixed address column")
+    {
+        Shown s(4);
+        s.view.setRowWidth(300); // 1200 pixels in a 700-pixel view
+        auto h = s.view.horizontalScrollBar();
+        CHECK(h->maximum() > 0);
+        CHECK_FALSE(s.view.pixelRect(0).isEmpty());
+        CHECK(s.view.pixelRect(299).isEmpty()); // off to the right
+        h->setValue(h->maximum());
+        QRect last = s.view.pixelRect(299);
+        REQUIRE_FALSE(last.isEmpty());
+        CHECK(last.right() < s.view.viewport()->width());
+        CHECK(s.view.offsetAt(last.center()) == 299u);
+        CHECK(s.view.pixelRect(0).isEmpty()); // scrolled under the address column
+        CHECK_FALSE(s.view.offsetAt(QPoint(5, 5)));
+
+        click(s.view, last.center());
+        CHECK(s.view.selection() == std::pair{ 299u, 299u });
+        s.view.select(0x9000, 0x9000); // select() brings it into view sideways too
+        CHECK_FALSE(s.view.pixelRect(0x9000).isEmpty());
+        shot(s.view, "pixel-view-wide-rows");
+
+        s.view.setRowWidth(0);
+        CHECK(h->maximum() == 0);
+    }
+
+    TEST_CASE("the width is clamped to 1..4096")
+    {
+        Shown s(1);
+        s.view.setRowWidth(100000);
+        CHECK(s.view.rowWidth() == PixelView::kMaxRowWidth);
+        CHECK(s.view.columns() == 4096);
+        s.view.setRowWidth(-3);
+        CHECK(s.view.rowWidth() == 0);
+    }
+
+    TEST_CASE("a picture: the sample's 4-byte sprite entries line up at width 32")
+    {
+        Shown s(8);
+        s.view.setOverlay(MemoryPane::Overlay::None);
+        s.view.setRowWidth(34); // off by two: the entries lean
+        s.view.scrollTo(0x1000);
+        shot(s.view, "pixel-view-width-34");
+        s.view.setRowWidth(32);
+        s.view.scrollTo(0x1000);
+        shot(s.view, "pixel-view-width-32");
+    }
+}
+
 TEST_CASE("pictures of the pixel view")
 {
     Shown s(1, QSize(600, 560));
