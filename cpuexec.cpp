@@ -19,7 +19,7 @@
 
 static inline void S9xReschedule (void);
 
-// Corruption tooling (corrupt/hook.h): called at the start of every VBlank when set.
+// Corruption tooling (corrupt/hook.h): called at the start of every frame, when set.
 void (*S9xCorruptFrameHook)(void) = nullptr;
 
 void S9xMainLoop (void)
@@ -344,8 +344,6 @@ void S9xDoHEventProcessing (void)
 			if (CPU.V_Counter == PPU.ScreenHeight + FIRST_VISIBLE_LINE)	// VBlank starts from V=225(240).
 			{
 				S9xEndScreenRefresh();
-				if (S9xCorruptFrameHook)
-					S9xCorruptFrameHook();
 				#ifdef DEBUGGER
 					if (!(CPU.Flags & FRAME_ADVANCE_FLAG))
 				#endif
@@ -403,7 +401,11 @@ void S9xDoHEventProcessing (void)
 			}
 
 			if (CPU.V_Counter == FIRST_VISIBLE_LINE)	// V=1
+			{
 				S9xStartScreenRefresh();
+				if (S9xCorruptFrameHook)
+					S9xCorruptFrameHook();
+			}
 
 
 

@@ -14,9 +14,33 @@ file(GLOB TEST_SOURCES CONFIGURE_DEPENDS corrupt/*.cpp)
 
 add_executable(corrupt-tests ${ENGINE_SOURCES} ${TEST_SOURCES})
 target_include_directories(corrupt-tests PRIVATE .. ../external)
+target_compile_definitions(corrupt-tests PRIVATE CORRUPT_EXAMPLES_DIR="${CMAKE_CURRENT_SOURCE_DIR}/../docs/corruption/examples")
 if(NOT MSVC)
     target_compile_options(corrupt-tests PRIVATE -Wall -Wextra)
 endif()
 
 enable_testing()
 add_test(NAME corrupt-tests COMMAND corrupt-tests)
+
+# Headless tests against the real emulator core (needs zlib + libpng).
+find_package(PkgConfig QUIET)
+if(PkgConfig_FOUND)
+    pkg_check_modules(ZLIB QUIET zlib)
+    pkg_check_modules(PNG QUIET libpng)
+endif()
+
+if(ZLIB_FOUND AND PNG_FOUND)
+    include(../cmake/snes9x_core.cmake)
+    target_compile_definitions(snes9x-core PRIVATE ZLIB HAVE_STDINT_H HAVE_LIBPNG ALLOW_CPU_OVERCLOCK)
+    target_include_directories(snes9x-core PRIVATE ${PNG_INCLUDE_DIRS} ${ZLIB_INCLUDE_DIRS})
+
+    add_library(snes9x-headless STATIC headless/headless_core.cpp headless/headless_platform.cpp)
+    target_include_directories(snes9x-headless PUBLIC .. ../external headless ${PNG_INCLUDE_DIRS})
+    target_compile_definitions(snes9x-headless PUBLIC ZLIB HAVE_STDINT_H HAVE_LIBPNG ALLOW_CPU_OVERCLOCK)
+    target_link_libraries(snes9x-headless PUBLIC snes9x-core ${PNG_LINK_LIBRARIES} ${ZLIB_LINK_LIBRARIES})
+
+    add_executable(corrupt-smoke headless/corrupt_smoke.cpp)
+    target_link_libraries(corrupt-smoke PRIVATE snes9x-headless)
+else()
+    message(STATUS "zlib/libpng not found: skipping the headless core tests")
+endif()

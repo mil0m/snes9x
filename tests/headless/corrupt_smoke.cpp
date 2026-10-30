@@ -1,0 +1,162 @@
+// End-to-end check of the corruption engine inside the real emulator, no window
+// needed:
+//
+//   corrupt-smoke <rom> <recipe.json> [frames=600] [warmup=600]
+//
+// Boots the ROM, runs `warmup` frames, saves a state, then runs `frames` twice
+// from that state: once clean, once with the recipe. Reports what the recipe
+// changed, and checks after every frame that each byte the engine logged really
+// reads back from emulator memory (i.e. CoreMemory writes land).
+#include "headless_core.h"
+
+#include "corrupt/core_memory.h"
+#include "corrupt/engine.h"
+#include "corrupt/hook.h"
+#include "corrupt/recipe_json.h"
+
+#include "snes9x.h"
+#include "memmap.h"
+
+#include <cstdio>
+#include <fstream>
+#include <sstream>
+
+using namespace corrupt;
+
+namespace
+{
+
+Engine engine;
+CoreMemory memory;
+size_t verified = 0;
+size_t mismatched = 0;
+
+void frame_hook()
+{
+    size_t before = engine.event_log().size();
+    uint64_t frame_before = engine.status().frame;
+    engine.on_frame(memory);
+    // Only this frame's events; the log is bounded, so count from the end.
+    for (auto it = engine.event_log().rbegin(); it != engine.event_log().rend() && it->frame > frame_before; ++it)
+    {
+        if (memory.read(it->write.target, it->write.offset) == it->write.new_value)
+            verified++;
+        else
+            mismatched++;
+    }
+    (void)before;
+}
+
+std::vector<std::vector<uint8_t>> snapshot_targets()
+{
+    std::vector<std::vector<uint8_t>> out;
+    for (auto t : kAllTargets)
+    {
+        std::vector<uint8_t> bytes(memory.size(t));
+        for (uint32_t i = 0; i < bytes.size(); i++)
+            bytes[i] = memory.read(t, i);
+        out.push_back(std::move(bytes));
+    }
+    return out;
+}
+
+} // namespace
+
+int main(int argc, char **argv)
+{
+    if (argc < 3)
+    {
+        fprintf(stderr, "usage: %s <rom> <recipe.json> [frames=600] [warmup=600]\n", argv[0]);
+        return 2;
+    }
+    int frames = argc > 3 ? atoi(argv[3]) : 600;
+    int warmup = argc > 4 ? atoi(argv[4]) : 600;
+
+    std::ifstream in(argv[2]);
+    std::stringstream text;
+    text << in.rdbuf();
+    auto parsed = parse_recipe(text.str(), {});
+    if (!parsed.recipe)
+    {
+        for (auto &e : parsed.errors)
+            fprintf(stderr, "recipe: %s\n", e.c_str());
+        return 1;
+    }
+
+    if (!headless::init() || !headless::load_rom_file(argv[1]))
+    {
+        fprintf(stderr, "couldn't load %s\n", argv[1]);
+        return 1;
+    }
+    printf("ROM      %s\n", Memory.ROMName);
+    printf("recipe   %s (seed %llu, %zu rules)\n", parsed.recipe->name.c_str(),
+           (unsigned long long)parsed.recipe->seed, parsed.recipe->rules.size());
+
+    for (size_t i = 0; i < parsed.recipe->rules.size(); i++)
+        if (auto err = validate_rule(parsed.recipe->rules[i], memory))
+        {
+            fprintf(stderr, "rule %zu doesn't fit this game: %s\n", i, err->c_str());
+            return 1;
+        }
+
+    headless::run_frames(warmup);
+    auto start = headless::save_state();
+    if (start.empty())
+    {
+        fprintf(stderr, "couldn't save a state\n");
+        return 1;
+    }
+
+    // Clean run.
+    std::vector<uint64_t> clean_frames;
+    for (int i = 0; i < frames; i++)
+    {
+        headless::run_frames(1);
+        clean_frames.push_back(headless::frame_hash());
+    }
+    auto clean = snapshot_targets();
+
+    // Corrupted run from the same state.
+    headless::load_state(start);
+    engine.set_recipe(*parsed.recipe);
+    engine.set_active(true);
+    S9xCorruptFrameHook = &frame_hook;
+    std::vector<uint64_t> corrupt_frames;
+    for (int i = 0; i < frames; i++)
+    {
+        headless::run_frames(1);
+        corrupt_frames.push_back(headless::frame_hash());
+    }
+    S9xCorruptFrameHook = nullptr;
+    auto dirty = snapshot_targets();
+
+    int differing = 0, first_difference = -1;
+    for (int i = 0; i < frames; i++)
+        if (clean_frames[size_t(i)] != corrupt_frames[size_t(i)])
+        {
+            differing++;
+            if (first_difference < 0)
+                first_difference = i + 1;
+        }
+
+    auto status = engine.status();
+    printf("frames   %d after %d warmup\n", frames, warmup);
+    printf("engine   %llu firings, %llu frames\n", (unsigned long long)status.firings, (unsigned long long)status.frame);
+    printf("writes   %zu verified in emulator memory, %zu mismatched\n", verified, mismatched);
+    printf("picture  %d of %d frames look different from the clean run", differing, frames);
+    if (first_difference > 0)
+        printf(" (first at frame %d)", first_difference);
+    printf("\n");
+    for (size_t t = 0; t < kTargetCount; t++)
+    {
+        size_t diff = 0;
+        for (size_t i = 0; i < clean[t].size(); i++)
+            diff += clean[t][i] != dirty[t][i];
+        printf("  %-6s %6zu of %6zu bytes differ from the clean run\n", target_name(kAllTargets[t]), diff, clean[t].size());
+    }
+    for (auto &m : headless::messages())
+        if (m.type >= S9X_ERROR)
+            printf("core     %s\n", m.text.c_str());
+
+    return mismatched == 0 && status.firings > 0 ? 0 : 1;
+}
