@@ -158,6 +158,7 @@ list(APPEND QT_GUI_SOURCES
     src/CorruptionDock.cpp
     src/RuleEditor.cpp
     src/IntensitySlider.cpp
+    src/MemoryView.cpp
     src/SoftwareScalers.cpp
     src/EmuCanvasQt.cpp
     src/EmuCanvasOpenGL.cpp

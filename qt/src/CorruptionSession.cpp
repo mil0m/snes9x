@@ -115,6 +115,7 @@ void CorruptionSession::betweenFrames()
         break;
     }
     auto out = guard.between_frames(engine, access);
+    watch.observe(memory, engine.event_log(), engine.current_frame());
     if (out.kind == GuardOutcome::Nothing)
         return;
     last_crash = out.summary;
@@ -245,6 +246,45 @@ std::vector<std::string> CorruptionSession::loadRecipe(const Recipe &recipe, con
             note("Recipe: " + recipe.name + " (" + error + ", so it starts here)");
     }
     return problems;
+}
+
+void CorruptionSession::watchMemory(Target target)
+{
+    std::lock_guard lock(mutex);
+    if (!watch.watching() || watch.target() != target)
+        watch.watch(target, game_loaded ? memory.size(target) : 0);
+}
+
+void CorruptionSession::stopWatching()
+{
+    std::lock_guard lock(mutex);
+    watch.stop();
+}
+
+void CorruptionSession::clearHits()
+{
+    std::lock_guard lock(mutex);
+    watch.clear_hits();
+}
+
+MemorySnapshot CorruptionSession::memorySnapshot()
+{
+    std::lock_guard lock(mutex);
+    return watch.snapshot();
+}
+
+std::vector<CopyRun> CorruptionSession::findCopies(Target of)
+{
+    std::lock_guard lock(mutex);
+    if (!game_loaded)
+        return {};
+    auto read = [this](Target t) {
+        std::vector<uint8_t> bytes(memory.size(t));
+        for (uint32_t i = 0; i < bytes.size(); i++)
+            bytes[i] = memory.read(t, i);
+        return bytes;
+    };
+    return find_copies(read(Target::WRAM), read(of));
 }
 
 void CorruptionSession::setSavedMoments(bool on)

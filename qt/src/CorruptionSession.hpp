@@ -4,6 +4,7 @@
 #include "corrupt/crash_guard.h"
 #include "corrupt/engine.h"
 #include "corrupt/library.h"
+#include "corrupt/memory_watch.h"
 #include "corrupt/run_control.h"
 #include "corrupt/save_backup.h"
 
@@ -94,6 +95,13 @@ class CorruptionSession
     // and loading a recipe that has one jumps back to it when the run starts.
     void setSavedMoments(bool on);
 
+    // Memory viewer: watch one target between frames while the viewer is open.
+    void watchMemory(corrupt::Target target);
+    void stopWatching();
+    void clearHits();
+    corrupt::MemorySnapshot memorySnapshot();
+    std::vector<corrupt::CopyRun> findCopies(corrupt::Target of); // copies of `of` in WRAM
+
     // Save backups.
     std::filesystem::path backupDir();
     std::vector<corrupt::BackupInfo> backups();
@@ -121,6 +129,7 @@ class CorruptionSession
     corrupt::SnesCoreAccess access;
     corrupt::CrashGuard guard;
     corrupt::RunControl control;
+    corrupt::MemoryWatch watch;
     bool saved_moments = true;
     bool moment_on_disk = false; // the current run's start is the recipe's saved moment
     std::optional<corrupt::PolicyKind> policy_override;

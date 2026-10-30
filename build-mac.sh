@@ -6,6 +6,7 @@
 #   ./build-mac.sh app        # Snes9x.app  -> build/xcode/Build/Products/Release/Snes9x.app
 #   ./build-mac.sh libretro   # core        -> libretro/snes9x_libretro.dylib
 #   ./build-mac.sh test       # build + run the corruption engine tests (tests/)
+#   ./build-mac.sh asan       # the same tests under AddressSanitizer (build/tests-asan)
 #
 # Notes for current Xcode:
 #  - The project pins MACOSX_DEPLOYMENT_TARGET=10.12, which Xcode 26+ rejects; we override to 12.0.
@@ -59,6 +60,18 @@ build_test() {
   fi
 }
 
+build_asan() {
+  local qt_prefix=""
+  if command -v brew >/dev/null && brew --prefix qt >/dev/null 2>&1; then qt_prefix="$(brew --prefix qt)"; fi
+  cmake -S tests -B build/tests-asan -G Ninja -DCMAKE_BUILD_TYPE=Debug -DCMAKE_PREFIX_PATH="$qt_prefix" \
+    -DCMAKE_CXX_FLAGS="-fsanitize=address -fno-omit-frame-pointer" -DCMAKE_EXE_LINKER_FLAGS="-fsanitize=address" >/dev/null
+  if ! out=$(cmake --build build/tests-asan 2>&1); then echo "$out" | grep -v '^\[' >&2; exit 1; fi
+  build/tests-asan/corrupt-tests | grep -E "AddressSanitizer|test cases|Status"
+  [ -x build/tests-asan/corrupt-headless-tests ] && build/tests-asan/corrupt-headless-tests | grep -E "AddressSanitizer|test cases|Status"
+  [ -x build/tests-asan/corrupt-qt-tests ] && QT_QPA_PLATFORM=offscreen build/tests-asan/corrupt-qt-tests 2>&1 | grep -E "AddressSanitizer|test cases|Status"
+  return 0
+}
+
 build_libretro() {
   make -C libretro -j"$(sysctl -n hw.ncpu)" >/dev/null
   echo "Core: $(pwd)/libretro/snes9x_libretro.dylib"
@@ -67,8 +80,9 @@ build_libretro() {
 case "$target" in
   qt) build_qt ;;
   test) shift; build_test "$@" ;;
+  asan) build_asan ;;
   app) build_app ;;
   libretro) build_libretro ;;
   all) build_qt; build_app; build_libretro ;;
-  *) echo "usage: $0 [qt|app|libretro|test|all]" >&2; exit 2 ;;
+  *) echo "usage: $0 [qt|app|libretro|test|asan|all]" >&2; exit 2 ;;
 esac
