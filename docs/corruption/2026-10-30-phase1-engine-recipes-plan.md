@@ -1,6 +1,13 @@
 # Phase 1 — engine + recipes: implementation plan
 
 Spec: [`2026-10-30-ram-corruption-design.md`](./2026-10-30-ram-corruption-design.md).
+
+**Status (2026-10-30): done.** All 15 tasks are implemented. Where the build differs from
+the plan below: the hook is the `S9xCorruptFrameHook` function pointer, defined in
+`cpuexec.cpp` and run at frame start (see the spec); the panel reaches the engine through
+a mutex in `CorruptionSession` rather than `runOnThread`; and a headless core harness
+(`tests/headless/`, `corrupt-smoke`), planned for phase 2, was built early to verify task
+9 without a screen. Usage: [`README.md`](./README.md). Manual QA: [`QA.md`](./QA.md).
 Goal: by the end, you load a game in the Qt build, pick or make a recipe, toggle corruption
 with a hotkey, re-roll the seed, save the recipe to the library, and your save files are
 backed up automatically. Crash detection and rollback are phase 2.

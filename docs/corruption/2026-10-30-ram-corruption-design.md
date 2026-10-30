@@ -40,15 +40,24 @@ qt/src/Corruption*.{cpp,ui}  dock panel, hotkeys, memory viewer
 tests/corrupt/               headless tests (see Testing)
 ```
 
-**One hook into the emulator.** `cpuexec.cpp` already has a single point where VBlank starts
-(right after `S9xEndScreenRefresh()`). We add one call there, `S9xCorruptFrame()`, which
-runs the engine, the detector and the checkpointing. Everything else stays outside the
-original core files, which keeps upstream merges painless.
+**One hook into the emulator.** `cpuexec.cpp` calls a function pointer,
+`S9xCorruptFrameHook`, once per frame. It runs the engine (and, from phase 2, the detector
+and the checkpointing). The pointer is defined in the core and stays null unless a front
+end installs it, so every Snes9x build still links without `corrupt/`. Apart from that
+call and a one-line `S9xAPUGetRAM()` accessor, everything stays outside the original core
+files, which keeps upstream merges painless.
 
-**Threading.** The Qt front end runs emulation on its own thread (`EmuThread`). The engine
-lives on that thread only. The UI sends commands through the existing
-`EmuApplication::runOnThread`, and reads a small status snapshot that the engine publishes
-a few times per second. There are no locks inside the per-frame path.
+*Changed during phase 1:* the hook runs at the **start of each frame** (V=1, right after
+`S9xStartScreenRefresh()`), not at the start of VBlank as first planned. During VBlank,
+most games copy their sprite table and palette from WRAM into OAM and CGRAM, which
+overwrote PPU corruption before it was ever drawn. The headless smoke run measured this:
+palette drift was visible on 0 of 600 frames with the hook at VBlank start.
+
+**Threading.** The Qt front end runs emulation on its own thread (`EmuThread`). The
+engine is touched from that thread (the frame hook) and from the UI thread (the panel),
+behind a single mutex in `CorruptionSession`. The lock is uncontended on almost every
+frame, and unlike posting to the emulation thread, it keeps the panel working while the
+game is paused or not yet loaded.
 
 ## Targets (where we can write)
 
