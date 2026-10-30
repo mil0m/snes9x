@@ -109,6 +109,11 @@ fs::path Library::backup_dir(const GameId &game) const
     return dir;
 }
 
+fs::path Library::journal_path(const GameId &game, const std::string &user) const
+{
+    return game_dir(game) / ("journal." + recipe_file_stem(user) + ".jsonl");
+}
+
 std::vector<RecipeEntry> Library::list_recipes(const GameId &game) const
 {
     std::vector<RecipeEntry> entries;

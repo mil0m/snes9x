@@ -48,6 +48,9 @@ class Library
     // .gitignore keeps it out of the shared library.
     std::filesystem::path backup_dir(const GameId &game) const;
 
+    // This person's crash journal for the game: journal.<user>.jsonl.
+    std::filesystem::path journal_path(const GameId &game, const std::string &user) const;
+
     Regions load_regions(const GameId &game, std::vector<std::string> &errors) const;
     std::string save_regions(const GameId &game, const Regions &regions) const; // error or empty
 
