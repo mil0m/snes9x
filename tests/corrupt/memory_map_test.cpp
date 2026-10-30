@@ -203,3 +203,38 @@ TEST_CASE("video map: a layer's tiles end where the next area starts (FF6's fiel
     CHECK(find(map, "BG3 tiles")->range.last == 0x5FFFu);
     CHECK(find(map, "BG1 tile map")->range.last == 0x1FFFu); // maps keep their exact size
 }
+
+TEST_CASE("video map: tile areas carry their tile format and first palette")
+{
+    VideoLayout v;
+    v.mode = 1;
+    v.bg[0] = { 0x0000, 0x8000, 0, true };
+    v.bg[1] = { 0x2000, 0x8800, 0, true };
+    v.bg[2] = { 0x4000, 0x9000, 0, true };
+    v.sprite_tiles = 0xC000;
+    v.sprite_tiles2 = 0xE000;
+    auto map = video_map(v);
+    CHECK(find(map, "BG1 tiles")->tile_format == TileFormat::Bpp4);
+    CHECK(find(map, "BG1 tiles")->palette == 0);
+    CHECK(find(map, "BG3 tiles")->tile_format == TileFormat::Bpp2);
+    CHECK(find(map, "Sprite tiles, first")->tile_format == TileFormat::Bpp4);
+    CHECK(find(map, "Sprite tiles, first")->palette == 8); // sprites use colours 128-255
+    CHECK(find(map, "Sprite tiles, second")->palette == 8);
+    CHECK_FALSE(find(map, "BG1 tile map")->tile_format); // a map isn't graphics
+
+    v.mode = 0; // four 2 bpp layers, each with its own 8 palettes
+    v.bg[3] = { 0x6000, 0x9800, 0, true };
+    map = video_map(v);
+    CHECK(find(map, "BG1 tiles")->palette == 0);
+    CHECK(find(map, "BG2 tiles")->palette == 8);
+    CHECK(find(map, "BG4 tiles")->palette == 24);
+
+    v.mode = 3;
+    map = video_map(v);
+    CHECK(find(map, "BG1 tiles")->tile_format == TileFormat::Bpp8);
+
+    v.mode = 7;
+    map = video_map(v);
+    CHECK(find(map, "Mode 7")->tile_format == TileFormat::Mode7);
+    CHECK(fixed_map(Target::WRAM, 0x20000).front().tile_format == std::nullopt);
+}

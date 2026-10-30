@@ -1,6 +1,8 @@
 #pragma once
 #include "memory.h"
+#include "tile_decode.h"
 
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -14,6 +16,8 @@ struct MapArea
     AddressRange range;
     std::string about; // one line on what lives there
     bool live = false; // read from the game's current settings, so it can move
+    std::optional<TileFormat> tile_format; // graphics tiles: how to decode them
+    int palette = 0;                       // and the first palette row they use
 };
 
 // The hardware layout every game shares, clipped to `size`, in address order.

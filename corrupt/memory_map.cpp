@@ -8,13 +8,24 @@ namespace corrupt
 namespace
 {
 
-void add(std::vector<MapArea> &map, size_t size, std::string name, Target t, uint32_t first, uint64_t last,
-         std::string about, bool live = false)
+// The added area, or null when it starts past the end.
+MapArea *add(std::vector<MapArea> &map, size_t size, std::string name, Target t, uint32_t first, uint64_t last,
+             std::string about, bool live = false)
 {
     if (size == 0 || first >= size)
-        return;
+        return nullptr;
     uint32_t end = uint32_t(std::min<uint64_t>(last, size - 1));
     map.push_back({ std::move(name), { t, first, end }, std::move(about), live });
+    return &map.back();
+}
+
+void tiles(MapArea *area, TileFormat format, int palette = 0)
+{
+    if (area)
+    {
+        area->tile_format = format;
+        area->palette = palette;
+    }
 }
 
 void sort(std::vector<MapArea> &map)
@@ -80,8 +91,9 @@ std::vector<MapArea> video_map(const VideoLayout &v)
     auto shown = [](bool on) { return std::string(on ? "on screen" : "not on screen"); };
 
     if (v.mode >= 7)
-        add(m, kSize, "Mode 7 tiles and map", Target::VRAM, 0x0000, 0x7FFF,
-            "Interleaved: map bytes and 8 bpp tile bytes alternate; " + shown(v.bg[0].shown), true);
+        tiles(add(m, kSize, "Mode 7 tiles and map", Target::VRAM, 0x0000, 0x7FFF,
+                  "Interleaved: map bytes and 8 bpp tile bytes alternate; " + shown(v.bg[0].shown), true),
+              TileFormat::Mode7);
     else
         for (int i = 0; i < 4; i++)
         {
@@ -90,17 +102,23 @@ std::vector<MapArea> video_map(const VideoLayout &v)
                 continue;
             auto &bg = v.bg[i];
             std::string layer = "BG" + std::to_string(i + 1);
-            add(m, kSize, layer + " tiles (" + std::to_string(bpp) + " bpp)", Target::VRAM, bg.tiles,
-                uint64_t(bg.tiles) + 1024u * 8u * unsigned(bpp) - 1, "Up to the next area (1024 tiles at most); " + shown(bg.shown), true);
+            tiles(add(m, kSize, layer + " tiles (" + std::to_string(bpp) + " bpp)", Target::VRAM, bg.tiles,
+                      uint64_t(bg.tiles) + 1024u * 8u * unsigned(bpp) - 1,
+                      "Up to the next area (1024 tiles at most); " + shown(bg.shown), true),
+                  bpp == 2 ? TileFormat::Bpp2 : bpp == 4 ? TileFormat::Bpp4 : TileFormat::Bpp8,
+                  v.mode == 0 ? i * 8 : 0); // mode 0 gives each layer its own 32 colours
             int s = bg.map_size & 3;
             add(m, kSize, layer + " tile map (" + kMapSize[s] + ")", Target::VRAM, bg.map,
                 uint64_t(bg.map) + 2048u * unsigned(kScreens[s]) - 1, "Which tile goes where; " + shown(bg.shown), true);
         }
 
-    add(m, kSize, "Sprite tiles, first table", Target::VRAM, v.sprite_tiles, uint64_t(v.sprite_tiles) + 0x1FFF,
-        "Sprite tiles 0-255 (4 bpp)", true);
-    add(m, kSize, "Sprite tiles, second table", Target::VRAM, v.sprite_tiles2, uint64_t(v.sprite_tiles2) + 0x1FFF,
-        "Sprite tiles 256-511 (4 bpp)", true);
+    // Sprites use colours 128-255: 4 bpp palette rows 8-15.
+    tiles(add(m, kSize, "Sprite tiles, first table", Target::VRAM, v.sprite_tiles, uint64_t(v.sprite_tiles) + 0x1FFF,
+              "Sprite tiles 0-255 (4 bpp)", true),
+          TileFormat::Bpp4, 8);
+    tiles(add(m, kSize, "Sprite tiles, second table", Target::VRAM, v.sprite_tiles2, uint64_t(v.sprite_tiles2) + 0x1FFF,
+              "Sprite tiles 256-511 (4 bpp)", true),
+          TileFormat::Bpp4, 8);
 
     // 1024 tiles is only the most a layer can use. Games pack VRAM tightly, so a layer's
     // tiles are shown up to the next area that starts after them.
