@@ -2,6 +2,7 @@
 #include <QTimer>
 #include <QWidget>
 
+#include "corrupt/memory_map.h"
 #include "corrupt/memory_watch.h"
 #include "corrupt/recipe_json.h"
 
@@ -25,6 +26,7 @@ struct MemorySource
     virtual void clearHits() = 0;
     virtual corrupt::MemorySnapshot snapshot() = 0;
     virtual std::vector<corrupt::CopyRun> findCopies(corrupt::Target of) = 0; // copies in WRAM
+    virtual std::vector<corrupt::MapArea> memoryMap(corrupt::Target target) = 0; // fixed and live areas
     virtual std::array<size_t, corrupt::kTargetCount> sizes() = 0;
     virtual corrupt::Regions regions() = 0;
     virtual std::string addRule(const corrupt::Rule &rule) = 0; // error or empty
@@ -64,6 +66,7 @@ class MemoryViewer : public QWidget
     void findCopies();
     void newRule();
     void refreshRegions();
+    void refreshMap();
     void askNameSelection();
     void askRename();
     void askDelete();
@@ -82,6 +85,8 @@ class MemoryViewer : public QWidget
     QPushButton *new_rule_button;
     QListWidget *copies_list;
     QListWidget *regions_list;
+    QListWidget *map_list;
+    std::vector<corrupt::MapArea> shown_map;
     QPushButton *name_button;
     QPushButton *rename_button;
     QPushButton *delete_button;

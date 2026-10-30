@@ -101,6 +101,7 @@ class CorruptionSession
     void clearHits();
     corrupt::MemorySnapshot memorySnapshot();
     std::vector<corrupt::CopyRun> findCopies(corrupt::Target of); // copies of `of` in WRAM
+    std::vector<corrupt::MapArea> memoryMap(corrupt::Target target); // fixed layout plus what the game uses now
 
     // Named regions of the loaded game (its regions.json). Each returns an error or empty.
     corrupt::Regions regions();
@@ -138,6 +139,7 @@ class CorruptionSession
     corrupt::CrashGuard guard;
     corrupt::RunControl control;
     corrupt::MemoryWatch watch;
+    std::vector<corrupt::MapArea> live_map; // VRAM or ARAM layout, re-read between frames while watched
     bool saved_moments = true;
     bool moment_on_disk = false; // the current run's start is the recipe's saved moment
     std::optional<corrupt::PolicyKind> policy_override;

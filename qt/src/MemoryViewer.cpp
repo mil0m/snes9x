@@ -56,9 +56,17 @@ MemoryViewer::MemoryViewer(MemorySource &source, QWidget *parent)
     top->addWidget(clear);
     layout->addLayout(top);
 
+    auto middle = new QHBoxLayout;
+    map_list = new QListWidget(this);
+    map_list->setObjectName("map");
+    map_list->setMinimumWidth(190);
+    map_list->setMaximumWidth(260);
+    map_list->setToolTip(tr("What lives where. Click an area to select it."));
     view = new MemoryView(this);
     view->setObjectName("view");
-    layout->addWidget(view, 1);
+    middle->addWidget(map_list);
+    middle->addWidget(view, 1);
+    layout->addLayout(middle, 1);
 
     auto bottom = new QHBoxLayout;
     selection_label = new QLabel(tr("Drag across bytes to select a range"), this);
@@ -119,6 +127,12 @@ MemoryViewer::MemoryViewer(MemorySource &source, QWidget *parent)
             refresh();
     });
     connect(regions_list, &QListWidget::itemClicked, regions_list, &QListWidget::itemActivated);
+    connect(map_list, &QListWidget::itemActivated, this, [this](QListWidgetItem *item) {
+        int row = map_list->row(item);
+        if (row >= 0 && row < int(shown_map.size()))
+            view->select(shown_map[size_t(row)].range.first, shown_map[size_t(row)].range.last);
+    });
+    connect(map_list, &QListWidget::itemClicked, map_list, &QListWidget::itemActivated);
     connect(name_button, &QPushButton::clicked, this, [this] { askNameSelection(); });
     connect(rename_button, &QPushButton::clicked, this, [this] { askRename(); });
     connect(delete_button, &QPushButton::clicked, this, [this] { askDelete(); });
@@ -150,7 +164,7 @@ MemoryViewer::MemoryViewer(MemorySource &source, QWidget *parent)
     view->onSelectionChanged = [this] { selectionChanged(); };
 
     connect(&timer, &QTimer::timeout, this, [this] { refresh(); });
-    resize(std::max(720, view->sizeHint().width() + 40), 680);
+    resize(std::max(900, view->sizeHint().width() + 260), 700);
 }
 
 Target MemoryViewer::target() const
@@ -189,6 +203,7 @@ void MemoryViewer::refresh()
     if (snap.target != target() && !snap.bytes.empty())
         return; // the switch hasn't reached the emulation thread yet
     view->setSnapshot(snap);
+    refreshMap();
     if (pending_select && !snap.bytes.empty())
     {
         view->select(pending_select->first, pending_select->second);
@@ -368,5 +383,37 @@ void MemoryViewer::askDelete()
                                   .arg(name, usersText(name))) != QMessageBox::Yes)
         return;
     showResult(deleteRegion(name), tr("Deleted '%1'.").arg(name));
+}
+
+void MemoryViewer::refreshMap()
+{
+    auto map = source.memoryMap(target());
+    bool same = map.size() == shown_map.size();
+    for (size_t i = 0; same && i < map.size(); i++)
+        same = map[i].name == shown_map[i].name && map[i].range.first == shown_map[i].range.first &&
+               map[i].range.last == shown_map[i].range.last;
+    if (same)
+        return; // live areas are re-read 10 times a second; only redraw when one moved
+
+    QString picked = map_list->currentItem() ? map_list->currentItem()->data(Qt::UserRole).toString() : QString();
+    map_list->clear();
+    shown_map = std::move(map);
+    for (auto &area : shown_map)
+    {
+        auto item = new QListWidgetItem(QString("%1\n%2..%3").arg(QString::fromStdString(area.name),
+                                                                 hex4(area.range.first), hex4(area.range.last)),
+                                        map_list);
+        item->setToolTip(QString::fromStdString(area.about) +
+                         (area.live ? tr("\n(Read from the game right now; it can move.)") : QString()));
+        item->setData(Qt::UserRole, QString::fromStdString(area.name));
+        if (area.live)
+        {
+            QFont f = item->font();
+            f.setItalic(true);
+            item->setFont(f);
+        }
+        if (item->data(Qt::UserRole).toString() == picked)
+            map_list->setCurrentItem(item);
+    }
 }
 

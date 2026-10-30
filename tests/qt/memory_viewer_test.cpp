@@ -51,6 +51,12 @@ struct FakeSource : MemorySource
             out[size_t(t)] = nominal_size(t);
         return out;
     }
+    std::vector<MapArea> vram_live{ { "BG1 tiles (4 bpp)", { Target::VRAM, 0x0000, 0x3FFF }, "Up to the next area", true },
+                                    { "BG1 tile map (32x32)", { Target::VRAM, 0x8000, 0x87FF }, "Which tile goes where", true } };
+    std::vector<MapArea> memoryMap(Target t) override
+    {
+        return t == Target::VRAM ? vram_live : fixed_map(t, nominal_size(t));
+    }
     Regions named;
     std::vector<std::string> users_of_stats{ "boss rush" };
     Regions regions() override { return named; }
@@ -246,6 +252,53 @@ TEST_SUITE("named regions in the viewer")
         CHECK(v.deleteRegion("player stats").isEmpty());
         CHECK(list->count() == 0);
         CHECK(v.usersText("stats").contains("boss rush"));
+    }
+}
+
+TEST_SUITE("the memory map")
+{
+    TEST_CASE("the map lists the target's areas, and a click selects one")
+    {
+        FakeSource src;
+        MemoryViewer v(src);
+        v.show();
+        v.refresh();
+        auto map = child<QListWidget>(v, "map");
+        REQUIRE(map->count() == 4); // WRAM: direct page, low RAM, upper bank $7E, bank $7F
+        CHECK(map->item(0)->text().contains("Direct page"));
+        CHECK_FALSE(map->item(0)->toolTip().isEmpty());
+        emit map->itemActivated(map->item(3));
+        auto sel = child<MemoryView>(v, "view")->selection();
+        REQUIRE(sel);
+        CHECK(sel->first == 0x10000u);
+        CHECK(sel->second == 0x1FFFFu);
+    }
+
+    TEST_CASE("switching memory switches the map, and live areas follow the game")
+    {
+        FakeSource src;
+        MemoryViewer v(src);
+        v.show();
+        choose(v, "target", "vram");
+        v.refresh();
+        auto map = child<QListWidget>(v, "map");
+        REQUIRE(map->count() == 2);
+        CHECK(map->item(1)->text().contains("0x8000"));
+        map->setCurrentRow(1);
+
+        src.vram_live[1].range = { Target::VRAM, 0x9000, 0x97FF }; // the game moved its map
+        v.refresh();
+        REQUIRE(map->count() == 2);
+        CHECK(map->item(1)->text().contains("0x9000"));
+        CHECK(map->currentRow() == 1); // the same area stays picked
+
+        if (auto dir = getenv("CORRUPT_SHOTS_DIR"))
+        {
+            emit map->itemActivated(map->item(0));
+            v.refresh();
+            QDir().mkpath(dir);
+            v.grab().save(QString("%1/memory-viewer-map.png").arg(dir));
+        }
     }
 }
 

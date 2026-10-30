@@ -118,6 +118,10 @@ void CorruptionSession::betweenFrames()
     }
     auto out = guard.between_frames(engine, access);
     watch.observe(memory, engine.event_log(), engine.current_frame());
+    if (watch.watching())
+        live_map = watch.target() == Target::VRAM   ? video_map(SnesCoreAccess::video_layout())
+                   : watch.target() == Target::ARAM ? sound_map(SnesCoreAccess::sound_layout())
+                                                    : std::vector<MapArea>{};
     if (out.kind == GuardOutcome::Nothing)
         return;
     last_crash = out.summary;
@@ -287,6 +291,19 @@ std::vector<CopyRun> CorruptionSession::findCopies(Target of)
         return bytes;
     };
     return find_copies(read(Target::WRAM), read(of));
+}
+
+std::vector<MapArea> CorruptionSession::memoryMap(Target target)
+{
+    std::lock_guard lock(mutex);
+    if (!game_loaded)
+        return {};
+    auto map = fixed_map(target, memory.size(target));
+    std::vector<MapArea> live; // right after a switch it can still hold the last target's areas
+    for (auto &area : live_map)
+        if (area.range.target == target)
+            live.push_back(area);
+    return merge_maps(std::move(map), live);
 }
 
 Regions CorruptionSession::regions()
