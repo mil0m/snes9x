@@ -2,6 +2,7 @@
 #include "MemoryViewer.hpp"
 #include "MemoryView.hpp"
 #include "PixelView.hpp"
+#include "TileView.hpp"
 
 #include <QApplication>
 #include <QComboBox>
@@ -10,6 +11,7 @@
 #include <QLineEdit>
 #include <QListWidget>
 #include <QMouseEvent>
+#include <QScrollBar>
 #include <QPushButton>
 #include <QSpinBox>
 
@@ -480,6 +482,131 @@ TEST_SUITE("the pixel view in the viewer")
             v.grab().save(QString("%1/memory-viewer-pixels.png").arg(dir));
             choose(v, "overlay", "none");
             v.grab().save(QString("%1/memory-viewer-pixels-plain.png").arg(dir));
+        }
+    }
+}
+
+TEST_SUITE("the tile view in the viewer")
+{
+    TEST_CASE("tiles mode shows its own controls and carries the selection over")
+    {
+        FakeSource src;
+        MemoryViewer v(src);
+        v.show();
+        choose(v, "target", "vram");
+        v.refresh();
+        auto tiles = child<TileView>(v, "tiles");
+        auto format = child<QComboBox>(v, "tile_format");
+        auto palette = child<QSpinBox>(v, "palette");
+        auto per_row = child<QSpinBox>(v, "tiles_per_row");
+        CHECK_FALSE(format->isVisible());
+
+        child<MemoryView>(v, "view")->select(0x2010, 0x2010);
+        choose(v, "mode", "tiles");
+        CHECK(tiles->isVisible());
+        CHECK(format->isVisible());
+        CHECK(palette->isVisible());
+        CHECK(per_row->isVisible());
+        CHECK(child<QPushButton>(v, "zoom_in")->isVisible());
+        CHECK_FALSE(child<QSpinBox>(v, "row_width")->isVisible());
+        CHECK(tiles->snapshot().target == Target::VRAM);
+        CHECK(tiles->selection() == std::pair{ 0x2000u, 0x201Fu }); // widened to its 4 bpp tile
+        CHECK(child<QLabel>(v, "selection")->text().contains("0x2000"));
+        CHECK(v.ruleFromSelection().range.last == 0x201Fu);
+
+        choose(v, "tile_format", "2bpp");
+        CHECK(tiles->format() == TileFormat::Bpp2);
+        CHECK(palette->maximum() == 63);
+        palette->setValue(5);
+        CHECK(tiles->paletteRow() == 5);
+        palette->setValue(palette->minimum());
+        CHECK(tiles->paletteRow() == TileView::kGrey);
+        CHECK(palette->text().contains("Grey"));
+        choose(v, "tile_format", "8bpp");
+        CHECK(palette->maximum() == 0);
+        per_row->setValue(32);
+        CHECK(tiles->tilesPerRow() == 32);
+
+        int before = tiles->zoom();
+        child<QPushButton>(v, "zoom_in")->click();
+        CHECK(tiles->zoom() == before + 1);
+        CHECK(child<QLabel>(v, "zoom")->text().contains(QString::number(tiles->zoom())));
+    }
+
+    TEST_CASE("the palette is read live while tiles show")
+    {
+        FakeSource src;
+        MemoryViewer v(src);
+        v.show();
+        v.refresh();
+        int before = src.palette_reads;
+        v.refresh();
+        CHECK(src.palette_reads == before); // not in hex mode
+        choose(v, "mode", "tiles");
+        v.refresh();
+        CHECK(src.palette_reads > before);
+    }
+
+    TEST_CASE("clicking a tile area in the map sets its format and palette")
+    {
+        FakeSource src;
+        src.vram_live[0].tile_format = TileFormat::Bpp2;
+        src.vram_live[0].palette = 8;
+        MemoryViewer v(src);
+        v.show();
+        choose(v, "target", "vram");
+        choose(v, "mode", "tiles");
+        v.refresh();
+        auto map = child<QListWidget>(v, "map");
+        emit map->itemActivated(map->item(0));
+        auto tiles = child<TileView>(v, "tiles");
+        CHECK(tiles->format() == TileFormat::Bpp2);
+        CHECK(tiles->paletteRow() == 8);
+        CHECK(child<QComboBox>(v, "tile_format")->currentData().toString() == "2bpp");
+        CHECK(child<QSpinBox>(v, "palette")->value() == 8);
+        CHECK(tiles->selection() == std::pair{ 0x0000u, 0x3FFFu });
+
+        emit map->itemActivated(map->item(1)); // a tile map: not graphics, the format stays
+        CHECK(tiles->format() == TileFormat::Bpp2);
+        CHECK(tiles->selection()->first == 0x8000u);
+    }
+
+    TEST_CASE("hovering a tile shows its number and address")
+    {
+        FakeSource src;
+        MemoryViewer v(src);
+        v.show();
+        choose(v, "target", "vram");
+        choose(v, "mode", "tiles");
+        v.refresh();
+        QApplication::processEvents();
+        auto tiles = child<TileView>(v, "tiles");
+        QPoint at = tiles->tileRect(5).center();
+        QMouseEvent move(QEvent::MouseMove, QPointF(at), tiles->viewport()->mapToGlobal(QPointF(at)), Qt::NoButton,
+                         Qt::NoButton, Qt::NoModifier);
+        QApplication::sendEvent(tiles->viewport(), &move);
+        auto hover = child<QLabel>(v, "hover")->text();
+        CHECK(hover.contains("tile 0x005"));
+        CHECK(hover.contains("0x00A0"));
+    }
+
+    TEST_CASE("a picture of the viewer in tiles mode")
+    {
+        FakeSource src;
+        MemoryViewer v(src);
+        v.show();
+        choose(v, "target", "vram");
+        choose(v, "mode", "tiles");
+        v.refresh();
+        auto tiles = child<TileView>(v, "tiles");
+        tiles->select(0x100, 0x1FF);
+        QApplication::processEvents();
+        CHECK(tiles->horizontalScrollBar()->maximum() == 0); // 16 tiles fit: no sideways scrolling
+        CHECK_FALSE(child<QLineEdit>(v, "goto")->width() < 80); // the toolbar isn't squeezed
+        if (auto dir = getenv("CORRUPT_SHOTS_DIR"))
+        {
+            QDir().mkpath(dir);
+            v.grab().save(QString("%1/memory-viewer-tiles.png").arg(dir));
         }
     }
 }

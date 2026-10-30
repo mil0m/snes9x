@@ -13,6 +13,7 @@
 class MemoryPane;
 class MemoryView;
 class PixelView;
+class TileView;
 class QComboBox;
 class QLabel;
 class QLineEdit;
@@ -42,8 +43,8 @@ struct MemorySource
     virtual ~MemorySource() = default;
 };
 
-// The memory viewer window: one target as a hex grid or as pixels (one byte each,
-// zoomable) with an activity or hits heatmap, go to an address, find the game's WRAM copies of its sprites and palette, turn a
+// The memory viewer window: one target as a hex grid, as pixels (one byte each,
+// zoomable) or as decoded graphics tiles, with an activity or hits heatmap, go to an address, find the game's WRAM copies of its sprites and palette, turn a
 // selected range into a rule, and name ranges for the game. It watches only while shown.
 class MemoryViewer : public QWidget
 {
@@ -69,6 +70,8 @@ class MemoryViewer : public QWidget
     void modeChanged();
     void zoomChanged();
     void hovered(std::optional<uint32_t> offset);
+    void tileHovered(std::optional<uint32_t> tile);
+    QString mode() const; // "hex", "pixels" or "tiles"
     void targetChanged();
     void goTo();
     void selectionChanged();
@@ -90,6 +93,7 @@ class MemoryViewer : public QWidget
     QComboBox *overlay_combo;
     QLineEdit *goto_edit;
     QComboBox *mode_combo;
+    QWidget *view_options;
     QPushButton *zoom_out_button;
     QPushButton *zoom_in_button;
     QLabel *zoom_label;
@@ -98,6 +102,10 @@ class MemoryViewer : public QWidget
     QStackedWidget *stack;
     MemoryView *view;
     PixelView *pixels;
+    TileView *tiles;
+    QComboBox *format_combo;
+    QSpinBox *palette_spin;
+    QSpinBox *per_row_spin;
     QLabel *hover_label;
     QLabel *selection_label;
     QPushButton *new_rule_button;

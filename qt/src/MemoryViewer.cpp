@@ -1,6 +1,7 @@
 #include "MemoryViewer.hpp"
 #include "MemoryView.hpp"
 #include "PixelView.hpp"
+#include "TileView.hpp"
 #include "RuleEditor.hpp"
 #include "corrupt/rule_text.h"
 
@@ -43,7 +44,9 @@ MemoryViewer::MemoryViewer(MemorySource &source, QWidget *parent)
     mode_combo->setObjectName("mode");
     mode_combo->addItem(tr("Hex"), QString("hex"));
     mode_combo->addItem(tr("Pixels"), QString("pixels"));
-    mode_combo->setToolTip(tr("Pixels: every byte is one dot coloured by its value, so a whole memory fits on screen."));
+    mode_combo->addItem(tr("Tiles"), QString("tiles"));
+    mode_combo->setToolTip(tr("Pixels: every byte is one dot coloured by its value, so a whole memory fits on screen.\n"
+                              "Tiles: the bytes decoded as SNES graphics, in the game's own colours."));
     zoom_out_button = new QPushButton(QStringLiteral("−"), this);
     zoom_out_button->setObjectName("zoom_out");
     zoom_out_button->setToolTip(tr("Zoom out (Ctrl+wheel)"));
@@ -60,6 +63,24 @@ MemoryViewer::MemoryViewer(MemorySource &source, QWidget *parent)
     row_width->setSpecialValueText(tr("Row: Auto"));
     row_width->setToolTip(tr("Bytes per row of dots. Step it one at a time (arrows or wheel) until the picture "
                              "lines up into columns: then a row of dots is a row of the game's data. 0 is Auto."));
+    format_combo = new QComboBox(this);
+    format_combo->setObjectName("tile_format");
+    for (auto f : { TileFormat::Bpp2, TileFormat::Bpp4, TileFormat::Bpp8, TileFormat::Mode7 })
+        format_combo->addItem(tile_format_name(f), QString(tile_format_id(f)));
+    format_combo->setCurrentIndex(1); // 4 bpp: most backgrounds and every sprite
+    format_combo->setToolTip(tr("How the tiles are stored. Clicking a tile area in the Map picks this for you."));
+    palette_spin = new QSpinBox(this);
+    palette_spin->setObjectName("palette");
+    palette_spin->setPrefix(tr("Palette "));
+    palette_spin->setSpecialValueText(tr("Palette: Grey"));
+    palette_spin->setToolTip(tr("Which row of the game's palette colours the tiles. Sprites use 8-15 at 4 bpp. "
+                                "Grey shows the raw colour numbers."));
+    per_row_spin = new QSpinBox(this);
+    per_row_spin->setObjectName("tiles_per_row");
+    per_row_spin->setRange(1, TileView::kMaxTilesPerRow);
+    per_row_spin->setValue(16);
+    per_row_spin->setSuffix(tr(" per row"));
+    per_row_spin->setToolTip(tr("Tiles per row. Big sprites and fonts often line up at 16 or 32."));
     for (auto b : { zoom_out_button, zoom_in_button })
         b->setFixedWidth(b->fontMetrics().horizontalAdvance("+") + 24);
     target_combo = new QComboBox(this);
@@ -78,15 +99,28 @@ MemoryViewer::MemoryViewer(MemorySource &source, QWidget *parent)
     auto clear = new QPushButton(tr("Clear Hits"), this);
     clear->setObjectName("clear_hits");
     top->addWidget(mode_combo);
-    top->addWidget(zoom_out_button);
-    top->addWidget(zoom_label);
-    top->addWidget(zoom_in_button);
-    top->addWidget(row_width);
     top->addWidget(target_combo);
     top->addWidget(overlay_combo, 1);
     top->addWidget(goto_edit);
     top->addWidget(clear);
     layout->addLayout(top);
+
+    // How Pixels and Tiles draw, on a row of its own that Hex doesn't need.
+    view_options = new QWidget(this);
+    view_options->setObjectName("view_options");
+    auto options = new QHBoxLayout(view_options);
+    options->setContentsMargins(0, 0, 0, 0);
+    options->addWidget(new QLabel(tr("Zoom"), view_options));
+    options->addWidget(zoom_out_button);
+    options->addWidget(zoom_label);
+    options->addWidget(zoom_in_button);
+    options->addSpacing(12);
+    options->addWidget(row_width);
+    options->addWidget(format_combo);
+    options->addWidget(palette_spin);
+    options->addWidget(per_row_spin);
+    options->addStretch(1);
+    layout->addWidget(view_options);
 
     auto middle = new QHBoxLayout;
     map_list = new QListWidget(this);
@@ -99,8 +133,11 @@ MemoryViewer::MemoryViewer(MemorySource &source, QWidget *parent)
     view->setObjectName("view");
     pixels = new PixelView(stack);
     pixels->setObjectName("pixels");
+    tiles = new TileView(stack);
+    tiles->setObjectName("tiles");
     stack->addWidget(view);
     stack->addWidget(pixels);
+    stack->addWidget(tiles);
     middle->addWidget(map_list);
     middle->addWidget(stack, 1);
     layout->addLayout(middle, 1);
@@ -170,8 +207,15 @@ MemoryViewer::MemoryViewer(MemorySource &source, QWidget *parent)
     connect(regions_list, &QListWidget::itemClicked, regions_list, &QListWidget::itemActivated);
     connect(map_list, &QListWidget::itemActivated, this, [this](QListWidgetItem *item) {
         int row = map_list->row(item);
-        if (row >= 0 && row < int(shown_map.size()))
-            pane()->select(shown_map[size_t(row)].range.first, shown_map[size_t(row)].range.last);
+        if (row < 0 || row >= int(shown_map.size()))
+            return;
+        auto &area = shown_map[size_t(row)];
+        if (mode() == "tiles" && area.tile_format) // decode it the way the game does
+        {
+            format_combo->setCurrentIndex(format_combo->findData(QString(tile_format_id(*area.tile_format))));
+            palette_spin->setValue(area.palette);
+        }
+        pane()->select(area.range.first, area.range.last);
     });
     connect(map_list, &QListWidget::itemClicked, map_list, &QListWidget::itemActivated);
     connect(name_button, &QPushButton::clicked, this, [this] { askNameSelection(); });
@@ -186,6 +230,7 @@ MemoryViewer::MemoryViewer(MemorySource &source, QWidget *parent)
                                      : MemoryPane::Overlay::Activity;
         view->setOverlay(overlay);
         pixels->setOverlay(overlay);
+        tiles->setOverlay(overlay);
     });
     connect(goto_edit, &QLineEdit::returnPressed, this, [this] { goTo(); });
     connect(clear, &QPushButton::clicked, this, [this] { this->source.clearHits(); });
@@ -213,8 +258,31 @@ MemoryViewer::MemoryViewer(MemorySource &source, QWidget *parent)
         row_widths[size_t(target())] = bytes;
         pixels->setRowWidth(bytes);
     });
-    connect(zoom_in_button, &QPushButton::clicked, this, [this] { pixels->zoomIn(); });
-    connect(zoom_out_button, &QPushButton::clicked, this, [this] { pixels->zoomOut(); });
+    tiles->onSelectionChanged = [this] { selectionChanged(); };
+    tiles->onZoomChanged = [this] { zoomChanged(); };
+    tiles->onHover = [this](std::optional<uint32_t> tile) { tileHovered(tile); };
+    connect(format_combo, &QComboBox::currentIndexChanged, this, [this] {
+        auto f = parse_tile_format(format_combo->currentData().toString().toStdString()).value_or(TileFormat::Bpp4);
+        tiles->setFormat(f);
+        palette_spin->setRange(TileView::kGrey, palette_count(f) - 1);
+        tiles->setPaletteRow(palette_spin->value());
+    });
+    palette_spin->setRange(TileView::kGrey, palette_count(tiles->format()) - 1);
+    palette_spin->setValue(0);
+    connect(palette_spin, &QSpinBox::valueChanged, this, [this](int row) { tiles->setPaletteRow(row); });
+    connect(per_row_spin, &QSpinBox::valueChanged, this, [this](int n) { tiles->setTilesPerRow(n); });
+    connect(zoom_in_button, &QPushButton::clicked, this, [this] {
+        if (mode() == "tiles")
+            tiles->zoomIn();
+        else
+            pixels->zoomIn();
+    });
+    connect(zoom_out_button, &QPushButton::clicked, this, [this] {
+        if (mode() == "tiles")
+            tiles->zoomOut();
+        else
+            pixels->zoomOut();
+    });
     modeChanged();
     zoomChanged();
 
@@ -227,41 +295,58 @@ Target MemoryViewer::target() const
     return parse_target(target_combo->currentData().toString().toStdString()).value_or(Target::WRAM);
 }
 
+QString MemoryViewer::mode() const
+{
+    return mode_combo->currentData().toString();
+}
+
 MemoryPane *MemoryViewer::pane() const
 {
     if (stack->currentWidget() == pixels)
         return pixels;
+    if (stack->currentWidget() == tiles)
+        return tiles;
     return view;
 }
 
 void MemoryViewer::modeChanged()
 {
-    bool to_pixels = mode_combo->currentData().toString() == "pixels";
+    QString m = mode();
     MemoryPane *from = pane();
-    MemoryPane *to = to_pixels ? static_cast<MemoryPane *>(pixels) : view;
-    for (QWidget *w : { static_cast<QWidget *>(zoom_out_button), static_cast<QWidget *>(zoom_in_button),
-                        static_cast<QWidget *>(zoom_label), static_cast<QWidget *>(hover_label),
-                        static_cast<QWidget *>(row_width) })
-        w->setVisible(to_pixels);
-    if (to == from)
-        return;
-    // The other view picks up where this one is: same bytes, same place, same selection.
-    auto sel = from->selection();
-    uint32_t place = from->firstVisibleOffset();
-    to->setSnapshot(from->snapshot());
-    stack->setCurrentWidget(to_pixels ? static_cast<QWidget *>(pixels) : view);
-    to->scrollTo(place);
-    if (sel)
-        to->select(sel->first, sel->second);
-    else
-        to->clearSelection();
+    QWidget *to_widget = m == "pixels" ? static_cast<QWidget *>(pixels) : m == "tiles" ? static_cast<QWidget *>(tiles) : view;
+    MemoryPane *to = m == "pixels" ? static_cast<MemoryPane *>(pixels) : m == "tiles" ? static_cast<MemoryPane *>(tiles) : view;
+    view_options->setVisible(m != "hex");
+    hover_label->setVisible(m != "hex");
+    row_width->setVisible(m == "pixels");
+    for (QWidget *w : { static_cast<QWidget *>(format_combo), static_cast<QWidget *>(palette_spin),
+                        static_cast<QWidget *>(per_row_spin) })
+        w->setVisible(m == "tiles");
+    hover_label->clear();
+    if (to != from)
+    {
+        // The other view picks up where this one is: same bytes, same place, same selection.
+        auto sel = from->selection();
+        uint32_t place = from->firstVisibleOffset();
+        to->setSnapshot(from->snapshot());
+        if (to == tiles)
+            tiles->setCgram(source.palette());
+        stack->setCurrentWidget(to_widget);
+        to->scrollTo(place);
+        if (sel)
+            to->select(sel->first, sel->second);
+        else
+            to->clearSelection();
+    }
+    zoomChanged();
 }
 
 void MemoryViewer::zoomChanged()
 {
-    zoom_label->setText(tr("%1×").arg(pixels->zoom()));
-    zoom_out_button->setEnabled(pixels->zoom() > PixelView::kMinZoom);
-    zoom_in_button->setEnabled(pixels->zoom() < PixelView::kMaxZoom);
+    bool on_tiles = mode() == "tiles";
+    int zoom = on_tiles ? tiles->zoom() : pixels->zoom();
+    zoom_label->setText(tr("%1×").arg(zoom));
+    zoom_out_button->setEnabled(zoom > (on_tiles ? TileView::kMinZoom : PixelView::kMinZoom));
+    zoom_in_button->setEnabled(zoom < (on_tiles ? TileView::kMaxZoom : PixelView::kMaxZoom));
 }
 
 void MemoryViewer::hovered(std::optional<uint32_t> offset)
@@ -270,6 +355,15 @@ void MemoryViewer::hovered(std::optional<uint32_t> offset)
     if (!offset || *offset >= snap.bytes.size())
         return hover_label->clear();
     hover_label->setText(QString("%1 = 0x%2").arg(hex4(*offset)).arg(snap.bytes[*offset], 2, 16, QChar('0')).toUpper().replace("0X", "0x"));
+}
+
+void MemoryViewer::tileHovered(std::optional<uint32_t> tile)
+{
+    if (!tile)
+        return hover_label->clear();
+    hover_label->setText(tr("tile 0x%1 at %2")
+                             .arg(QString::number(*tile, 16).toUpper().rightJustified(3, QChar('0')))
+                             .arg(hex4(*tile * tiles->tileSpan())));
 }
 
 void MemoryViewer::showEvent(QShowEvent *event)
@@ -304,6 +398,8 @@ void MemoryViewer::refresh()
     if (snap.target != target() && !snap.bytes.empty())
         return; // the switch hasn't reached the emulation thread yet
     pane()->setSnapshot(snap);
+    if (mode() == "tiles")
+        tiles->setCgram(source.palette()); // live, so palette corruption shows at once
     refreshMap();
     if (pending_select && !snap.bytes.empty())
     {
