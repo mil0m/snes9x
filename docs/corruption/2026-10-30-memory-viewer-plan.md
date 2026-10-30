@@ -1,0 +1,49 @@
+# Memory viewer with a heatmap: implementation plan (roadmap #18)
+
+Spec: [`2026-10-30-ram-corruption-design.md`](./2026-10-30-ram-corruption-design.md),
+*Qt UI*, "Memory viewer" (design doc phase 4).
+
+**Status (2026-10-30):** being built.
+
+Goal: see where a game keeps its live data, where the recipe has been writing, and where
+the game keeps copies of its sprites and palette (where corruption sticks), then turn a
+selected range into a rule without typing addresses.
+
+## Decisions
+
+- **Only while open, only one target.** The viewer watches one target at a time, and only
+  while its window is open, so a closed viewer costs nothing. Watching WRAM means one
+  128 KB compare per frame, between frames.
+- **Activity is a decaying heat.** Each frame, a byte that changed gets +1 and every heat
+  decays by 2 %, so a byte that changes every frame settles near 50 and a quiet one fades
+  in about 2 seconds. The colour scale is logarithmic, so rare changes still show.
+- **Hits are a running count since the viewer opened** (or *Clear*), taken from the
+  engine's event log, so the recipe's footprint stays visible after it moves on.
+- **The UI reads a snapshot**: bytes, heat and hits, copied under the session lock about
+  10 times a second.
+- **Copies of sprites and palette** are found by matching the current OAM and CGRAM
+  contents against WRAM: runs of 32 bytes or more, ignoring stretches with fewer than 3
+  different byte values (WRAM and palettes are full of zeros, which would match anything).
+- **Danger (the crash map) waits for #19**, and naming a selection waits for #16; the
+  viewer leaves room for both.
+
+## Tasks
+
+1. `corrupt/memory_watch.{h,cpp}`: `MemoryWatch` with `watch(target, size)`,
+   `observe(mem, events)`, `clear_hits()` and `snapshot()`. Tests: a byte changing every
+   frame heats toward 50 and fades when it stops; untouched bytes stay at 0; hits count
+   only this target's events and only new ones; switching target resets; snapshot sizes.
+2. `find_copies(haystack, needle, min_run)`: maximal matching runs, longest first. Tests:
+   an embedded copy is found at the right offsets; a partial copy; zero and single-value
+   stretches don't match; overlapping candidates merge into one run.
+3. Session: `watchMemory(target)` / `stopWatching()`, fed from `betweenFrames`;
+   `memorySnapshot()`; `findCopies()` for OAM and CGRAM in WRAM.
+4. `MemoryView` widget: a hex grid painting only the visible rows, cells coloured by the
+   chosen overlay, an overview strip of the whole target, mouse selection (drag,
+   shift-click), `scrollTo(offset)`. Offscreen tests: the offset under a point, drag and
+   shift-click selections, the overview click, and PNGs.
+5. `MemoryViewer` window: target, overlay (Activity / Hits / None), go to address,
+   *Clear hits*, *Find sprite and palette copies* (a list; a click selects the copy), and
+   *New rule from selection* (the rule editor with the range filled in). Opened from the
+   panel.
+6. Docs and QA.
