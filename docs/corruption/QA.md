@@ -134,3 +134,20 @@ scratch folder. By default Snes9x writes the `.srm` next to the ROM.
 3. In a game with a soft-reset combo (often L+R+Start+Select), press it with no recipe active.
    - [ ] The game resets normally; nothing is rolled back.
 
+## 12. Memory viewer
+1. In the middle of gameplay, press **Memory Viewer…** in the panel.
+   - [ ] A window shows WRAM in hex; some areas glow orange and keep changing, others stay plain.
+   - [ ] The strip on the right shows where the busy areas are; clicking it jumps there.
+2. Pause the game (P).
+   - [ ] The glow fades within a couple of seconds (nothing changes while paused).
+3. Load and activate **gentle-wram-noise**, and switch the overlay to **Hits**.
+   - [ ] Purple bytes appear scattered above `0x2000` as the recipe fires; **Clear Hits** clears them.
+4. Press **Find Copies**.
+   - [ ] The list shows at least one `oam` or `cgram` copy in WRAM (most games have both). Clicking one selects it.
+5. With a palette copy selected, **New Rule from Selection…**, choose *Add / subtract* −2..2, every 30 frames, count 4, **OK**.
+   - [ ] The rule appears in the panel, and colours drift and stay changed, unlike the **palette-drift** starter recipe.
+6. Switch the target to **vram**, type `0x4000` in **Go to** and press Enter.
+   - [ ] The view jumps to row `0x04000`.
+7. Close the viewer window.
+   - [ ] The game runs as before (it stops watching when closed).
+

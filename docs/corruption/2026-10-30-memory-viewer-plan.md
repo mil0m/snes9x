@@ -3,7 +3,7 @@
 Spec: [`2026-10-30-ram-corruption-design.md`](./2026-10-30-ram-corruption-design.md),
 *Qt UI*, "Memory viewer" (design doc phase 4).
 
-**Status (2026-10-30):** being built.
+**Status (2026-10-30):** done (tasks 1–6), pending QA.md section 12.
 
 Goal: see where a game keeps its live data, where the recipe has been writing, and where
 the game keeps copies of its sprites and palette (where corruption sticks), then turn a
@@ -47,3 +47,22 @@ selected range into a rule without typing addresses.
    *New rule from selection* (the rule editor with the range filled in). Opened from the
    panel.
 6. Docs and QA.
+
+## Findings while building
+
+- **Copies are real and worth it.** `corrupt-smoke --copies` (added for this) found the
+  sprite table copy in Pocky & Rocky, FE4, FF6 and Goof Troop, and full palette copies in
+  all four (two in Pocky & Rocky, likely the live palette and a fade target). Palette drift
+  on Goof Troop's WRAM copy changed 791 of 900 frames, against 19 on CGRAM itself.
+- **Repetitive tables match themselves.** Sprite tables are rows of similar 4-byte entries,
+  so FF6's OAM matched its WRAM copy at 207 shifts. Runs mostly inside a longer kept run
+  are now dropped: one result per real copy.
+- **AddressSanitizer earned its keep.** The widget tests crashed now and then inside GLib;
+  ASan showed an out-of-bounds write in the test's own sample helper (writing hits at
+  `0x1000` into a 512-byte palette snapshot). `./build-mac.sh asan` now runs every suite
+  under it, and all are clean, including the real-core tests that patch the opcode tables.
+- **The overview strip needs room.** At a narrow width the hex cells painted over it;
+  the view now has a minimum width that fits the grid beside the strip, and a test checks it.
+- **Watching costs about 0.4 ms a frame** for WRAM in a release build, and nothing while
+  the viewer is closed.
+

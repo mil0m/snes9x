@@ -68,6 +68,27 @@ after it new random values, because a rule's randomness depends on its position.
 
 Loading another recipe or starting a new one asks before discarding unsaved edits.
 
+## The memory viewer
+
+**Memory Viewer…** in the panel opens a hex view of one target (WRAM, VRAM, the palette…):
+
+- **Activity** colours each byte by how often the game changes it, so live data (timers,
+  positions, the sprite buffer) glows and unused memory stays plain. A byte that changes
+  every frame is fully orange; one that changes once a second is faint but visible.
+- **Hits** colours the bytes the recipe has written since the viewer opened (or since
+  **Clear Hits**), so you can see a recipe's footprint.
+- The strip on the right is the whole target at a glance; click it to jump there. **Go to**
+  takes an address like `0x1C00` or `$1C00`.
+- Drag across bytes (or click, then shift-click) to select a range, then **New Rule from
+  Selection…** opens the rule editor with that range filled in.
+- **Find Copies** lists where WRAM holds copies of the sprite table and the palette. Most
+  games rebuild sprites and colours from those copies every frame, so corrupting a copy
+  sticks where corrupting `oam` or `cgram` only flashes. In Goof Troop, palette drift on its
+  WRAM copy changed 791 of 900 frames, against 19 on `cgram` itself. Click a result to select
+  it.
+
+The viewer only watches while its window is open, about 0.4 ms a frame for WRAM.
+
 ## Saved moments
 
 A recipe can carry the moment its run started, so loading it puts the game back there and
@@ -242,8 +263,8 @@ Any detection field can be left out to keep its default; `0` switches a signal o
 
 - **Sprites and palettes often bounce back.** Most games copy their sprite table and
   palette from WRAM into OAM/CGRAM every frame, so corrupting OAM or CGRAM directly only
-  flashes. For lasting effects, corrupt the game's WRAM copy (finding it is what the phase
-  4 memory viewer is for).
+  flashes. For lasting effects, corrupt the game's WRAM copy: the memory viewer's **Find
+  Copies** shows where it is.
 - **Low WRAM is dangerous.** `$7E:0000–1FFF` usually holds the stack and direct page, which
   is the fastest way to crash.
 
@@ -251,6 +272,7 @@ Any detection field can be left out to keep its default; `0` switches a signal o
 
 ```sh
 ./build-mac.sh test                                    # engine, real-core and panel widget tests
+./build-mac.sh asan                                    # the same, under AddressSanitizer
 build/tests/corrupt-smoke game.sfc recipe.json 600 600 # a recipe in the real core, headless
 ```
 
@@ -258,7 +280,8 @@ build/tests/corrupt-smoke game.sfc recipe.json 600 600 # a recipe in the real co
 how many frames look different and which memory changed. It also checks that every write
 the engine logged really landed in emulator memory. With `--replay` instead, it starts the
 recipe the way the app does, plays on, starts again from the saved moment, and checks the
-second run ends with identical memory and picture.
+second run ends with identical memory and picture. With `--copies` it lists where WRAM
+holds copies of the sprite table and palette after the warmup.
 
 The real-core tests (`tests/headless/guard_integration_test.cpp`) boot tiny generated ROMs
 that crash on cue (`STP`, NMI off) and check that the guard catches, rolls back and plays
