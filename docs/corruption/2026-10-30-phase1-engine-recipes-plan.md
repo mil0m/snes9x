@@ -85,7 +85,7 @@ key; the event log is bounded.
 - Numbers can be written as `"0x…"` or decimal. Named ranges resolve through the game's
   regions.
 - Errors carry a JSON path (`rules[2].op.min: expected 0..255, got 300`).
-- Writing is stable: sorted keys, 2-space indent.
+- Writing is canonical: a fixed key order, 2-space indent.
 
 Tests: the spec's example recipe round-trips byte-identically; every validation error case
 is caught; an unknown named region is an error that names it; an unknown `format` version

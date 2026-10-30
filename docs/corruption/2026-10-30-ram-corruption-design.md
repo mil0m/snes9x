@@ -151,7 +151,7 @@ Snes9x's movie support) are a possible later extra, not part of v1.
 The root can be any folder. The intended setup is a shared GitHub repo that Mikael and
 Erik both clone and point Snes9x at. The library is designed to stay **easy to merge in
 git**:
-- JSON is written with stable formatting (sorted keys, 2-space indent, one rule per block),
+- JSON is written in a canonical form (a fixed key order, 2-space indent, one rule per block),
   so diffs stay readable.
 - Learned data is written **per person** (`crashmap.<user>.json`, `journal.<user>.jsonl`),
   and the engine merges every file it finds when it reads them. Two people playing the same
