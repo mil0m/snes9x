@@ -157,9 +157,34 @@ CorruptionDock::CorruptionDock(EmuApplication &app, QWidget *parent)
     });
     connect(save_as, &QPushButton::clicked, this, &CorruptionDock::saveAs);
 
+    // Crash guard
+    auto guard_box = new QGroupBox(tr("Crash Guard"), root);
+    auto guard_layout = new QFormLayout(guard_box);
+    detect_check = new QCheckBox(tr("Detect crashes and roll back"), guard_box);
+    detect_check->setChecked(true);
+    guard_layout->addRow(detect_check);
+    policy_combo = new QComboBox(guard_box);
+    policy_combo->addItem(tr("Recipe's choice"), QString());
+    for (auto p : { PolicyKind::Reroll, PolicyKind::Skip, PolicyKind::Dampen, PolicyKind::Disable, PolicyKind::Escalate })
+        policy_combo->addItem(policy_name(p), QString(policy_name(p)));
+    guard_layout->addRow(tr("On a crash"), policy_combo);
+    crash_label = new QLabel(guard_box);
+    crash_label->setWordWrap(true);
+    guard_layout->addRow(crash_label);
+    auto mark = button(tr("Mark Crash (roll back now)"), guard_box);
+    guard_layout->addRow(mark);
+    layout->addWidget(guard_box);
+
+    connect(detect_check, &QCheckBox::clicked, [](bool on) { CorruptionSession::get().setDetectionEnabled(on); });
+    connect(policy_combo, &QComboBox::activated, [this](int index) {
+        auto name = policy_combo->itemData(index).toString().toStdString();
+        CorruptionSession::get().setPolicyOverride(name.empty() ? std::nullopt : parse_policy(name));
+    });
+    connect(mark, &QPushButton::clicked, [] { CorruptionSession::get().markCrash(); });
+
     // Rules
-    rules_table = new QTableWidget(0, 5, root);
-    rules_table->setHorizontalHeaderLabels({ tr("On"), tr("Rule"), tr("Target"), tr("Op"), tr("When") });
+    rules_table = new QTableWidget(0, 6, root);
+    rules_table->setHorizontalHeaderLabels({ tr("On"), tr("Rule"), tr("Target"), tr("Op"), tr("When"), tr("Crashes") });
     rules_table->verticalHeader()->setVisible(false);
     rules_table->horizontalHeader()->setSectionResizeMode(QHeaderView::ResizeToContents);
     rules_table->horizontalHeader()->setStretchLastSection(true);
@@ -237,6 +262,21 @@ void CorruptionDock::refreshStatus()
                                     .arg(status.engine.firings)
                               : tr("No recipe loaded"));
 
+    crash_label->setText(status.crashes == 0
+                             ? tr("No crashes caught. Policy: %1").arg(policy_name(status.policy))
+                             : tr("%n crash(es) caught. Last: %1", "", int(status.crashes)).arg(qs(status.last_crash)));
+    if (status.rule_crashes != shown_rule_crashes)
+    {
+        shown_rule_crashes = status.rule_crashes;
+        QSignalBlocker block_rules(rules_table);
+        for (int i = 0; i < rules_table->rowCount() && i < int(status.rule_crashes.size()); i++)
+        {
+            rules_table->setItem(i, 5, new QTableWidgetItem(QString::number(status.rule_crashes[size_t(i)])));
+            if (rules_table->item(i, 0))
+                rules_table->item(i, 0)->setCheckState(status.rules[size_t(i)].enabled ? Qt::Checked : Qt::Unchecked);
+        }
+    }
+
     if (status.message != shown_message)
     {
         shown_message = status.message;
@@ -267,6 +307,8 @@ void CorruptionDock::rebuildRules()
         rules_table->setItem(i, 2, new QTableWidgetItem(where));
         rules_table->setItem(i, 3, new QTableWidgetItem(describe_op(r)));
         rules_table->setItem(i, 4, new QTableWidgetItem(describe_trigger(r.when)));
+        unsigned crashes = size_t(i) < status.rule_crashes.size() ? status.rule_crashes[size_t(i)] : 0;
+        rules_table->setItem(i, 5, new QTableWidgetItem(QString::number(crashes)));
     }
 }
 

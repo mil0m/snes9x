@@ -498,6 +498,11 @@ void EmuApplication::handleCorruptionBinding(const std::string &name)
         auto result = session.saveRecipeAs(recipe_name, "");
         text = result.error.empty() ? "Saved recipe " + result.path.filename().string() : "Couldn't save: " + result.error;
     }
+    else if (name == "CorruptionMarkCrash")
+    {
+        session.markCrash();
+        text = "Corruption: rolling back";
+    }
     else if (name.starts_with("CorruptionFire"))
     {
         int n = name.back() - '0';

@@ -42,6 +42,7 @@ class CorruptionDock : public QDockWidget
     std::string shown_game;
     std::string shown_message;
     int ticks = 0;
+    std::vector<unsigned> shown_rule_crashes;
 
     QLabel *game_label;
     QLineEdit *library_edit;
@@ -50,6 +51,9 @@ class CorruptionDock : public QDockWidget
     QCheckBox *active_check;
     QLineEdit *seed_edit;
     QTableWidget *rules_table;
+    QCheckBox *detect_check;
+    QComboBox *policy_combo;
+    QLabel *crash_label;
     QLabel *status_label;
     QListWidget *backup_list;
     QLabel *message_label;

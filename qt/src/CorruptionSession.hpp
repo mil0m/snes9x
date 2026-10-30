@@ -1,5 +1,7 @@
 #pragma once
+#include "corrupt/core_access.h"
 #include "corrupt/core_memory.h"
+#include "corrupt/crash_guard.h"
 #include "corrupt/engine.h"
 #include "corrupt/library.h"
 #include "corrupt/save_backup.h"
@@ -11,7 +13,8 @@
 #include <vector>
 
 // Glue between the corruption engine and the running game: owns the engine,
-// installs the per-frame hook, and keeps automatic save-RAM backups.
+// installs the per-frame hook, guards against crashes (rolling back between
+// frames), and keeps automatic save-RAM backups.
 //
 // Thread-safety: the frame hook runs on the emulation thread; the panel calls
 // in from the UI thread. Every public method takes the mutex, which is
@@ -31,6 +34,14 @@ class CorruptionSession
         std::string notes;
         uint64_t recipe_generation = 0; // bumps whenever a recipe is loaded
         std::string message;             // last notable event, for the panel
+
+        // Crash guard.
+        corrupt::PolicyKind policy = corrupt::PolicyKind::Reroll;
+        bool policy_overridden = false;
+        bool detection_enabled = true;
+        unsigned crashes = 0;
+        std::string last_crash;
+        std::vector<unsigned> rule_crashes;
     };
 
     // Called by Snes9xController around ROM loading (emulation thread suspended).
@@ -51,6 +62,12 @@ class CorruptionSession
     void setRuleEnabled(size_t index, bool enabled);
     corrupt::SaveResult saveRecipeAs(const std::string &name, const std::string &notes);
 
+    // Crash guard. betweenFrames() runs after every emulated frame (emulation thread).
+    void betweenFrames();
+    void markCrash();
+    void setPolicyOverride(std::optional<corrupt::PolicyKind> policy); // nullopt: the recipe's choice
+    void setDetectionEnabled(bool enabled);
+
     // Save backups.
     std::filesystem::path backupDir();
     std::vector<corrupt::BackupInfo> backups();
@@ -66,10 +83,17 @@ class CorruptionSession
     void maybeBackup();
     void note(const std::string &message);
     std::filesystem::path backupDirLocked() const;
+    void configureGuard();
+    void writeJournal(const corrupt::JournalEntry &entry);
 
     std::mutex mutex;
     corrupt::Engine engine;
     corrupt::CoreMemory memory;
+    corrupt::SnesCoreAccess access;
+    corrupt::CrashGuard guard;
+    std::optional<corrupt::PolicyKind> policy_override;
+    bool detection_enabled = true;
+    std::string last_crash;
     std::filesystem::path library_root;
     bool game_loaded = false;
     bool has_recipe = false;

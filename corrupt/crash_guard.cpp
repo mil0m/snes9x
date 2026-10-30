@@ -35,6 +35,7 @@ void CrashGuard::reset()
     last_frame.reset();
     recovering_since.reset();
     consecutive = 0;
+    total = 0;
     manual_pending = false;
 }
 

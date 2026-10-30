@@ -251,6 +251,7 @@ void Snes9xController::mainLoop()
     }
 
     S9xMainLoop();
+    CorruptionSession::get().betweenFrames();
 }
 
 void Snes9xController::setPaused(bool paused)

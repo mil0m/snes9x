@@ -1,10 +1,12 @@
 #include "CorruptionSession.hpp"
 #include "EmuConfig.hpp"
 #include "corrupt/hook.h"
+#include "corrupt/journal.h"
 
 #include "snes9x.h"
 #include "memmap.h"
 #include "fscompat.h"
+#include "display.h"
 
 #include <random>
 
@@ -39,6 +41,15 @@ GameId current_game()
     return id;
 }
 
+// Whose journal this is: one file per person in a shared library.
+std::string user_name()
+{
+    for (auto var : { "USER", "USERNAME" })
+        if (auto v = getenv(var); v && *v)
+            return v;
+    return "player";
+}
+
 uint64_t random_seed()
 {
     std::random_device rd;
@@ -58,6 +69,60 @@ void CorruptionSession::frameHook()
     get().onFrame();
 }
 
+void CorruptionSession::configureGuard()
+{
+    const auto &recipe = engine.recipe();
+    guard.set_policy(policy_override.value_or(recipe.crash_policy.value_or(PolicyKind::Reroll)));
+    DetectorConfig cfg = recipe.crash_detection.value_or(DetectorConfig{});
+    cfg.enabled = cfg.enabled && detection_enabled;
+    guard.set_detector_config(cfg);
+    guard.on_journal = [this](const JournalEntry &e) { writeJournal(e); };
+}
+
+void CorruptionSession::writeJournal(const JournalEntry &entry)
+{
+    fs::path path = library_root.empty()
+                        ? fs::path(EmuConfig::findConfigDir()) / "corruption-journal" /
+                              (game_folder_name(game.title, game.sha256) + ".jsonl")
+                        : Library(library_root).journal_path(game, user_name());
+    auto err = append_journal(path, journal_line(entry, BackupClock::now()));
+    if (!err.empty())
+        note("Journal: " + err);
+}
+
+void CorruptionSession::betweenFrames()
+{
+    std::lock_guard lock(mutex);
+    if (!game_loaded)
+        return;
+    auto out = guard.between_frames(engine, access);
+    if (out.kind == GuardOutcome::Nothing)
+        return;
+    last_crash = out.summary;
+    note(out.summary);
+    S9xSetInfoString(out.summary.c_str());
+}
+
+void CorruptionSession::markCrash()
+{
+    std::lock_guard lock(mutex);
+    guard.mark_crash();
+}
+
+void CorruptionSession::setPolicyOverride(std::optional<PolicyKind> policy)
+{
+    std::lock_guard lock(mutex);
+    policy_override = policy;
+    configureGuard();
+}
+
+void CorruptionSession::setDetectionEnabled(bool enabled)
+{
+    std::lock_guard lock(mutex);
+    detection_enabled = enabled;
+    configureGuard();
+}
+
 void CorruptionSession::gameLoaded()
 {
     std::lock_guard lock(mutex);
@@ -67,6 +132,9 @@ void CorruptionSession::gameLoaded()
     has_recipe = false;
     engine.set_recipe({});
     recipe_generation++;
+    guard.reset();
+    last_crash.clear();
+    configureGuard();
     last_backup_time.reset();
     last_backup_hash.reset();
     frames_since_check = 0;
@@ -124,6 +192,9 @@ std::vector<std::string> CorruptionSession::loadRecipe(const Recipe &recipe)
     engine.set_active(was_active);
     has_recipe = true;
     recipe_generation++;
+    guard.reset();
+    last_crash.clear();
+    configureGuard();
     note("Recipe: " + recipe.name);
     return problems;
 }
@@ -230,6 +301,7 @@ std::string CorruptionSession::restoreBackup(const fs::path &path)
 
     backupNow("before-restore"); // so a restore can itself be undone
     engine.set_active(false);
+    guard.reset();
     memcpy(Memory.SRAM, bytes.data(), size);
     Memory.SaveSRAM(S9xGetFilename(".srm", SRAM_DIR).c_str()); // the .srm on disk too, right away
     last_backup_hash = sram_hash(bytes.data(), size);
@@ -248,6 +320,12 @@ CorruptionSession::Status CorruptionSession::status()
     s.rules = engine.recipe().rules;
     s.notes = engine.recipe().notes;
     s.recipe_generation = recipe_generation;
+    s.policy = guard.get_policy();
+    s.policy_overridden = policy_override.has_value();
+    s.detection_enabled = detection_enabled;
+    s.crashes = guard.total_crashes();
+    s.last_crash = last_crash;
+    s.rule_crashes = guard.rule_crashes();
     s.message = message;
     return s;
 }
@@ -256,6 +334,7 @@ void CorruptionSession::onFrame()
 {
     std::lock_guard lock(mutex);
     engine.on_frame(memory);
+    access.note_frame_start();
     if (++frames_since_check >= kBackupCheckFrames)
     {
         frames_since_check = 0;
