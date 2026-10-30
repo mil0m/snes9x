@@ -81,7 +81,13 @@ Loading another recipe or starting a new one asks before discarding unsaved edit
   takes an address like `0x1C00` or `$1C00`.
 - Drag across bytes (or click, then shift-click) to select a range, then **New Rule from
   Selection…** opens the rule editor with that range filled in.
-- **Find Copies** lists where WRAM holds copies of the sprite table and the palette. Most
+- **Named areas**: select bytes and **Name Selection…** (say `player stats`), and the name
+  works as a range in any rule for that game; the rule editor's **Region** list offers it.
+  Click a name to jump there. **Rename…** updates every recipe of the game that uses it;
+  **Delete…** leaves those recipes the range, just without the name. Names are stored in
+  the game's `regions.json`, shared through the library like recipes. Redefining a name
+  moves its rules the next time their recipe is loaded.
+- **Find Copies in WRAM** lists where WRAM holds copies of the sprite table and the palette. Most
   games rebuild sprites and colours from those copies every frame, so corrupting a copy
   sticks where corrupting `oam` or `cgram` only flashes. In Goof Troop, palette drift on its
   WRAM copy changed 791 of 900 frames, against 19 on `cgram` itself. Click a result to select
@@ -253,11 +259,15 @@ every rule's intensity, and `anchor_state`, the file name of the recipe's saved 
 
 Any detection field can be left out to keep its default; `0` switches a signal off.
 
-**`regions.json`**, per game:
+**`regions.json`**, per game (the memory viewer writes it; hand edits work too, and
+`notes` are kept):
 
 ```json
-{ "format": 1, "regions": { "player_stats": { "target": "wram", "range": [ "0x0F00", "0x0F3F" ] } } }
+{ "format": 1, "regions": { "player stats": { "target": "wram", "range": [ "0x0F00", "0x0F3F" ], "notes": "HP, MP, level" } } }
 ```
+
+Region names have 1–40 characters, start with a letter, and use letters, digits, spaces,
+`_` and `-`.
 
 ## Things worth knowing
 

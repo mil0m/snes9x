@@ -151,3 +151,16 @@ scratch folder. By default Snes9x writes the `.srm` next to the ROM.
 7. Close the viewer window.
    - [ ] The game runs as before (it stops watching when closed).
 
+## 13. Named areas
+1. In the memory viewer, select a range (for example a palette copy from **Find Copies in WRAM**), **Name Selection…**, and call it `palette copy`.
+   - [ ] It appears under **Named areas**, and the game's `regions.json` has it.
+2. **Add Rule** in the panel and open **Region** in the editor.
+   - [ ] `palette copy (wram)` is listed; picking it fills and locks the range. Save the recipe.
+   - [ ] The recipe's JSON says `"range": "palette copy"`.
+3. Switch the viewer to another memory, then click `palette copy` in the list.
+   - [ ] It switches back to WRAM and selects the range.
+4. **Rename…** it to `palette`.
+   - [ ] The message says recipes follow; the recipe's JSON now says `"palette"`, it still loads, and the panel doesn't call it *(edited)*.
+5. **Delete…** it.
+   - [ ] The question names the recipe that uses it; afterwards the recipe still loads, with the range written out.
+

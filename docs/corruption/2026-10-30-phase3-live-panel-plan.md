@@ -7,11 +7,10 @@ corruption while playing": #14 rule editor, #15 intensity sliders, #16 named reg
 ([plan 1](./2026-10-30-phase1-engine-recipes-plan.md),
 [plan 2](./2026-10-30-phase2-crash-rollback-plan.md)).
 
-**Status (2026-10-30):** #14 is done (tasks 1–9 below; see *Findings while building*), and
-it still needs a manual QA pass (QA.md section 8). #15 is done too (its own section
-below; QA.md section 9). #17 is done too (QA.md section 10). #16 is being built (its own section below);
-each gets its own task list once the one before it has been play-tested. #14 was meant to
-wait for the first play-test (#12), so whatever that turns up feeds back in as fixes.
+**Status (2026-10-30):** done. All four items are built, each with its own section below
+and a manual QA section still to run: #14 (tasks 1–9 below, QA.md section 8), #15
+(section 9), #17 (section 10) and #16 (section 13). They were built before the first
+play-test (#12), so whatever that turns up feeds back in as fixes.
 
 Goal of #14: while the game runs, add, change and remove rules in the panel, see the
 effect right away, and save the result over the recipe file or as a new one. Editing a
@@ -269,6 +268,17 @@ that game, managed from the memory viewer.
 4. Memory viewer: *Name Selection…*, and a Regions list (click to jump and select;
    Rename, Delete, which says which recipes use it). Offscreen tests with the fake source.
 5. Docs and QA.
+
+### Findings
+- **Notes were being dropped.** `parse_regions` ignored a region's `notes`, so the first
+  edit from the viewer would have erased hand-written ones. It keeps them now, and a test
+  runs every edit over a file with notes.
+- **Rename writes recipes after regions, but reads them before.** The recipes are parsed
+  while the old name still resolves, then regions.json is written, then the recipes.
+- **A rewritten file isn't an edit.** When a rename rewrites the loaded recipe's file, the
+  session compares Save against the new file, so the panel doesn't flag an edit nobody made.
+- **The viewer got crowded,** so copy results are shorter (details in a tooltip) and the
+  window opens 720 px wide so the copies and the named areas sit side by side.
 
 ## Out of this phase
 The memory viewer and crash map (phase 4 in the design doc), undo for edits (Reload
