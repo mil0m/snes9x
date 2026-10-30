@@ -525,3 +525,17 @@ TEST_SUITE("live rule edits")
         CHECK(mem.of(Target::WRAM) == ref_mem.of(Target::WRAM));
     }
 }
+
+TEST_CASE("renaming the recipe keeps the run going")
+{
+    FakeMemory mem;
+    Engine e;
+    e.set_recipe(noisy_recipe(5));
+    e.set_active(true);
+    frames(e, mem, 30);
+    e.set_info("renamed", "new notes");
+    CHECK(e.recipe().name == "renamed");
+    CHECK(e.recipe().notes == "new notes");
+    CHECK(e.current_frame() == 30);
+    CHECK(e.status().recipe_name == "renamed");
+}

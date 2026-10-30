@@ -52,6 +52,7 @@ class Engine
     void reroll(uint64_t seed); // new seed, restarts the run
     void press_hotkey(int n);   // used on the next frame
     void set_rule_enabled(size_t index, bool enabled);
+    void set_info(std::string name, std::string notes); // no restart
 
     void on_frame(MemoryAccess &mem);
 

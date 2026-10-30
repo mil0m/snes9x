@@ -83,6 +83,12 @@ void Engine::set_rule_enabled(size_t index, bool enabled)
         current.rules[index].enabled = enabled;
 }
 
+void Engine::set_info(std::string name, std::string notes)
+{
+    current.name = std::move(name);
+    current.notes = std::move(notes);
+}
+
 void Engine::restart()
 {
     runtimes.assign(current.rules.size(), RuleRuntime{});

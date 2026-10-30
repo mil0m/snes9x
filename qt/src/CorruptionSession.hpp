@@ -7,6 +7,7 @@
 #include "corrupt/save_backup.h"
 
 #include <filesystem>
+#include <array>
 #include <mutex>
 #include <optional>
 #include <string>
@@ -33,6 +34,10 @@ class CorruptionSession
         std::vector<corrupt::Rule> rules;
         std::string notes;
         uint64_t recipe_generation = 0; // bumps whenever a recipe is loaded
+        uint64_t rules_generation = 0;  // bumps on every rule edit too
+        std::filesystem::path recipe_path; // the file it came from; empty for a new recipe
+        bool edited = false;               // differs from that file (rules, seed, name...)
+        std::array<size_t, corrupt::kTargetCount> sizes{}; // the loaded game's memory sizes
         std::string message;             // last notable event, for the panel
 
         // Crash guard.
@@ -53,7 +58,8 @@ class CorruptionSession
     corrupt::Library library();
 
     // Engine control. loadRecipe validates against the loaded game and returns the problems, if any.
-    std::vector<std::string> loadRecipe(const corrupt::Recipe &recipe);
+    std::vector<std::string> loadRecipe(const corrupt::Recipe &recipe, const std::filesystem::path &path = {});
+    void newRecipe(const std::string &name); // an empty recipe for the loaded game
     void setActive(bool active);
     bool toggleActive(); // returns the new state
     uint64_t reroll();   // returns the new seed
@@ -61,6 +67,12 @@ class CorruptionSession
     void pressHotkey(int n);
     void setRuleEnabled(size_t index, bool enabled);
     corrupt::SaveResult saveRecipeAs(const std::string &name, const std::string &notes);
+    corrupt::SaveResult save(); // over the file the recipe came from
+
+    // Live rule edits; the run goes on. Each returns an error, or empty when applied.
+    std::string replaceRule(size_t index, const corrupt::Rule &rule);
+    std::string addRule(const corrupt::Rule &rule);
+    std::string removeRule(size_t index);
 
     // Crash guard. betweenFrames() runs after every emulated frame (emulation thread).
     void betweenFrames();
@@ -84,6 +96,7 @@ class CorruptionSession
     void note(const std::string &message);
     std::filesystem::path backupDirLocked() const;
     void configureGuard();
+    std::string recipeJson(corrupt::Recipe recipe) const;
     void writeJournal(const corrupt::JournalEntry &entry);
 
     std::mutex mutex;
@@ -98,6 +111,9 @@ class CorruptionSession
     bool game_loaded = false;
     bool has_recipe = false;
     uint64_t recipe_generation = 0;
+    uint64_t rules_generation = 0;
+    std::filesystem::path recipe_path;
+    std::string saved_json; // the recipe as last loaded or saved, to tell whether it was edited
     corrupt::GameId game;
     std::string message;
 

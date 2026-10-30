@@ -2,6 +2,7 @@
 #include "EmuConfig.hpp"
 #include "corrupt/hook.h"
 #include "corrupt/journal.h"
+#include "corrupt/recipe_json.h"
 
 #include "snes9x.h"
 #include "memmap.h"
@@ -132,6 +133,9 @@ void CorruptionSession::gameLoaded()
     has_recipe = false;
     engine.set_recipe({});
     recipe_generation++;
+    rules_generation++;
+    recipe_path.clear();
+    saved_json.clear();
     guard.reset();
     last_crash.clear();
     configureGuard();
@@ -172,7 +176,7 @@ Library CorruptionSession::library()
     return Library(library_root);
 }
 
-std::vector<std::string> CorruptionSession::loadRecipe(const Recipe &recipe)
+std::vector<std::string> CorruptionSession::loadRecipe(const Recipe &recipe, const fs::path &path)
 {
     std::lock_guard lock(mutex);
     std::vector<std::string> problems;
@@ -192,11 +196,83 @@ std::vector<std::string> CorruptionSession::loadRecipe(const Recipe &recipe)
     engine.set_active(was_active);
     has_recipe = true;
     recipe_generation++;
+    rules_generation++;
+    recipe_path = path;
+    saved_json = path.empty() ? std::string() : recipeJson(recipe);
     guard.reset();
     last_crash.clear();
     configureGuard();
     note("Recipe: " + recipe.name);
     return problems;
+}
+
+// What Save writes. A recipe without a game (an example, a new one) gets the loaded game's.
+std::string CorruptionSession::recipeJson(Recipe recipe) const
+{
+    if (recipe.game.sha256.empty())
+        recipe.game = game;
+    return write_recipe(recipe);
+}
+
+void CorruptionSession::newRecipe(const std::string &name)
+{
+    std::lock_guard lock(mutex);
+    if (!game_loaded)
+        return;
+    Recipe recipe;
+    recipe.name = name;
+    recipe.game = game;
+    recipe.seed = random_seed();
+    bool was_active = engine.active();
+    engine.set_recipe(recipe);
+    engine.set_active(was_active);
+    has_recipe = true;
+    recipe_generation++;
+    rules_generation++;
+    recipe_path.clear();
+    saved_json.clear();
+    guard.reset();
+    last_crash.clear();
+    configureGuard();
+    note("New recipe: " + name);
+}
+
+std::string CorruptionSession::replaceRule(size_t index, const Rule &rule)
+{
+    std::lock_guard lock(mutex);
+    if (!has_recipe || index >= engine.recipe().rules.size())
+        return "no such rule";
+    if (auto err = validate_rule(rule, memory))
+        return *err;
+    engine.replace_rule(index, rule);
+    rules_generation++;
+    note("Changed rule " + rule.name);
+    return {};
+}
+
+std::string CorruptionSession::addRule(const Rule &rule)
+{
+    std::lock_guard lock(mutex);
+    if (!has_recipe)
+        return "load or start a recipe first";
+    if (auto err = validate_rule(rule, memory))
+        return *err;
+    engine.add_rule(rule);
+    rules_generation++;
+    note("Added rule " + rule.name);
+    return {};
+}
+
+std::string CorruptionSession::removeRule(size_t index)
+{
+    std::lock_guard lock(mutex);
+    if (!has_recipe || index >= engine.recipe().rules.size())
+        return "no such rule";
+    std::string name = engine.recipe().rules[index].name;
+    engine.remove_rule(index);
+    rules_generation++;
+    note("Removed rule " + name);
+    return {};
 }
 
 void CorruptionSession::setActive(bool active)
@@ -261,7 +337,35 @@ SaveResult CorruptionSession::saveRecipeAs(const std::string &name, const std::s
     recipe.game = game;
     result = Library(library_root).save_recipe(game, recipe);
     if (result.error.empty())
+    {
+        engine.set_info(name, notes);
+        recipe_path = result.path;
+        saved_json = recipeJson(recipe);
+        recipe_generation++; // the dock re-reads the name and path
         note("Saved " + result.path.filename().string());
+    }
+    return result;
+}
+
+SaveResult CorruptionSession::save()
+{
+    std::lock_guard lock(mutex);
+    SaveResult result;
+    if (!has_recipe)
+        result.error = "no recipe loaded";
+    else if (recipe_path.empty())
+        result.error = "this recipe has no file yet: use Save As";
+    if (!result.error.empty())
+        return result;
+
+    auto json = recipeJson(engine.recipe());
+    result.path = recipe_path;
+    result.error = write_file_atomic(recipe_path, json);
+    if (result.error.empty())
+    {
+        saved_json = json;
+        note("Saved " + recipe_path.filename().string());
+    }
     return result;
 }
 
@@ -320,6 +424,12 @@ CorruptionSession::Status CorruptionSession::status()
     s.rules = engine.recipe().rules;
     s.notes = engine.recipe().notes;
     s.recipe_generation = recipe_generation;
+    s.rules_generation = rules_generation;
+    s.recipe_path = recipe_path;
+    s.edited = has_recipe && recipeJson(engine.recipe()) != saved_json;
+    if (game_loaded)
+        for (auto t : kAllTargets)
+            s.sizes[size_t(t)] = memory.size(t);
     s.policy = guard.get_policy();
     s.policy_overridden = policy_override.has_value();
     s.detection_enabled = detection_enabled;
