@@ -48,12 +48,12 @@ struct SessionMemorySource : MemorySource
     MemorySnapshot snapshot() override { return s.memorySnapshot(); }
     std::vector<CopyRun> findCopies(Target of) override { return s.findCopies(of); }
     std::array<size_t, kTargetCount> sizes() override { return s.status().sizes; }
-    Regions regions() override
-    {
-        std::vector<std::string> errors;
-        return s.library().load_regions(s.status().game, errors);
-    }
+    Regions regions() override { return s.regions(); }
     std::string addRule(const Rule &rule) override { return s.addRule(rule); }
+    std::string saveRegion(const std::string &name, const AddressRange &range) override { return s.saveRegion(name, range); }
+    std::string renameRegion(const std::string &from, const std::string &to) override { return s.renameRegion(from, to); }
+    std::string deleteRegion(const std::string &name) override { return s.deleteRegion(name); }
+    std::vector<std::string> regionUsers(const std::string &name) override { return s.regionUsers(name); }
 };
 
 QPushButton *button(const QString &text, QWidget *parent)

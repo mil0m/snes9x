@@ -11,7 +11,9 @@
 
 #include <algorithm>
 #include <cmath>
+#include <fstream>
 #include <random>
+#include <sstream>
 
 namespace fs = std::filesystem;
 using namespace corrupt;
@@ -285,6 +287,72 @@ std::vector<CopyRun> CorruptionSession::findCopies(Target of)
         return bytes;
     };
     return find_copies(read(Target::WRAM), read(of));
+}
+
+Regions CorruptionSession::regions()
+{
+    std::lock_guard lock(mutex);
+    if (!game_loaded)
+        return {};
+    std::vector<std::string> errors;
+    return Library(library_root).load_regions(game, errors);
+}
+
+std::string CorruptionSession::saveRegion(const std::string &name, const AddressRange &range)
+{
+    std::lock_guard lock(mutex);
+    if (!game_loaded || library_root.empty())
+        return "load a game and choose a library folder first";
+    auto err = Library(library_root).set_region(game, name, range);
+    if (err.empty())
+        note("Named " + name + ". Recipes using it get its range when they're loaded.");
+    return err;
+}
+
+std::string CorruptionSession::renameRegion(const std::string &from, const std::string &to)
+{
+    std::lock_guard lock(mutex);
+    return changeRegion(from, to);
+}
+
+std::string CorruptionSession::deleteRegion(const std::string &name)
+{
+    std::lock_guard lock(mutex);
+    return changeRegion(name, {});
+}
+
+std::vector<std::string> CorruptionSession::regionUsers(const std::string &name)
+{
+    std::lock_guard lock(mutex);
+    if (!game_loaded || library_root.empty())
+        return {};
+    return Library(library_root).recipes_using_region(game, name);
+}
+
+// Rename (or, with an empty `to`, delete) a region in the library, and let the running
+// recipe follow. If its file was rewritten, the file is what Save compares against now.
+std::string CorruptionSession::changeRegion(const std::string &from, const std::string &to)
+{
+    if (!game_loaded || library_root.empty())
+        return "load a game and choose a library folder first";
+    Library library(library_root);
+    auto change = to.empty() ? library.delete_region(game, from) : library.rename_region(game, from, to);
+    if (!change.error.empty())
+        return change.error;
+    engine.rename_region(from, to);
+    rules_generation++;
+    if (std::find(change.recipes.begin(), change.recipes.end(), recipe_path) != change.recipes.end())
+    {
+        std::ifstream in(recipe_path, std::ios::binary);
+        std::stringstream text;
+        text << in.rdbuf();
+        std::vector<std::string> region_errors;
+        if (auto parsed = parse_recipe(text.str(), library.load_regions(game, region_errors)); parsed.recipe)
+            saved_json = recipeJson(*parsed.recipe);
+    }
+    note((to.empty() ? "Deleted region " + from : "Renamed " + from + " to " + to) + ", updating " +
+         std::to_string(change.recipes.size()) + " recipe(s)");
+    return {};
 }
 
 void CorruptionSession::setSavedMoments(bool on)

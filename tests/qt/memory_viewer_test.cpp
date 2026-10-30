@@ -51,8 +51,33 @@ struct FakeSource : MemorySource
             out[size_t(t)] = nominal_size(t);
         return out;
     }
-    Regions regions() override { return {}; }
+    Regions named;
+    std::vector<std::string> users_of_stats{ "boss rush" };
+    Regions regions() override { return named; }
     std::string addRule(const Rule &) override { return {}; }
+    std::string saveRegion(const std::string &name, const AddressRange &range) override
+    {
+        if (auto err = validate_region_name(name))
+            return *err;
+        named[name] = range;
+        return {};
+    }
+    std::string renameRegion(const std::string &from, const std::string &to) override
+    {
+        if (!named.count(from) || named.count(to))
+            return "no";
+        named[to] = named[from];
+        named.erase(from);
+        return {};
+    }
+    std::string deleteRegion(const std::string &name) override
+    {
+        return named.erase(name) ? std::string() : std::string("no");
+    }
+    std::vector<std::string> regionUsers(const std::string &name) override
+    {
+        return name == "stats" ? users_of_stats : std::vector<std::string>{};
+    }
 };
 
 template <typename W>
@@ -152,3 +177,75 @@ TEST_CASE("overlay choice and clearing hits")
     child<QPushButton>(v, "clear_hits")->click();
     CHECK(src.clears == 1);
 }
+
+TEST_SUITE("named regions in the viewer")
+{
+    TEST_CASE("a selection can be named, and shows up in the list")
+    {
+        FakeSource src;
+        MemoryViewer v(src);
+        v.show();
+        v.refresh();
+        CHECK_FALSE(child<QPushButton>(v, "name_selection")->isEnabled());
+        child<MemoryView>(v, "view")->select(0x0F00, 0x0F3F);
+        CHECK(child<QPushButton>(v, "name_selection")->isEnabled());
+        CHECK(v.nameSelection("stats").isEmpty());
+        REQUIRE(src.named.count("stats"));
+        CHECK(src.named["stats"].first == 0x0F00u);
+        CHECK(src.named["stats"].last == 0x0F3Fu);
+        auto list = child<QListWidget>(v, "regions");
+        REQUIRE(list->count() == 1);
+        CHECK(list->item(0)->text().contains("stats"));
+        CHECK(list->item(0)->text().contains("0x0F00"));
+    }
+
+    TEST_CASE("a bad name or a taken one is refused with a reason")
+    {
+        FakeSource src;
+        src.named["stats"] = { Target::WRAM, 0, 1 };
+        MemoryViewer v(src);
+        v.show();
+        v.refresh();
+        child<MemoryView>(v, "view")->select(0x10, 0x1F);
+        CHECK_FALSE(v.nameSelection("1st").isEmpty());
+        CHECK_FALSE(v.nameSelection("stats").isEmpty()); // taken: the dialog asks before overwriting
+        CHECK(v.nameSelection("stats", true).isEmpty());
+        CHECK(src.named["stats"].first == 0x10u);
+    }
+
+    TEST_CASE("clicking a region jumps to it and selects it, in its own memory")
+    {
+        FakeSource src;
+        src.named["palette copy"] = { Target::WRAM, 0x0100, 0x02FF };
+        src.named["sprite 0"] = { Target::OAM, 0x0000, 0x0003 };
+        MemoryViewer v(src);
+        v.show();
+        choose(v, "target", "vram");
+        v.refresh();
+        auto list = child<QListWidget>(v, "regions");
+        REQUIRE(list->count() == 2);
+        emit list->itemActivated(list->item(1)); // sorted by name: "sprite 0"
+        CHECK(src.watched.back() == Target::OAM);
+        v.refresh();
+        auto sel = child<MemoryView>(v, "view")->selection();
+        REQUIRE(sel);
+        CHECK(sel->first == 0u);
+        CHECK(sel->second == 3u);
+    }
+
+    TEST_CASE("rename and delete go through the source and refresh the list")
+    {
+        FakeSource src;
+        src.named["stats"] = { Target::WRAM, 0x0F00, 0x0F3F };
+        MemoryViewer v(src);
+        v.show();
+        auto list = child<QListWidget>(v, "regions");
+        CHECK(v.renameRegion("stats", "player stats").isEmpty());
+        REQUIRE(list->count() == 1);
+        CHECK(list->item(0)->text().contains("player stats"));
+        CHECK(v.deleteRegion("player stats").isEmpty());
+        CHECK(list->count() == 0);
+        CHECK(v.usersText("stats").contains("boss rush"));
+    }
+}
+

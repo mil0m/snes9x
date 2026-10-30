@@ -102,6 +102,13 @@ class CorruptionSession
     corrupt::MemorySnapshot memorySnapshot();
     std::vector<corrupt::CopyRun> findCopies(corrupt::Target of); // copies of `of` in WRAM
 
+    // Named regions of the loaded game (its regions.json). Each returns an error or empty.
+    corrupt::Regions regions();
+    std::string saveRegion(const std::string &name, const corrupt::AddressRange &range);
+    std::string renameRegion(const std::string &from, const std::string &to); // recipes and the running one follow
+    std::string deleteRegion(const std::string &name);                        // they keep the range, unnamed
+    std::vector<std::string> regionUsers(const std::string &name);
+
     // Save backups.
     std::filesystem::path backupDir();
     std::vector<corrupt::BackupInfo> backups();
@@ -119,6 +126,7 @@ class CorruptionSession
     std::filesystem::path backupDirLocked() const;
     void configureGuard();
     std::string recipeJson(corrupt::Recipe recipe) const;
+    std::string changeRegion(const std::string &from, const std::string &to);
     std::string writeMoment(corrupt::Recipe &recipe, const std::filesystem::path &recipe_path); // error or empty
     bool newMoment() const;
     void writeJournal(const corrupt::JournalEntry &entry);

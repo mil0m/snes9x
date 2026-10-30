@@ -4,6 +4,8 @@
 #include "corrupt/rule_text.h"
 
 #include <QComboBox>
+#include <QInputDialog>
+#include <QMessageBox>
 #include <QGroupBox>
 #include <QHBoxLayout>
 #include <QLabel>
@@ -11,6 +13,8 @@
 #include <QListWidget>
 #include <QPushButton>
 #include <QVBoxLayout>
+
+#include <algorithm>
 
 using namespace corrupt;
 
@@ -66,21 +70,58 @@ MemoryViewer::MemoryViewer(MemorySource &source, QWidget *parent)
     bottom->addWidget(new_rule_button);
     layout->addLayout(bottom);
 
-    auto copies_box = new QGroupBox(tr("Copies of the sprite table and palette in WRAM"), this);
+    auto copies_box = new QGroupBox(tr("Sprite and palette copies"), this);
     auto copies_layout = new QVBoxLayout(copies_box);
-    auto copies_hint = new QLabel(tr("Most games rebuild sprites and colours from these copies every frame, "
-                                     "so corrupting a copy sticks where corrupting oam or cgram only flashes."),
-                                  copies_box);
-    copies_hint->setWordWrap(true);
-    auto find = new QPushButton(tr("Find Copies"), copies_box);
+    auto find = new QPushButton(tr("Find Copies in WRAM"), copies_box);
     find->setObjectName("find_copies");
+    find->setToolTip(tr("Most games rebuild sprites and colours from a copy in WRAM every frame, so corrupting "
+                        "the copy sticks where corrupting oam or cgram only flashes."));
     copies_list = new QListWidget(copies_box);
     copies_list->setObjectName("copies");
     copies_list->setMaximumHeight(110);
-    copies_layout->addWidget(copies_hint);
     copies_layout->addWidget(find);
     copies_layout->addWidget(copies_list);
-    layout->addWidget(copies_box);
+
+    auto regions_box = new QGroupBox(tr("Named areas"), this);
+    auto regions_layout = new QVBoxLayout(regions_box);
+    regions_list = new QListWidget(regions_box);
+    regions_list->setObjectName("regions");
+    regions_list->setMaximumHeight(110);
+    auto region_buttons = new QHBoxLayout;
+    name_button = new QPushButton(tr("Name Selection..."), regions_box);
+    name_button->setObjectName("name_selection");
+    name_button->setEnabled(false);
+    rename_button = new QPushButton(tr("Rename..."), regions_box);
+    delete_button = new QPushButton(tr("Delete..."), regions_box);
+    region_buttons->addWidget(name_button);
+    region_buttons->addStretch(1);
+    region_buttons->addWidget(rename_button);
+    region_buttons->addWidget(delete_button);
+    regions_layout->addWidget(regions_list);
+    regions_layout->addLayout(region_buttons);
+
+    auto lists = new QHBoxLayout;
+    lists->addWidget(copies_box, 1);
+    lists->addWidget(regions_box, 1);
+    layout->addLayout(lists);
+
+    connect(regions_list, &QListWidget::itemActivated, this, [this](QListWidgetItem *item) {
+        auto name = item->data(Qt::UserRole).toString().toStdString();
+        auto all = this->source.regions();
+        auto it = all.find(name);
+        if (it == all.end())
+            return;
+        pending_select = std::pair{ it->second.first, it->second.last };
+        int index = target_combo->findData(QString(target_name(it->second.target)));
+        if (target_combo->currentIndex() != index)
+            target_combo->setCurrentIndex(index);
+        else
+            refresh();
+    });
+    connect(regions_list, &QListWidget::itemClicked, regions_list, &QListWidget::itemActivated);
+    connect(name_button, &QPushButton::clicked, this, [this] { askNameSelection(); });
+    connect(rename_button, &QPushButton::clicked, this, [this] { askRename(); });
+    connect(delete_button, &QPushButton::clicked, this, [this] { askDelete(); });
 
     connect(target_combo, &QComboBox::currentIndexChanged, this, [this] { targetChanged(); });
     connect(overlay_combo, &QComboBox::currentIndexChanged, this, [this] {
@@ -109,7 +150,7 @@ MemoryViewer::MemoryViewer(MemorySource &source, QWidget *parent)
     view->onSelectionChanged = [this] { selectionChanged(); };
 
     connect(&timer, &QTimer::timeout, this, [this] { refresh(); });
-    resize(view->sizeHint().width() + 40, 640);
+    resize(std::max(720, view->sizeHint().width() + 40), 680);
 }
 
 Target MemoryViewer::target() const
@@ -122,6 +163,7 @@ void MemoryViewer::showEvent(QShowEvent *event)
     QWidget::showEvent(event);
     open = true;
     source.watch(target());
+    refreshRegions();
     refresh();
     timer.start(100);
 }
@@ -165,6 +207,7 @@ void MemoryViewer::selectionChanged()
 {
     auto sel = view->selection();
     new_rule_button->setEnabled(sel.has_value());
+    name_button->setEnabled(sel.has_value());
     if (!sel)
     {
         selection_label->setText(tr("Drag across bytes to select a range"));
@@ -207,14 +250,123 @@ void MemoryViewer::findCopies()
     for (auto of : { Target::OAM, Target::CGRAM })
         for (auto &run : source.findCopies(of))
         {
-            auto text = QString("%1 %2..%3 in wram %4..%5 (%6 bytes)")
-                            .arg(target_name(of), hex4(run.needle_offset), hex4(run.needle_offset + run.length - 1),
-                                 hex4(run.haystack_offset), hex4(run.haystack_offset + run.length - 1))
-                            .arg(run.length);
+            auto text = QString("%1 → wram %2 (%3 bytes)").arg(target_name(of), hex4(run.haystack_offset)).arg(run.length);
             auto item = new QListWidgetItem(text, copies_list);
+            item->setToolTip(QString("%1 %2..%3 is copied at wram %4..%5")
+                                 .arg(target_name(of), hex4(run.needle_offset), hex4(run.needle_offset + run.length - 1),
+                                      hex4(run.haystack_offset), hex4(run.haystack_offset + run.length - 1)));
             item->setData(Qt::UserRole, run.haystack_offset);
             item->setData(Qt::UserRole + 1, run.haystack_offset + run.length - 1);
         }
     if (copies_list->count() == 0)
         copies_list->addItem(tr("No copies found. Try again in the middle of gameplay."));
 }
+
+void MemoryViewer::refreshRegions()
+{
+    QString current = regions_list->currentItem() ? regions_list->currentItem()->data(Qt::UserRole).toString() : QString();
+    regions_list->clear();
+    for (auto &[name, range] : source.regions()) // a std::map: sorted by name
+    {
+        auto item = new QListWidgetItem(QString("%1 · %2 %3..%4")
+                                            .arg(QString::fromStdString(name), target_name(range.target),
+                                                 hex4(range.first), hex4(range.last)),
+                                        regions_list);
+        item->setData(Qt::UserRole, QString::fromStdString(name));
+        if (item->data(Qt::UserRole).toString() == current)
+            regions_list->setCurrentItem(item);
+    }
+    rename_button->setEnabled(regions_list->count() > 0);
+    delete_button->setEnabled(regions_list->count() > 0);
+}
+
+QString MemoryViewer::nameSelection(const QString &name, bool overwrite)
+{
+    auto sel = view->selection();
+    if (!sel)
+        return tr("select some bytes first");
+    if (!overwrite && source.regions().count(name.toStdString()))
+        return tr("there's already an area called '%1'").arg(name);
+    auto error = source.saveRegion(name.toStdString(), { view->snapshot().target, sel->first, sel->second });
+    refreshRegions();
+    return QString::fromStdString(error);
+}
+
+QString MemoryViewer::renameRegion(const QString &from, const QString &to)
+{
+    auto error = source.renameRegion(from.toStdString(), to.toStdString());
+    refreshRegions();
+    return QString::fromStdString(error);
+}
+
+QString MemoryViewer::deleteRegion(const QString &name)
+{
+    auto error = source.deleteRegion(name.toStdString());
+    refreshRegions();
+    return QString::fromStdString(error);
+}
+
+QString MemoryViewer::usersText(const QString &name)
+{
+    auto users = source.regionUsers(name.toStdString());
+    if (users.empty())
+        return tr("No recipe uses it.");
+    QStringList names;
+    for (auto &u : users)
+        names << QString::fromStdString(u);
+    return tr("Used by: %1.").arg(names.join(", "));
+}
+
+void MemoryViewer::showResult(const QString &error, const QString &done)
+{
+    selection_label->setText(error.isEmpty() ? done : tr("Couldn't do that: %1").arg(error));
+}
+
+void MemoryViewer::askNameSelection()
+{
+    bool ok = false;
+    auto name = QInputDialog::getText(this, tr("Name this area"), tr("Name (e.g. player stats):"), QLineEdit::Normal,
+                                      QString(), &ok)
+                    .trimmed();
+    if (!ok || name.isEmpty())
+        return;
+    bool overwrite = false;
+    if (source.regions().count(name.toStdString()))
+    {
+        if (QMessageBox::question(this, tr("Name this area"),
+                                  tr("'%1' already exists. Point it at this selection instead?\n%2")
+                                      .arg(name, usersText(name))) != QMessageBox::Yes)
+            return;
+        overwrite = true;
+    }
+    showResult(nameSelection(name, overwrite), tr("Named '%1'. Use it as a range in any rule for this game.").arg(name));
+}
+
+void MemoryViewer::askRename()
+{
+    auto item = regions_list->currentItem();
+    if (!item)
+        return showResult(tr("pick an area in the list first"), {});
+    auto from = item->data(Qt::UserRole).toString();
+    bool ok = false;
+    auto to = QInputDialog::getText(this, tr("Rename area"), tr("New name for '%1':").arg(from), QLineEdit::Normal,
+                                    from, &ok)
+                  .trimmed();
+    if (!ok || to.isEmpty() || to == from)
+        return;
+    showResult(renameRegion(from, to), tr("Renamed '%1' to '%2'; recipes using it follow.").arg(from, to));
+}
+
+void MemoryViewer::askDelete()
+{
+    auto item = regions_list->currentItem();
+    if (!item)
+        return showResult(tr("pick an area in the list first"), {});
+    auto name = item->data(Qt::UserRole).toString();
+    if (QMessageBox::question(this, tr("Delete area"),
+                              tr("Delete '%1'? %2\nRecipes using it keep its range, just without the name.")
+                                  .arg(name, usersText(name))) != QMessageBox::Yes)
+        return;
+    showResult(deleteRegion(name), tr("Deleted '%1'.").arg(name));
+}
+
