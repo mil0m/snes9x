@@ -84,3 +84,40 @@ Asked for after #18: a list of what lives where, like other emulators' memory vi
 - The viewer shows the map as a sidebar, live areas in italics; the session re-reads the
   live layout between frames while VRAM or ARAM is watched. QA.md section 14.
 
+
+## Follow-up: the pixel view (2026-10-30)
+
+Asked for after the map: see a whole memory at once, each byte one pixel coloured by its
+value, zoomable. (Decoding VRAM tiles with the palette is a later, separate view.)
+
+- **A toggle, not a new window.** *Hex / Pixels* in the viewer switches between the two
+  views of the same snapshot. The selection, the Map, named areas, copies, Go to and
+  New Rule from Selection work the same in both; switching keeps the selection and the
+  place you were looking at. Both views implement one small interface (`MemoryPane`),
+  so the viewer talks to whichever is showing.
+- **Zoom is pixels per byte**: 1, 2, 3, 4, 6, 8, 12, 16. One row holds as many bytes as
+  fit, rounded down to a power of two (16 at least), so 4-, 8- and 16-byte tables line up
+  in columns. At 1:1 a 600-pixel-wide view shows 512 bytes a row and all of WRAM in 256
+  rows. Zoom with **+ / −** buttons or **Ctrl+wheel**, which keeps the byte under the
+  mouse in place; the plain wheel scrolls.
+- **Colours.** `corrupt/byte_colour.{h,cpp}` (no Qt): 0x00 black, 0xFF white, the rest
+  along a hue ramp whose brightness rises with the value, so runs of equal bytes, fills,
+  gradients and repeating tables show as bands and stripes, and close values look alike.
+  With the Activity or Hits overlay on, bytes drop to a dim grey and the heat is painted
+  over them in the overlay's colour, so the overlay reads at a glance; *Plain* shows the
+  full colours.
+- **Addresses** on the left every few rows; hovering shows the byte's address and value.
+- **Painting** builds a small image of the visible rows (one pixel per byte) and draws it
+  scaled without smoothing, so cost follows the window, not the target.
+
+Tasks:
+
+1. `byte_colour(value)` and `byte_grey(value)`: 0 black, 0xFF white, every value
+   distinct, brightness rising, neighbours close. Unit tests.
+2. `PixelView` widget: zoom, columns from the width, `offsetAt`/`pixelRect` both ways at
+   several zooms, drag and shift-click selection, `select`/`scrollTo`, Ctrl+wheel zoom
+   around the cursor, hover. Offscreen tests and PNGs.
+3. Viewer: the Hex / Pixels toggle and zoom buttons; the selection and position carry
+   over; the Map, regions, copies and Go to select in the view that's showing. Tests and
+   a PNG of the whole window in pixel mode.
+4. Docs: README, QA.md section 15, findings here.
