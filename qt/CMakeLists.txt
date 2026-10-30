@@ -160,6 +160,7 @@ list(APPEND QT_GUI_SOURCES
     src/IntensitySlider.cpp
     src/MemoryView.cpp
     src/MemoryViewer.cpp
+    src/PixelView.cpp
     src/SoftwareScalers.cpp
     src/EmuCanvasQt.cpp
     src/EmuCanvasOpenGL.cpp

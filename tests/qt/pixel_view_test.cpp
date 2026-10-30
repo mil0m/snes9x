@@ -1,0 +1,273 @@
+#include "doctest/doctest.h"
+#include "PixelView.hpp"
+
+#include <QApplication>
+#include <QDir>
+#include <QMouseEvent>
+#include <QScrollBar>
+#include <QWheelEvent>
+
+#include <random>
+
+using namespace corrupt;
+
+namespace
+{
+
+// Something shaped like a game's WRAM: zero fill, a pointer table, a gradient, sprite
+// entries, noise, and a 0xFF fill, with a hot spot and recipe hits.
+MemorySnapshot sample(Target t = Target::WRAM, size_t size = 0x20000)
+{
+    MemorySnapshot s;
+    s.target = t;
+    s.bytes.assign(size, 0);
+    s.heat.assign(size, 0.0f);
+    s.hits.assign(size, 0);
+    std::mt19937 rng(7);
+    for (size_t i = 0; i < size; i++)
+    {
+        if (i < 0x100)
+            s.bytes[i] = uint8_t(rng());              // direct page: busy variables
+        else if (i < 0x800)
+            s.bytes[i] = i % 2 ? 0x80 : uint8_t(i / 2); // a table of 16-bit pointers
+        else if (i >= 0x1000 && i < 0x1400)
+            s.bytes[i] = uint8_t(i % 4 == 3 ? 0x30 : i * 5); // 4-byte sprite entries
+        else if (i >= 0x2000 && i < 0x6000)
+            s.bytes[i] = uint8_t((i - 0x2000) / 64);   // a smooth ramp
+        else if (i >= 0x8000 && i < 0xC000)
+            s.bytes[i] = uint8_t(rng() % 7 ? rng() : 0); // compressed graphics
+        else if (i >= 0x10000 && i < 0x14000)
+            s.bytes[i] = 0xFF;
+    }
+    for (size_t i = 0; i < std::min<size_t>(0x100, size); i++)
+        s.heat[i] = float(i % 50);
+    for (size_t i = 0x1000; i < std::min<size_t>(0x1400, size); i += 3)
+        s.hits[i] = uint32_t(1 + i % 5);
+    return s;
+}
+
+void mouse(PixelView &v, QEvent::Type type, QPoint at, Qt::KeyboardModifiers mods = Qt::NoModifier)
+{
+    Qt::MouseButtons buttons = type == QEvent::MouseButtonRelease || type == QEvent::MouseMove ? Qt::NoButton : Qt::LeftButton;
+    QMouseEvent e(type, QPointF(at), v.viewport()->mapToGlobal(QPointF(at)), Qt::LeftButton, buttons, mods);
+    QApplication::sendEvent(v.viewport(), &e);
+}
+
+void click(PixelView &v, QPoint at, Qt::KeyboardModifiers mods = Qt::NoModifier)
+{
+    mouse(v, QEvent::MouseButtonPress, at, mods);
+    mouse(v, QEvent::MouseButtonRelease, at, mods);
+}
+
+void wheel(PixelView &v, QPoint at, int delta, Qt::KeyboardModifiers mods)
+{
+    QWheelEvent e(QPointF(at), v.viewport()->mapToGlobal(QPointF(at)), QPoint(), QPoint(0, delta), Qt::NoButton, mods,
+                  Qt::NoScrollPhase, false);
+    QApplication::sendEvent(v.viewport(), &e);
+}
+
+void shot(PixelView &v, const char *name)
+{
+    if (auto dir = getenv("CORRUPT_SHOTS_DIR"))
+    {
+        QDir().mkpath(dir);
+        v.grab().save(QString("%1/%2.png").arg(dir, name));
+    }
+}
+
+struct Shown
+{
+    PixelView view;
+    explicit Shown(int zoom = 2, QSize size = QSize(700, 500))
+    {
+        view.resize(size);
+        view.setZoom(zoom);
+        view.setSnapshot(sample());
+        view.show();
+        QApplication::processEvents();
+    }
+};
+
+bool power_of_two(int n)
+{
+    return n > 0 && (n & (n - 1)) == 0;
+}
+
+} // namespace
+
+TEST_CASE("a row holds as many bytes as fit, a power of two, and zooming in halves it")
+{
+    Shown s(1);
+    int at1 = s.view.columns();
+    CHECK(power_of_two(at1));
+    CHECK(at1 >= 256);
+    CHECK(at1 <= s.view.viewport()->width());
+    s.view.setZoom(2);
+    CHECK(s.view.columns() == at1 / 2);
+    s.view.setZoom(16);
+    CHECK(power_of_two(s.view.columns()));
+    CHECK(s.view.columns() * 16 <= s.view.viewport()->width());
+}
+
+TEST_CASE("a narrow view still shows 16 bytes a row, and a tiny target isn't stretched")
+{
+    Shown s(16, QSize(200, 300));
+    CHECK(s.view.columns() == 16);
+    s.view.setZoom(1);
+    s.view.setSnapshot(sample(Target::CGRAM, 512));
+    CHECK(s.view.columns() <= 512);
+}
+
+TEST_CASE("bytes and pixels map both ways, at every zoom")
+{
+    Shown s;
+    for (int zoom : { 1, 2, 3, 4, 6, 8, 12, 16 })
+    {
+        CAPTURE(zoom);
+        s.view.setZoom(zoom);
+        REQUIRE(s.view.zoom() == zoom);
+        uint32_t cols = uint32_t(s.view.columns());
+        for (uint32_t offset : { 0u, 1u, cols - 1, cols, 5 * cols + 3 })
+        {
+            CAPTURE(offset);
+            auto rect = s.view.pixelRect(offset);
+            REQUIRE_FALSE(rect.isEmpty());
+            CHECK(rect.width() == zoom);
+            CHECK(rect.height() == zoom);
+            CHECK(s.view.offsetAt(rect.topLeft()) == offset);
+            CHECK(s.view.offsetAt(rect.bottomRight()) == offset);
+        }
+        CHECK(s.view.pixelRect(1).left() == s.view.pixelRect(0).left() + zoom);
+        CHECK(s.view.pixelRect(cols).top() == s.view.pixelRect(0).top() + zoom);
+    }
+    CHECK_FALSE(s.view.offsetAt(QPoint(2, 2))); // the address column
+}
+
+TEST_CASE("scrolling to an offset shows its row first, and zooming keeps the place")
+{
+    Shown s(4);
+    s.view.scrollTo(0x1234);
+    uint32_t cols = uint32_t(s.view.columns());
+    CHECK(s.view.firstVisibleOffset() == 0x1234u / cols * cols);
+    CHECK_FALSE(s.view.pixelRect(0x1234).isEmpty());
+    s.view.setZoom(8);
+    CHECK(s.view.firstVisibleOffset() <= 0x1234u);
+    CHECK(s.view.firstVisibleOffset() + uint32_t(s.view.columns()) > 0x1234u);
+    s.view.setZoom(1);
+    CHECK(s.view.firstVisibleOffset() <= 0x1234u);
+}
+
+TEST_CASE("dragging selects a range in either direction; shift-click extends")
+{
+    Shown s(8);
+    uint32_t cols = uint32_t(s.view.columns());
+    mouse(s.view, QEvent::MouseButtonPress, s.view.pixelRect(3 * cols + 5).center());
+    {
+        QMouseEvent e(QEvent::MouseMove, QPointF(s.view.pixelRect(cols + 2).center()), QPointF(), Qt::NoButton,
+                      Qt::LeftButton, Qt::NoModifier);
+        QApplication::sendEvent(s.view.viewport(), &e);
+    }
+    mouse(s.view, QEvent::MouseButtonRelease, s.view.pixelRect(cols + 2).center());
+    auto sel = s.view.selection();
+    REQUIRE(sel);
+    CHECK(sel->first == cols + 2);
+    CHECK(sel->second == 3 * cols + 5);
+
+    int changes = 0;
+    s.view.onSelectionChanged = [&] { changes++; };
+    click(s.view, s.view.pixelRect(0x30).center());
+    CHECK(s.view.selection() == std::pair{ 0x30u, 0x30u });
+    click(s.view, s.view.pixelRect(0x52).center(), Qt::ShiftModifier);
+    CHECK(s.view.selection() == std::pair{ 0x30u, 0x52u });
+    CHECK(changes >= 2);
+}
+
+TEST_CASE("select() scrolls the range into view; a new target clears it")
+{
+    Shown s(8);
+    s.view.select(0x8000, 0x80FF);
+    CHECK(s.view.selection() == std::pair{ 0x8000u, 0x80FFu });
+    CHECK_FALSE(s.view.pixelRect(0x8000).isEmpty());
+    s.view.setSnapshot(sample()); // same target: kept
+    CHECK(s.view.selection());
+    s.view.setSnapshot(sample(Target::VRAM, 0x10000));
+    CHECK_FALSE(s.view.selection());
+    CHECK(s.view.firstVisibleOffset() == 0u);
+}
+
+TEST_CASE("ctrl+wheel zooms around the mouse; the plain wheel scrolls")
+{
+    Shown s(2);
+    s.view.scrollTo(0x4000);
+    QPoint at = s.view.pixelRect(0x4000 + 40 * uint32_t(s.view.columns()) + 7).center();
+    uint32_t under = *s.view.offsetAt(at);
+    wheel(s.view, at, 120, Qt::ControlModifier);
+    CHECK(s.view.zoom() == 3);
+    QRect now = s.view.pixelRect(under);
+    REQUIRE_FALSE(now.isEmpty());
+    CHECK(std::abs(now.center().y() - at.y()) <= 3);
+
+    wheel(s.view, at, -120, Qt::ControlModifier);
+    CHECK(s.view.zoom() == 2);
+
+    uint32_t before = s.view.firstVisibleOffset();
+    wheel(s.view, at, -120, Qt::NoModifier);
+    CHECK(s.view.zoom() == 2);
+    CHECK(s.view.firstVisibleOffset() > before);
+}
+
+TEST_CASE("zoom steps stop at 1 and 16")
+{
+    Shown s(1);
+    s.view.zoomOut();
+    CHECK(s.view.zoom() == 1);
+    for (int i = 0; i < 20; i++)
+        s.view.zoomIn();
+    CHECK(s.view.zoom() == 16);
+    int told = 0;
+    s.view.onZoomChanged = [&] { told++; };
+    s.view.zoomOut();
+    CHECK(s.view.zoom() == 12);
+    CHECK(told == 1);
+}
+
+TEST_CASE("hovering tells which byte is under the mouse")
+{
+    Shown s(8);
+    std::optional<uint32_t> hovered;
+    s.view.onHover = [&](std::optional<uint32_t> o) { hovered = o; };
+    mouse(s.view, QEvent::MouseMove, s.view.pixelRect(0x123).center());
+    CHECK(hovered == 0x123u);
+    mouse(s.view, QEvent::MouseMove, QPoint(1, 1));
+    CHECK_FALSE(hovered);
+}
+
+TEST_CASE("an empty snapshot draws nothing and selects nothing")
+{
+    PixelView v;
+    v.resize(400, 300);
+    v.setSnapshot({});
+    v.show();
+    QApplication::processEvents();
+    CHECK_FALSE(v.offsetAt(QPoint(200, 100)));
+    CHECK(v.pixelRect(0).isEmpty());
+    shot(v, "pixel-view-empty");
+}
+
+TEST_CASE("pictures of the pixel view")
+{
+    Shown s(1, QSize(600, 560));
+    s.view.setOverlay(MemoryPane::Overlay::None);
+    s.view.select(0x1000, 0x13FF);
+    shot(s.view, "pixel-view-plain-1x");
+    s.view.setOverlay(MemoryPane::Overlay::Activity);
+    shot(s.view, "pixel-view-activity-1x");
+    s.view.setZoom(8);
+    s.view.setOverlay(MemoryPane::Overlay::Hits);
+    s.view.scrollTo(0xF00);
+    shot(s.view, "pixel-view-hits-8x");
+    s.view.setOverlay(MemoryPane::Overlay::None);
+    s.view.clearSelection();
+    s.view.scrollTo(0);
+    shot(s.view, "pixel-view-plain-8x");
+}
