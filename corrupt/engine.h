@@ -20,6 +20,7 @@ struct LoggedEvent
 struct EngineSnapshot
 {
     uint64_t frame = 0;
+    std::vector<uint64_t> rule_ids; // which rule each runtime belongs to
     std::vector<RuleRuntime> runtimes;
 };
 
@@ -54,9 +55,19 @@ class Engine
 
     void on_frame(MemoryAccess &mem);
 
+    // Live edits. They leave the run and the other rules alone: no restart.
+    // Every rule has a run-time id (never saved); a replaced rule gets a new one,
+    // so snapshots taken before the edit don't hand it the old rule's runtime.
+    void replace_rule(size_t index, Rule rule);
+    size_t add_rule(Rule rule); // returns its index
+    void remove_rule(size_t index);
+    uint64_t rule_id(size_t index) const;
+
     // Rollback support.
     EngineSnapshot snapshot() const;
-    void restore(const EngineSnapshot &snap); // also drops log entries newer than the snapshot
+    // Also drops log entries newer than the snapshot. Rules are matched by id:
+    // a rule the snapshot doesn't know starts fresh.
+    void restore(const EngineSnapshot &snap);
     void reroll_rule(size_t index, uint64_t salt);
     void mute_rule_until(size_t index, uint64_t frame); // the rule skips frames <= `frame`
     uint64_t muted_until(size_t index) const;
@@ -70,6 +81,8 @@ class Engine
 
     Recipe current;
     std::vector<RuleRuntime> runtimes;
+    std::vector<uint64_t> ids;
+    uint64_t next_id = 1;
     std::vector<uint64_t> mutes; // per rule: quiet through this frame
     std::deque<LoggedEvent> log;
     bool is_active = false;

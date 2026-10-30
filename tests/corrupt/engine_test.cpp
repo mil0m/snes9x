@@ -319,3 +319,209 @@ TEST_SUITE("rollback support")
         CHECK(e.muted_until(0) == 0u);
     }
 }
+
+TEST_SUITE("live rule edits")
+{
+    Rule noise_on(Target t, uint32_t last)
+    {
+        Rule r;
+        r.name = target_name(t);
+        r.range = { t, 0, last };
+        r.op = { .type = OpType::Random, .min = 0, .max = 255 };
+        r.when = { .type = TriggerType::EveryFrames, .every = 7 };
+        r.count = 2;
+        return r;
+    }
+
+    Rule sticky_in(uint32_t first, uint32_t last)
+    {
+        Rule r;
+        r.name = "sticky";
+        r.range = { Target::WRAM, first, last };
+        r.op = { .type = OpType::Add, .min = 1, .max = 1 };
+        r.when = { .type = TriggerType::EveryFrames, .every = 1 };
+        r.count = 4;
+        r.pick = Pick::Sticky;
+        return r;
+    }
+
+    Recipe three_targets()
+    {
+        Recipe r;
+        r.seed = 99;
+        r.rules = { noise_on(Target::WRAM, 0xFFFF), noise_on(Target::CGRAM, 0x1FF), noise_on(Target::OAM, 0x21F) };
+        return r;
+    }
+
+    // Offsets in WRAM that differ from zero.
+    std::vector<uint32_t> touched_wram(FakeMemory & mem)
+    {
+        std::vector<uint32_t> out;
+        auto &w = mem.of(Target::WRAM);
+        for (uint32_t i = 0; i < w.size(); i++)
+            if (w[i])
+                out.push_back(i);
+        return out;
+    }
+
+    TEST_CASE("replacing a rule leaves the other rules' runs exactly as they were")
+    {
+        FakeMemory plain, edited;
+        Engine a, b;
+        a.set_recipe(three_targets());
+        b.set_recipe(three_targets());
+        a.set_active(true);
+        b.set_active(true);
+        frames(a, plain, 150);
+        frames(b, edited, 150);
+
+        b.replace_rule(1, noise_on(Target::VRAM, 0xFFFF));
+        CHECK(b.current_frame() == 150);
+        CHECK(b.active());
+        frames(a, plain, 150);
+        frames(b, edited, 150);
+
+        CHECK(plain.of(Target::WRAM) == edited.of(Target::WRAM));
+        CHECK(plain.of(Target::OAM) == edited.of(Target::OAM));
+        CHECK(plain.of(Target::CGRAM) != edited.of(Target::CGRAM)); // stopped at frame 150 in b
+        CHECK(b.recipe().rules[1].range.target == Target::VRAM);
+        bool vram_written = false;
+        for (auto v : edited.of(Target::VRAM))
+            vram_written |= v != 0;
+        CHECK(vram_written);
+    }
+
+    TEST_CASE("a replaced sticky rule picks its addresses again")
+    {
+        FakeMemory mem;
+        Engine e;
+        Recipe r;
+        r.rules = { sticky_in(0x100, 0x1FF) };
+        e.set_recipe(r);
+        e.set_active(true);
+        frames(e, mem, 10);
+        mem = FakeMemory{};
+        e.replace_rule(0, sticky_in(0x300, 0x3FF));
+        frames(e, mem, 10);
+        auto touched = touched_wram(mem);
+        CHECK(touched.size() == 4);
+        for (auto a : touched)
+            CHECK((a >= 0x300 && a <= 0x3FF));
+    }
+
+    TEST_CASE("replacing a rule gives it a new id and clears its mute")
+    {
+        Engine e;
+        e.set_recipe(three_targets());
+        e.set_active(true);
+        auto before = e.rule_id(1);
+        CHECK(before != e.rule_id(0));
+        e.mute_rule_until(1, 500);
+        e.replace_rule(1, noise_on(Target::VRAM, 0xFF));
+        CHECK(e.rule_id(1) != before);
+        CHECK(e.muted_until(1) == 0u);
+    }
+
+    TEST_CASE("adding a rule keeps the run going and the new rule fires")
+    {
+        FakeMemory mem;
+        Engine e;
+        Recipe r;
+        r.rules = { noise_on(Target::CGRAM, 0x1FF) };
+        e.set_recipe(r);
+        e.set_active(true);
+        frames(e, mem, 50);
+        CHECK(e.add_rule(noise_on(Target::OAM, 0x21F)) == 1u);
+        CHECK(e.current_frame() == 50);
+        CHECK(e.recipe().rules.size() == 2);
+        frames(e, mem, 20);
+        bool oam_written = false;
+        for (auto v : mem.of(Target::OAM))
+            oam_written |= v != 0;
+        CHECK(oam_written);
+    }
+
+    TEST_CASE("removing a rule drops its log entries and renumbers the rest")
+    {
+        FakeMemory mem;
+        Engine e;
+        e.set_recipe(three_targets());
+        e.set_active(true);
+        frames(e, mem, 60);
+        auto oam_id = e.rule_id(2);
+        e.remove_rule(1);
+        CHECK(e.current_frame() == 60);
+        CHECK(e.recipe().rules.size() == 2);
+        CHECK(e.rule_id(1) == oam_id);
+        bool saw_oam = false;
+        for (auto &ev : e.event_log())
+        {
+            CHECK(ev.write.target != Target::CGRAM);
+            CHECK(ev.rule_index < 2u);
+            if (ev.write.target == Target::OAM)
+            {
+                saw_oam = true;
+                CHECK(ev.rule_index == 1u);
+            }
+        }
+        CHECK(saw_oam);
+    }
+
+    TEST_CASE("edits with an index out of range do nothing")
+    {
+        Engine e;
+        e.set_recipe(three_targets());
+        e.replace_rule(3, noise_on(Target::VRAM, 0xFF));
+        e.remove_rule(7);
+        CHECK(e.recipe().rules.size() == 3);
+        CHECK(e.recipe().rules[2].range.target == Target::OAM);
+    }
+
+    TEST_CASE("restoring a snapshot from before a replace starts the replaced rule fresh")
+    {
+        FakeMemory mem;
+        Engine e;
+        Recipe r;
+        r.rules = { sticky_in(0x100, 0x1FF) };
+        e.set_recipe(r);
+        e.set_active(true);
+        frames(e, mem, 10); // sticky addresses picked in 0x100..0x1FF
+        auto snap = e.snapshot();
+        e.replace_rule(0, sticky_in(0x300, 0x3FF));
+        e.restore(snap);
+        CHECK(e.current_frame() == 10);
+        mem = FakeMemory{};
+        frames(e, mem, 10);
+        auto touched = touched_wram(mem);
+        CHECK(touched.size() == 4);
+        for (auto a : touched)
+            CHECK((a >= 0x300 && a <= 0x3FF));
+    }
+
+    TEST_CASE("restoring a snapshot from before an add or remove restores the rules that match")
+    {
+        FakeMemory mem;
+        Engine e, reference;
+        e.set_recipe(three_targets());
+        reference.set_recipe(three_targets());
+        e.set_active(true);
+        reference.set_active(true);
+        FakeMemory ref_mem;
+        frames(e, mem, 40);
+        frames(reference, ref_mem, 40);
+        auto snap = e.snapshot();
+        auto saved = mem;
+        frames(e, mem, 40);
+
+        e.remove_rule(1);
+        e.add_rule(noise_on(Target::VRAM, 0xFFFF));
+        e.restore(snap);
+        mem = saved;
+        CHECK(e.current_frame() == 40);
+        frames(e, mem, 60);
+        reference.remove_rule(1);
+        frames(reference, ref_mem, 60);
+        // Rule 2 moved to index 1, which changes its random stream; WRAM (rule 0) is untouched.
+        CHECK(mem.of(Target::WRAM) == ref_mem.of(Target::WRAM));
+    }
+}
