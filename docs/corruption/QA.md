@@ -126,3 +126,11 @@ scratch folder. By default Snes9x writes the `.srm` next to the ROM.
 7. **Save As…** a recipe that started from its moment, under a new name.
    - [ ] The new name gets its own `.anchor.frz`, and loading it jumps to the same spot.
 
+## 11. Reboots
+1. Press **Reset** (Ctrl+R) with a recipe active.
+   - [ ] No rollback: a reset from Snes9x is not a crash.
+2. Play **low-wram-roulette** (crash policy *reroll*) in Pocky & Rocky or another action game for a few minutes.
+   - [ ] If the game drops back to its title screen or boot logos, the message says `Crash caught (the game rebooted itself)` and play continues from just before.
+3. In a game with a soft-reset combo (often L+R+Start+Select), press it with no recipe active.
+   - [ ] The game resets normally; nothing is rolled back.
+

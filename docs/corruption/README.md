@@ -118,11 +118,13 @@ the guilty rules do, and plays on. You lose a second or two.
 | Frozen picture | the picture doesn't change for 5 s **while you press buttons** |
 | Black screen | forced blank or zero brightness for 8 s **while you press buttons** |
 | Runaway code | code runs from I/O or unmapped memory for 30 frames (rarely fires; see below) |
+| Reboot | the game jumps back into its own reset code and starts over; caught at once |
 | Mark Crash | you press **Mark Crash** (rolls back about 2 s) |
 
 A still screen nobody is touching (a text box, a menu, a pause screen) is never a crash.
-Heuristic signals (NMI, frozen, black) are also ignored when no corruption happened just
-before them.
+Heuristic signals (NMI, frozen, black, reboot) are also ignored when no corruption
+happened just before them. That keeps a game's own soft-reset button combo from rolling
+back a clean game.
 
 **What happens to the guilty rules** depends on the policy: the recipe's
 `crash_policy`, or the panel's override.
@@ -154,7 +156,9 @@ conflicts. It's the data for deciding which policy suits which game.
 - Runaway-code detection samples the CPU once a frame, and a runaway CPU nearly always
   wanders back into ROM within that frame. So those crashes usually surface as one of the
   other signals.
-- A game that crashes by **rebooting itself** isn't detected yet.
+- **Reboots** are spotted by watching the first instruction of the game's reset code. A
+  reboot that jumps past that instruction, or one made from the CPU's emulation mode, is
+  missed. Pressing reset in Snes9x never counts.
 
 ## Save backups
 
@@ -222,7 +226,8 @@ every rule's intensity, and `anchor_state`, the file name of the recipe's saved 
 ```json
 "crash_policy": "escalate",
 "crash_detection": { "enabled": true, "cpu_stopped": true, "runaway_frames": 30,
-                     "nmi_off_seconds": 5, "frozen_seconds": 5, "black_seconds": 8, "min_presses": 3 }
+                     "nmi_off_seconds": 5, "frozen_seconds": 5, "black_seconds": 8, "min_presses": 3,
+                     "reboot": true }
 ```
 
 Any detection field can be left out to keep its default; `0` switches a signal off.

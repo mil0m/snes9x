@@ -6,7 +6,7 @@ Spec: [`2026-10-30-ram-corruption-design.md`](./2026-10-30-ram-corruption-design
 lands back in the game's own reset code, the game boots again, and from outside that
 looks like a normal title screen, so nothing is caught.
 
-**Status (2026-10-30):** being built.
+**Status (2026-10-30):** done (tasks 1–4), pending QA.md section 11.
 
 ## How it's detected
 
@@ -40,3 +40,16 @@ looks like a normal title screen, so nothing is caught.
    real-core tests: a boot isn't a reboot; a console reset isn't a reboot; a reboot is
    caught, rolled back, and play continues; with no corruption before it, it's ignored.
 4. `corrupt-smoke --guard` reports reboots on real games; docs and QA.
+
+## Findings while building
+
+- **It catches real reboots.** `low-wram-roulette` under the guard for 5 minutes per game:
+  Pocky & Rocky rebooted itself once, and the guard caught it and rolled back 1.9 s. FE4
+  Project Naga, FF6 T-Edition and Goof Troop showed no false reboots, and no power-on was
+  ever counted.
+- **The count is process-wide** (the opcode tables are global), so the detector only ever
+  compares it with its previous sample, and the tests compare against a baseline.
+- **The test ROM jumps to a mirror** (`JML $80:8000` for reset code at `$00:8000`), so the
+  memory-map comparison is what makes it count. A plain 16-bit PC compare would also
+  match in the right bank, but not by design.
+
