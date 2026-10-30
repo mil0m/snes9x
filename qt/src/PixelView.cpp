@@ -81,8 +81,15 @@ void PixelView::relayout(uint32_t keep_offset)
 {
     int fit = std::max(1, (viewport()->width() - addressWidth()) / zoom_);
     int cols = std::max(16, floorPowerOfTwo(fit));
-    if (!snap.bytes.empty()) // a small target gets rows rather than one thin line
-        cols = std::min(cols, std::max(16, floorPowerOfTwo(int(std::min<size_t>(snap.bytes.size(), 1 << 20)))));
+    if (!snap.bytes.empty())
+    {
+        // No wider than a square: a small target gets rows rather than one thin line (cgram
+        // comes out one 16-colour palette a row, oam eight sprite entries a row).
+        int square = 16;
+        while (size_t(square) * size_t(square) < snap.bytes.size())
+            square *= 2;
+        cols = std::min(cols, square);
+    }
     columns_ = cols;
     verticalScrollBar()->setRange(0, std::max(0, rowCount() - visibleRows()));
     verticalScrollBar()->setPageStep(visibleRows());

@@ -1,7 +1,7 @@
 // End-to-end check of the corruption engine inside the real emulator, no window
 // needed:
 //
-//   corrupt-smoke <rom> <recipe.json> [frames=600] [warmup=600] [--guard | --replay | --copies | --map]
+//   corrupt-smoke <rom> <recipe.json> [frames=600] [warmup=600] [--guard | --replay | --copies | --map | --dump <dir>]
 //
 // Boots the ROM, runs `warmup` frames, saves a state, then runs `frames` twice
 // from that state: once clean, once with the recipe. Reports what the recipe
@@ -234,6 +234,19 @@ int main(int argc, char **argv)
                        hex(runs[i].haystack_offset + runs[i].length - 1).c_str(), target_name(t),
                        hex(runs[i].needle_offset).c_str(), hex(runs[i].needle_offset + runs[i].length - 1).c_str(),
                        runs[i].length);
+        }
+        return 0;
+    }
+    if (argc > 6 && std::string(argv[5]) == "--dump")
+    {
+        // Raw contents of every target, for looking at real memory in the viewer's tests.
+        auto all = snapshot_targets();
+        for (auto t : kAllTargets)
+        {
+            std::string path = std::string(argv[6]) + "/" + target_name(t) + ".bin";
+            std::ofstream out(path, std::ios::binary);
+            out.write(reinterpret_cast<const char *>(all[size_t(t)].data()), std::streamsize(all[size_t(t)].size()));
+            printf("%-6s %6zu bytes -> %s\n", target_name(t), all[size_t(t)].size(), path.c_str());
         }
         return 0;
     }

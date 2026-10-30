@@ -3,6 +3,7 @@
 
 #include <QApplication>
 #include <QDir>
+#include <QFile>
 #include <QMouseEvent>
 #include <QScrollBar>
 #include <QWheelEvent>
@@ -109,13 +110,17 @@ TEST_CASE("a row holds as many bytes as fit, a power of two, and zooming in halv
     CHECK(s.view.columns() * 16 <= s.view.viewport()->width());
 }
 
-TEST_CASE("a narrow view still shows 16 bytes a row, and a tiny target isn't stretched")
+TEST_CASE("a narrow view still shows 16 bytes a row, and a small target is no wider than square")
 {
     Shown s(16, QSize(200, 300));
     CHECK(s.view.columns() == 16);
     s.view.setZoom(1);
     s.view.setSnapshot(sample(Target::CGRAM, 512));
-    CHECK(s.view.columns() <= 512);
+    CHECK(s.view.columns() == 32); // one palette a row
+    s.view.setSnapshot(sample(Target::OAM, 544));
+    CHECK(s.view.columns() == 32);
+    s.view.setSnapshot(sample(Target::VRAM, 0x10000));
+    CHECK(s.view.columns() < 256); // the width decides, not the square
 }
 
 TEST_CASE("bytes and pixels map both ways, at every zoom")
@@ -270,4 +275,36 @@ TEST_CASE("pictures of the pixel view")
     s.view.clearSelection();
     s.view.scrollTo(0);
     shot(s.view, "pixel-view-plain-8x");
+}
+
+TEST_CASE("pictures of real memory, from corrupt-smoke --dump")
+{
+    auto dir = getenv("CORRUPT_DUMP_DIR");
+    auto shots = getenv("CORRUPT_SHOTS_DIR");
+    if (!dir || !shots)
+        return; // only when asked: corrupt-smoke <rom> <recipe> 0 1800 --dump <dir>
+    for (auto t : { Target::WRAM, Target::VRAM, Target::ARAM, Target::CGRAM })
+    {
+        QFile f(QString("%1/%2.bin").arg(dir, target_name(t)));
+        if (!f.open(QIODevice::ReadOnly))
+            continue;
+        auto data = f.readAll();
+        MemorySnapshot s;
+        s.target = t;
+        s.bytes.assign(data.begin(), data.end());
+        s.heat.assign(s.bytes.size(), 0.0f);
+        s.hits.assign(s.bytes.size(), 0);
+        PixelView v;
+        v.resize(600, 600);
+        v.setOverlay(MemoryPane::Overlay::None);
+        v.setSnapshot(s);
+        v.show();
+        QApplication::processEvents();
+        for (int zoom : { 1, 4 })
+        {
+            v.setZoom(zoom);
+            QDir().mkpath(shots);
+            v.grab().save(QString("%1/real-%2-%3x.png").arg(shots, target_name(t)).arg(zoom));
+        }
+    }
 }
