@@ -138,8 +138,8 @@ scratch folder. By default Snes9x writes the `.srm` next to the ROM.
 1. In the middle of gameplay, press **Memory Viewer…** in the panel.
    - [ ] A window shows WRAM in hex; some areas glow orange and keep changing, others stay plain.
    - [ ] The strip on the right shows where the busy areas are; clicking it jumps there.
-2. Pause the game (P).
-   - [ ] The glow fades within a couple of seconds (nothing changes while paused).
+2. Pause the game (P), wait, then unpause and stand still.
+   - [ ] While paused the picture holds still; after unpausing, areas that stopped changing fade within a couple of seconds.
 3. Load and activate **gentle-wram-noise**, and switch the overlay to **Hits**.
    - [ ] Purple bytes appear scattered above `0x2000` as the recipe fires; **Clear Hits** clears them.
 4. Press **Find Copies**.
