@@ -215,3 +215,107 @@ TEST_CASE("a rule's salt changes only that rule's choices")
     CHECK(plain.of(Target::WRAM) != salted.of(Target::WRAM));   // rule 0 (wram) re-rolled
     CHECK(plain.of(Target::CGRAM) == salted.of(Target::CGRAM)); // rule 1 (cgram) untouched
 }
+
+TEST_SUITE("rollback support")
+{
+    TEST_CASE("snapshot + restore replays the same frames")
+    {
+        FakeMemory mem;
+        Engine e;
+        e.set_recipe(noisy_recipe(5));
+        e.set_active(true);
+        frames(e, mem, 40);
+
+        auto snap = e.snapshot();
+        FakeMemory saved = mem;
+        frames(e, mem, 100);
+        auto first = mem.bytes;
+        size_t log_after_first = e.event_log().size();
+
+        e.restore(snap);
+        mem.bytes = saved.bytes;
+        CHECK(e.status().frame == 40);
+        frames(e, mem, 100);
+        CHECK(mem.bytes == first);
+        CHECK(e.event_log().size() == log_after_first);
+    }
+
+    TEST_CASE("restore drops log entries from after the snapshot")
+    {
+        FakeMemory mem;
+        Engine e;
+        e.set_recipe(noisy_recipe(5));
+        e.set_active(true);
+        frames(e, mem, 30);
+        auto snap = e.snapshot();
+        frames(e, mem, 60);
+        e.restore(snap);
+        for (auto &ev : e.event_log())
+            CHECK(ev.frame <= 30);
+    }
+
+    TEST_CASE("re-rolling one rule changes what happens after a restore")
+    {
+        FakeMemory mem;
+        Engine e;
+        e.set_recipe(noisy_recipe(5));
+        e.set_active(true);
+        auto snap = e.snapshot();
+        FakeMemory saved = mem;
+        frames(e, mem, 100);
+        auto first = mem.bytes;
+
+        e.restore(snap);
+        mem.bytes = saved.bytes;
+        e.reroll_rule(0, 999);
+        CHECK(e.recipe().rules[0].salt == 999u);
+        frames(e, mem, 100);
+        CHECK(mem.of(Target::WRAM) != first[size_t(Target::WRAM)]);
+        CHECK(mem.of(Target::CGRAM) == first[size_t(Target::CGRAM)]);
+    }
+
+    TEST_CASE("a muted rule stays quiet until its frame, then resumes")
+    {
+        FakeMemory mem;
+        Engine e;
+        Recipe r;
+        Rule every = hotkey_rule(1);
+        every.when = { .type = TriggerType::EveryFrames, .every = 1 };
+        r.rules.push_back(every);
+        e.set_recipe(r);
+        e.set_active(true);
+        e.mute_rule_until(0, 10);
+        frames(e, mem, 10);
+        CHECK(mem.of(Target::WRAM)[0x10] == 0);
+        frames(e, mem, 5);
+        CHECK(mem.of(Target::WRAM)[0x10] == 5);
+    }
+
+    TEST_CASE("mutes, salts and intensity survive a restore; a new recipe clears mutes")
+    {
+        FakeMemory mem;
+        Engine e;
+        e.set_recipe(noisy_recipe(5));
+        e.set_active(true);
+        auto snap = e.snapshot();
+        e.mute_rule_until(0, 50);
+        e.reroll_rule(1, 7);
+        e.set_rule_intensity(1, 0.5);
+        e.restore(snap);
+        CHECK(e.muted_until(0) == 50u);
+        CHECK(e.recipe().rules[1].salt == 7u);
+        CHECK(e.recipe().rules[1].intensity == 0.5);
+        e.set_recipe(noisy_recipe(5));
+        CHECK(e.muted_until(0) == 0u);
+    }
+
+    TEST_CASE("restarting the run (reactivate, re-roll) clears mutes")
+    {
+        Engine e;
+        e.set_recipe(noisy_recipe(5));
+        e.set_active(true);
+        e.mute_rule_until(0, 500);
+        e.reroll(6);
+        CHECK(e.muted_until(0) == 0u);
+    }
+}

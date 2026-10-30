@@ -15,6 +15,14 @@ struct LoggedEvent
     WriteEvent write;
 };
 
+// The run state a rollback restores. Decisions (salts, mutes, intensity) are
+// deliberately not part of it: they are what a crash policy changes.
+struct EngineSnapshot
+{
+    uint64_t frame = 0;
+    std::vector<RuleRuntime> runtimes;
+};
+
 struct EngineStatus
 {
     bool active = false;
@@ -45,6 +53,14 @@ class Engine
 
     void on_frame(MemoryAccess &mem);
 
+    // Rollback support.
+    EngineSnapshot snapshot() const;
+    void restore(const EngineSnapshot &snap); // also drops log entries newer than the snapshot
+    void reroll_rule(size_t index, uint64_t salt);
+    void mute_rule_until(size_t index, uint64_t frame); // the rule skips frames <= `frame`
+    uint64_t muted_until(size_t index) const;
+    void set_rule_intensity(size_t index, double intensity);
+
     EngineStatus status() const;
     const std::deque<LoggedEvent> &event_log() const { return log; }
 
@@ -53,6 +69,7 @@ class Engine
 
     Recipe current;
     std::vector<RuleRuntime> runtimes;
+    std::vector<uint64_t> mutes; // per rule: quiet through this frame
     std::deque<LoggedEvent> log;
     bool is_active = false;
     uint64_t frame = 0;

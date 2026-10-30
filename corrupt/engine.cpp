@@ -38,6 +38,7 @@ void Engine::set_rule_enabled(size_t index, bool enabled)
 void Engine::restart()
 {
     runtimes.assign(current.rules.size(), RuleRuntime{});
+    mutes.assign(current.rules.size(), 0); // they refer to frames of the previous run
     log.clear();
     frame = 0;
     pending_hotkeys = 0;
@@ -54,6 +55,8 @@ void Engine::on_frame(MemoryAccess &mem)
 
     for (uint32_t i = 0; i < current.rules.size(); i++)
     {
+        if (frame <= mutes[i])
+            continue;
         auto &rule = current.rules[i];
         auto events = tick_rule(rule, runtimes[i], mem, Rng::rule_seed(current.seed, rule.salt), i, frame, hotkeys);
         for (auto &e : events)
@@ -62,6 +65,45 @@ void Engine::on_frame(MemoryAccess &mem)
 
     while (log.size() > kEventLogLimit)
         log.pop_front();
+}
+
+EngineSnapshot Engine::snapshot() const
+{
+    return { frame, runtimes };
+}
+
+void Engine::restore(const EngineSnapshot &snap)
+{
+    if (snap.runtimes.size() != current.rules.size())
+        return; // taken under a different recipe
+    frame = snap.frame;
+    runtimes = snap.runtimes;
+    pending_hotkeys = 0;
+    while (!log.empty() && log.back().frame > frame)
+        log.pop_back();
+}
+
+void Engine::reroll_rule(size_t index, uint64_t salt)
+{
+    if (index < current.rules.size())
+        current.rules[index].salt = salt;
+}
+
+void Engine::mute_rule_until(size_t index, uint64_t until)
+{
+    if (index < mutes.size())
+        mutes[index] = until;
+}
+
+uint64_t Engine::muted_until(size_t index) const
+{
+    return index < mutes.size() ? mutes[index] : 0;
+}
+
+void Engine::set_rule_intensity(size_t index, double intensity)
+{
+    if (index < current.rules.size())
+        current.rules[index].intensity = intensity;
 }
 
 EngineStatus Engine::status() const
