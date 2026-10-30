@@ -1,0 +1,120 @@
+#include "rule.h"
+
+#include <algorithm>
+#include <cmath>
+#include <unordered_set>
+
+namespace corrupt
+{
+
+namespace
+{
+
+// Trigger draws (chance_per_frame) get their own stream so they never shift the op's values.
+constexpr uint64_t kTriggerSalt = 0x7472696767657221ULL;
+
+std::vector<uint32_t> pick_distinct(const AddressRange &range, uint32_t count, Rng &rng)
+{
+    uint32_t span = range.length();
+    std::vector<uint32_t> out;
+
+    if (count >= span)
+    {
+        for (uint32_t a = range.first; a <= range.last; a++)
+            out.push_back(a);
+        return out;
+    }
+
+    if (count > span / 2)
+    {
+        // Dense: partial Fisher-Yates over the whole span.
+        std::vector<uint32_t> all(span);
+        for (uint32_t i = 0; i < span; i++)
+            all[i] = range.first + i;
+        for (uint32_t i = 0; i < count; i++)
+            std::swap(all[i], all[size_t(rng.range(i, span - 1))]);
+        all.resize(count);
+        return all;
+    }
+
+    // Sparse: rejection keeps it cheap for big ranges like all of WRAM.
+    std::unordered_set<uint32_t> seen;
+    while (out.size() < count)
+    {
+        auto a = uint32_t(rng.range(range.first, range.last));
+        if (seen.insert(a).second)
+            out.push_back(a);
+    }
+    return out;
+}
+
+// Scales toward zero but never all the way: a nonzero setting stays at least +-1,
+// so a low intensity means "gentle", not "does nothing".
+int scale(int value, double intensity)
+{
+    int scaled = int(std::lround(value * intensity));
+    if (scaled == 0 && value != 0)
+        return value > 0 ? 1 : -1;
+    return scaled;
+}
+
+Op scaled_op(const Op &op, double intensity)
+{
+    if (intensity >= 1.0)
+        return op;
+    Op out = op;
+    if (op.type == OpType::Add)
+    {
+        out.min = scale(op.min, intensity);
+        out.max = scale(op.max, intensity);
+    }
+    else if (op.type == OpType::Bitflip && !op.mask)
+        out.bits = std::max(1, scale(op.bits, intensity));
+    return out;
+}
+
+} // namespace
+
+std::vector<WriteEvent> tick_rule(const Rule &rule, RuleRuntime &rt, MemoryAccess &mem,
+                                  uint64_t seed, uint32_t rule_index, uint64_t frame,
+                                  uint16_t pressed_hotkeys)
+{
+    if (!rule.enabled || rule.intensity <= 0.0)
+        return {};
+
+    Rng trigger_rng = Rng::for_firing(seed ^ kTriggerSalt, rule_index, frame);
+    if (!should_fire(rule.when, frame, trigger_rng, pressed_hotkeys))
+        return {};
+
+    Rng rng = Rng::for_firing(seed, rule_index, rt.firings++);
+    uint32_t count = std::max<uint32_t>(1, uint32_t(std::lround(rule.count * std::min(rule.intensity, 1.0))));
+
+    std::vector<uint32_t> addresses;
+    if (rule.pick == Pick::Sticky)
+    {
+        if (rt.sticky.empty())
+            rt.sticky = pick_distinct(rule.range, rule.count, rng);
+        addresses.assign(rt.sticky.begin(), rt.sticky.begin() + std::min<size_t>(count, rt.sticky.size()));
+    }
+    else
+        addresses = pick_distinct(rule.range, count, rng);
+
+    return apply_op(scaled_op(rule.op, rule.intensity), rt.op_state, mem, rule.range, addresses, rng);
+}
+
+std::optional<std::string> validate_rule(const Rule &rule, const MemoryAccess &mem)
+{
+    if (auto err = validate_range(rule.range, mem))
+        return "range: " + *err;
+    if (auto err = validate_op(rule.op, rule.range, mem))
+        return std::string("op: ") + *err;
+    if (auto err = validate_trigger(rule.when))
+        return "when: " + *err;
+    if (rule.count < 1)
+        return "count must be at least 1";
+    if (rule.intensity < 0.0 || rule.intensity > 1.0)
+        return "intensity must be within 0..1";
+    return std::nullopt;
+}
+
+} // namespace corrupt
