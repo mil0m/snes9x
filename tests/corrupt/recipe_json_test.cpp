@@ -153,6 +153,54 @@ TEST_CASE("rule salt round-trips and is omitted when zero")
     CHECK(text.find("\"salt\"") == text.rfind("\"salt\"")); // only once: zero is left out
 }
 
+TEST_CASE("crash policy and detection settings")
+{
+    auto r = parse_recipe(R"({"format":1,"name":"p","crash_policy":"escalate",
+        "crash_detection":{"frozen_seconds":0,"nmi_off_seconds":5,"black_seconds":2.5,"runaway_frames":10,"cpu_stopped":false},
+        "rules":[]})", {});
+    REQUIRE_MESSAGE(r.recipe, first_error(r));
+    REQUIRE(r.recipe->crash_policy);
+    CHECK(*r.recipe->crash_policy == PolicyKind::Escalate);
+    REQUIRE(r.recipe->crash_detection);
+    auto &d = *r.recipe->crash_detection;
+    CHECK(d.frozen_frames == 0);
+    CHECK(d.nmi_off_frames == 300);
+    CHECK(d.black_frames == 150);
+    CHECK(d.runaway_frames == 10);
+    CHECK_FALSE(d.cpu_stopped);
+    CHECK(d.enabled);
+
+    auto text = write_recipe(*r.recipe);
+    auto again = parse_recipe(text, {});
+    REQUIRE_MESSAGE(again.recipe, first_error(again));
+    CHECK(write_recipe(*again.recipe) == text);
+    CHECK(again.recipe->crash_detection->black_frames == 150);
+}
+
+TEST_CASE("unset crash settings stay unset and aren't written")
+{
+    auto r = parse_recipe(R"({"format":1,"name":"p","rules":[]})", {});
+    REQUIRE(r.recipe);
+    CHECK_FALSE(r.recipe->crash_policy);
+    CHECK_FALSE(r.recipe->crash_detection);
+    CHECK(write_recipe(*r.recipe).find("crash") == std::string::npos);
+}
+
+TEST_CASE("partial detection settings keep the defaults for the rest")
+{
+    auto r = parse_recipe(R"({"format":1,"rules":[],"crash_detection":{"enabled":false}})", {});
+    REQUIRE(r.recipe);
+    CHECK_FALSE(r.recipe->crash_detection->enabled);
+    CHECK(r.recipe->crash_detection->frozen_frames == DetectorConfig{}.frozen_frames);
+}
+
+TEST_CASE("bad crash settings are errors")
+{
+    CHECK_FALSE(parse_recipe(R"({"format":1,"rules":[],"crash_policy":"yolo"})", {}).recipe);
+    CHECK_FALSE(parse_recipe(R"({"format":1,"rules":[],"crash_detection":{"frozen_secs":3}})", {}).recipe);
+    CHECK_FALSE(parse_recipe(R"({"format":1,"rules":[],"crash_detection":{"frozen_seconds":-1}})", {}).recipe);
+}
+
 TEST_SUITE("errors")
 {
     TEST_CASE("broken JSON")

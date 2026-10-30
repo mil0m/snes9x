@@ -2,6 +2,7 @@
 
 #include "nlohmann/json.hpp"
 
+#include <cmath>
 #include <cstdio>
 #include <regex>
 #include <set>
@@ -492,6 +493,53 @@ std::string dump_compact(const ojson &doc)
     return std::regex_replace(doc.dump(2), short_array, "[ $1, $2 ]") + "\n";
 }
 
+// Detection times are seconds in JSON (0 switches a signal off), frames inside.
+DetectorConfig parse_detection(Ctx &ctx, const json &d)
+{
+    DetectorConfig cfg;
+    const std::string path = "recipe.crash_detection";
+    if (!require_object(ctx, d, path))
+        return cfg;
+    check_keys(ctx, d, path, { "enabled", "cpu_stopped", "runaway_frames", "nmi_off_seconds", "frozen_seconds", "black_seconds" });
+
+    for (auto [key, out] : { std::pair{ "enabled", &cfg.enabled }, std::pair{ "cpu_stopped", &cfg.cpu_stopped } })
+        if (d.contains(key))
+        {
+            if (d[key].is_boolean())
+                *out = d[key].get<bool>();
+            else
+                ctx.fail(path + "." + key, "expected true or false");
+        }
+
+    if (d.contains("runaway_frames"))
+        if (auto n = get_int_in(ctx, d["runaway_frames"], path + ".runaway_frames", 0, 100000))
+            cfg.runaway_frames = uint32_t(*n);
+
+    for (auto [key, out] : { std::pair{ "nmi_off_seconds", &cfg.nmi_off_frames },
+                             std::pair{ "frozen_seconds", &cfg.frozen_frames },
+                             std::pair{ "black_seconds", &cfg.black_frames } })
+        if (d.contains(key))
+        {
+            if (!d[key].is_number() || d[key].get<double>() < 0 || d[key].get<double>() > 3600)
+                ctx.fail(path + "." + key, "expected seconds within 0..3600 (0 switches it off)");
+            else
+                *out = uint32_t(std::lround(d[key].get<double>() * 60.0));
+        }
+    return cfg;
+}
+
+ojson detection_json(const DetectorConfig &cfg)
+{
+    ojson d;
+    d["enabled"] = cfg.enabled;
+    d["cpu_stopped"] = cfg.cpu_stopped;
+    d["runaway_frames"] = cfg.runaway_frames;
+    d["nmi_off_seconds"] = cfg.nmi_off_frames / 60.0;
+    d["frozen_seconds"] = cfg.frozen_frames / 60.0;
+    d["black_seconds"] = cfg.black_frames / 60.0;
+    return d;
+}
+
 } // namespace
 
 ParseResult parse_recipe(std::string_view json_text, const Regions &regions)
@@ -515,7 +563,7 @@ ParseResult parse_recipe(std::string_view json_text, const Regions &regions)
         result.errors = ctx.errors;
         return result;
     }
-    check_keys(ctx, doc, "recipe", { "format", "name", "notes", "game", "seed", "anchor_state", "rules" });
+    check_keys(ctx, doc, "recipe", { "format", "name", "notes", "game", "seed", "anchor_state", "rules", "crash_policy", "crash_detection" });
 
     if (!doc.contains("format") || !doc["format"].is_number_integer() || doc["format"].get<int>() != Recipe::kFormat)
     {
@@ -555,6 +603,18 @@ ParseResult parse_recipe(std::string_view json_text, const Regions &regions)
             recipe.seed = uint64_t(*n);
     }
 
+    if (doc.contains("crash_policy"))
+    {
+        const json &p = doc["crash_policy"];
+        if (p.is_string() && parse_policy(p.get<std::string>()))
+            recipe.crash_policy = parse_policy(p.get<std::string>());
+        else
+            ctx.fail("recipe.crash_policy", "expected one of reroll, skip, dampen, disable, escalate");
+    }
+
+    if (doc.contains("crash_detection"))
+        recipe.crash_detection = parse_detection(ctx, doc["crash_detection"]);
+
     if (doc.contains("rules"))
     {
         if (!doc["rules"].is_array())
@@ -583,6 +643,10 @@ std::string write_recipe(const Recipe &recipe)
     doc["seed"] = recipe.seed;
     if (!recipe.anchor_state.empty())
         doc["anchor_state"] = recipe.anchor_state;
+    if (recipe.crash_policy)
+        doc["crash_policy"] = policy_name(*recipe.crash_policy);
+    if (recipe.crash_detection)
+        doc["crash_detection"] = detection_json(*recipe.crash_detection);
 
     ojson rules = ojson::array();
     for (auto &r : recipe.rules)
