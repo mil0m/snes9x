@@ -5,6 +5,7 @@
 #include "corrupt/library.h"
 
 class EmuApplication;
+class IntensitySlider;
 class QCheckBox;
 class QComboBox;
 class QLabel;
@@ -61,6 +62,8 @@ class CorruptionDock : public QDockWidget
     QCheckBox *active_check;
     QLineEdit *seed_edit;
     QTableWidget *rules_table;
+    std::vector<IntensitySlider *> rule_sliders;
+    IntensitySlider *chaos_slider;
     QPushButton *save_button;
     QPushButton *add_rule_button;
     QPushButton *edit_rule_button;

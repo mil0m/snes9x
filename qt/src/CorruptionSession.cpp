@@ -9,6 +9,8 @@
 #include "fscompat.h"
 #include "display.h"
 
+#include <algorithm>
+#include <cmath>
 #include <random>
 
 namespace fs = std::filesystem;
@@ -317,6 +319,27 @@ void CorruptionSession::setRuleEnabled(size_t index, bool enabled)
     engine.set_rule_enabled(index, enabled);
 }
 
+void CorruptionSession::setRuleIntensity(size_t index, double intensity)
+{
+    std::lock_guard lock(mutex);
+    engine.set_rule_intensity(index, std::clamp(intensity, 0.0, 1.0));
+}
+
+void CorruptionSession::setIntensity(double intensity)
+{
+    std::lock_guard lock(mutex);
+    engine.set_intensity(intensity);
+}
+
+double CorruptionSession::stepIntensity(double delta)
+{
+    std::lock_guard lock(mutex);
+    // Snap to the 10 % grid, so steps from a slider value like 37 % land on round numbers.
+    double next = std::round((engine.recipe().intensity + delta) * 10.0) / 10.0;
+    engine.set_intensity(next);
+    return engine.recipe().intensity;
+}
+
 SaveResult CorruptionSession::saveRecipeAs(const std::string &name, const std::string &notes)
 {
     std::lock_guard lock(mutex);
@@ -425,6 +448,7 @@ CorruptionSession::Status CorruptionSession::status()
     s.notes = engine.recipe().notes;
     s.recipe_generation = recipe_generation;
     s.rules_generation = rules_generation;
+    s.intensity = engine.recipe().intensity;
     s.recipe_path = recipe_path;
     s.edited = has_recipe && recipeJson(engine.recipe()) != saved_json;
     if (game_loaded)

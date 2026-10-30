@@ -35,6 +35,7 @@ class CorruptionSession
         std::string notes;
         uint64_t recipe_generation = 0; // bumps whenever a recipe is loaded
         uint64_t rules_generation = 0;  // bumps on every rule edit too
+        double intensity = 1.0;          // the recipe's (Chaos)
         std::filesystem::path recipe_path; // the file it came from; empty for a new recipe
         bool edited = false;               // differs from that file (rules, seed, name...)
         std::array<size_t, corrupt::kTargetCount> sizes{}; // the loaded game's memory sizes
@@ -66,6 +67,9 @@ class CorruptionSession
     void setSeed(uint64_t seed);
     void pressHotkey(int n);
     void setRuleEnabled(size_t index, bool enabled);
+    void setRuleIntensity(size_t index, double intensity);
+    void setIntensity(double intensity);  // the whole recipe
+    double stepIntensity(double delta);   // returns the new value
     corrupt::SaveResult saveRecipeAs(const std::string &name, const std::string &notes);
     corrupt::SaveResult save(); // over the file the recipe came from
 

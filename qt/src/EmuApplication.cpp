@@ -67,6 +67,7 @@ void EmuApplication::restartAudio()
 
 #include <QProgressDialog>
 #include <chrono>
+#include <cmath>
 using namespace std::chrono_literals;
 
 static void trackBufferLevel(int percent, QWidget *parent)
@@ -502,6 +503,11 @@ void EmuApplication::handleCorruptionBinding(const std::string &name)
     {
         session.markCrash();
         text = "Corruption: rolling back";
+    }
+    else if (name == "CorruptionMore" || name == "CorruptionLess")
+    {
+        double now = session.stepIntensity(name == "CorruptionMore" ? 0.1 : -0.1);
+        text = "Corruption chaos " + std::to_string(int(std::lround(now * 100))) + "%";
     }
     else if (name.starts_with("CorruptionFire"))
     {

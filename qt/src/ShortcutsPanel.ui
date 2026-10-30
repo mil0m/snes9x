@@ -396,6 +396,16 @@
        <string>Corruption: Mark Crash</string>
       </property>
      </row>
+     <row>
+      <property name="text">
+       <string>Corruption: More Chaos</string>
+      </property>
+     </row>
+     <row>
+      <property name="text">
+       <string>Corruption: Less Chaos</string>
+      </property>
+     </row>
      <column>
       <property name="text">
        <string>Binding #1</string>

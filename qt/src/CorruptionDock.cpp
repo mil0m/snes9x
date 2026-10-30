@@ -2,6 +2,7 @@
 #include "CorruptionSession.hpp"
 #include "EmuApplication.hpp"
 #include "EmuConfig.hpp"
+#include "IntensitySlider.hpp"
 #include "RuleEditor.hpp"
 #include "corrupt/rule_text.h"
 
@@ -128,6 +129,10 @@ CorruptionDock::CorruptionDock(EmuApplication &app, QWidget *parent)
     seed_row->addWidget(set_seed);
     seed_row->addWidget(reroll);
     run_layout->addRow(tr("Seed"), seed_row);
+    chaos_slider = new IntensitySlider(run_box);
+    chaos_slider->setToolTip(tr("Turns every rule up or down together. Below one byte per firing, rules fire less often."));
+    chaos_slider->onChanged = [](double v) { CorruptionSession::get().setIntensity(v); };
+    run_layout->addRow(tr("Chaos"), chaos_slider);
     status_label = new QLabel(run_box);
     run_layout->addRow(status_label);
     layout->addWidget(run_box);
@@ -171,8 +176,8 @@ CorruptionDock::CorruptionDock(EmuApplication &app, QWidget *parent)
     connect(mark, &QPushButton::clicked, [] { CorruptionSession::get().markCrash(); });
 
     // Rules
-    rules_table = new QTableWidget(0, 6, root);
-    rules_table->setHorizontalHeaderLabels({ tr("On"), tr("Rule"), tr("Target"), tr("Op"), tr("When"), tr("Crashes") });
+    rules_table = new QTableWidget(0, 7, root);
+    rules_table->setHorizontalHeaderLabels({ tr("On"), tr("Rule"), tr("Target"), tr("Op"), tr("When"), tr("Intensity"), tr("Crashes") });
     rules_table->verticalHeader()->setVisible(false);
     rules_table->horizontalHeader()->setSectionResizeMode(QHeaderView::ResizeToContents);
     rules_table->horizontalHeader()->setStretchLastSection(true);
@@ -181,7 +186,7 @@ CorruptionDock::CorruptionDock(EmuApplication &app, QWidget *parent)
     rules_table->setSelectionBehavior(QAbstractItemView::SelectRows);
     layout->addWidget(rules_table, 1);
     connect(rules_table, &QTableWidget::cellDoubleClicked, [this](int row, int column) {
-        if (column != 0)
+        if (column != 0 && column != 5)
             editRule(row);
     });
 
@@ -258,6 +263,11 @@ void CorruptionDock::refreshStatus()
         rebuildRules();
     }
 
+    chaos_slider->setEnabled(status.has_recipe);
+    chaos_slider->refresh(status.intensity);
+    for (size_t i = 0; i < rule_sliders.size() && i < status.rules.size(); i++)
+        rule_sliders[i]->refresh(status.rules[i].intensity); // a crash-guard dampen moves it
+
     bool has_selection = selectedRule() >= 0;
     save_button->setEnabled(status.has_recipe && status.edited && !status.recipe_path.empty());
     add_rule_button->setEnabled(status.has_recipe);
@@ -288,7 +298,7 @@ void CorruptionDock::refreshStatus()
         QSignalBlocker block_rules(rules_table);
         for (int i = 0; i < rules_table->rowCount() && i < int(status.rule_crashes.size()); i++)
         {
-            rules_table->setItem(i, 5, new QTableWidgetItem(QString::number(status.rule_crashes[size_t(i)])));
+            rules_table->setItem(i, 6, new QTableWidgetItem(QString::number(status.rule_crashes[size_t(i)])));
             if (rules_table->item(i, 0))
                 rules_table->item(i, 0)->setCheckState(status.rules[size_t(i)].enabled ? Qt::Checked : Qt::Unchecked);
         }
@@ -310,6 +320,8 @@ void CorruptionDock::rebuildRules()
     auto status = CorruptionSession::get().status();
     int selected = selectedRule();
     QSignalBlocker block(rules_table);
+    rule_sliders.clear(); // the table owns and deletes them
+    rules_table->setRowCount(0);
     rules_table->setRowCount(int(status.rules.size()));
     for (int i = 0; i < int(status.rules.size()); i++)
     {
@@ -323,7 +335,13 @@ void CorruptionDock::rebuildRules()
         rules_table->setItem(i, 3, new QTableWidgetItem(qs(describe_op(r))));
         rules_table->setItem(i, 4, new QTableWidgetItem(qs(describe_trigger(r.when))));
         unsigned crashes = size_t(i) < status.rule_crashes.size() ? status.rule_crashes[size_t(i)] : 0;
-        rules_table->setItem(i, 5, new QTableWidgetItem(QString::number(crashes)));
+        rules_table->setItem(i, 6, new QTableWidgetItem(QString::number(crashes)));
+        auto slider = new IntensitySlider;
+        slider->setMinimumWidth(110);
+        slider->setIntensity(r.intensity);
+        slider->onChanged = [i](double v) { CorruptionSession::get().setRuleIntensity(size_t(i), v); };
+        rules_table->setCellWidget(i, 5, slider);
+        rule_sliders.push_back(slider);
     }
     selectRule(std::min(selected, rules_table->rowCount() - 1));
 }

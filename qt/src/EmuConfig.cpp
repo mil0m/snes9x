@@ -80,6 +80,8 @@ static const char *shortcut_names[] =
     "CorruptionFire8",
     "CorruptionFire9",
     "CorruptionMarkCrash",
+    "CorruptionMore",
+    "CorruptionLess",
 };
 
 static const char *default_controller_keys[] =
@@ -152,6 +154,8 @@ static const char *default_controller_keys[] =
     "", //    eCorruptionFire8
     "", //    eCorruptionFire9
     "", //    eCorruptionMarkCrash
+    "", //    eCorruptionMore
+    "", //    eCorruptionLess
 };
 
 const char **EmuConfig::getDefaultShortcutKeys()
