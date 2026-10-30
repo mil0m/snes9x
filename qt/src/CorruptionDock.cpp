@@ -90,6 +90,15 @@ CorruptionDock::CorruptionDock(EmuApplication &app, QWidget *parent)
     file_buttons->addWidget(save_button);
     file_buttons->addWidget(save_as);
     recipe_layout->addLayout(file_buttons);
+    moments_check = new QCheckBox(tr("Saved moments"), recipe_box);
+    moments_check->setToolTip(tr("Save the moment a run started along with the recipe, and jump back to it when "
+                                 "the recipe is loaded, so the same seed replays the same run."));
+    moments_check->setChecked(app.config->corruption_saved_moments);
+    recipe_layout->addWidget(moments_check);
+    connect(moments_check, &QCheckBox::toggled, [this](bool on) {
+        this->app.config->corruption_saved_moments = on;
+        CorruptionSession::get().setSavedMoments(on);
+    });
     connect(new_recipe, &QPushButton::clicked, this, &CorruptionDock::newRecipe);
     connect(save_button, &QPushButton::clicked, this, &CorruptionDock::save);
     connect(save_as, &QPushButton::clicked, this, &CorruptionDock::saveAs);
@@ -269,7 +278,7 @@ void CorruptionDock::refreshStatus()
         rule_sliders[i]->refresh(status.rules[i].intensity); // a crash-guard dampen moves it
 
     bool has_selection = selectedRule() >= 0;
-    save_button->setEnabled(status.has_recipe && status.edited && !status.recipe_path.empty());
+    save_button->setEnabled(status.has_recipe && (status.edited || status.new_moment) && !status.recipe_path.empty());
     add_rule_button->setEnabled(status.has_recipe);
     edit_rule_button->setEnabled(has_selection);
     duplicate_rule_button->setEnabled(has_selection);
@@ -282,9 +291,13 @@ void CorruptionDock::refreshStatus()
         seed_edit->setText(status.has_recipe ? QString::number(status.engine.seed) : QString());
 
     status_label->setText(status.has_recipe
-                              ? tr("%1%2 - frame %3 - %4 firings")
+                              ? tr("%1%2%3 - frame %4 - %5 firings")
                                     .arg(qs(status.engine.recipe_name))
                                     .arg(status.edited ? tr(" (edited)") : QString())
+                                    .arg(status.starting       ? tr(" - starting with the next frame")
+                                         : status.new_moment   ? tr(" - new moment, not saved")
+                                         : status.has_moment   ? tr(" - from its saved moment")
+                                                               : QString())
                                     .arg(status.engine.frame)
                                     .arg(status.engine.firings)
                               : tr("No recipe loaded"));

@@ -38,6 +38,7 @@ struct EmuConfig
     // Corruption tooling
     std::string corruption_library_root; // the recipe library, e.g. a clone of the shared library repo
     bool corruption_panel_visible = false;
+    bool corruption_saved_moments = true; // save the moment a run starts with its recipe, and load it back
 
     // General
     bool fullscreen_on_open;

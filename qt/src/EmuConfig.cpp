@@ -230,6 +230,7 @@ bool EmuConfig::setDefaults(int section)
     {
         corruption_library_root = (fs::path(QDir::homePath().toStdString()) / "Documents" / "Snes9x Corruptions").string();
         corruption_panel_visible = false;
+        corruption_saved_moments = true;
     }
 
     bool restart = false;
@@ -586,6 +587,7 @@ void EmuConfig::config(const std::string &filename, bool write)
     BeginSection("Corruption");
     String("LibraryRoot", corruption_library_root);
     Bool("PanelVisible", corruption_panel_visible);
+    Bool("SavedMoments", corruption_saved_moments);
     EndSection();
 }
 

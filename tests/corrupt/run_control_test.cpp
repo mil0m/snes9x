@@ -175,3 +175,18 @@ TEST_CASE("cancelling a requested moment starts fresh")
     CHECK(rig.started.back() == RunControl::Started::Fresh);
     CHECK(rig.game.loads == 0);
 }
+
+TEST_CASE("forgetting the moment drops it until the next start")
+{
+    Rig rig;
+    rig.engine.set_active(true);
+    rig.frames(1);
+    REQUIRE(rig.control.has_anchor());
+    rig.control.request_start_from(rig.game.save_state());
+    rig.control.forget_anchor();
+    CHECK_FALSE(rig.control.has_anchor());
+    CHECK_FALSE(rig.control.start_from_pending()); // a new recipe doesn't inherit a requested moment either
+    rig.engine.reroll(3);
+    rig.frames(1);
+    CHECK(rig.control.has_anchor());
+}

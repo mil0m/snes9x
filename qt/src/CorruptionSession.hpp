@@ -4,6 +4,7 @@
 #include "corrupt/crash_guard.h"
 #include "corrupt/engine.h"
 #include "corrupt/library.h"
+#include "corrupt/run_control.h"
 #include "corrupt/save_backup.h"
 
 #include <filesystem>
@@ -36,6 +37,11 @@ class CorruptionSession
         uint64_t recipe_generation = 0; // bumps whenever a recipe is loaded
         uint64_t rules_generation = 0;  // bumps on every rule edit too
         double intensity = 1.0;          // the recipe's (Chaos)
+        bool starting = false;           // a start waits for the next frame (the game is paused)
+        bool has_moment = false;         // the recipe has a saved moment on disk
+        bool moment_pending = false;     // the next start jumps to that moment
+        bool new_moment = false;         // the current run began somewhere Save hasn't written yet
+        bool saved_moments = true;
         std::filesystem::path recipe_path; // the file it came from; empty for a new recipe
         bool edited = false;               // differs from that file (rules, seed, name...)
         std::array<size_t, corrupt::kTargetCount> sizes{}; // the loaded game's memory sizes
@@ -84,6 +90,10 @@ class CorruptionSession
     void setPolicyOverride(std::optional<corrupt::PolicyKind> policy); // nullopt: the recipe's choice
     void setDetectionEnabled(bool enabled);
 
+    // Saved moments: Save writes the moment the current run started next to the recipe,
+    // and loading a recipe that has one jumps back to it when the run starts.
+    void setSavedMoments(bool on);
+
     // Save backups.
     std::filesystem::path backupDir();
     std::vector<corrupt::BackupInfo> backups();
@@ -101,6 +111,8 @@ class CorruptionSession
     std::filesystem::path backupDirLocked() const;
     void configureGuard();
     std::string recipeJson(corrupt::Recipe recipe) const;
+    std::string writeMoment(corrupt::Recipe &recipe, const std::filesystem::path &recipe_path); // error or empty
+    bool newMoment() const;
     void writeJournal(const corrupt::JournalEntry &entry);
 
     std::mutex mutex;
@@ -108,6 +120,9 @@ class CorruptionSession
     corrupt::CoreMemory memory;
     corrupt::SnesCoreAccess access;
     corrupt::CrashGuard guard;
+    corrupt::RunControl control;
+    bool saved_moments = true;
+    bool moment_on_disk = false; // the current run's start is the recipe's saved moment
     std::optional<corrupt::PolicyKind> policy_override;
     bool detection_enabled = true;
     std::string last_crash;

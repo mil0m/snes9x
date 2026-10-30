@@ -30,6 +30,14 @@ class RunControl
     void cancel_start_from() { pending.reset(); }
     bool start_from_pending() const { return pending.has_value(); }
 
+    // A new recipe: the last run's moment and any requested one no longer apply.
+    void forget_anchor()
+    {
+        current.clear();
+        pending.reset();
+        from_saved = false;
+    }
+
     Started between_frames(Engine &engine, CoreAccess &core);
 
     bool has_anchor() const { return !current.empty(); }

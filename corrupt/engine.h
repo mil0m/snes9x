@@ -54,6 +54,7 @@ class Engine
     void set_rule_enabled(size_t index, bool enabled);
     void set_info(std::string name, std::string notes); // no restart
     void set_intensity(double intensity);               // the whole recipe, 0..1, live
+    void set_anchor_state(std::string file);            // the saved moment's file name; no restart
 
     void on_frame(MemoryAccess &mem);
 

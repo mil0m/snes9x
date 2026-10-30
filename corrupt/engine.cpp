@@ -96,6 +96,11 @@ void Engine::set_intensity(double intensity)
     current.intensity = std::clamp(intensity, 0.0, 1.0);
 }
 
+void Engine::set_anchor_state(std::string file)
+{
+    current.anchor_state = std::move(file);
+}
+
 void Engine::restart()
 {
     runtimes.assign(current.rules.size(), RuleRuntime{});

@@ -658,3 +658,15 @@ TEST_SUITE("held starts")
         CHECK(e.waiting());
     }
 }
+
+TEST_CASE("naming the recipe's saved moment keeps the run going")
+{
+    FakeMemory mem;
+    Engine e;
+    e.set_recipe(noisy_recipe(5));
+    e.set_active(true);
+    frames(e, mem, 12);
+    e.set_anchor_state("noise.anchor.frz");
+    CHECK(e.recipe().anchor_state == "noise.anchor.frz");
+    CHECK(e.current_frame() == 12);
+}

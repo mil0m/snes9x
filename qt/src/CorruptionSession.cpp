@@ -98,6 +98,22 @@ void CorruptionSession::betweenFrames()
     std::lock_guard lock(mutex);
     if (!game_loaded)
         return;
+    auto started = control.between_frames(engine, access);
+    if (started != RunControl::Started::Nothing)
+        moment_on_disk = started == RunControl::Started::FromAnchor;
+    switch (started)
+    {
+    case RunControl::Started::FromAnchor:
+        guard.reset(); // its checkpoints belong to the timeline we just left
+        note("Started from the recipe's saved moment");
+        S9xSetInfoString("Corruption: back to the saved moment");
+        break;
+    case RunControl::Started::AnchorFailed:
+        note("The saved moment didn't load; started from here instead");
+        break;
+    default:
+        break;
+    }
     auto out = guard.between_frames(engine, access);
     if (out.kind == GuardOutcome::Nothing)
         return;
@@ -131,7 +147,10 @@ void CorruptionSession::gameLoaded()
     std::lock_guard lock(mutex);
     game_loaded = true;
     game = current_game();
+    engine.hold_starts(true);
     engine.set_active(false);
+    control = RunControl{};
+    moment_on_disk = false;
     has_recipe = false;
     engine.set_recipe({});
     recipe_generation++;
@@ -205,7 +224,50 @@ std::vector<std::string> CorruptionSession::loadRecipe(const Recipe &recipe, con
     last_crash.clear();
     configureGuard();
     note("Recipe: " + recipe.name);
+
+    // Its saved moment: jump there and start, if the switch is on and it's this ROM.
+    control.forget_anchor();
+    moment_on_disk = false;
+    if (saved_moments && !recipe.anchor_state.empty() && !path.empty())
+    {
+        std::string error;
+        if (!recipe.game.sha256.empty() && recipe.game.sha256 != game.sha256)
+            note("Recipe: " + recipe.name + " (its saved moment is from another ROM version, so it starts here)");
+        else if (auto state = load_anchor(path.parent_path() / recipe.anchor_state, error))
+        {
+            control.request_start_from(std::move(*state));
+            engine.set_active(true);
+            note("Recipe: " + recipe.name + ", starting from its saved moment");
+        }
+        else
+            note("Recipe: " + recipe.name + " (" + error + ", so it starts here)");
+    }
     return problems;
+}
+
+void CorruptionSession::setSavedMoments(bool on)
+{
+    std::lock_guard lock(mutex);
+    saved_moments = on;
+}
+
+// The current run began from a state that isn't the recipe's moment on disk.
+bool CorruptionSession::newMoment() const
+{
+    return saved_moments && control.has_anchor() && !moment_on_disk && !engine.waiting();
+}
+
+std::string CorruptionSession::writeMoment(Recipe &recipe, const fs::path &path)
+{
+    if (!newMoment())
+        return {};
+    auto moment = anchor_path(path);
+    if (auto err = save_anchor(moment, control.anchor()); !err.empty())
+        return err;
+    recipe.anchor_state = moment.filename().string();
+    engine.set_anchor_state(recipe.anchor_state);
+    moment_on_disk = true;
+    return {};
 }
 
 // What Save writes. A recipe without a game (an example, a new one) gets the loaded game's.
@@ -228,6 +290,8 @@ void CorruptionSession::newRecipe(const std::string &name)
     bool was_active = engine.active();
     engine.set_recipe(recipe);
     engine.set_active(was_active);
+    control.forget_anchor();
+    moment_on_disk = false;
     has_recipe = true;
     recipe_generation++;
     rules_generation++;
@@ -358,7 +422,24 @@ SaveResult CorruptionSession::saveRecipeAs(const std::string &name, const std::s
     recipe.name = name;
     recipe.notes = notes;
     recipe.game = game;
-    result = Library(library_root).save_recipe(game, recipe);
+    Library library(library_root);
+    auto planned = library.game_dir(game) / "recipes" / (recipe_file_stem(name) + ".json");
+    if (newMoment())
+    {
+        if (auto err = writeMoment(recipe, planned); !err.empty())
+            note("Saved without its moment: " + err);
+    }
+    else if (!recipe.anchor_state.empty() && planned != recipe_path && !recipe_path.empty())
+    {
+        // The run started from the old file's moment: give the copy its own.
+        auto copy = anchor_path(planned);
+        std::error_code ec;
+        std::filesystem::copy_file(recipe_path.parent_path() / recipe.anchor_state, copy,
+                                   std::filesystem::copy_options::overwrite_existing, ec);
+        recipe.anchor_state = ec ? std::string() : copy.filename().string();
+        engine.set_anchor_state(recipe.anchor_state);
+    }
+    result = library.save_recipe(game, recipe);
     if (result.error.empty())
     {
         engine.set_info(name, notes);
@@ -381,7 +462,10 @@ SaveResult CorruptionSession::save()
     if (!result.error.empty())
         return result;
 
-    auto json = recipeJson(engine.recipe());
+    Recipe recipe = engine.recipe();
+    if (auto err = writeMoment(recipe, recipe_path); !err.empty())
+        note("Saved without its moment: " + err);
+    auto json = recipeJson(recipe);
     result.path = recipe_path;
     result.error = write_file_atomic(recipe_path, json);
     if (result.error.empty())
@@ -449,6 +533,11 @@ CorruptionSession::Status CorruptionSession::status()
     s.recipe_generation = recipe_generation;
     s.rules_generation = rules_generation;
     s.intensity = engine.recipe().intensity;
+    s.starting = engine.waiting();
+    s.has_moment = !engine.recipe().anchor_state.empty();
+    s.moment_pending = control.start_from_pending();
+    s.new_moment = has_recipe && newMoment();
+    s.saved_moments = saved_moments;
     s.recipe_path = recipe_path;
     s.edited = has_recipe && recipeJson(engine.recipe()) != saved_json;
     if (game_loaded)

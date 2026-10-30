@@ -531,6 +531,7 @@ bool EmuApplication::isBound(const EmuBinding &b)
 void EmuApplication::updateSettings()
 {
     CorruptionSession::get().setLibraryRoot(config->corruption_library_root);
+    CorruptionSession::get().setSavedMoments(config->corruption_saved_moments);
 
     if (config->adjust_input_rate_automatically && !config->vrr_enabled)
     {

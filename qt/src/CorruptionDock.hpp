@@ -59,6 +59,7 @@ class CorruptionDock : public QDockWidget
     QLineEdit *library_edit;
     QComboBox *recipe_combo;
     QComboBox *example_combo;
+    QCheckBox *moments_check;
     QCheckBox *active_check;
     QLineEdit *seed_edit;
     QTableWidget *rules_table;
