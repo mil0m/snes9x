@@ -60,6 +60,8 @@ struct GuardOutcome
     std::vector<std::string> suspect_names;
     ActionKind action = ActionKind::Reroll;
     uint64_t restored_frame = 0;
+    uint64_t blame_after = 0;   // the writes blamed: frames (blame_after, blame_through]
+    uint64_t blame_through = 0;
     std::string summary; // short text for an on-screen message
 };
 

@@ -179,6 +179,8 @@ GuardOutcome CrashGuard::handle(const CrashVerdict &verdict, Engine &engine, Cor
     for (auto s : suspects)
         out.suspect_names.push_back(engine.recipe().rules[s].name);
     out.restored_frame = cp->frame;
+    out.blame_after = cp->frame;
+    out.blame_through = through;
 
     JournalEntry e;
     e.signal = crash_signal_name(verdict.signal);

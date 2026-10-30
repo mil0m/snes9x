@@ -159,6 +159,18 @@ TEST_CASE("a crash rolls back to before the guilty write and play continues")
     CHECK(rig.crash_byte() == 0);
 }
 
+TEST_CASE("a rollback reports the window it blamed, for the crash map")
+{
+    Rig rig(recipe_of({ poke_crash_byte(130, kCrashValue, kCrashValue) }), PolicyKind::Skip);
+    rig.frames(130);
+    REQUIRE(rig.outcomes.size() == 1);
+    auto &out = rig.outcomes[0];
+    CHECK(out.blame_after == out.restored_frame);
+    CHECK(out.blame_through == out.verdict.since_frame);
+    CHECK(out.blame_after < 130u);
+    CHECK(out.blame_through >= 130u);
+}
+
 TEST_CASE("re-roll gives the suspect rule a new salt and usually gets past the crash")
 {
     // Values 0xEC..0xEF: a 1 in 4 chance per roll of the crashing 0xEE.
