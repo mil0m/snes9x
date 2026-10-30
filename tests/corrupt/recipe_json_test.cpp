@@ -370,3 +370,16 @@ TEST_CASE("recipe intensity must be a number within 0..1")
     CHECK_FALSE(parse_recipe(R"({"format":1,"name":"x","intensity":-0.1,"rules":[]})", {}).recipe);
     CHECK_FALSE(parse_recipe(R"({"format":1,"name":"x","intensity":"lots","rules":[]})", {}).recipe);
 }
+
+TEST_CASE("reboot detection can be switched off per recipe")
+{
+    auto parsed = parse_recipe(R"({"format":1,"name":"x","crash_detection":{"reboot":false},"rules":[]})", {});
+    REQUIRE(parsed.recipe);
+    REQUIRE(parsed.recipe->crash_detection);
+    CHECK_FALSE(parsed.recipe->crash_detection->reboot);
+    auto again = parse_recipe(write_recipe(*parsed.recipe), {});
+    REQUIRE(again.recipe);
+    CHECK_FALSE(again.recipe->crash_detection->reboot);
+    CHECK(DetectorConfig{}.reboot);
+    CHECK_FALSE(parse_recipe(R"({"format":1,"name":"x","crash_detection":{"reboot":"no"},"rules":[]})", {}).recipe);
+}

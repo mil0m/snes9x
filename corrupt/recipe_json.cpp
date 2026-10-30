@@ -467,9 +467,10 @@ DetectorConfig parse_detection(Ctx &ctx, const json &d)
     const std::string path = "recipe.crash_detection";
     if (!require_object(ctx, d, path))
         return cfg;
-    check_keys(ctx, d, path, { "enabled", "cpu_stopped", "runaway_frames", "nmi_off_seconds", "frozen_seconds", "black_seconds", "min_presses" });
+    check_keys(ctx, d, path, { "enabled", "cpu_stopped", "runaway_frames", "nmi_off_seconds", "frozen_seconds", "black_seconds", "min_presses", "reboot" });
 
-    for (auto [key, out] : { std::pair{ "enabled", &cfg.enabled }, std::pair{ "cpu_stopped", &cfg.cpu_stopped } })
+    for (auto [key, out] : { std::pair{ "enabled", &cfg.enabled }, std::pair{ "cpu_stopped", &cfg.cpu_stopped },
+                             std::pair{ "reboot", &cfg.reboot } })
         if (d.contains(key))
         {
             if (d[key].is_boolean())
@@ -508,6 +509,7 @@ ojson detection_json(const DetectorConfig &cfg)
     d["frozen_seconds"] = cfg.frozen_frames / 60.0;
     d["black_seconds"] = cfg.black_frames / 60.0;
     d["min_presses"] = cfg.min_presses;
+    d["reboot"] = cfg.reboot;
     return d;
 }
 

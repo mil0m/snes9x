@@ -41,6 +41,7 @@ const char *crash_signal_name(CrashSignal s)
     case CrashSignal::FrozenPicture: return "frozen_picture";
     case CrashSignal::BlackScreen: return "black_screen";
     case CrashSignal::Manual: return "manual";
+    case CrashSignal::Reboot: return "reboot";
     }
     return "?";
 }
@@ -60,6 +61,7 @@ void CrashDetector::reset()
     frozen_since.reset();
     last_hash.reset();
     last_input.reset();
+    last_reboots.reset();
     black_presses = 0;
     frozen_presses = 0;
 }
@@ -90,6 +92,15 @@ std::optional<CrashVerdict> CrashDetector::observe(uint64_t frame, const FrameSi
     }
 
     // Heuristics.
+    bool rebooted = last_reboots && s.reboots > *last_reboots;
+    last_reboots = s.reboots;
+    if (config.reboot && rebooted)
+    {
+        reset();
+        last_reboots = s.reboots;
+        return CrashVerdict{ CrashSignal::Reboot, frame, frame, true, "the game rebooted itself" };
+    }
+
     if (auto since = track(nmi_off_since, config.nmi_off_frames && !s.nmi_enabled, frame);
         since && frame - *since + 1 >= config.nmi_off_frames)
     {

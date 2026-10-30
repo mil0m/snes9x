@@ -27,6 +27,7 @@ struct FrameSignals
     uint64_t picture_hash = 0;
     bool picture_valid = true; // false when the frame wasn't drawn (frameskip): the hash is stale
     uint16_t input = 0;        // controller 1 buttons
+    uint32_t reboots = 0;      // running count of times the game re-entered its reset code
 };
 
 enum class CrashSignal
@@ -38,6 +39,7 @@ enum class CrashSignal
     FrozenPicture,
     BlackScreen,
     Manual, // the player said so
+    Reboot, // the game jumped back into its own reset code
 };
 
 const char *crash_signal_name(CrashSignal s);
@@ -57,6 +59,9 @@ struct DetectorConfig
     // Frozen and black screens only count while the player presses buttons and nothing
     // reacts; a still screen nobody is touching (a text box, a menu) is not a crash.
     uint32_t min_presses = 3;
+    // A game rebooting itself looks normal from outside (it shows its title screen);
+    // the core glue counts entries into the reset code made in native mode.
+    bool reboot = true;
 };
 
 struct CrashVerdict
@@ -87,6 +92,7 @@ class CrashDetector
     std::optional<uint64_t> frozen_since;
     std::optional<uint64_t> last_hash;
     std::optional<uint16_t> last_input;
+    std::optional<uint32_t> last_reboots;
     uint32_t black_presses = 0;
     uint32_t frozen_presses = 0;
 };

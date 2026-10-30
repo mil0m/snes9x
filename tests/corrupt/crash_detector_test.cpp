@@ -206,3 +206,55 @@ TEST_CASE("an STP is named as such even when the core also calls it a deadlock")
     CHECK(v->signal == CrashSignal::CpuStopped);
     CHECK(v->text.find("STP at $00:8018") != std::string::npos);
 }
+
+TEST_SUITE("reboots")
+{
+    auto rebooted_at(uint64_t at)
+    {
+        return [at](uint64_t f) {
+            auto s = healthy(f);
+            s.reboots = 7 + (f >= at ? 1 : 0); // the count before the run started is just a baseline
+            return s;
+        };
+    }
+
+    TEST_CASE("a reboot is caught on the frame it shows up, as a heuristic")
+    {
+        CrashDetector d;
+        auto v = feed(d, 1, 600, rebooted_at(240));
+        REQUIRE(v);
+        CHECK(v->signal == CrashSignal::Reboot);
+        CHECK(v->frame == 240);
+        CHECK(v->since_frame == 240);
+        CHECK(v->heuristic);
+        CHECK(v->text.find("reboot") != std::string::npos);
+        CHECK(std::string(crash_signal_name(CrashSignal::Reboot)) == "reboot");
+    }
+
+    TEST_CASE("each reboot is reported once")
+    {
+        CrashDetector d;
+        int verdicts = 0;
+        auto make = rebooted_at(100);
+        for (uint64_t f = 1; f < 400; f++)
+            verdicts += d.observe(f, make(f)).has_value();
+        CHECK(verdicts == 1);
+    }
+
+    TEST_CASE("after a reset the next count is only a baseline")
+    {
+        CrashDetector d;
+        auto make = rebooted_at(100);
+        CHECK_FALSE(feed(d, 1, 50, make));
+        d.reset();
+        CHECK_FALSE(feed(d, 150, 100, make)); // already 8 when it looks again: nothing new
+    }
+
+    TEST_CASE("switched off, a reboot is ignored")
+    {
+        DetectorConfig cfg;
+        cfg.reboot = false;
+        CrashDetector d(cfg);
+        CHECK_FALSE(feed(d, 1, 600, rebooted_at(240)));
+    }
+}
