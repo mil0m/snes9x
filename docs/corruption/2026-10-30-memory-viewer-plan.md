@@ -169,3 +169,41 @@ Done 2026-10-30 (QA.md section 15, step 9). Findings:
 - **The box is a spin box**, not a list of presets, because hunting for an unknown width
   means stepping one byte at a time.
 
+
+## Follow-up: the tile view (2026-10-30)
+
+Asked for right after the row width: show graphics as the game draws them, decoded from
+the SNES tile formats and coloured with the game's live palette.
+
+- **A third mode, Tiles**, next to Hex and Pixels, through the same `MemoryPane`: the
+  selection, the Map, named areas, copies, Go to and New Rule from Selection all work. It
+  decodes any memory, not just VRAM: games also keep unpacked graphics in WRAM.
+- **Formats**: 2, 4 and 8 bpp planar (16, 32 and 64 bytes a tile) and mode 7 (8 bpp,
+  interleaved with the tile map, so one tile spans 128 bytes of VRAM).
+- **Palette**: the live CGRAM, read about 10 times a second while the view shows, so
+  palette corruption shows at once. A palette number picks the row (64 rows of 4 colours
+  at 2 bpp, 16 of 16 at 4 bpp, one at 8 bpp), or **Grey** shows the raw colour indices.
+- **Selection is whole tiles**: dragging selects tiles, and the byte range is every byte
+  of those tiles, so a rule hits exactly those graphics. (In mode 7 that includes the map
+  bytes in between.)
+- **The Map knows formats.** `MapArea` gets the tile format and a first palette for tile
+  areas: a BG's depth for the current mode, mode 0's per-layer palettes (BG2 starts at
+  palette 8), sprites 4 bpp from palette 8, mode 7. Clicking such an area in Tiles mode
+  switches the format and palette too.
+- **Tiles per row** (16 by default, 1–64) and **zoom** (1–8, with Ctrl+wheel). The
+  overlays tint each tile by its busiest byte. Hovering shows the tile number and address.
+
+Tasks:
+
+1. `corrupt/tile_decode.{h,cpp}`: `decode_tile` for each format (bits read past the end
+   are 0), `snes_colour` (15-bit BGR to RGB), `palette_colour(cgram, index)`. Unit tests
+   with hand-built tiles, including mode 7's interleave.
+2. `MapArea::tile_format` and `palette`: set by `video_map` for BG, sprite and mode 7
+   tile areas. Unit tests.
+3. `MemorySource::palette()` (CGRAM bytes) and the session's version.
+4. `TileView` widget: tile↔point mapping at several zooms and widths, tile selection,
+   overlay tint, palette and grey, hover, Ctrl+wheel. Offscreen tests and PNGs, including
+   real FF6 VRAM from `corrupt-smoke --dump` with its CGRAM.
+5. Viewer: Tiles mode with format, palette and tiles-per-row controls; Map clicks set the
+   format. Tests and a PNG.
+6. Docs: README, QA.md section 16, findings here.
