@@ -35,6 +35,27 @@
 
 extern uint8	OpenBus;
 
+// Corruption tooling (corrupt/): counts of the game's reads and writes of each WRAM byte,
+// kept while the memory viewer watches WRAM, and null otherwise. Defined in cpuexec.cpp.
+extern uint32	*S9xWramReads, *S9xWramWrites;
+
+#if defined(__GNUC__) || defined(__clang__)
+#define S9X_WRAM_COUNTING(counts) __builtin_expect((counts) != nullptr, 0)
+#else
+#define S9X_WRAM_COUNTING(counts) ((counts) != nullptr)
+#endif
+
+static inline void S9xCountWram (uint32 *counts, const uint8 *p, int bytes)
+{
+	pint	o = (pint) p - (pint) Memory.RAM;
+	if (o < sizeof(Memory.RAM))
+	{
+		counts[o]++;
+		if (bytes == 2 && o + 1 < sizeof(Memory.RAM))
+			counts[o + 1]++;
+	}
+}
+
 static inline int32 memory_speed (uint32 address)
 {
 	if (address & 0x408000)
@@ -64,6 +85,8 @@ inline uint8 S9xGetByte (uint32 Address)
 	if (GetAddress >= (uint8 *) CMemory::MAP_LAST)
 	{
 		byte = *(GetAddress + (Address & 0xffff));
+		if (S9X_WRAM_COUNTING(S9xWramReads))
+			S9xCountWram(S9xWramReads, GetAddress + (Address & 0xffff), 1);
 		addCyclesInMemoryAccess;
 		return (byte);
 	}
@@ -193,6 +216,8 @@ inline uint16 S9xGetWord (uint32 Address, enum s9xwrap_t w = WRAP_NONE)
 	if (GetAddress >= (uint8 *) CMemory::MAP_LAST)
 	{
 		word = READ_WORD(GetAddress + (Address & 0xffff));
+		if (S9X_WRAM_COUNTING(S9xWramReads))
+			S9xCountWram(S9xWramReads, GetAddress + (Address & 0xffff), 2);
 		addCyclesInMemoryAccess_x2;
 		return (word);
 	}
@@ -326,6 +351,8 @@ inline void S9xSetByte (uint8 Byte, uint32 Address)
 	if (SetAddress >= (uint8 *) CMemory::MAP_LAST)
 	{
 		*(SetAddress + (Address & 0xffff)) = Byte;
+		if (S9X_WRAM_COUNTING(S9xWramWrites))
+			S9xCountWram(S9xWramWrites, SetAddress + (Address & 0xffff), 1);
 		addCyclesInMemoryAccess;
 		return;
 	}
@@ -466,6 +493,8 @@ inline void S9xSetWord (uint16 Word, uint32 Address, enum s9xwrap_t w = WRAP_NON
 	if (SetAddress >= (uint8 *) CMemory::MAP_LAST)
 	{
 		WRITE_WORD(SetAddress + (Address & 0xffff), Word);
+		if (S9X_WRAM_COUNTING(S9xWramWrites))
+			S9xCountWram(S9xWramWrites, SetAddress + (Address & 0xffff), 2);
 		addCyclesInMemoryAccess_x2;
 		return;
 	}

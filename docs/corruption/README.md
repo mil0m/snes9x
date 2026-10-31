@@ -83,6 +83,13 @@ Loading another recipe or starting a new one asks before discarding unsaved edit
   every frame is fully orange; one that changes once a second is faint but visible.
 - **Hits** colours the bytes the recipe has written since the viewer opened (or since
   **Clear Hits**), so you can see a recipe's footprint.
+- **Reads** (blue) and **Writes** (green), WRAM only: how often the game itself reads and
+  writes each byte, counted by the emulator while the viewer shows WRAM. Unlike Activity
+  they see a byte written with the same value and every read, including the DMA that
+  copies the sprite table and palette out of WRAM each frame. A byte the game reads all the
+  time but rarely writes is where corruption sticks and shows; one it rewrites every frame
+  undoes your corruption at once. Hover a byte for `read 3.0, written 0.5 a frame`. Not
+  counted: code the game runs from WRAM, HDMA tables, and the SA-1 chip's own accesses.
 - The strip on the right is the whole target at a glance; click it to jump there. **Go to**
   takes an address like `0x1C00` or `$1C00`.
 - Drag across bytes (or click, then shift-click) to select a range, then **New Rule from
@@ -113,8 +120,8 @@ Loading another recipe or starting a new one asks before discarding unsaved edit
   watch for the moment the picture stops leaning and snaps into columns. A 32-wide tile map
   lines up at 64 (two bytes per tile); in FF6 the BG1 map turns into a picture of the level
   at 64 and shears at 66. Each memory keeps its own width while the viewer is open; rows
-  wider than the window scroll sideways. With **Activity**
-  or **Hits** on, the bytes go grey and the heat is painted over them; **Plain** shows the
+  wider than the window scroll sideways. With an overlay
+  on, the bytes go dark grey and the overlay is painted over them; **Plain** shows the
   full colours. Hover a dot for its address and value. Selecting, the Map, named areas,
   copies and New Rule from Selection work the same as in hex, and switching keeps the
   selection and the place you were looking at.

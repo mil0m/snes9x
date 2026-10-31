@@ -26,6 +26,18 @@ using namespace corrupt;
 namespace
 {
 
+// Accesses a frame, short: 1234, 3.0, 0.05, 0.
+QString rateText(float per_frame)
+{
+    if (per_frame >= 10.0f)
+        return QString::number(std::lround(per_frame));
+    if (per_frame >= 0.095f)
+        return QString::number(per_frame, 'f', 1);
+    if (per_frame >= 0.001f)
+        return QString::number(per_frame, 'f', 2 + (per_frame < 0.0095f));
+    return "0";
+}
+
 QString hex4(uint32_t v)
 {
     return QString("0x%1").arg(v, 4, 16, QChar('0')).toUpper().replace("0X", "0x");
@@ -93,6 +105,8 @@ MemoryViewer::MemoryViewer(MemorySource &source, QWidget *parent)
     overlay_combo->addItem(tr("Hits: what the recipe wrote"), QString("hits"));
     overlay_combo->addItem(tr("Danger: where corruption crashed the game"), QString("danger"));
     overlay_combo->addItem(tr("Crashes: how often corruption here crashed it"), QString("crashes"));
+    overlay_combo->addItem(tr("Reads: how often the game reads it (WRAM)"), QString("reads"));
+    overlay_combo->addItem(tr("Writes: how often the game writes it (WRAM)"), QString("writes"));
     overlay_combo->addItem(tr("Plain"), QString("none"));
     goto_edit = new QLineEdit(this);
     goto_edit->setObjectName("goto");
@@ -230,6 +244,8 @@ MemoryViewer::MemoryViewer(MemorySource &source, QWidget *parent)
         auto overlay = o == "hits"     ? MemoryPane::Overlay::Hits
                        : o == "danger"  ? MemoryPane::Overlay::Danger
                        : o == "crashes" ? MemoryPane::Overlay::Crashes
+                       : o == "reads"   ? MemoryPane::Overlay::Reads
+                       : o == "writes"  ? MemoryPane::Overlay::Writes
                        : o == "none"   ? MemoryPane::Overlay::None
                                        : MemoryPane::Overlay::Activity;
         view->setOverlay(overlay);
@@ -359,6 +375,9 @@ void MemoryViewer::hovered(std::optional<uint32_t> offset)
     if (!offset || *offset >= snap.bytes.size())
         return hover_label->clear();
     auto text = QString("%1 = 0x%2").arg(hex4(*offset)).arg(snap.bytes[*offset], 2, 16, QChar('0')).toUpper().replace("0X", "0x");
+    // How often the game reads and writes it (WRAM only), whatever the overlay.
+    if (*offset < snap.reads.size() && *offset < snap.writes.size())
+        text += tr(" · read %1, written %2 a frame").arg(rateText(snap.reads[*offset]), rateText(snap.writes[*offset]));
     // What the crash map knows about the byte's block, whatever the overlay.
     size_t block = *offset / CrashMap::kBlock;
     if (block < snap.crash_blocks.size())

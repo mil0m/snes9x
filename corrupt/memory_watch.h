@@ -20,6 +20,10 @@ struct MemorySnapshot
     // The crash map per 16-byte block (CrashMap::kBlock): everyone's counts, and 1 where hot.
     std::vector<BlockCounts> crash_blocks;
     std::vector<uint8_t> hot_blocks;
+    // WRAM only: how many times the game reads and writes each byte, per frame on average
+    // (decaying like heat). Empty for other targets, and until counting starts.
+    std::vector<float> reads;
+    std::vector<float> writes;
 };
 
 // Watches one memory target for the memory viewer, once per frame between frames:
@@ -37,6 +41,9 @@ class MemoryWatch
     // `frame` is the engine's current frame; events up to it that weren't seen yet are hits.
     void observe(const MemoryAccess &mem, const std::deque<LoggedEvent> &log, uint64_t frame);
     void clear_hits();
+    // Between frames: the game's WRAM reads and writes since the last call (from the core's
+    // counters), folded into the snapshot's averages. Zeroes the counters either way.
+    void observe_accesses(std::vector<uint32_t> &reads, std::vector<uint32_t> &writes);
 
     const MemorySnapshot &snapshot() const { return snap; }
 

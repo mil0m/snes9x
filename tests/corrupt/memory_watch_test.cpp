@@ -117,6 +117,60 @@ TEST_CASE("a target that shrank (another game) is handled")
     CHECK(w.snapshot().bytes.size() == 16);
 }
 
+TEST_SUITE("the game's reads and writes")
+{
+    TEST_CASE("counts become an average per frame, and the counters start over")
+    {
+        FakeMemory mem;
+        MemoryWatch w;
+        w.watch(Target::WRAM, mem.size(Target::WRAM));
+        std::vector<uint32_t> reads(mem.size(Target::WRAM)), writes(reads.size());
+        for (int f = 0; f < 600; f++)
+        {
+            reads[0x40] += 3;
+            writes[0x41] += 1;
+            if (f % 60 == 0)
+                reads[0x80] += 1; // once a second
+            w.observe_accesses(reads, writes);
+            REQUIRE(reads[0x40] == 0u);
+            REQUIRE(writes[0x41] == 0u);
+        }
+        auto &s = w.snapshot();
+        REQUIRE(s.reads.size() == reads.size());
+        REQUIRE(s.writes.size() == reads.size());
+        CHECK(s.reads[0x40] == doctest::Approx(3.0).epsilon(0.01));
+        CHECK(s.writes[0x40] == 0.0f);
+        CHECK(s.writes[0x41] == doctest::Approx(1.0).epsilon(0.01));
+        CHECK(s.reads[0x80] > 0.005f); // visible, though rare
+        CHECK(s.reads[0x80] < 0.05f);
+        CHECK(s.reads[0x81] == 0.0f);
+
+        for (int f = 0; f < 300; f++) // five quiet seconds
+            w.observe_accesses(reads, writes);
+        CHECK(w.snapshot().reads[0x40] < 0.01f);
+    }
+
+    TEST_CASE("only WRAM has them; other targets just drop the counts")
+    {
+        FakeMemory mem;
+        MemoryWatch w;
+        w.watch(Target::VRAM, mem.size(Target::VRAM));
+        std::vector<uint32_t> reads(0x20000, 5), writes(0x20000, 5);
+        w.observe_accesses(reads, writes);
+        CHECK(w.snapshot().reads.empty());
+        CHECK(w.snapshot().writes.empty());
+        CHECK(reads[7] == 0u);
+        CHECK(writes[7] == 0u);
+
+        w.watch(Target::WRAM, mem.size(Target::WRAM));
+        reads[7] = 60;
+        w.observe_accesses(reads, writes);
+        CHECK(w.snapshot().reads[7] > 0.0f);
+        w.watch(Target::WRAM, mem.size(Target::WRAM)); // starting over forgets them
+        CHECK(w.snapshot().reads.empty());
+    }
+}
+
 TEST_SUITE("finding copies")
 {
     std::vector<uint8_t> palette_like(size_t n, uint32_t seed)

@@ -44,6 +44,14 @@ struct FakeSource : MemorySource
             s.heat[i] = 20.0f;
         s.crash_blocks.resize((size + 15) / 16);
         s.hot_blocks.assign(s.crash_blocks.size(), 0);
+        if (s.target == Target::WRAM)
+        {
+            s.reads.assign(size, 0.0f);
+            s.writes.assign(size, 0.0f);
+            s.reads[0x2000] = 3.0f;
+            s.writes[0x2000] = 0.5f;
+            s.reads[0x2001] = 1234.0f;
+        }
         if (s.crash_blocks.size() > 0x1F3)
         {
             s.crash_blocks[0x1F3] = { 5, 12 }; // 0x1F30
@@ -215,6 +223,10 @@ TEST_CASE("overlay choice and clearing hits")
     CHECK(child<QComboBox>(v, "overlay")->currentText().contains("crash"));
     choose(v, "overlay", "crashes"); // its frequency map
     CHECK(child<QComboBox>(v, "overlay")->currentText().contains("often"));
+    choose(v, "overlay", "reads"); // the game's own accesses
+    CHECK(child<QComboBox>(v, "overlay")->currentText().contains("WRAM"));
+    choose(v, "overlay", "writes");
+    CHECK(child<QComboBox>(v, "overlay")->currentText().contains("WRAM"));
     CHECK(src.clears == 1);
 }
 
@@ -443,6 +455,27 @@ TEST_SUITE("the pixel view in the viewer")
         CHECK(hover.contains("0x0041"));
         CHECK(hover.contains("0x11"));
         CHECK_FALSE(hover.contains("crash")); // the map knows nothing there
+    }
+
+    TEST_CASE("hovering a WRAM byte shows how often the game reads and writes it")
+    {
+        FakeSource src;
+        MemoryViewer v(src);
+        v.show();
+        v.refresh();
+        choose(v, "mode", "pixels");
+        auto pixels = child<PixelView>(v, "pixels");
+        QApplication::processEvents();
+        auto hover = [&](uint32_t offset) {
+            pixels->onHover(offset);
+            return child<QLabel>(v, "hover")->text();
+        };
+        CHECK(hover(0x2000).contains("read 3.0, written 0.5 a frame"));
+        CHECK(hover(0x2001).contains("read 1234, written 0 a frame"));
+        CHECK(hover(0x2002).contains("read 0, written 0 a frame"));
+        choose(v, "target", "vram");
+        v.refresh();
+        CHECK_FALSE(hover(0x2000).contains("read")); // only WRAM is counted
     }
 
     TEST_CASE("hovering a byte the crash map knows shows its block's counts")

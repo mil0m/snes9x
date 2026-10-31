@@ -124,6 +124,13 @@ void CorruptionSession::betweenFrames()
     if (crash_map.save_due())
         saveCrashMap();
     watch.observe(memory, engine.event_log(), engine.current_frame());
+    if (watch.watching() && watch.target() == Target::WRAM)
+    {
+        wram_access.start();
+        wram_access.take(watch);
+    }
+    else
+        wram_access.stop();
     if (watch.watching())
         live_map = watch.target() == Target::VRAM   ? video_map(SnesCoreAccess::video_layout())
                    : watch.target() == Target::ARAM ? sound_map(SnesCoreAccess::sound_layout())
@@ -214,6 +221,7 @@ void CorruptionSession::gameClosing()
     if (crash_map.unsaved())
         saveCrashMap();
     engine.set_active(false);
+    wram_access.stop();
     SnesCoreAccess::unwatch_resets();
     game_loaded = false;
 }

@@ -21,6 +21,8 @@ static inline void S9xReschedule (void);
 
 // Corruption tooling (corrupt/hook.h): called at the start of every frame, when set.
 void (*S9xCorruptFrameHook)(void) = nullptr;
+// Corruption tooling (getset.h): WRAM read and write counts, when set.
+uint32 *S9xWramReads = nullptr, *S9xWramWrites = nullptr;
 
 void S9xMainLoop (void)
 {

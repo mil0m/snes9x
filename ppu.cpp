@@ -1194,6 +1194,8 @@ uint8 S9xGetPPU (uint16 Address)
 			case 0x2180: // WMDATA
 				if (!CPU.InWRAMDMAorHDMA)
 				{
+					if (S9xWramReads) // corruption tooling, see getset.h
+						S9xWramReads[PPU.WRAM & 0x1ffff]++;
 					byte = Memory.RAM[PPU.WRAM++];
 					PPU.WRAM &= 0x1ffff;
 				}

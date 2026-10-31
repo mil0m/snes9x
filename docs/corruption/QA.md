@@ -242,3 +242,17 @@ scratch folder. By default Snes9x writes the `.srm` next to the ROM.
 4. If the panel says the map knows dangerous areas, switch to **Danger** and then **Crashes**.
    - [ ] A red tick sits in the address gutter beside each row with a hot block, at 1×. From 4× zoom up, hot blocks also get a white outline.
    - [ ] Activity, Hits and Plain show no ticks or outlines.
+
+## 19. The game's reads and writes (WRAM)
+1. Load a game and play to somewhere with sprites moving. Open the memory viewer on **wram**, **Pixels**.
+2. Pick **Reads**.
+   - [ ] Blue runs appear and change as you play. The sprite table copy (find it with **Find Copies**) is solid blue: the game sends it to the PPU every frame.
+3. Hover a blue dot.
+   - [ ] `read N, written M a frame` after the value. A grey byte shows `read 0, written 0 a frame`.
+4. Pick **Writes**.
+   - [ ] Green where the game writes; the stack and the direct page are among the brightest.
+5. Switch the target to **vram**.
+   - [ ] Reads and Writes show nothing there, and the hover has no read/written part.
+6. Close the viewer and play on.
+   - [ ] No slowdown with the viewer closed (the counting stops) or open.
+

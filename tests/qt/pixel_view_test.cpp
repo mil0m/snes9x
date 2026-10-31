@@ -8,6 +8,7 @@
 #include <QScrollBar>
 #include <QWheelEvent>
 
+#include <cstring>
 #include <random>
 
 using namespace corrupt;
@@ -399,6 +400,32 @@ TEST_CASE("the crashes overlay is a frequency map: more crashes, stronger gold")
     shot(s.view, "pixel-view-crashes");
 }
 
+TEST_CASE("the reads and writes overlays: blue where the game reads, green where it writes")
+{
+    Shown s(8);
+    auto snap = sample();
+    snap.reads.assign(snap.bytes.size(), 0.0f);
+    snap.writes.assign(snap.bytes.size(), 0.0f);
+    snap.reads[0x20] = 0.05f;  // a few times a second
+    snap.reads[0x21] = 300.0f; // the busiest
+    snap.reads[0x22] = 0.0001f; // long ago: faded out
+    snap.writes[0x21] = 2.0f;
+    s.view.setSnapshot(snap);
+    auto at = [&](uint32_t offset) {
+        return s.view.viewport()->grab().toImage().pixelColor(s.view.pixelRect(offset).center());
+    };
+    s.view.setOverlay(MemoryPane::Overlay::Reads);
+    QColor rare = at(0x20), busy = at(0x21), faded = at(0x22);
+    CHECK(rare.blue() > rare.red() + 20);
+    CHECK(busy.blue() - busy.red() > rare.blue() - rare.red() + 40);
+    CHECK(faded.blue() == faded.red());
+    shot(s.view, "pixel-view-reads");
+    s.view.setOverlay(MemoryPane::Overlay::Writes);
+    QColor written = at(0x21), unwritten = at(0x20);
+    CHECK(written.green() > written.red() + 40);
+    CHECK(unwritten.green() == unwritten.red());
+}
+
 TEST_CASE("hot blocks: a tick beside their rows, and an outline when zoomed in")
 {
     auto snap = sample();
@@ -498,6 +525,30 @@ TEST_CASE("pictures of real memory, from corrupt-smoke --dump")
             v.setZoom(zoom);
             QDir().mkpath(shots);
             v.grab().save(QString("%1/real-%2-%3x.png").arg(shots, target_name(t)).arg(zoom));
+        }
+        QFile r(QString("%1/wram.reads.f32").arg(dir)), w(QString("%1/wram.writes.f32").arg(dir));
+        if (t == Target::WRAM && r.open(QIODevice::ReadOnly) && w.open(QIODevice::ReadOnly))
+        { // from corrupt-smoke --access <dir>
+            auto floats = [](QFile &f) {
+                auto raw = f.readAll();
+                std::vector<float> out(size_t(raw.size()) / sizeof(float));
+                std::memcpy(out.data(), raw.data(), out.size() * sizeof(float));
+                return out;
+            };
+            s.reads = floats(r);
+            s.writes = floats(w);
+            v.setSnapshot(s);
+            v.setZoom(1);
+            v.setRowWidth(256);
+            for (auto [overlay, name] : { std::pair{ MemoryPane::Overlay::Reads, "reads" },
+                                          std::pair{ MemoryPane::Overlay::Writes, "writes" } })
+            {
+                v.setOverlay(overlay);
+                v.scrollTo(0);
+                v.grab().save(QString("%1/real-wram-%2.png").arg(shots, name));
+            }
+            v.setOverlay(MemoryPane::Overlay::None);
+            v.setRowWidth(0);
         }
         if (t == Target::VRAM) // a 32-wide tile map is 64 bytes a row: it should line up at 64, not 66
             for (int width : { 64, 66 })

@@ -1,6 +1,7 @@
 #pragma once
 #include "crash_guard.h"
 #include "memory_map.h"
+#include "memory_watch.h"
 
 namespace corrupt
 {
@@ -30,6 +31,22 @@ class SnesCoreAccess : public CoreAccess
 
   private:
     bool drawing = true;
+};
+
+// The game's WRAM reads and writes, counted by the core (getset.h) while started, for the
+// memory viewer. Only one may count at a time; start, stop and take between frames.
+class WramAccessCounter
+{
+  public:
+    ~WramAccessCounter() { stop(); }
+    void start();
+    void stop(); // the core stops counting; the counts are dropped
+    bool counting() const { return !reads.empty(); }
+    // Hands the counts since the last take to the watch, which starts them over.
+    void take(MemoryWatch &watch);
+
+  private:
+    std::vector<uint32_t> reads, writes;
 };
 
 } // namespace corrupt

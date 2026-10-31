@@ -282,3 +282,91 @@ TEST_CASE("the memory watch sees the game's frame counter and the recipe's write
     CHECK(s.bytes[testrom::kFrameCounterAddr] == h.wram(testrom::kFrameCounterAddr));
 }
 
+
+void S9xSetCPU(uint8, uint16); // the $42xx/$43xx registers; cpuexec.h pulls in the whole CPU core
+void S9xSetPPU(uint8, uint16); // the $21xx registers
+extern uint32 *S9xWramReads, *S9xWramWrites;
+
+TEST_CASE("the core counts the game's WRAM reads and writes while asked to")
+{
+    Harness h(testrom::Crash::None, Recipe{}, PolicyKind::Skip);
+    h.run(5);
+    std::vector<uint32_t> reads(0x20000), writes(0x20000);
+    S9xWramReads = reads.data();
+    S9xWramWrites = writes.data();
+    h.run(60);
+
+    SUBCASE("CPU reads and writes, once a frame each")
+    {
+        // main: WAI; LDA $10 (once a frame). NMI: INC $11 (a read and a write).
+        CHECK(reads[testrom::kTriggerAddr] >= 58);
+        CHECK(reads[testrom::kTriggerAddr] <= 62);
+        CHECK(writes[testrom::kTriggerAddr] == 0u);
+        CHECK(reads[testrom::kFrameCounterAddr] >= 58);
+        CHECK(writes[testrom::kFrameCounterAddr] >= 58);
+        CHECK(writes[testrom::kFrameCounterAddr] <= 62);
+        uint64_t stack = 0; // the NMI pushes its return address and flags
+        for (uint32_t a = 0x100; a < 0x200; a++)
+            stack += writes[a];
+        CHECK(stack >= 4 * 58);
+        CHECK(reads[0x3000] + writes[0x3000] == 0u);
+    }
+
+    SUBCASE("a DMA from WRAM to OAM reads its source")
+    {
+        std::fill(reads.begin(), reads.end(), 0);
+        S9xSetCPU(0x00, 0x4300); // CPU -> PPU, one register
+        S9xSetCPU(0x04, 0x4301); // $2104, OAM data
+        S9xSetCPU(0x00, 0x4302); // from $7E:0300
+        S9xSetCPU(0x03, 0x4303);
+        S9xSetCPU(0x7E, 0x4304);
+        S9xSetCPU(0x20, 0x4305); // 32 bytes
+        S9xSetCPU(0x00, 0x4306);
+        S9xSetCPU(0x01, 0x420B); // go, channel 0
+        for (uint32_t a = 0x300; a < 0x320; a++)
+            CHECK(reads[a] == 1u);
+        CHECK(reads[0x2FF] == 0u);
+        CHECK(reads[0x320] == 0u);
+    }
+
+    SUBCASE("writes through the WMDATA port count at its address")
+    {
+        std::fill(writes.begin(), writes.end(), 0);
+        S9xSetPPU(0x00, 0x2181); // WRAM address $1:5000
+        S9xSetPPU(0x50, 0x2182);
+        S9xSetPPU(0x01, 0x2183);
+        for (int i = 0; i < 3; i++)
+            S9xSetPPU(0xAB, 0x2180);
+        CHECK(writes[0x15000] == 1u);
+        CHECK(writes[0x15002] == 1u);
+        CHECK(writes[0x15003] == 0u);
+        CHECK(h.wram(0x15001) == 0xAB);
+    }
+
+    S9xWramReads = S9xWramWrites = nullptr;
+    h.run(2); // and nothing counts once they're gone
+}
+
+TEST_CASE("the access counter feeds the memory watch per frame")
+{
+    Harness h(testrom::Crash::None, Recipe{}, PolicyKind::Skip);
+    MemoryWatch watch;
+    watch.watch(Target::WRAM, h.memory.size(Target::WRAM));
+    {
+        WramAccessCounter counter;
+        counter.start();
+        CHECK(S9xWramReads != nullptr);
+        for (int i = 0; i < 300; i++)
+        {
+            h.run(1);
+            counter.take(watch);
+        }
+        auto &s = watch.snapshot();
+        REQUIRE(s.reads.size() == 0x20000);
+        CHECK(s.reads[testrom::kTriggerAddr] == doctest::Approx(1.0).epsilon(0.05)); // LDA $10 a frame
+        CHECK(s.writes[testrom::kFrameCounterAddr] == doctest::Approx(1.0).epsilon(0.05)); // INC $11
+        CHECK(s.reads[0x3000] == 0.0f);
+    }
+    CHECK(S9xWramReads == nullptr); // stopped when it went away
+    CHECK(S9xWramWrites == nullptr);
+}

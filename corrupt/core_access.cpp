@@ -192,4 +192,29 @@ void SnesCoreAccess::note_frame_start()
     drawing = IPPU.RenderThisFrame;
 }
 
+void WramAccessCounter::start()
+{
+    if (counting())
+        return;
+    reads.assign(sizeof(Memory.RAM), 0);
+    writes.assign(sizeof(Memory.RAM), 0);
+    S9xWramReads = reads.data();
+    S9xWramWrites = writes.data();
+}
+
+void WramAccessCounter::stop()
+{
+    if (!counting())
+        return;
+    S9xWramReads = S9xWramWrites = nullptr;
+    reads = {};
+    writes = {};
+}
+
+void WramAccessCounter::take(MemoryWatch &watch)
+{
+    if (counting())
+        watch.observe_accesses(reads, writes);
+}
+
 } // namespace corrupt

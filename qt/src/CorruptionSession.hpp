@@ -144,6 +144,7 @@ class CorruptionSession
     corrupt::CrashGuard guard;
     corrupt::RunControl control;
     corrupt::MemoryWatch watch;
+    corrupt::WramAccessCounter wram_access; // counting only while the viewer watches WRAM
     corrupt::CrashMapKeeper crash_map;
     std::vector<corrupt::MapArea> live_map; // VRAM or ARAM layout, re-read between frames while watched
     bool saved_moments = true;

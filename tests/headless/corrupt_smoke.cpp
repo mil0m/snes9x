@@ -1,7 +1,7 @@
 // End-to-end check of the corruption engine inside the real emulator, no window
 // needed:
 //
-//   corrupt-smoke <rom> <recipe.json> [frames=600] [warmup=600] [--guard | --learn [held=3] [from=0] | --replay | --copies | --map | --dump <dir>]
+//   corrupt-smoke <rom> <recipe.json> [frames=600] [warmup=600] [--guard | --learn [held=3] [from=0] | --replay | --copies | --map | --access [dir] | --dump <dir>]
 //
 // Boots the ROM, runs `warmup` frames, saves a state, then runs `frames` twice
 // from that state: once clean, once with the recipe. Reports what the recipe
@@ -19,6 +19,12 @@
 // after the warmup (the recipe is only read, not run), as the memory viewer finds them.
 // With --map it prints the memory viewer's map of VRAM and ARAM after the warmup, with
 // how many bytes in each area are nonzero (graphics and sound data actually there).
+//
+// With --access it counts the game's WRAM reads and writes for `frames` frames after the
+// warmup (the recipe is only read, not run), as the memory viewer's Reads and Writes
+// overlays do, and prints the busiest blocks and how much of WRAM is read but never written.
+// With a dir it also writes wram.bin and the averages a frame as wram.reads.f32 and
+// wram.writes.f32 (raw floats), which CORRUPT_DUMP_DIR turns into viewer pictures.
 //
 // With --learn [held] it plays the recipe guarded for five seeds while learning a crash
 // map, then plays `held` other seeds three ways: plain, avoiding the learned hot blocks,
@@ -324,6 +330,98 @@ std::vector<std::vector<uint8_t>> snapshot_targets()
     return out;
 }
 
+int run_access(int frames, const char *dir)
+{
+    std::vector<uint64_t> reads(0x20000), writes(0x20000);
+    {
+        WramAccessCounter counter;
+        MemoryWatch unused; // take() hands the counts to a watch; sum them here instead
+        counter.start();
+        for (int f = 0; f < frames; f++)
+        {
+            headless::run_frames(1);
+            for (uint32_t i = 0; i < 0x20000; i++)
+            {
+                reads[i] += S9xWramReads[i];
+                writes[i] += S9xWramWrites[i];
+            }
+            counter.take(unused); // starts the counts over
+        }
+    }
+    auto all = snapshot_targets();
+    auto &wram = all[size_t(Target::WRAM)];
+    std::vector<std::pair<Target, CopyRun>> copies;
+    for (auto t : { Target::OAM, Target::CGRAM })
+        for (auto &run : find_copies(wram, all[size_t(t)], 32))
+            copies.push_back({ t, run });
+    auto copy_of = [&](uint32_t block) -> std::string {
+        for (auto &[t, run] : copies)
+            if (block + 15 >= run.haystack_offset && block < run.haystack_offset + run.length)
+                return std::string("  (copy of ") + target_name(t) + ")";
+        return "";
+    };
+
+    uint64_t total_reads = 0, total_writes = 0;
+    size_t read_only = 0, write_only = 0, both = 0, untouched = 0;
+    for (uint32_t i = 0; i < 0x20000; i++)
+    {
+        total_reads += reads[i];
+        total_writes += writes[i];
+        read_only += reads[i] && !writes[i];
+        write_only += writes[i] && !reads[i];
+        both += reads[i] && writes[i];
+        untouched += !reads[i] && !writes[i];
+    }
+    printf("access   %d frames: %.0f reads and %.0f writes of WRAM a frame\n", frames, double(total_reads) / frames,
+           double(total_writes) / frames);
+    printf("bytes    %zu read and written, %zu only read, %zu only written, %zu untouched\n", both, read_only,
+           write_only, untouched);
+    for (auto [name, counts] : { std::pair{ "reads", &reads }, std::pair{ "writes", &writes } })
+    {
+        std::vector<std::pair<uint32_t, uint64_t>> blocks;
+        for (uint32_t b = 0; b < 0x20000; b += 16)
+        {
+            uint64_t n = 0;
+            for (uint32_t i = b; i < b + 16; i++)
+                n += (*counts)[i];
+            if (n)
+                blocks.push_back({ b, n });
+        }
+        std::sort(blocks.begin(), blocks.end(), [](auto &a, auto &b) { return a.second > b.second; });
+        printf("busiest  %s, per 16-byte block:\n", name);
+        for (size_t i = 0; i < blocks.size() && i < 12; i++)
+            printf("  %s  %9.1f a frame%s\n", hex(blocks[i].first).c_str(), double(blocks[i].second) / frames,
+                   copy_of(blocks[i].first).c_str());
+    }
+    if (dir)
+    {
+        auto write = [&](const char *name, const void *data, size_t bytes) {
+            std::string path = std::string(dir) + "/" + name;
+            std::ofstream out(path, std::ios::binary);
+            out.write(static_cast<const char *>(data), std::streamsize(bytes));
+            printf("dump     %s\n", path.c_str());
+        };
+        std::vector<float> r(0x20000), w(0x20000);
+        for (size_t i = 0; i < r.size(); i++)
+        {
+            r[i] = float(double(reads[i]) / frames);
+            w[i] = float(double(writes[i]) / frames);
+        }
+        write("wram.bin", wram.data(), wram.size());
+        write("wram.reads.f32", r.data(), r.size() * sizeof(float));
+        write("wram.writes.f32", w.data(), w.size() * sizeof(float));
+    }
+    for (auto &[t, run] : copies)
+    {
+        uint64_t n = 0;
+        for (uint32_t i = run.haystack_offset; i < run.haystack_offset + run.length; i++)
+            n += reads[i];
+        printf("copy     wram %s..%s of %s: read %.2f times a byte a frame\n", hex(run.haystack_offset).c_str(),
+               hex(run.haystack_offset + run.length - 1).c_str(), target_name(t), double(n) / run.length / frames);
+    }
+    return 0;
+}
+
 } // namespace
 
 int main(int argc, char **argv)
@@ -401,6 +499,8 @@ int main(int argc, char **argv)
         }
         return 0;
     }
+    if (argc > 5 && std::string(argv[5]) == "--access")
+        return run_access(frames, argc > 6 ? argv[6] : nullptr);
     if (argc > 6 && std::string(argv[5]) == "--dump")
     {
         // Raw contents of every target, for looking at real memory in the viewer's tests.

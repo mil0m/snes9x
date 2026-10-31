@@ -20,6 +20,8 @@ class MemoryPane
         Hits,
         Danger,  // the crash map: crash rate
         Crashes, // the crash map: how many crashes
+        Reads,   // how often the game reads each byte (WRAM)
+        Writes,  // how often the game writes it (WRAM)
         None,
     };
 
@@ -44,6 +46,8 @@ class MemoryPane
     {
         uint32_t hits = 1;
         uint32_t crashes = 1;
+        float reads = 1.0f; // per frame
+        float writes = 1.0f;
     };
 
     static OverlayScale overlayScale(const corrupt::MemorySnapshot &snap)
@@ -53,6 +57,10 @@ class MemoryPane
             s.hits = std::max(s.hits, h);
         for (auto &b : snap.crash_blocks)
             s.crashes = std::max(s.crashes, b.crashes);
+        for (auto r : snap.reads)
+            s.reads = std::max(s.reads, r);
+        for (auto w : snap.writes)
+            s.writes = std::max(s.writes, w);
         return s;
     }
 
@@ -77,6 +85,10 @@ class MemoryPane
             uint32_t c = block < snap.crash_blocks.size() ? snap.crash_blocks[block].crashes : 0;
             return c ? countLevel(c, scale.crashes) : 0.0f;
         }
+        case Overlay::Reads:
+            return offset < snap.reads.size() ? rateLevel(snap.reads[offset], scale.reads) : 0.0f;
+        case Overlay::Writes:
+            return offset < snap.writes.size() ? rateLevel(snap.writes[offset], scale.writes) : 0.0f;
         case Overlay::None:
             return 0.0f;
         }
@@ -87,6 +99,16 @@ class MemoryPane
     static float countLevel(uint32_t n, uint32_t most)
     {
         return 0.25f + 0.75f * std::log1p(float(n)) / std::log1p(float(std::max(n, most)));
+    }
+
+    // Accesses per frame against the busiest, like countLevel. Below about once in 10 s
+    // (or long faded), nothing.
+    static float rateLevel(float per_frame, float most)
+    {
+        constexpr float kFloor = 0.001f;
+        if (per_frame < kFloor)
+            return 0.0f;
+        return 0.25f + 0.75f * std::log1p(per_frame) / std::log1p(std::max(per_frame, most));
     }
 
     // Whether the overlay is about the crash map, so hot blocks get marked.
@@ -102,6 +124,8 @@ class MemoryPane
         return overlay == Overlay::Hits     ? QColor(150, 90, 230)
                : overlay == Overlay::Danger  ? QColor(225, 40, 40)
                : overlay == Overlay::Crashes ? QColor(240, 185, 20)
+               : overlay == Overlay::Reads   ? QColor(40, 140, 240)
+               : overlay == Overlay::Writes  ? QColor(40, 200, 80)
                                             : QColor(235, 110, 40);
     }
 

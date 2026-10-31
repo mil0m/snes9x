@@ -63,6 +63,27 @@ void MemoryWatch::observe(const MemoryAccess &mem, const std::deque<LoggedEvent>
     seen_frame = frame;
 }
 
+void MemoryWatch::observe_accesses(std::vector<uint32_t> &reads, std::vector<uint32_t> &writes)
+{
+    size_t n = snap.bytes.size();
+    if (active && snap.target == Target::WRAM && reads.size() >= n && writes.size() >= n)
+    {
+        if (snap.reads.size() != n)
+        {
+            snap.reads.assign(n, 0.0f);
+            snap.writes.assign(n, 0.0f);
+        }
+        constexpr float kNew = 1.0f - kDecay;
+        for (size_t i = 0; i < n; i++)
+        {
+            snap.reads[i] = snap.reads[i] * kDecay + float(reads[i]) * kNew;
+            snap.writes[i] = snap.writes[i] * kDecay + float(writes[i]) * kNew;
+        }
+    }
+    std::fill(reads.begin(), reads.end(), 0);
+    std::fill(writes.begin(), writes.end(), 0);
+}
+
 namespace
 {
 

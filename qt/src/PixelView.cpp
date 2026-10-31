@@ -372,7 +372,8 @@ void PixelView::paintEvent(QPaintEvent *)
                 colour = rgb(byte_colour(snap.bytes[offset]));
             else
             {
-                colour = rgb(byte_grey(snap.bytes[offset]));
+                // Dimmed, so a single coloured dot stands out at 1x; the bytes still show.
+                colour = blend(rgb(byte_grey(snap.bytes[offset])), qRgb(0, 0, 0), 0.55f);
                 if (float t = overlayLevel(snap, overlay, offset, scale); t > 0.0f)
                     colour = blend(colour, hot, 0.2f + 0.8f * t);
             }

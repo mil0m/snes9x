@@ -587,8 +587,12 @@ static inline void REGISTER_2122 (uint8 Byte)
 	PPU.CGFLIP ^= 1;
 }
 
+extern uint32	*S9xWramWrites; // corruption tooling, see getset.h
+
 static inline void REGISTER_2180 (uint8 Byte)
 {
+	if (S9xWramWrites)
+		S9xWramWrites[PPU.WRAM & 0x1ffff]++;
 	Memory.RAM[PPU.WRAM++] = Byte;
 	PPU.WRAM &= 0x1ffff;
 }
