@@ -108,8 +108,15 @@ std::vector<std::vector<uint8_t>> snapshot_targets();
 
 // One guarded run that also learns a crash map. Returns crashes caught. With a fixed mask,
 // the rules avoid that instead of what the keeper learns.
+// With probes, it also counts the logged writes that land in each probe mask.
+struct Probe
+{
+    const HotMask *mask = nullptr;
+    size_t hits = 0;
+};
+
 int guarded_learning(const Recipe &recipe, int frames, CrashMapKeeper &keeper, bool &gave_up,
-                     const HotMask *fixed = nullptr)
+                     const HotMask *fixed = nullptr, std::vector<Probe> *probes = nullptr, size_t *writes = nullptr)
 {
     CrashGuard guard;
     guard.set_policy(recipe.crash_policy.value_or(PolicyKind::Reroll));
@@ -124,6 +131,14 @@ int guarded_learning(const Recipe &recipe, int frames, CrashMapKeeper &keeper, b
     {
         headless::run_frames(1);
         keeper.observe(engine.event_log(), engine.current_frame());
+        if (writes)
+            for (auto it = engine.event_log().rbegin();
+                 it != engine.event_log().rend() && it->frame == engine.current_frame(); ++it)
+            {
+                ++*writes;
+                for (auto &p : *probes)
+                    p.hits += p.mask->is_hot(it->write.target, it->write.offset);
+            }
         auto out = guard.between_frames(engine, access);
         if (out.kind == GuardOutcome::Nothing)
             continue;
@@ -212,16 +227,19 @@ int run_learning(const Recipe &recipe, int frames, int held, int from)
             r.avoid_hot = true;
         int crashes[3];
         const HotMask *masks[3] = { nullptr, &learned, &random };
+        std::vector<Probe> probes = { { &learned }, { &random } }; // counted in every arm; printed for plain
+        size_t writes[3] = {};
         for (int arm = 0; arm < 3; arm++)
         {
             headless::load_state(start);
             CrashMapKeeper keeper;
             HotMask none;
-            crashes[arm] = guarded_learning(arm ? avoiding : plain, frames, keeper, gave_up, arm ? masks[arm] : &none);
+            crashes[arm] = guarded_learning(arm ? avoiding : plain, frames, keeper, gave_up, arm ? masks[arm] : &none,
+                                            &probes, &writes[arm]);
             totals[arm] += crashes[arm];
         }
-        printf("seed %-3llu %2d crashes plain, %2d avoiding learned, %2d avoiding random\n",
-               (unsigned long long)seed, crashes[0], crashes[1], crashes[2]);
+        printf("seed %-3llu %2d crashes plain, %2d avoiding learned, %2d avoiding random; writes %zu / %zu / %zu\n",
+               (unsigned long long)seed, crashes[0], crashes[1], crashes[2], writes[0], writes[1], writes[2]);
         learned_better += crashes[1] < crashes[0];
         learned_worse += crashes[1] > crashes[0];
     }
