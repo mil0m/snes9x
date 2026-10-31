@@ -1,4 +1,5 @@
 #pragma once
+#include "crash_map.h"
 #include "engine.h"
 #include "memory.h"
 
@@ -16,6 +17,9 @@ struct MemorySnapshot
     std::vector<float> heat;     // how often the game changes each byte (about 50 = every frame)
     std::vector<uint32_t> hits;  // how often the recipe wrote each byte since watching (or clear_hits)
     std::vector<float> danger;   // the crash map: how often corrupting each byte crashed the game, 0..1
+    // The crash map per 16-byte block (CrashMap::kBlock): everyone's counts, and 1 where hot.
+    std::vector<BlockCounts> crash_blocks;
+    std::vector<uint8_t> hot_blocks;
 };
 
 // Watches one memory target for the memory viewer, once per frame between frames:

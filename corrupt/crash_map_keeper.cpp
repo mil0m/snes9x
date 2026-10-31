@@ -61,6 +61,23 @@ std::vector<float> CrashMapKeeper::danger(Target t, size_t size) const
     return out;
 }
 
+std::vector<BlockCounts> CrashMapKeeper::counts_per_block(Target t, size_t size) const
+{
+    std::vector<BlockCounts> out((size + CrashMap::kBlock - 1) / CrashMap::kBlock);
+    for (auto &[block, counts] : all.blocks(t))
+        if (block / CrashMap::kBlock < out.size())
+            out[block / CrashMap::kBlock] = counts;
+    return out;
+}
+
+std::vector<uint8_t> CrashMapKeeper::hot_per_block(Target t, size_t size) const
+{
+    std::vector<uint8_t> out((size + CrashMap::kBlock - 1) / CrashMap::kBlock, 0);
+    for (size_t i = 0; i < out.size(); i++)
+        out[i] = mask.is_hot(t, uint32_t(i * CrashMap::kBlock)) ? 1 : 0;
+    return out;
+}
+
 bool CrashMapKeeper::rebuild()
 {
     all = others;

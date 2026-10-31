@@ -42,6 +42,13 @@ struct FakeSource : MemorySource
         s.hits.assign(size, 0);
         for (size_t i = 0x1C00; i < std::min<size_t>(0x1E20, size); i++)
             s.heat[i] = 20.0f;
+        s.crash_blocks.resize((size + 15) / 16);
+        s.hot_blocks.assign(s.crash_blocks.size(), 0);
+        if (s.crash_blocks.size() > 0x1F3)
+        {
+            s.crash_blocks[0x1F3] = { 5, 12 }; // 0x1F30
+            s.hot_blocks[0x1F3] = 1;
+        }
         return s;
     }
     std::vector<CopyRun> findCopies(Target of) override
@@ -206,6 +213,8 @@ TEST_CASE("overlay choice and clearing hits")
     child<QPushButton>(v, "clear_hits")->click();
     choose(v, "overlay", "danger"); // the crash map
     CHECK(child<QComboBox>(v, "overlay")->currentText().contains("crash"));
+    choose(v, "overlay", "crashes"); // its frequency map
+    CHECK(child<QComboBox>(v, "overlay")->currentText().contains("often"));
     CHECK(src.clears == 1);
 }
 
@@ -433,6 +442,26 @@ TEST_SUITE("the pixel view in the viewer")
         auto hover = child<QLabel>(v, "hover")->text();
         CHECK(hover.contains("0x0041"));
         CHECK(hover.contains("0x11"));
+        CHECK_FALSE(hover.contains("crash")); // the map knows nothing there
+    }
+
+    TEST_CASE("hovering a byte the crash map knows shows its block's counts")
+    {
+        FakeSource src;
+        MemoryViewer v(src);
+        v.show();
+        v.refresh();
+        choose(v, "mode", "pixels");
+        auto pixels = child<PixelView>(v, "pixels");
+        QApplication::processEvents();
+        pixels->onHover(0x1F35);
+        auto hover = child<QLabel>(v, "hover")->text();
+        CHECK(hover.contains("0x1F35"));
+        CHECK(hover.contains("block 0x1F30"));
+        CHECK(hover.contains("5 crashes"));
+        CHECK(hover.contains("12 calm"));
+        CHECK(hover.contains("0.26"));
+        CHECK(hover.contains("hot"));
     }
 
     TEST_CASE("the row width box sets the pixel rows, per memory")

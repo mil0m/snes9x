@@ -92,6 +92,7 @@ MemoryViewer::MemoryViewer(MemorySource &source, QWidget *parent)
     overlay_combo->addItem(tr("Activity: what the game changes"), QString("activity"));
     overlay_combo->addItem(tr("Hits: what the recipe wrote"), QString("hits"));
     overlay_combo->addItem(tr("Danger: where corruption crashed the game"), QString("danger"));
+    overlay_combo->addItem(tr("Crashes: how often corruption here crashed it"), QString("crashes"));
     overlay_combo->addItem(tr("Plain"), QString("none"));
     goto_edit = new QLineEdit(this);
     goto_edit->setObjectName("goto");
@@ -227,7 +228,8 @@ MemoryViewer::MemoryViewer(MemorySource &source, QWidget *parent)
     connect(overlay_combo, &QComboBox::currentIndexChanged, this, [this] {
         auto o = overlay_combo->currentData().toString();
         auto overlay = o == "hits"     ? MemoryPane::Overlay::Hits
-                       : o == "danger" ? MemoryPane::Overlay::Danger
+                       : o == "danger"  ? MemoryPane::Overlay::Danger
+                       : o == "crashes" ? MemoryPane::Overlay::Crashes
                        : o == "none"   ? MemoryPane::Overlay::None
                                        : MemoryPane::Overlay::Activity;
         view->setOverlay(overlay);
@@ -356,7 +358,24 @@ void MemoryViewer::hovered(std::optional<uint32_t> offset)
     auto &snap = pixels->snapshot();
     if (!offset || *offset >= snap.bytes.size())
         return hover_label->clear();
-    hover_label->setText(QString("%1 = 0x%2").arg(hex4(*offset)).arg(snap.bytes[*offset], 2, 16, QChar('0')).toUpper().replace("0X", "0x"));
+    auto text = QString("%1 = 0x%2").arg(hex4(*offset)).arg(snap.bytes[*offset], 2, 16, QChar('0')).toUpper().replace("0X", "0x");
+    // What the crash map knows about the byte's block, whatever the overlay.
+    size_t block = *offset / CrashMap::kBlock;
+    if (block < snap.crash_blocks.size())
+    {
+        auto c = snap.crash_blocks[block];
+        if (c.crashes || c.survivals)
+        {
+            text += tr(" · block %1: %2 crashes, %3 calm, danger %4")
+                        .arg(hex4(uint32_t(block * CrashMap::kBlock)))
+                        .arg(c.crashes)
+                        .arg(c.survivals)
+                        .arg(CrashMap::danger_of(c), 0, 'f', 2);
+            if (block < snap.hot_blocks.size() && snap.hot_blocks[block])
+                text += tr(", hot");
+        }
+    }
+    hover_label->setText(text);
 }
 
 void MemoryViewer::tileHovered(std::optional<uint32_t> tile)

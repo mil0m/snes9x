@@ -127,7 +127,7 @@ void PixelView::setSnapshot(const MemorySnapshot &snapshot)
     bool same = snapshot.target == snap.target && snapshot.bytes.size() == snap.bytes.size();
     uint32_t keep = same ? firstVisibleOffset() : 0;
     snap = snapshot;
-    max_hits = maxHits(snap);
+    scale = overlayScale(snap);
     if (!same)
     {
         anchor.reset();
@@ -373,7 +373,7 @@ void PixelView::paintEvent(QPaintEvent *)
             else
             {
                 colour = rgb(byte_grey(snap.bytes[offset]));
-                if (float t = overlayLevel(snap, overlay, offset, max_hits); t > 0.0f)
+                if (float t = overlayLevel(snap, overlay, offset, scale); t > 0.0f)
                     colour = blend(colour, hot, 0.2f + 0.8f * t);
             }
             if (sel && offset >= sel->first && offset <= sel->second)
@@ -385,7 +385,40 @@ void PixelView::paintEvent(QPaintEvent *)
     p.drawImage(area, image);
     p.setPen(palette().color(QPalette::Mid)); // so a white fill doesn't melt into the page
     p.drawRect(QRect(imageLeft(), 0, columns_ * zoom_, rows * zoom_).adjusted(-1, -1, 0, 0));
+
+    // Hot blocks (what Avoid dangerous bytes skips), on the crash map overlays: outlined
+    // from 4x up, and a tick beside their rows at any zoom (at 1x a block is a dot or two).
+    std::vector<int> hot_rows;
+    if (showsHot(overlay) && !snap.hot_blocks.empty())
+    {
+        constexpr size_t kBlock = corrupt::CrashMap::kBlock;
+        p.setPen(QColor(255, 255, 255));
+        p.setBrush(Qt::NoBrush);
+        for (int r = 0; r < rows; r++)
+        {
+            size_t row_start = size_t(first_row + r) * size_t(columns_);
+            size_t row_end = std::min(snap.bytes.size(), row_start + size_t(columns_));
+            bool any = false;
+            for (size_t block = row_start / kBlock; block * kBlock < row_end; block++)
+            {
+                if (block >= snap.hot_blocks.size() || !snap.hot_blocks[block])
+                    continue;
+                any = true;
+                if (zoom_ < 4)
+                    break;
+                int first = int(std::max(row_start, block * kBlock) - row_start);
+                int last = int(std::min(row_end, (block + 1) * kBlock) - row_start); // past the end
+                p.drawRect(QRect(imageLeft() + first * zoom_, r * zoom_, (last - first) * zoom_ - 1, zoom_ - 1));
+            }
+            if (any)
+                hot_rows.push_back(r);
+        }
+    }
+
     p.fillRect(QRect(0, 0, addressWidth() - 1, viewport()->height()), background); // rows scroll under it
+    int tick = std::max(3, zoom_);
+    for (int r : hot_rows)
+        p.fillRect(QRect(addressWidth() - 12, r * zoom_ + zoom_ / 2 - tick / 2, 3, tick), QColor(225, 40, 40));
 
     // A bar beside the rows the selection covers: at 1:1 a selection can be a pixel high.
     if (sel)

@@ -88,7 +88,7 @@ void TileView::setSnapshot(const MemorySnapshot &snapshot)
     bool same = snapshot.target == snap.target && snapshot.bytes.size() == snap.bytes.size();
     uint32_t keep = same ? firstVisibleOffset() : 0;
     snap = snapshot;
-    max_hits = maxHits(snap);
+    scale = overlayScale(snap);
     if (!same)
     {
         anchor.reset();
@@ -353,7 +353,7 @@ void TileView::paintEvent(QPaintEvent *)
             float level = 0.0f;
             if (overlay != Overlay::None)
                 for (size_t i = start; i < std::min(snap.bytes.size(), start + span); i++)
-                    level = std::max(level, overlayLevel(snap, overlay, i, max_hits));
+                    level = std::max(level, overlayLevel(snap, overlay, i, scale));
             bool selected = sel && start >= sel->first && start <= sel->second;
             auto pixels = decode_tile(snap.bytes, start, format_);
             for (int y = 0; y < 8; y++)

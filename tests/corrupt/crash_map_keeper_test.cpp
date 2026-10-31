@@ -116,4 +116,31 @@ TEST_SUITE("crash map keeper")
         CHECK(d[0x20] == 0.0f);
         CHECK(f.keeper.danger(Target::VRAM, 16) == std::vector<float>(16, 0.0f));
     }
+
+    TEST_CASE("counts and hot flags per block for the viewer, everyone's summed")
+    {
+        Feed f;
+        CrashMaps loaded;
+        loaded.mine.add_crash(Target::WRAM, 0x10, 2);
+        loaded.others.add_crash(Target::WRAM, 0x12, 1); // Erik's, same block
+        loaded.mine.add_crash(Target::WRAM, 0x40, 1);   // one crash is never hot
+        loaded.mine.add_survival(Target::WRAM, 0x80, 20);
+        f.keeper.reset(loaded);
+
+        auto counts = f.keeper.counts_per_block(Target::WRAM, 0x95); // the last block is partial
+        REQUIRE(counts.size() == 10);
+        CHECK(counts[1].crashes == 3);
+        CHECK(counts[4].crashes == 1);
+        CHECK(counts[8].survivals == 20);
+        CHECK(counts[0].crashes + counts[0].survivals == 0);
+
+        auto hot = f.keeper.hot_per_block(Target::WRAM, 0x95);
+        REQUIRE(hot.size() == 10);
+        CHECK(hot[1] == 1);
+        CHECK(hot[4] == 0);
+        CHECK(hot[8] == 0);
+
+        CHECK(f.keeper.counts_per_block(Target::WRAM, 0x20).size() == 2); // blocks past the end left out
+        CHECK(f.keeper.hot_per_block(Target::VRAM, 32) == std::vector<uint8_t>(2, 0));
+    }
 }

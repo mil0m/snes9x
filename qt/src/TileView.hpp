@@ -82,7 +82,7 @@ class TileView : public QAbstractScrollArea, public MemoryPane
     std::optional<uint32_t> anchor; // bytes; widened to whole tiles
     std::optional<uint32_t> cursor;
     bool dragging = false;
-    uint32_t max_hits = 1;
+    OverlayScale scale;
     int palette_row = 0;
     int per_row = 16;
     int zoom_ = 2;

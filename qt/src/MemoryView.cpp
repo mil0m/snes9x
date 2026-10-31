@@ -61,7 +61,7 @@ void MemoryView::setSnapshot(const MemorySnapshot &snapshot)
 {
     bool same = snapshot.target == snap.target && snapshot.bytes.size() == snap.bytes.size();
     snap = snapshot;
-    max_hits = maxHits(snap);
+    scale = overlayScale(snap);
     if (!same)
     {
         anchor.reset();
@@ -84,7 +84,7 @@ void MemoryView::setOverlay(Overlay o)
 
 float MemoryView::level(size_t offset) const
 {
-    return overlayLevel(snap, overlay, offset, max_hits);
+    return overlayLevel(snap, overlay, offset, scale);
 }
 
 QColor MemoryView::heatColor(float t) const

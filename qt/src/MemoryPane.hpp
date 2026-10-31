@@ -18,7 +18,8 @@ class MemoryPane
     {
         Activity,
         Hits,
-        Danger, // the crash map
+        Danger,  // the crash map: crash rate
+        Crashes, // the crash map: how many crashes
         None,
     };
 
@@ -38,8 +39,25 @@ class MemoryPane
     std::function<void()> onSelectionChanged;
 
   protected:
+    // The busiest byte or block, for the overlays that count.
+    struct OverlayScale
+    {
+        uint32_t hits = 1;
+        uint32_t crashes = 1;
+    };
+
+    static OverlayScale overlayScale(const corrupt::MemorySnapshot &snap)
+    {
+        OverlayScale s;
+        for (auto h : snap.hits)
+            s.hits = std::max(s.hits, h);
+        for (auto &b : snap.crash_blocks)
+            s.crashes = std::max(s.crashes, b.crashes);
+        return s;
+    }
+
     // 0..1: how strongly to paint `offset` for the overlay.
-    static float overlayLevel(const corrupt::MemorySnapshot &snap, Overlay overlay, size_t offset, uint32_t max_hits)
+    static float overlayLevel(const corrupt::MemorySnapshot &snap, Overlay overlay, size_t offset, const OverlayScale &scale)
     {
         constexpr float kActivityFull = 50.0f; // a byte the game changes every frame
         switch (overlay)
@@ -49,29 +67,41 @@ class MemoryPane
             return offset < snap.heat.size() ? std::log1p(snap.heat[offset]) / std::log1p(kActivityFull) : 0.0f;
         case Overlay::Hits:
             return offset < snap.hits.size() && snap.hits[offset]
-                       ? 0.25f + 0.75f * std::log1p(float(snap.hits[offset])) / std::log1p(float(max_hits))
+                       ? countLevel(snap.hits[offset], scale.hits)
                        : 0.0f;
         case Overlay::Danger:
             // Full strength from 0.6; a block that crashed once (1/3) shows at half.
             return offset < snap.danger.size() ? std::min(1.0f, snap.danger[offset] / 0.6f) : 0.0f;
+        case Overlay::Crashes: {
+            size_t block = offset / corrupt::CrashMap::kBlock;
+            uint32_t c = block < snap.crash_blocks.size() ? snap.crash_blocks[block].crashes : 0;
+            return c ? countLevel(c, scale.crashes) : 0.0f;
+        }
         case Overlay::None:
             return 0.0f;
         }
         return 0.0f;
     }
 
-    static uint32_t maxHits(const corrupt::MemorySnapshot &snap)
+    // A count against the busiest: logarithmic, from a quarter so a single one still shows.
+    static float countLevel(uint32_t n, uint32_t most)
     {
-        uint32_t most = 1;
-        for (auto h : snap.hits)
-            most = std::max(most, h);
-        return most;
+        return 0.25f + 0.75f * std::log1p(float(n)) / std::log1p(float(std::max(n, most)));
+    }
+
+    // Whether the overlay is about the crash map, so hot blocks get marked.
+    static bool showsHot(Overlay overlay) { return overlay == Overlay::Danger || overlay == Overlay::Crashes; }
+    static bool isHot(const corrupt::MemorySnapshot &snap, size_t offset)
+    {
+        size_t block = offset / corrupt::CrashMap::kBlock;
+        return block < snap.hot_blocks.size() && snap.hot_blocks[block];
     }
 
     static QColor overlayColor(Overlay overlay)
     {
         return overlay == Overlay::Hits     ? QColor(150, 90, 230)
-               : overlay == Overlay::Danger ? QColor(225, 40, 40)
+               : overlay == Overlay::Danger  ? QColor(225, 40, 40)
+               : overlay == Overlay::Crashes ? QColor(240, 185, 20)
                                             : QColor(235, 110, 40);
     }
 

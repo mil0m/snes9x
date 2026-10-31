@@ -378,6 +378,80 @@ TEST_CASE("the danger overlay paints the crash map in red")
     shot(s.view, "pixel-view-danger");
 }
 
+TEST_CASE("the crashes overlay is a frequency map: more crashes, stronger gold")
+{
+    Shown s(8);
+    auto snap = sample();
+    snap.crash_blocks.resize(snap.bytes.size() / CrashMap::kBlock);
+    snap.crash_blocks[2].crashes = 1;  // 0x20..0x2F: once
+    snap.crash_blocks[4].crashes = 30; // 0x40..0x4F: the busiest
+    snap.crash_blocks[6].survivals = 50; // only calm: nothing to show
+    s.view.setSnapshot(snap);
+    s.view.setOverlay(MemoryPane::Overlay::Crashes);
+    QImage img = s.view.viewport()->grab().toImage();
+    auto at = [&](uint32_t offset) { return img.pixelColor(s.view.pixelRect(offset).center()); };
+    auto tint = [](QColor c) { return c.red() - c.blue(); }; // grey is 0
+    QColor once = at(0x25), most = at(0x45), calm = at(0x65);
+    CHECK(tint(once) > 20);
+    CHECK(tint(most) > tint(once) + 40);
+    CHECK(most.green() > most.blue() + 40); // gold, not Danger's red
+    CHECK(tint(calm) == 0);
+    shot(s.view, "pixel-view-crashes");
+}
+
+TEST_CASE("hot blocks: a tick beside their rows, and an outline when zoomed in")
+{
+    auto snap = sample();
+    snap.crash_blocks.resize(snap.bytes.size() / CrashMap::kBlock);
+    snap.crash_blocks[0x404].crashes = 5; // 0x4040
+    snap.hot_blocks.assign(snap.bytes.size() / CrashMap::kBlock, 0);
+    auto plain = snap;
+    snap.hot_blocks[0x404] = 1;
+
+    auto grab = [](PixelView &v) { return v.viewport()->grab().toImage(); };
+    auto gutter_red = [](const QImage &img, int left, QRect row) {
+        int reds = 0;
+        for (int x = std::max(0, left - 12); x < left; x++)
+            for (int y = row.top(); y <= row.bottom(); y++)
+            {
+                QColor c = img.pixelColor(x, y);
+                reds += c.red() > c.green() + 80 && c.red() > c.blue() + 80;
+            }
+        return reds;
+    };
+
+    for (auto overlay : { MemoryPane::Overlay::Danger, MemoryPane::Overlay::Crashes, MemoryPane::Overlay::Activity })
+    {
+        CAPTURE(int(overlay));
+        bool marks = overlay != MemoryPane::Overlay::Activity;
+        Shown s(1);
+        s.view.setOverlay(overlay);
+        s.view.scrollTo(0x4000);
+        QRect row = s.view.pixelRect(0x4040);
+        int left = s.view.pixelRect(0x4000).left();
+        s.view.setSnapshot(plain);
+        int before = gutter_red(grab(s.view), left, row);
+        s.view.setSnapshot(snap);
+        int after = gutter_red(grab(s.view), left, row);
+        CHECK((after > before) == marks);
+        if (overlay == MemoryPane::Overlay::Danger)
+            shot(s.view, "pixel-view-hot-1x");
+
+        s.view.setZoom(8);
+        s.view.scrollTo(0x4000);
+        s.view.setSnapshot(plain);
+        QImage without = grab(s.view);
+        s.view.setSnapshot(snap);
+        QImage with = grab(s.view);
+        QRect first = s.view.pixelRect(0x4040), last = s.view.pixelRect(0x404F), mid = s.view.pixelRect(0x4045);
+        CHECK((with.pixelColor(first.topLeft()) != without.pixelColor(first.topLeft())) == marks);
+        CHECK((with.pixelColor(last.bottomRight()) != without.pixelColor(last.bottomRight())) == marks);
+        CHECK(with.pixelColor(mid.center()) == without.pixelColor(mid.center())); // the bytes still show
+        if (overlay == MemoryPane::Overlay::Crashes)
+            shot(s.view, "pixel-view-hot-8x");
+    }
+}
+
 TEST_CASE("pictures of the pixel view")
 {
     Shown s(1, QSize(600, 560));

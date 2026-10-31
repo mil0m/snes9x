@@ -159,3 +159,25 @@ TEST_CASE("an empty snapshot draws nothing and selects nothing")
     CHECK_FALSE(v.offsetAt(QPoint(200, 100)));
     CHECK(v.cellRect(0).isEmpty());
 }
+
+TEST_CASE("the crashes overlay colours blocks by how often they crashed")
+{
+    MemoryView v;
+    v.resize(v.minimumSizeHint());
+    auto snap = sample();
+    snap.crash_blocks.resize(snap.bytes.size() / CrashMap::kBlock);
+    snap.crash_blocks[1].crashes = 2;
+    snap.crash_blocks[3].crashes = 40;
+    v.setSnapshot(snap);
+    v.setOverlay(MemoryPane::Overlay::Crashes);
+    v.show();
+    QApplication::processEvents();
+    QImage img = v.viewport()->grab().toImage();
+    auto tint = [&](uint32_t offset) { // a cell corner, clear of the text; 0 on the plain background
+        QColor c = img.pixelColor(v.cellRect(offset).topLeft() + QPoint(1, 1));
+        return c.red() - c.blue();
+    };
+    CHECK(tint(0x00) == 0);
+    CHECK(tint(0x15) > 20);
+    CHECK(tint(0x35) > tint(0x15) + 40);
+}

@@ -312,6 +312,8 @@ MemorySnapshot CorruptionSession::memorySnapshot()
     std::lock_guard lock(mutex);
     auto snap = watch.snapshot();
     snap.danger = crash_map.danger(snap.target, snap.bytes.size());
+    snap.crash_blocks = crash_map.counts_per_block(snap.target, snap.bytes.size());
+    snap.hot_blocks = crash_map.hot_per_block(snap.target, snap.bytes.size());
     return snap;
 }
 

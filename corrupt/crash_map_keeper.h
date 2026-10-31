@@ -30,6 +30,10 @@ class CrashMapKeeper
     const HotMask &hot_mask() const { return mask; }
     size_t hot_blocks() const { return all.hot_blocks(); }
     std::vector<float> danger(Target t, size_t size) const; // per byte, 0..1, for the viewer
+    // Per 16-byte block of the first `size` bytes, for the viewer: everyone's counts, and
+    // 1 where the block is hot (what rules with avoid_hot skip).
+    std::vector<BlockCounts> counts_per_block(Target t, size_t size) const;
+    std::vector<uint8_t> hot_per_block(Target t, size_t size) const;
 
   private:
     bool rebuild(); // true when the hot set changed

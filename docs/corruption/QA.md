@@ -233,3 +233,12 @@ scratch folder. By default Snes9x writes the `.srm` next to the ROM.
 6. Copy the file to `crashmap.erik.json` in the same folder and reload the game.
    - [ ] The red gets stronger: both files count.
 
+## 18. Crash counts in the viewer
+1. Play a few minutes of **low-wram-roulette** with the guard on, then open the memory viewer on **wram** in **Pixels**.
+2. Pick the **Crashes** overlay.
+   - [ ] Gold where crashes were blamed, brighter where there were more. Blocks that were only ever calm stay grey.
+3. Hover a gold dot.
+   - [ ] The line under the view adds `block 0x…: N crashes, M calm, danger 0.xx`, and `, hot` on hot blocks. Bytes the map knows nothing about show only the address and value.
+4. If the panel says the map knows dangerous areas, switch to **Danger** and then **Crashes**.
+   - [ ] A red tick sits in the address gutter beside each row with a hot block, at 1×. From 4× zoom up, hot blocks also get a white outline.
+   - [ ] Activity, Hits and Plain show no ticks or outlines.

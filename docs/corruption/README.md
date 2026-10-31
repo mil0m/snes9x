@@ -223,7 +223,10 @@ small prior), and a crash rate at least 3 times the rest of that memory's. The l
 matters in games whose crashes blame nearly everything: there the busiest blocks reach 0.4
 by chance. Rules with **Avoid dangerous bytes** ticked (the rule editor; `avoid_hot` in
 the JSON) skip their writes to those bytes, and every other write stays exactly the same. The memory viewer's
-**Danger** overlay shows the map in red, and the panel says how many dangerous areas it
+**Danger** overlay shows the map in red (the crash rate) and the **Crashes** overlay in gold
+(how many crashes each block was blamed for). Under both, the pixel view puts a red tick
+beside rows with a dangerous block and, from 4× zoom, outlines the block; hovering a byte
+shows its block's crashes, calm runs and danger. The panel says how many dangerous areas it
 knows. It's kept in `<game>/crashmap.<you>.json`, one file per person like the journal;
 everyone's files add up when the game loads, so you and Erik teach each other's
 recipes. It learns slowly, and only some games have clear dangerous spots. On Fire

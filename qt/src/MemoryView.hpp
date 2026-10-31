@@ -58,7 +58,7 @@ class MemoryView : public QAbstractScrollArea, public MemoryPane
     std::optional<uint32_t> cursor;
     bool dragging = false;
     std::vector<float> overview; // one level per pixel row of the strip
-    uint32_t max_hits = 1;
+    OverlayScale scale;
     int row_height = 16;
     int cell_width = 24;
 };
