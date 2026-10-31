@@ -1,4 +1,5 @@
 #pragma once
+#include "code_map.h"
 #include "crash_map.h"
 #include "engine.h"
 #include "memory.h"
@@ -24,6 +25,10 @@ struct MemorySnapshot
     // (decaying like heat). Empty for other targets, and until counting starts.
     std::vector<float> reads;
     std::vector<float> writes;
+    // ROM only: everyone's code map (codeflag bits per byte), and where each 4 KB of ROM
+    // shows up for the CPU, for disassembly. Empty for other targets.
+    std::vector<uint8_t> code;
+    RomAddresses rom_where;
 };
 
 // Watches one memory target for the memory viewer, once per frame between frames:

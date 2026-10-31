@@ -110,6 +110,9 @@ MemoryViewer::MemoryViewer(MemorySource &source, QWidget *parent)
     overlay_combo->addItem(tr("Crashes: how often corruption here crashed it"), QString("crashes"));
     overlay_combo->addItem(tr("Reads: how often the game reads it (WRAM)"), QString("reads"));
     overlay_combo->addItem(tr("Writes: how often the game writes it (WRAM)"), QString("writes"));
+    overlay_combo->addItem(tr("Code: what the CPU runs (ROM)"), QString("code"));
+    overlay_combo->addItem(tr("Data: what the CPU reads as data (ROM)"), QString("data"));
+    overlay_combo->addItem(tr("DMA: what DMA copies to the PPU (ROM)"), QString("dma"));
     overlay_combo->addItem(tr("Plain"), QString("none"));
     goto_edit = new QLineEdit(this);
     goto_edit->setObjectName("goto");
@@ -279,6 +282,9 @@ MemoryViewer::MemoryViewer(MemorySource &source, QWidget *parent)
                        : o == "crashes" ? MemoryPane::Overlay::Crashes
                        : o == "reads"   ? MemoryPane::Overlay::Reads
                        : o == "writes"  ? MemoryPane::Overlay::Writes
+                       : o == "code"    ? MemoryPane::Overlay::Code
+                       : o == "data"    ? MemoryPane::Overlay::Data
+                       : o == "dma"     ? MemoryPane::Overlay::Dma
                        : o == "none"   ? MemoryPane::Overlay::None
                                        : MemoryPane::Overlay::Activity;
         view->setOverlay(overlay);
@@ -443,6 +449,28 @@ void MemoryViewer::hovered(std::optional<uint32_t> offset)
     // How often the game reads and writes it (WRAM only), whatever the overlay.
     if (*offset < snap.reads.size() && *offset < snap.writes.size())
         text += tr(" · read %1, written %2 a frame").arg(rateText(snap.reads[*offset]), rateText(snap.writes[*offset]));
+    // What the code map knows about it (ROM only), whatever the overlay.
+    if (uint8_t f = *offset < snap.code.size() ? snap.code[*offset] : 0)
+    {
+        if (auto in = instruction_at(snap.bytes, snap.code, *offset, snap.rom_where))
+        {
+            QString bytes;
+            for (int i = 0; i < in->length && in->start + i < snap.bytes.size(); i++)
+                bytes += QString("%1 ").arg(snap.bytes[in->start + i], 2, 16, QChar('0')).toUpper();
+            QString where = in->address ? QString("$%1:%2")
+                                              .arg(*in->address >> 16, 2, 16, QChar('0'))
+                                              .arg(*in->address & 0xFFFF, 4, 16, QChar('0'))
+                                              .toUpper()
+                                        : hex4(in->start);
+            text += tr(" · %1  %2 %3 (%4)").arg(where, bytes, QString::fromStdString(in->text), class_name(in->cls));
+            if (in->both_widths)
+                text += tr(", runs 8- and 16-bit");
+        }
+        if (f & codeflag::Data)
+            text += tr(" · read as data");
+        if (f & codeflag::Dma)
+            text += tr(" · copied by DMA");
+    }
     // What the crash map knows about the byte's block, whatever the overlay.
     size_t block = *offset / CrashMap::kBlock;
     if (block < snap.crash_blocks.size())

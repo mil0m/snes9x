@@ -512,6 +512,38 @@ TEST_CASE("the reads and writes overlays: blue where the game reads, green where
     CHECK(unwritten.green() == unwritten.red());
 }
 
+TEST_CASE("the code, data and DMA overlays: what the code map knows about each ROM byte")
+{
+    Shown s(8);
+    auto snap = sample();
+    snap.target = Target::ROM;
+    snap.code.assign(snap.bytes.size(), 0);
+    snap.code[0x20] = codeflag::Opcode | codeflag::Op8;
+    snap.code[0x21] = codeflag::Operand | codeflag::Op8;
+    snap.code[0x30] = codeflag::Data;
+    snap.code[0x40] = codeflag::Dma;
+    s.view.setSnapshot(snap);
+    auto at = [&](uint32_t offset) {
+        return s.view.viewport()->grab().toImage().pixelColor(s.view.pixelRect(offset).center());
+    };
+    auto teal = [](QColor c) { return std::min(c.green(), c.blue()) - c.red(); };
+    s.view.setOverlay(MemoryPane::Overlay::Code);
+    QColor opcode = at(0x20), operand = at(0x21), data = at(0x30);
+    CHECK(teal(opcode) > 60);
+    CHECK(teal(operand) > 20);
+    CHECK(teal(opcode) > teal(operand) + 20); // opcodes stronger than operands
+    CHECK(teal(data) == 0);
+    shot(s.view, "pixel-view-code");
+    s.view.setOverlay(MemoryPane::Overlay::Data);
+    QColor read = at(0x30), code = at(0x20);
+    CHECK(read.red() > read.green() + 60);
+    CHECK(code.red() == code.green());
+    s.view.setOverlay(MemoryPane::Overlay::Dma);
+    QColor dma = at(0x40);
+    CHECK(dma.green() > dma.blue() + 60);
+    CHECK(at(0x30).red() == at(0x30).blue());
+}
+
 TEST_CASE("hot blocks: a tick beside their rows, and an outline when zoomed in")
 {
     auto snap = sample();
@@ -589,6 +621,34 @@ TEST_CASE("pictures of real memory, from corrupt-smoke --dump")
     auto shots = getenv("CORRUPT_SHOTS_DIR");
     if (!dir || !shots)
         return; // only when asked: corrupt-smoke <rom> <recipe> 0 1800 --dump <dir>
+    QFile rom(QString("%1/rom.bin").arg(dir)), code(QString("%1/rom.codemap.bin").arg(dir));
+    if (rom.open(QIODevice::ReadOnly) && code.open(QIODevice::ReadOnly))
+    { // corrupt-smoke <rom> <recipe> <frames> 1 --codemap <dir>/rom.codemap.bin, and --dump <dir>
+        auto bytes = rom.readAll();
+        auto file = code.readAll();
+        std::string error;
+        auto map = decode_code_map(std::string_view(file.data(), size_t(file.size())), error);
+        REQUIRE(map);
+        MemorySnapshot s;
+        s.target = Target::ROM;
+        s.bytes.assign(bytes.begin(), bytes.end());
+        s.code = map->flags();
+        PixelView v;
+        v.resize(600, 600);
+        v.setSnapshot(s);
+        v.setRowWidth(256);
+        v.show();
+        QApplication::processEvents();
+        QDir().mkpath(shots);
+        for (auto [overlay, name] : { std::pair{ MemoryPane::Overlay::Code, "code" },
+                                      std::pair{ MemoryPane::Overlay::Data, "data" },
+                                      std::pair{ MemoryPane::Overlay::Dma, "dma" } })
+        {
+            v.setOverlay(overlay);
+            v.scrollTo(0);
+            v.grab().save(QString("%1/real-rom-%2.png").arg(shots, name));
+        }
+    }
     for (auto t : { Target::WRAM, Target::VRAM, Target::ARAM, Target::CGRAM })
     {
         QFile f(QString("%1/%2.bin").arg(dir, target_name(t)));

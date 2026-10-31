@@ -61,6 +61,7 @@ class CorruptionSession
 
         size_t rom_changed = 0; // ROM bytes that differ from the clean ROM
         size_t patched = 0;     // painted bytes kept in the recipe
+        corrupt::CodeCoverage code; // the code map (everyone's), updated every few seconds
     };
 
     // Called by Snes9xController around ROM loading (emulation thread suspended).
@@ -151,6 +152,8 @@ class CorruptionSession
     void writeJournal(const corrupt::JournalEntry &entry);
     void loadCrashMap();
     void saveCrashMap();
+    void loadCodeMap(); // emulation thread or suspended: the tracer's buffer is replaced
+    void saveCodeMap();
 
     std::mutex mutex;
     corrupt::Engine engine;
@@ -162,6 +165,14 @@ class CorruptionSession
     corrupt::MemoryWatch watch;
     corrupt::WramAccessCounter wram_access; // counting only while the viewer watches WRAM
     corrupt::CrashMapKeeper crash_map;
+    corrupt::CodeMapKeeper code_map;        // recorded into by the tracer whenever a game is loaded
+    corrupt::RomTracer tracer;
+    corrupt::RomAddresses rom_where;        // for disassembly in the viewer
+    std::vector<uint8_t> code_shown;        // everyone's map, copied between frames while the viewer shows the ROM
+    corrupt::CodeCoverage code_coverage;
+    std::filesystem::path code_map_root;    // the library the map came from (and is saved to)
+    bool code_map_reload = false;           // the library changed: reload between frames
+    uint64_t code_frames = 0;
     std::vector<corrupt::MapArea> live_map; // VRAM or ARAM layout, re-read between frames while watched
     bool saved_moments = true;
     bool moment_on_disk = false; // the current run's start is the recipe's saved moment

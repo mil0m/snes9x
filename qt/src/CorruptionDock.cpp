@@ -21,6 +21,7 @@
 #include <QHeaderView>
 #include <QInputDialog>
 #include <QLabel>
+#include <QLocale>
 #include <QLineEdit>
 #include <QListWidget>
 #include <QMessageBox>
@@ -375,6 +376,11 @@ void CorruptionDock::refreshStatus()
                                                  : tr("%n byte(s) changed", "", int(status.rom_changed));
     if (status.patched)
         rom_text += tr(" · %n byte(s) painted", "", int(status.patched));
+    if (status.game_loaded && status.code.seen)
+        rom_text += tr(" · code map: %1 code, %2 data, %3 DMA bytes")
+                        .arg(QLocale().toString(qulonglong(status.code.code)),
+                             QLocale().toString(qulonglong(status.code.data)),
+                             QLocale().toString(qulonglong(status.code.dma)));
     rom_label->setText(rom_text);
     restore_rom_button->setEnabled(status.rom_changed > 0);
     clear_paint_button->setEnabled(status.patched > 0);

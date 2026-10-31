@@ -132,6 +132,24 @@ void CorruptionSession::betweenFrames()
     }
     else
         wram_access.stop();
+    if (code_map_reload)
+    {
+        if (code_map.unsaved())
+            saveCodeMap(); // to the library it came from
+        loadCodeMap();
+    }
+    code_map.tick();
+    if (code_map.save_due())
+        saveCodeMap();
+    if (++code_frames % 30 == 0) // twice a second: copying a 6 MB map isn't free
+    {
+        if (watch.watching() && watch.target() == Target::ROM)
+            code_shown = code_map.combined().flags();
+        else
+            code_shown = {};
+    }
+    if (code_frames % 300 == 1)
+        code_coverage = code_map.coverage();
     if (watch.watching())
         live_map = watch.target() == Target::VRAM   ? video_map(SnesCoreAccess::video_layout())
                    : watch.target() == Target::ARAM ? sound_map(SnesCoreAccess::sound_layout())
@@ -193,6 +211,36 @@ void CorruptionSession::gameLoaded()
     backupNow("load"); // before the first frame runs
     message = "Loaded " + game_folder_name(game.title, game.sha256);
     loadCrashMap();
+    rom_where = SnesCoreAccess::rom_addresses();
+    loadCodeMap(); // after the reset watch: the tracer goes on top of it
+}
+
+void CorruptionSession::loadCodeMap()
+{
+    tracer.stop();
+    code_map_reload = false;
+    code_map_root = library_root;
+    size_t size = memory.size(Target::ROM);
+    CodeMaps maps;
+    if (!library_root.empty())
+        maps = Library(library_root).load_code_maps(game, user_name(), size);
+    for (auto &e : maps.errors)
+        note("Code map skipped: " + e);
+    code_map.reset(size, std::move(maps));
+    code_coverage = code_map.coverage();
+    code_shown = {};
+    if (!tracer.start(code_map.mine()))
+        note("The code map isn't recording (no ROM?)");
+}
+
+void CorruptionSession::saveCodeMap()
+{
+    if (code_map_root.empty())
+        return; // nowhere shared to keep it; it still shows in the viewer
+    if (auto err = Library(code_map_root).save_code_map(game, user_name(), code_map.mine()); !err.empty())
+        note("Couldn't save the code map: " + err);
+    else
+        code_map.saved();
 }
 
 void CorruptionSession::loadCrashMap()
@@ -226,6 +274,9 @@ void CorruptionSession::gameClosing()
         saveCrashMap();
     engine.set_active(false);
     wram_access.stop();
+    if (code_map.unsaved())
+        saveCodeMap();
+    tracer.stop(); // before the reset watch goes
     rom.game_closed();
     SnesCoreAccess::unwatch_resets();
     game_loaded = false;
@@ -238,7 +289,10 @@ void CorruptionSession::setLibraryRoot(const fs::path &root)
         saveCrashMap(); // to the old library, before switching
     library_root = root;
     if (game_loaded)
+    {
         loadCrashMap();
+        code_map_reload = true; // the tracer writes into the map while frames run
+    }
 }
 
 fs::path CorruptionSession::libraryRoot()
@@ -327,6 +381,11 @@ MemorySnapshot CorruptionSession::memorySnapshot()
     snap.danger = crash_map.danger(snap.target, snap.bytes.size());
     snap.crash_blocks = crash_map.counts_per_block(snap.target, snap.bytes.size());
     snap.hot_blocks = crash_map.hot_per_block(snap.target, snap.bytes.size());
+    if (snap.target == Target::ROM)
+    {
+        snap.code = code_shown;
+        snap.rom_where = rom_where;
+    }
     return snap;
 }
 
@@ -750,6 +809,7 @@ CorruptionSession::Status CorruptionSession::status()
     s.last_crash = last_crash;
     s.rule_crashes = guard.rule_crashes(engine);
     s.hot_blocks = crash_map.hot_blocks();
+    s.code = code_coverage;
     s.message = message;
     return s;
 }

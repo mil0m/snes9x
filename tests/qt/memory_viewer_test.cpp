@@ -56,6 +56,19 @@ struct FakeSource : MemorySource
             s.writes[0x2000] = 0.5f;
             s.reads[0x2001] = 1234.0f;
         }
+        if (s.target == Target::ROM)
+        {
+            // JSL $C30006 at 0x1000, run; a data table at 0x2000; graphics at 0x3000.
+            s.code.assign(size, 0);
+            const uint8_t jsl[] = { 0x22, 0x06, 0x00, 0xC3 };
+            std::copy(jsl, jsl + 4, s.bytes.begin() + 0x1000);
+            s.code[0x1000] = codeflag::Opcode;
+            s.code[0x1001] = s.code[0x1002] = s.code[0x1003] = codeflag::Operand;
+            s.code[0x2000] = codeflag::Data;
+            s.code[0x3000] = codeflag::Dma;
+            s.rom_where.chunks.assign(size / RomAddresses::kChunk, RomAddresses::kNone);
+            s.rom_where.chunks[1] = 0xC01000;
+        }
         if (s.crash_blocks.size() > 0x1F3)
         {
             s.crash_blocks[0x1F3] = { 5, 12 }; // 0x1F30
@@ -629,6 +642,34 @@ TEST_SUITE("the pixel view in the viewer")
         choose(v, "target", "vram");
         v.refresh();
         CHECK_FALSE(hover(0x2000).contains("read")); // only WRAM is counted
+    }
+
+    TEST_CASE("hovering a ROM byte shows the instruction it's part of, or that it's data")
+    {
+        FakeSource src;
+        MemoryViewer v(src);
+        v.show();
+        choose(v, "target", "rom");
+        v.refresh();
+        choose(v, "mode", "pixels");
+        auto pixels = child<PixelView>(v, "pixels");
+        QApplication::processEvents();
+        auto hover = [&](uint32_t offset) {
+            pixels->onHover(offset);
+            return child<QLabel>(v, "hover")->text();
+        };
+        auto code = hover(0x1002);
+        CHECK(code.contains("$C0:1000"));
+        CHECK(code.contains("22 06 00 C3"));
+        CHECK(code.contains("JSL $C30006"));
+        CHECK(code.contains("jump"));
+        CHECK(hover(0x2000).contains("data"));
+        CHECK(hover(0x3000).contains("DMA"));
+        auto plain = hover(0x4000);
+        CHECK_FALSE(plain.contains("data"));
+        CHECK_FALSE(plain.contains("JSL"));
+        for (auto o : { "code", "data", "dma" })
+            CHECK(child<QComboBox>(v, "overlay")->findData(QString(o)) >= 0);
     }
 
     TEST_CASE("hovering a byte the crash map knows shows its block's counts")

@@ -22,6 +22,9 @@ class MemoryPane
         Crashes, // the crash map: how many crashes
         Reads,   // how often the game reads each byte (WRAM)
         Writes,  // how often the game writes it (WRAM)
+        Code,    // the code map: what the CPU runs (ROM), opcodes strong, operands lighter
+        Data,    // what the CPU reads as data (ROM)
+        Dma,     // what DMA copies (ROM)
         None,
     };
 
@@ -89,6 +92,14 @@ class MemoryPane
             return offset < snap.reads.size() ? rateLevel(snap.reads[offset], scale.reads) : 0.0f;
         case Overlay::Writes:
             return offset < snap.writes.size() ? rateLevel(snap.writes[offset], scale.writes) : 0.0f;
+        case Overlay::Code: {
+            uint8_t f = offset < snap.code.size() ? snap.code[offset] : 0;
+            return (f & corrupt::codeflag::Opcode) ? 1.0f : (f & corrupt::codeflag::Operand) ? 0.5f : 0.0f;
+        }
+        case Overlay::Data:
+            return offset < snap.code.size() && (snap.code[offset] & corrupt::codeflag::Data) ? 1.0f : 0.0f;
+        case Overlay::Dma:
+            return offset < snap.code.size() && (snap.code[offset] & corrupt::codeflag::Dma) ? 1.0f : 0.0f;
         case Overlay::None:
             return 0.0f;
         }
@@ -126,6 +137,9 @@ class MemoryPane
                : overlay == Overlay::Crashes ? QColor(240, 185, 20)
                : overlay == Overlay::Reads   ? QColor(40, 140, 240)
                : overlay == Overlay::Writes  ? QColor(40, 200, 80)
+               : overlay == Overlay::Code    ? QColor(20, 200, 190)
+               : overlay == Overlay::Data    ? QColor(235, 70, 160)
+               : overlay == Overlay::Dma     ? QColor(190, 210, 30)
                                             : QColor(235, 110, 40);
     }
 

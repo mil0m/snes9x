@@ -100,6 +100,8 @@ struct Instruction
 // the map doesn't know as code.
 std::optional<Instruction> instruction_at(std::span<const uint8_t> rom, const CodeMap &map, uint32_t offset,
                                           const RomAddresses &where);
+std::optional<Instruction> instruction_at(std::span<const uint8_t> rom, std::span<const uint8_t> flags, uint32_t offset,
+                                          const RomAddresses &where);
 
 // A game's code maps: this person's (the only one they write) and everyone else's, merged.
 struct CodeMaps

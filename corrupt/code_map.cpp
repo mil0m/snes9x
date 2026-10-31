@@ -144,6 +144,17 @@ std::optional<CodeMap> decode_code_map(std::string_view file, std::string &error
 std::optional<Instruction> instruction_at(std::span<const uint8_t> rom, const CodeMap &map, uint32_t offset,
                                           const RomAddresses &where)
 {
+    return instruction_at(rom, std::span<const uint8_t>(map.flags()), offset, where);
+}
+
+std::optional<Instruction> instruction_at(std::span<const uint8_t> rom, std::span<const uint8_t> flags, uint32_t offset,
+                                          const RomAddresses &where)
+{
+    struct
+    {
+        std::span<const uint8_t> f;
+        uint8_t at(size_t i) const { return i < f.size() ? f[i] : 0; }
+    } map{ flags };
     if (offset >= rom.size() || !(map.at(offset) & codeflag::Code))
         return std::nullopt;
     for (uint32_t back = 0; back < 4 && back <= offset; back++)
