@@ -61,7 +61,9 @@ build_test() {
   if command -v brew >/dev/null && brew --prefix qt >/dev/null 2>&1; then qt_prefix="$(brew --prefix qt)"; fi
   cmake -S tests -B build/tests -G Ninja -DCMAKE_BUILD_TYPE=Debug -DCMAKE_PREFIX_PATH="$qt_prefix" >/dev/null
   if ! out=$(cmake --build build/tests 2>&1); then echo "$out" | grep -v '^\[' >&2; exit 1; fi
-  build/tests/corrupt-tests "$@"
+  local rc=0
+  build/tests/corrupt-tests "$@" || rc=$?
+  if [ $rc -ne 0 ]; then echo "corrupt-tests exited with status $rc" >&2; tests_failed=1; fi
   if [ -x build/tests/corrupt-headless-tests ] && [ $# -eq 0 ]; then
     # The core prints ROM info on every load; keep just the test results.
     run_filtered "ERROR|FATAL|values|test cases|Status" build/tests/corrupt-headless-tests

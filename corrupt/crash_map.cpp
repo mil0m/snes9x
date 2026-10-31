@@ -12,6 +12,12 @@ uint32_t block_of(uint32_t offset)
 {
     return offset / CrashMap::kBlock * CrashMap::kBlock;
 }
+
+// Past this no game has the memory, so a block there is a broken file, not data.
+uint32_t largest_size(Target t)
+{
+    return t == Target::SRAM ? 0x80000 : uint32_t(nominal_size(t)); // Snes9x's SRAM buffer
+}
 } // namespace
 
 void CrashMap::add_crash(Target t, uint32_t offset, uint32_t n)
@@ -122,7 +128,7 @@ CrashMapParse parse_crash_map(const std::string &text)
         out.errors.push_back("not a JSON object");
         return out;
     }
-    if (doc.value("block", 0) != int(CrashMap::kBlock))
+    if (!doc.contains("block") || doc["block"] != CrashMap::kBlock)
     {
         out.errors.push_back("block size isn't 16");
         return out;
@@ -146,7 +152,7 @@ CrashMapParse parse_crash_map(const std::string &text)
                 try
                 {
                     offset = std::stoul(block.substr(2), &used, 16);
-                    ok = used == block.size() - 2;
+                    ok = used == block.size() - 2 && offset < largest_size(*t);
                 }
                 catch (...)
                 {
@@ -156,7 +162,7 @@ CrashMapParse parse_crash_map(const std::string &text)
                              counts[1].is_number_unsigned();
             if (!ok || !counts_ok)
             {
-                out.errors.push_back(key + " " + block + ": expected \"0x<offset>\": [crashes, survivals]");
+                out.errors.push_back(key + " " + block + ": expected \"0x<offset>\": [crashes, survivals], inside the memory");
                 continue;
             }
             out.map.add_crash(*t, uint32_t(offset), counts[0].get<uint32_t>());

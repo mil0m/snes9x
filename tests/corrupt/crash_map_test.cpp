@@ -107,8 +107,27 @@ TEST_SUITE("crash map")
         CHECK_FALSE(parse_crash_map(R"({"version":1,"block":16,"wram":{"zz":[1,0]}})").errors.empty());
         CHECK_FALSE(parse_crash_map(R"({"version":1,"block":16,"wram":{"0x10":[-1,0]}})").errors.empty());
         CHECK_FALSE(parse_crash_map(R"({"version":1,"block":16,"wram":{"0x10":[1]}})").errors.empty());
+        CHECK_FALSE(parse_crash_map(R"({"version":1,"block":"16"})").errors.empty()); // no throw
+        CHECK_FALSE(parse_crash_map(R"([1,2])").errors.empty());
         auto ok = parse_crash_map(R"({"version":1,"block":16,"wram":{"0x13":[1,2]}})"); // any byte of the block
         CHECK(ok.errors.empty());
         CHECK(ok.map.counts(Target::WRAM, 0x10).survivals == 2);
+    }
+
+    TEST_CASE("JSON: blocks past the end of memory are dropped, so a bad file can't blow up the mask")
+    {
+        // A hand edit or another person's broken file: a hot block at the top of the
+        // 32-bit range would make the mask 4 G entries, or overflow its size to 0.
+        auto far = parse_crash_map(R"({"version":1,"block":16,"wram":{"0x20000":[9,0],"0xFFFFFFF0":[9,0],"0x1FFF0":[9,0]},)"
+                                   R"("cgram":{"0x200":[9,0]},"sram":{"0x7FFF0":[9,0],"0x80000":[9,0]},)"
+                                   R"("vram":{"0x100000000":[9,0]}})");
+        CHECK(far.errors.size() == 5);
+        CHECK(far.map.blocks(Target::WRAM).size() == 1); // 0x1FFF0, the last WRAM block
+        CHECK(far.map.blocks(Target::CGRAM).empty());
+        CHECK(far.map.blocks(Target::SRAM).size() == 1); // SRAM goes up to 512 KB
+        CHECK(far.map.blocks(Target::VRAM).empty());     // not truncated to 0x0
+        auto mask = hot_mask(far.map);
+        CHECK(mask.hot[size_t(Target::WRAM)].size() == 0x20000);
+        CHECK(mask.is_hot(Target::WRAM, 0x1FFFF));
     }
 }
