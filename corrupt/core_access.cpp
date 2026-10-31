@@ -137,6 +137,34 @@ std::vector<AddressRange> SnesCoreAccess::locked_rom()
     return out;
 }
 
+std::vector<uint8_t> SnesCoreAccess::rom_image(bool fix_checksum)
+{
+    if (!Memory.ROM || !Memory.CalculatedSize)
+        return {};
+    std::vector<uint8_t> image(Memory.ROM, Memory.ROM + Memory.CalculatedSize);
+    auto header = locked_rom();
+    if (!fix_checksum || header.empty() || header[0].first + 0x30 > image.size())
+        return image;
+    // $FFDC-$FFDF: complement, then checksum, little-endian. A matching pair always adds
+    // 0x1FE to the sum, so set one first, sum the way the core does on load, then fill it in.
+    uint8_t *fields = image.data() + header[0].first + 0x2C;
+    fields[0] = fields[1] = 0xFF;
+    fields[2] = fields[3] = 0x00;
+    uint16 sum;
+    if (image.size() & 0x7FFF)
+        sum = Memory.checksum_calc_sum(image.data(), uint32(image.size()));
+    else
+    {
+        uint32 length = uint32(image.size());
+        sum = Memory.checksum_mirror_sum(image.data(), length);
+    }
+    fields[0] = uint8_t(~sum & 0xFF);
+    fields[1] = uint8_t(~sum >> 8);
+    fields[2] = uint8_t(sum & 0xFF);
+    fields[3] = uint8_t(sum >> 8);
+    return image;
+}
+
 VideoLayout SnesCoreAccess::video_layout()
 {
     VideoLayout v;

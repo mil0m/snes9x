@@ -12,8 +12,11 @@ void MemoryWatch::watch(Target target, size_t size)
     snap = {};
     snap.target = target;
     snap.bytes.assign(size, 0);
-    snap.heat.assign(size, 0.0f);
-    snap.hits.assign(size, 0);
+    if (target != Target::ROM) // the ROM: no heat (only rules change it), hits once there are some
+    {
+        snap.heat.assign(size, 0.0f);
+        snap.hits.assign(size, 0);
+    }
     active = true;
     have_baseline = false;
     seen_frame = 0;
@@ -42,15 +45,27 @@ void MemoryWatch::observe(const MemoryAccess &mem, const std::deque<LoggedEvent>
         watch(t, size);
     }
 
-    for (size_t i = 0; i < size; i++)
+    if (snap.target == Target::ROM)
     {
-        uint8_t now = mem.read(snap.target, uint32_t(i));
-        float h = snap.heat[i] * kDecay;
-        if (have_baseline && now != snap.bytes[i])
-            h += 1.0f;
-        snap.heat[i] = h;
-        snap.bytes[i] = now;
+        if (auto raw = mem.data(Target::ROM))
+        {
+            if (std::memcmp(snap.bytes.data(), raw, size) != 0)
+                std::memcpy(snap.bytes.data(), raw, size);
+        }
+        else
+            for (size_t i = 0; i < size; i++)
+                snap.bytes[i] = mem.read(snap.target, uint32_t(i));
     }
+    else
+        for (size_t i = 0; i < size; i++)
+        {
+            uint8_t now = mem.read(snap.target, uint32_t(i));
+            float h = snap.heat[i] * kDecay;
+            if (have_baseline && now != snap.bytes[i])
+                h += 1.0f;
+            snap.heat[i] = h;
+            snap.bytes[i] = now;
+        }
     have_baseline = true;
 
     // New hits: events after the last frame we looked at. After a rollback the
@@ -59,7 +74,11 @@ void MemoryWatch::observe(const MemoryAccess &mem, const std::deque<LoggedEvent>
         seen_frame = frame;
     for (auto it = log.rbegin(); it != log.rend() && it->frame > seen_frame; ++it)
         if (it->frame <= frame && it->write.target == snap.target && it->write.offset < size)
+        {
+            if (snap.hits.size() != size)
+                snap.hits.assign(size, 0);
             snap.hits[it->write.offset]++;
+        }
     seen_frame = frame;
 }
 

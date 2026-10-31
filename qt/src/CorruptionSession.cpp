@@ -100,7 +100,7 @@ void CorruptionSession::betweenFrames()
     std::lock_guard lock(mutex);
     if (!game_loaded)
         return;
-    auto started = control.between_frames(engine, access);
+    auto started = control.between_frames(engine, access, &rom);
     if (started != RunControl::Started::Nothing)
         moment_on_disk = started == RunControl::Started::FromAnchor;
     switch (started)
@@ -119,6 +119,7 @@ void CorruptionSession::betweenFrames()
     // The crash map collects this frame's writes before the guard can roll them back.
     crash_map.observe(engine.event_log(), engine.current_frame());
     auto out = guard.between_frames(engine, access);
+    rom.after_guard(out); // save states don't hold the ROM: undo its edits after the checkpoint
     if (crash_map.crashed(out))
         engine.set_hot_mask(crash_map.hot_mask());
     if (crash_map.save_due())
@@ -185,6 +186,9 @@ void CorruptionSession::gameLoaded()
     frames_since_check = 0;
     S9xCorruptFrameHook = &CorruptionSession::frameHook;
     SnesCoreAccess::watch_resets(); // for this ROM's reset code
+    rom.set_clock([this] { return engine.current_frame(); });
+    rom.game_loaded(SnesCoreAccess::locked_rom()); // still clean: nothing has run yet
+    engine.set_locked(rom.locked_mask());
 
     backupNow("load"); // before the first frame runs
     message = "Loaded " + game_folder_name(game.title, game.sha256);
@@ -222,6 +226,7 @@ void CorruptionSession::gameClosing()
         saveCrashMap();
     engine.set_active(false);
     wram_access.stop();
+    rom.game_closed();
     SnesCoreAccess::unwatch_resets();
     game_loaded = false;
 }
@@ -727,8 +732,11 @@ CorruptionSession::Status CorruptionSession::status()
     s.recipe_path = recipe_path;
     s.edited = has_recipe && recipeJson(engine.recipe()) != saved_json;
     if (game_loaded)
+    {
         for (auto t : kAllTargets)
             s.sizes[size_t(t)] = memory.size(t);
+        s.rom_changed = rom.changed();
+    }
     s.policy = guard.get_policy();
     s.policy_overridden = policy_override.has_value();
     s.detection_enabled = detection_enabled;
@@ -740,10 +748,35 @@ CorruptionSession::Status CorruptionSession::status()
     return s;
 }
 
+void CorruptionSession::restoreCleanRom()
+{
+    std::lock_guard lock(mutex);
+    if (!game_loaded)
+        return;
+    rom.restore_clean();
+    note("The ROM is clean again");
+}
+
+std::string CorruptionSession::exportRom(const fs::path &path)
+{
+    std::vector<uint8_t> image;
+    {
+        std::lock_guard lock(mutex);
+        if (!game_loaded)
+            return "No game loaded";
+        image = SnesCoreAccess::rom_image(true);
+    }
+    std::ofstream out(path, std::ios::binary);
+    out.write(reinterpret_cast<const char *>(image.data()), std::streamsize(image.size()));
+    if (!out)
+        return "Couldn't write " + path.string();
+    return {};
+}
+
 void CorruptionSession::onFrame()
 {
     std::lock_guard lock(mutex);
-    engine.on_frame(memory);
+    engine.on_frame(rom);
     access.note_frame_start();
     if (++frames_since_check >= kBackupCheckFrames)
     {

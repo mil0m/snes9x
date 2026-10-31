@@ -114,7 +114,7 @@ TEST_SUITE("crash map keeper")
         CHECK(d[0x1F] == doctest::Approx(0.5));
         CHECK(d[0x40] == doctest::Approx(1.0 / 3));
         CHECK(d[0x20] == 0.0f);
-        CHECK(f.keeper.danger(Target::VRAM, 16) == std::vector<float>(16, 0.0f));
+        CHECK(f.keeper.danger(Target::VRAM, 16).empty()); // nothing known there: no vector at all
     }
 
     TEST_CASE("counts and hot flags per block for the viewer, everyone's summed")

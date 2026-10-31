@@ -256,3 +256,20 @@ scratch folder. By default Snes9x writes the `.srm` next to the ROM.
 6. Close the viewer and play on.
    - [ ] No slowdown with the viewer closed (the counting stops) or open.
 
+## 20. ROM corruption
+1. Load FF6 (a copy). Add the starter **Classic ROM sprinkle** and turn it on.
+   - [ ] The game restarts from its boot. The panel's ROM line says about 40 bytes changed.
+   - [ ] Edit the rule to `count` 3000 and turn it off and on: the game restarts again, visibly broken (garbled text, graphics or music).
+2. **Re-roll** a few times.
+   - [ ] Each re-roll restarts the game with a different corruption. The same seed (type it back in and **Set**) gives the same one.
+3. Turn the recipe off.
+   - [ ] The game keeps running corrupted; the ROM line still counts the changes. **Restore Clean ROM** sets it to "clean".
+4. Add **Live ROM drip**, turn it on and play for two minutes.
+   - [ ] No restart. The ROM line grows by about 2 bytes every 10 s.
+5. Open the memory viewer on **rom**, in Pixels with the **Hits** overlay.
+   - [ ] The changed bytes light up. Scrolling through 6 MB stays smooth.
+6. With a classic recipe on, **Export ROM…** and open the file in another emulator.
+   - [ ] It boots with the same corruption, without a checksum warning.
+7. Make a live rule that's sure to crash (a small range in the game's code, `random`, every 60 frames, `count` 50) with the guard on.
+   - [ ] Crashes are caught and rolled back, and the game keeps running: the ROM bytes from after the checkpoint are put back.
+

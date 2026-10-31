@@ -1,6 +1,6 @@
 # ROM corruption: plan (roadmap #22)
 
-**Status (2026-10-31):** reviewed by Mikael (answers at the end); phase 1 next.
+**Status (2026-10-31):** reviewed by Mikael (answers at the end). Phase 1 done, pending QA.md section 20; phase 2 next.
 
 Spec: [`2026-10-30-ram-corruption-design.md`](./2026-10-30-ram-corruption-design.md),
 phase 5 ("a ROM target applied at load time, or live"). Both modes are in (Mikael, 31 Oct).
@@ -282,6 +282,21 @@ Tasks:
    counter runs backwards), a live patch that crashes (`WAI` becomes `STP`) is rolled back
    *and reverted*, locked bytes stay put. Then FF6 with `corrupt-smoke`, classic and live.
 9. Docs: README, QA.md section 20, a classic and a live starter recipe.
+
+Findings while building phase 1:
+
+- **A test passed for the wrong reason at first**: without the ROM undo, a live `WAI` → `STP`
+  still ended with a clean ROM, because the guard gave up and restored it. The test now
+  requires exactly one rollback; with the undo commented out it fails.
+- **FF6 boots from a classic corrupted ROM**: 3,000 random bytes in the first 512 KB make
+  1,645 of 1,800 frames differ from the clean boot (from frame 156). 40 bytes changed
+  nothing visible in the intro: sparse classic corruption needs play to show.
+- **Export needs the checksum fixed on a copy**, not in the running ROM: the header is
+  locked, and the game shouldn't see its own checksum change.
+- **Viewer cost on a 6 MB ROM**: the activity heat (24 MB of floats) and per-byte reads are
+  skipped for the ROM, hits are allocated on the first hit, the crash map's per-byte danger
+  is empty while it knows nothing about a target, and the viewer refreshes a big target
+  twice a second instead of ten times.
 
 ## Risks
 

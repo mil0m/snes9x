@@ -38,9 +38,12 @@ struct FakeSource : MemorySource
         s.bytes.assign(size, 0x11);
         for (size_t i = 0; i < size; i += 4) // some structure for the pictures
             s.bytes[i] = uint8_t(i >> 6);
-        s.heat.assign(size, 0.0f);
-        s.hits.assign(size, 0);
-        for (size_t i = 0x1C00; i < std::min<size_t>(0x1E20, size); i++)
+        if (s.target != Target::ROM) // like MemoryWatch: no heat for the ROM, hits only once there are some
+        {
+            s.heat.assign(size, 0.0f);
+            s.hits.assign(size, 0);
+        }
+        for (size_t i = 0x1C00; i < std::min<size_t>(0x1E20, s.heat.size()); i++)
             s.heat[i] = 20.0f;
         s.crash_blocks.resize((size + 15) / 16);
         s.hot_blocks.assign(s.crash_blocks.size(), 0);
@@ -210,6 +213,29 @@ TEST_CASE("found copies are listed, and a click selects the copy in WRAM")
         QDir().mkpath(dir);
         v.grab().save(QString("%1/memory-viewer.png").arg(dir));
     }
+}
+
+TEST_CASE("the ROM is a target like any other, in every view")
+{
+    FakeSource src;
+    MemoryViewer v(src);
+    v.resize(900, 600);
+    v.show();
+    choose(v, "target", "rom");
+    v.refresh();
+    CHECK(src.watched.back() == Target::ROM);
+    for (auto mode : { "hex", "pixels", "tiles" })
+    {
+        choose(v, "mode", mode);
+        v.refresh();
+        QApplication::processEvents();
+    }
+    auto pixels = child<PixelView>(v, "pixels");
+    CHECK(pixels->snapshot().bytes.size() == nominal_size(Target::ROM));
+    CHECK(pixels->snapshot().heat.empty()); // the fake gives none for the ROM either
+    choose(v, "mode", "pixels");
+    pixels->onHover(0x12345);
+    CHECK(child<QLabel>(v, "hover")->text().contains("0x12345"));
 }
 
 TEST_CASE("overlay choice and clearing hits")

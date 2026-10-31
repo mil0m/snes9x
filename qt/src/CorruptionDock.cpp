@@ -12,6 +12,7 @@
 #include <QDateTime>
 #include <QDesktopServices>
 #include <QDir>
+#include <QRegularExpression>
 #include <QFile>
 #include <QFileDialog>
 #include <QFormLayout>
@@ -165,7 +166,22 @@ CorruptionDock::CorruptionDock(EmuApplication &app, QWidget *parent)
     run_layout->addRow(tr("Chaos"), chaos_slider);
     status_label = new QLabel(run_box);
     run_layout->addRow(status_label);
+    auto rom_row = new QHBoxLayout;
+    rom_label = new QLabel(run_box);
+    rom_label->setObjectName("rom_status");
+    restore_rom_button = button(tr("Restore Clean ROM"), run_box);
+    restore_rom_button->setObjectName("restore_rom");
+    restore_rom_button->setToolTip(tr("Undo every change to the ROM. A run always starts from the clean ROM anyway."));
+    auto export_rom = button(tr("Export ROM…"), run_box);
+    export_rom->setObjectName("export_rom");
+    export_rom->setToolTip(tr("Save the ROM as it is now as a .sfc, with its checksum fixed"));
+    rom_row->addWidget(rom_label, 1);
+    rom_row->addWidget(restore_rom_button);
+    rom_row->addWidget(export_rom);
+    run_layout->addRow(tr("ROM"), rom_row);
     layout->addWidget(run_box);
+    connect(restore_rom_button, &QPushButton::clicked, [] { CorruptionSession::get().restoreCleanRom(); });
+    connect(export_rom, &QPushButton::clicked, this, &CorruptionDock::exportRom);
 
     connect(active_check, &QCheckBox::clicked, [](bool on) { CorruptionSession::get().setActive(on); });
     connect(reroll, &QPushButton::clicked, [this] {
@@ -286,6 +302,21 @@ CorruptionDock::CorruptionDock(EmuApplication &app, QWidget *parent)
     refreshStatus();
 }
 
+void CorruptionDock::exportRom()
+{
+    auto status = CorruptionSession::get().status();
+    if (!status.game_loaded)
+        return;
+    QString name = qs(status.game.title).trimmed().replace(QRegularExpression("[^A-Za-z0-9 _-]"), "_") +
+                   (status.rom_changed ? tr(" (corrupted %1)").arg(status.engine.seed) : QString()) + ".sfc";
+    auto path = QFileDialog::getSaveFileName(this, tr("Export ROM"), QDir::home().filePath(name),
+                                             tr("SNES ROM (*.sfc *.smc)"));
+    if (path.isEmpty())
+        return;
+    auto err = CorruptionSession::get().exportRom(path.toStdString());
+    showMessage(err.empty() ? tr("Exported %1").arg(path) : qs(err), !err.empty());
+}
+
 void CorruptionDock::refreshStatus()
 {
     auto status = CorruptionSession::get().status();
@@ -325,6 +356,11 @@ void CorruptionDock::refreshStatus()
     active_check->setChecked(status.engine.active);
     if (!seed_edit->hasFocus())
         seed_edit->setText(status.has_recipe ? QString::number(status.engine.seed) : QString());
+
+    rom_label->setText(!status.game_loaded         ? QString()
+                       : status.rom_changed == 0 ? tr("clean")
+                                                 : tr("%n byte(s) changed", "", int(status.rom_changed)));
+    restore_rom_button->setEnabled(status.rom_changed > 0);
 
     status_label->setText(status.has_recipe
                               ? tr("%1%2%3 - frame %4 - %5 firings")

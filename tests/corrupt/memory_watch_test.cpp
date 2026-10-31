@@ -117,6 +117,26 @@ TEST_CASE("a target that shrank (another game) is handled")
     CHECK(w.snapshot().bytes.size() == 16);
 }
 
+TEST_CASE("the ROM: no activity heat, bytes that follow the edits, hits only once there are some")
+{
+    FakeMemory mem;
+    MemoryWatch w;
+    w.watch(Target::ROM, mem.size(Target::ROM));
+    w.observe(mem, {}, 1);
+    auto &s = w.snapshot();
+    CHECK(s.bytes.size() == mem.size(Target::ROM));
+    CHECK(s.heat.empty()); // only rules change the ROM; the game never does
+    CHECK(s.hits.empty()); // no 4 bytes a byte until something hits
+
+    mem.of(Target::ROM)[0x1234] = 0x77;
+    std::deque<LoggedEvent> log{ hit(2, Target::ROM, 0x1234) };
+    w.observe(mem, log, 2);
+    CHECK(w.snapshot().bytes[0x1234] == 0x77);
+    REQUIRE(w.snapshot().hits.size() == mem.size(Target::ROM));
+    CHECK(w.snapshot().hits[0x1234] == 1u);
+    CHECK(w.snapshot().heat.empty());
+}
+
 TEST_SUITE("the game's reads and writes")
 {
     TEST_CASE("counts become an average per frame, and the counters start over")

@@ -256,6 +256,39 @@ the map changes.
   reboot that jumps past that instruction, or one made from the CPU's emulation mode, is
   missed. Pressing reset in Snes9x never counts.
 
+## ROM corruption
+
+The `rom` target corrupts the game itself, the way ROM corruption always worked, but with
+recipes, seeds and the crash guard. Offsets are into the ROM as a clean `.sfc` (no copier
+header). Two ways to use it, mixed freely in one recipe:
+
+- **Classic**: a rule with **Once, when the run starts** (`"when": { "at_load": true }`)
+  changes the ROM as the run starts, and the console restarts so the game boots from the
+  corrupted ROM. The same seed always gives the same corrupted ROM; Re-roll gives another.
+  Starter: **Classic ROM sprinkle**.
+- **Live**: any other trigger changes ROM bytes while you play, so code and data change
+  under the running game. Starter: **Live ROM drip**.
+
+How the ROM behaves:
+
+- **A run always starts from the clean ROM**: turning a recipe on, Re-roll, loading
+  another recipe or its saved moment. Turning a recipe off keeps what it did, like RAM;
+  **Restore Clean ROM** in the panel undoes it.
+- **The header and interrupt vectors can't be corrupted** (what the CPU sees at
+  `$00:FFB0-$FFFF`). Rules skip those bytes.
+- **The crash guard undoes ROM changes too.** Save states don't hold the ROM, so after a
+  rollback the guard also puts back every ROM byte changed since the checkpoint. A classic
+  change is made before the game boots, so a rollback can't undo it: if one keeps crashing
+  the game, the guard gives up and restores the clean ROM. (Finding the one guilty byte
+  and undoing just that is coming: see the ROM plan.)
+- **Export ROM…** saves the ROM as it is now as a `.sfc`, with its checksum fixed, for
+  other emulators or a flash cart.
+- The memory viewer shows the `rom` target like any other, in hex, pixels and tiles.
+- Not handled yet: games with a Super FX or SA-1 chip may not see live ROM changes to their
+  coprocessor's code right away.
+
+Plan and what's next: [`2026-10-31-rom-corruption-plan.md`](./2026-10-31-rom-corruption-plan.md).
+
 ## Save backups
 
 Nothing to do: the game's save RAM is backed up when it loads, about once a minute while
@@ -288,7 +321,8 @@ Numbers can be JSON numbers or `"0x…"` hex or decimal strings. Unknown keys ar
 so typos fail loudly.
 
 **`target`**: `wram` (128 KB), `sram` (battery save RAM; needs an explicit range), `vram`
-(64 KB), `oam` (544 B sprite table), `cgram` (512 B palette), `aram` (64 KB sound CPU RAM).
+(64 KB), `oam` (544 B sprite table), `cgram` (512 B palette), `aram` (64 KB sound CPU RAM),
+`rom` (the game itself, up to 8 MB; needs an explicit range).
 
 **`range`**: `[first, last]` inclusive, relative to the target (`wram` `0x0400` is
 `$7E:0400`), a name from the game's `regions.json`, or left out for the whole target.
@@ -305,8 +339,9 @@ so typos fail loudly.
 | `freeze` | `value` (optional) | holds a value, or whatever was there when first hit |
 | `shuffle` | `window` (2–256) | permutes the bytes after each picked address |
 
-**`when`**: exactly one of `every_frames`, `chance_per_frame` (0–1), `once_at_frame`, or
-`hotkey` (1–9), plus an optional `window: [start, end]`. Frames count from activation,
+**`when`**: exactly one of `every_frames`, `chance_per_frame` (0–1), `once_at_frame`,
+`hotkey` (1–9), or `at_load: true` (once as the run starts, before frame 1; on the ROM that's
+classic corruption), plus an optional `window: [start, end]`. Frames count from activation,
 starting at 1.
 
 **Also per rule**: `count` (bytes per firing), `pick` (`fresh`, or `sticky` to keep hitting

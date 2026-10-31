@@ -39,6 +39,7 @@
 #include "corrupt/engine.h"
 #include "corrupt/hook.h"
 #include "corrupt/recipe_json.h"
+#include "corrupt/rom_keeper.h"
 #include "corrupt/run_control.h"
 #include "corrupt/memory_watch.h"
 #include "corrupt/memory_map.h"
@@ -59,6 +60,7 @@ namespace
 
 Engine engine;
 CoreMemory memory;
+RomKeeper rom{ memory }; // what the engine writes through, as in the app
 SnesCoreAccess access;
 size_t verified = 0;
 size_t mismatched = 0;
@@ -66,7 +68,7 @@ size_t mismatched = 0;
 void frame_hook()
 {
     uint64_t frame_before = engine.status().frame;
-    engine.on_frame(memory);
+    engine.on_frame(rom);
     access.note_frame_start();
     // Only this frame's events; the log is bounded, so count from the end.
     for (auto it = engine.event_log().rbegin(); it != engine.event_log().rend() && it->frame > frame_before; ++it)
@@ -78,6 +80,26 @@ void frame_hook()
     }
 }
 
+// Starts the engine's run the way the app does: from the clean ROM, with the at_load
+// rules applied (and a power cycle, for classic ROM recipes).
+void start_run()
+{
+    RunControl control;
+    engine.hold_starts(true);
+    engine.set_active(false);
+    engine.set_active(true);
+    control.between_frames(engine, access, &rom);
+    engine.hold_starts(false);
+}
+
+bool classic(const Recipe &recipe)
+{
+    for (auto &r : recipe.rules)
+        if (r.enabled && r.when.type == TriggerType::AtLoad && r.range.target == Target::ROM)
+            return true;
+    return false;
+}
+
 int run_guarded(const Recipe &recipe, int frames)
 {
     CrashGuard guard;
@@ -87,13 +109,15 @@ int run_guarded(const Recipe &recipe, int frames)
     guard.on_journal = [&](const JournalEntry &) { journal_lines++; };
 
     engine.set_recipe(recipe);
-    engine.set_active(true);
+    start_run();
+    printf("rom      %zu bytes changed at the start%s\n", rom.changed(), classic(recipe) ? ", then a power cycle" : "");
     S9xCorruptFrameHook = &frame_hook;
     int caught = 0, gave_up = 0;
     for (int i = 0; i < frames; i++)
     {
         headless::run_frames(1);
         auto out = guard.between_frames(engine, access);
+        rom.after_guard(out);
         if (out.kind == GuardOutcome::Nothing)
             continue;
         caught++;
@@ -105,6 +129,7 @@ int run_guarded(const Recipe &recipe, int frames)
     S9xCorruptFrameHook = nullptr;
     printf("guard    %d crashes caught, %d gave up, engine %s, %d journal lines\n", caught, gave_up,
            engine.active() ? "still active" : "off", journal_lines);
+    printf("rom      %zu bytes changed at the end\n", rom.changed());
     printf("reboots  %u seen by the reset watch (rolled-back ones included)\n", access.sample().reboots);
     printf("writes   %zu verified in emulator memory, %zu mismatched\n", verified, mismatched);
     return mismatched == 0 ? 0 : 1;
@@ -452,6 +477,9 @@ int main(int argc, char **argv)
     }
     printf("ROM      %s\n", Memory.ROMName);
     SnesCoreAccess::watch_resets();
+    rom.set_clock([] { return engine.current_frame(); });
+    rom.game_loaded(SnesCoreAccess::locked_rom());
+    engine.set_locked(rom.locked_mask());
     printf("recipe   %s (seed %llu, %zu rules)\n", parsed.recipe->name.c_str(),
            (unsigned long long)parsed.recipe->seed, parsed.recipe->rules.size());
 
@@ -526,7 +554,9 @@ int main(int argc, char **argv)
         return 1;
     }
 
-    // Clean run.
+    // Clean run. A classic ROM recipe power-cycles as it starts, so the clean run does too.
+    if (classic(*parsed.recipe))
+        S9xReset();
     std::vector<uint64_t> clean_frames;
     for (int i = 0; i < frames; i++)
     {
@@ -538,7 +568,7 @@ int main(int argc, char **argv)
     // Corrupted run from the same state.
     headless::load_state(start);
     engine.set_recipe(*parsed.recipe);
-    engine.set_active(true);
+    start_run();
     S9xCorruptFrameHook = &frame_hook;
     std::vector<uint64_t> corrupt_frames;
     for (int i = 0; i < frames; i++)

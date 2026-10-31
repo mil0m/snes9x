@@ -33,6 +33,7 @@ class CorruptionDock : public QDockWidget
     void refreshStatus();
     void rebuildRules();
     void chooseLibrary();
+    void exportRom();
     void loadSelectedRecipe();
     void saveAs();
     void save();
@@ -79,6 +80,8 @@ class CorruptionDock : public QDockWidget
     QComboBox *policy_combo;
     QLabel *crash_label;
     QLabel *status_label;
+    QLabel *rom_label;
+    QPushButton *restore_rom_button;
     QListWidget *backup_list;
     QLabel *message_label;
 };

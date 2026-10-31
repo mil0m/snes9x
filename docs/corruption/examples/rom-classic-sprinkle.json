@@ -1,0 +1,16 @@
+{
+  "format": 1,
+  "name": "Classic ROM sprinkle",
+  "notes": "The old way: 40 random bytes anywhere in the first 512 KB of the ROM, applied as the run starts, and the console restarts to boot from it. Every seed is a different corrupted ROM. Widen the range for bigger games; the header and vectors are always left alone.",
+  "seed": 2001,
+  "rules": [
+    {
+      "name": "sprinkle",
+      "target": "rom",
+      "range": [ "0x0", "0x7FFFF" ],
+      "op": { "type": "random", "min": 0, "max": 255 },
+      "when": { "at_load": true },
+      "count": 40
+    }
+  ]
+}

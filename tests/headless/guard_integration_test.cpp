@@ -444,6 +444,28 @@ TEST_SUITE("ROM corruption in the real core")
         CHECK(h.memory.read(Target::ROM, kNmiInc) == 0xE6);
     }
 
+    TEST_CASE("Export ROM: the corrupted bytes, with a checksum that matches them")
+    {
+        Harness h(testrom::Crash::None, one(poke_rom(kNmiInc, 0xC6, { .type = TriggerType::AtLoad })), PolicyKind::Skip);
+        h.engine.hold_starts(true);
+        h.engine.set_active(false);
+        h.engine.set_active(true);
+        h.run(1);
+        auto image = SnesCoreAccess::rom_image();
+        REQUIRE(image.size() == 0x8000);
+        CHECK(image[kNmiInc] == 0xC6);
+        uint16_t sum = 0;
+        for (auto b : image)
+            sum = uint16_t(sum + b);
+        uint16_t complement = uint16_t(image[0x7FDC] | image[0x7FDD] << 8);
+        uint16_t checksum = uint16_t(image[0x7FDE] | image[0x7FDF] << 8);
+        CHECK(checksum == sum);
+        CHECK(uint16_t(complement ^ checksum) == 0xFFFF);
+        CHECK(h.memory.read(Target::ROM, 0x7FDE) != image[0x7FDE]); // the live ROM keeps its header
+        auto raw = SnesCoreAccess::rom_image(false);
+        CHECK(raw[0x7FDE] == h.memory.read(Target::ROM, 0x7FDE));
+    }
+
     TEST_CASE("live: a ROM edit that crashes the game is rolled back and undone")
     {
         Harness h(testrom::Crash::None, one(poke_rom(kMainWai, 0xDB, { .type = TriggerType::OnceAtFrame, .frame = 150 })),

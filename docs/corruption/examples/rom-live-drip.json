@@ -1,0 +1,16 @@
+{
+  "format": 1,
+  "name": "Live ROM drip",
+  "notes": "Nudges two ROM bytes by a little every ten seconds while you play, so the game slowly drifts. A crash rolls back and undoes the ROM bytes changed since. Widen the range for bigger games.",
+  "seed": 2002,
+  "rules": [
+    {
+      "name": "drip",
+      "target": "rom",
+      "range": [ "0x0", "0x7FFFF" ],
+      "op": { "type": "add", "min": -8, "max": 8 },
+      "when": { "every_frames": 600 },
+      "count": 2
+    }
+  ]
+}

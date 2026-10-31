@@ -54,6 +54,8 @@ bool CrashMapKeeper::saved()
 
 std::vector<float> CrashMapKeeper::danger(Target t, size_t size) const
 {
+    if (all.blocks(t).empty())
+        return {}; // nothing known: don't make a 24 MB vector of zeros for a ROM
     std::vector<float> out(size, 0.0f);
     for (auto &[block, counts] : all.blocks(t))
         for (size_t i = block; i < std::min<size_t>(size, size_t(block) + CrashMap::kBlock); i++)

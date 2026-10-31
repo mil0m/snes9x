@@ -268,6 +268,15 @@ TEST_SUITE("errors")
         CHECK(first_error(r).find("rules[0].range") != std::string::npos);
     }
 
+    TEST_CASE("rom needs an explicit range, and may reach 8 MB (checked against the real ROM at load)")
+    {
+        auto none = parse_recipe(R"({"format":1,"rules":[{"target":"rom","op":{"type":"random"},"when":{"at_load":true}}]})", {});
+        CHECK_FALSE(none.recipe);
+        CHECK(first_error(none).find("explicit range") != std::string::npos);
+        CHECK(parse_recipe(R"({"format":1,"rules":[{"target":"rom","range":["0","0x5FFFFF"],"op":{"type":"random"},"when":{"at_load":true}}]})", {}).recipe);
+        CHECK_FALSE(parse_recipe(R"({"format":1,"rules":[{"target":"rom","range":["0","0x800000"],"op":{"type":"random"},"when":{"at_load":true}}]})", {}).recipe);
+    }
+
     TEST_CASE("sram needs an explicit range")
     {
         auto r = parse_recipe(R"({"format":1,"rules":[{"target":"sram","op":{"type":"random"},"when":{"hotkey":1}}]})", {});

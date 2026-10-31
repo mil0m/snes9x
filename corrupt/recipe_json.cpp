@@ -19,7 +19,11 @@ namespace
 // Sizes for validating without a loaded game.
 struct NominalMemory : MemoryAccess
 {
-    size_t size(Target t) const override { return t == Target::SRAM ? 0x20000 : nominal_size(t); }
+    // SRAM and ROM depend on the game: allow the largest, and check against the real one at load.
+    size_t size(Target t) const override
+    {
+        return t == Target::SRAM ? 0x20000 : t == Target::ROM ? 0x800000 : nominal_size(t);
+    }
     uint8_t read(Target, uint32_t) const override { return 0; }
     void write(Target, uint32_t, uint8_t) override {}
 };
@@ -111,9 +115,9 @@ get_range(Ctx &ctx, const json &obj, const std::string &path, std::optional<Targ
             ctx.fail(path, "needs a target or a named range");
             return std::nullopt;
         }
-        if (*target == Target::SRAM)
+        if (*target == Target::SRAM || *target == Target::ROM)
         {
-            ctx.fail(rpath, "sram rules need an explicit range (its size depends on the game)");
+            ctx.fail(rpath, std::string(target_name(*target)) + " rules need an explicit range (its size depends on the game)");
             return std::nullopt;
         }
         return std::pair{ AddressRange{ *target, 0, uint32_t(nominal_size(*target) - 1) }, std::string() };

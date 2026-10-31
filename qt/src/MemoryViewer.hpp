@@ -85,6 +85,7 @@ class MemoryViewer : public QWidget
     void showResult(const QString &error, const QString &done);
 
     MemorySource &source;
+    unsigned slow_ticks = 0;
     QTimer timer;
     bool open = false;
     std::optional<std::pair<uint32_t, uint32_t>> pending_select; // applied once the target's snapshot arrives

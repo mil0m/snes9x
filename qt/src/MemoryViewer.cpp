@@ -306,7 +306,12 @@ MemoryViewer::MemoryViewer(MemorySource &source, QWidget *parent)
     modeChanged();
     zoomChanged();
 
-    connect(&timer, &QTimer::timeout, this, [this] { refresh(); });
+    connect(&timer, &QTimer::timeout, this, [this] {
+        // A ROM is megabytes and only changes when a rule writes it: twice a second is plenty.
+        if (pane()->snapshot().bytes.size() > 0x100000 && ++slow_ticks % 5)
+            return;
+        refresh();
+    });
     resize(std::max(900, view->sizeHint().width() + 260), 700);
 }
 

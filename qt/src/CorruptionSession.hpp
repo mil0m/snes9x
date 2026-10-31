@@ -6,6 +6,7 @@
 #include "corrupt/engine.h"
 #include "corrupt/library.h"
 #include "corrupt/memory_watch.h"
+#include "corrupt/rom_keeper.h"
 #include "corrupt/run_control.h"
 #include "corrupt/save_backup.h"
 
@@ -57,6 +58,8 @@ class CorruptionSession
         std::string last_crash;
         std::vector<unsigned> rule_crashes;
         size_t hot_blocks = 0; // crash map: 16-byte blocks rules with avoid_hot stay out of
+
+        size_t rom_changed = 0; // ROM bytes that differ from the clean ROM
     };
 
     // Called by Snes9xController around ROM loading (emulation thread suspended).
@@ -113,6 +116,10 @@ class CorruptionSession
     std::string deleteRegion(const std::string &name);                        // they keep the range, unnamed
     std::vector<std::string> regionUsers(const std::string &name);
 
+    // The ROM. A run always starts from the clean ROM; these act on the current one.
+    void restoreCleanRom();
+    std::string exportRom(const std::filesystem::path &path); // error or empty; the checksum is fixed
+
     // Save backups.
     std::filesystem::path backupDir();
     std::vector<corrupt::BackupInfo> backups();
@@ -140,6 +147,7 @@ class CorruptionSession
     std::mutex mutex;
     corrupt::Engine engine;
     corrupt::CoreMemory memory;
+    corrupt::RomKeeper rom{ memory }; // what the engine writes through: journals ROM edits, guards the header
     corrupt::SnesCoreAccess access;
     corrupt::CrashGuard guard;
     corrupt::RunControl control;

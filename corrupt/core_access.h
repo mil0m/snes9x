@@ -19,6 +19,11 @@ class SnesCoreAccess : public CoreAccess
     // wherever this game's mapping puts them. Nothing may corrupt them.
     static std::vector<AddressRange> locked_rom();
 
+    // The ROM as it is now, as a clean .sfc (no copier header), for Export ROM. With
+    // fix_checksum, the header's checksum and complement match the corrupted contents,
+    // so other emulators and flash carts don't complain.
+    static std::vector<uint8_t> rom_image(bool fix_checksum = true);
+
     // Call from the frame hook: remembers whether this frame is being drawn
     // (with frameskip it isn't, and the screen buffer keeps the last picture).
     void note_frame_start();
