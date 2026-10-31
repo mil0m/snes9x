@@ -1,6 +1,6 @@
 # ROM corruption: plan (roadmap #22)
 
-**Status (2026-10-31):** reviewed by Mikael (answers at the end). Phases 1-3 done, pending QA.md sections 20-22; phase 4 (blame by execution) in progress.
+**Status (2026-10-31):** reviewed by Mikael (answers at the end). Phases 1-4 done, pending QA.md sections 20-23; phase 5 (code-aware ops) next.
 
 Spec: [`2026-10-30-ram-corruption-design.md`](./2026-10-30-ram-corruption-design.md),
 phase 5 ("a ROM target applied at load time, or live"). Both modes are in (Mikael, 31 Oct).
@@ -495,6 +495,30 @@ Built in four steps, each pushed:
    says "changed from $E6, ran in 340 frames". The panel's ROM line says how many changed
    bytes have run. `corrupt-smoke --guard` on FF6 with a classic ROM recipe, blame on and
    off: crashes, give-ups, and how many changed bytes survive.
+
+Findings while building phase 4 (FF6, 300 random bytes in bank `$C0` at load, 5 minutes
+headless from power-on, `corrupt-smoke ... 18000 1 --guard [noblame]`, six seeds):
+
+| | alive to the end | changes kept | picture changed in | code bytes run |
+|---|---|---|---|---|
+| clean FF6, no corruption | yes | - | 6,779 frames | 24,886 |
+| old guard (blame rules only) | 0 of 6 | all ~300 | 1-6 frames | - |
+| blame by use, 5 crashes in a row and give up | 2 of 6 | 0 (gave up) or 229-261 | 7-3,611 | 4,778-19,226 |
+| blame by use, only fruitless crashes count | **6 of 6** | **41-261** | 519-6,302 | 14,172-27,005 |
+
+- **The old guard was blind to classic runs**: every corrupted boot hung (frame interrupt
+  off, picture still) and it reported *nothing*, because a hang is a guess and no rule had
+  written anything recently. All six runs were dead for the full five minutes.
+- **Boot code needs the run's first checkpoint at frame 0** (the app takes it there; the
+  smoke harness now does too), or bytes the game ran while booting can't be blamed.
+- **Giving up after 5 crashes in a row threw everything away** while the blame was still
+  making progress: corrupted boot code takes many rounds. Now a crash that puts bytes back
+  for good doesn't count towards giving up (there are only so many changed bytes); only
+  fruitless ones do, plus a cap of 40 in a row. Re-roll never fixes for good, so it keeps
+  the old limit.
+- **Guesses blame only newly reached bytes**, so a harmless change in code that runs every
+  frame isn't reverted the first time the screen goes quiet.
+- macOS `bash` 3.2 has no `wait -n`; batch runs of three with a plain `wait`.
 
 ## Risks
 

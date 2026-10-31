@@ -35,6 +35,7 @@ void CrashGuard::reset()
     last_frame.reset();
     recovering_since.reset();
     consecutive = 0;
+    fruitless = 0;
     total = 0;
     manual_pending = false;
 }
@@ -83,6 +84,7 @@ GuardOutcome CrashGuard::between_frames(Engine &engine, CoreAccess &core)
     {
         recovering_since.reset();
         consecutive = 0;
+        fruitless = 0;
         JournalEntry e;
         e.kind = JournalEntry::Recovered;
         e.frame = frame;
@@ -175,6 +177,9 @@ GuardOutcome CrashGuard::handle(const CrashVerdict &verdict, Engine &engine, Cor
     }
 
     consecutive++;
+    // Putting changed bytes back for good is progress: there are only so many of them.
+    if (!(byte_suspects && bytes->fixes_for_good()))
+        fruitless++;
     total++;
     for (auto s : suspects)
         crashes_of(engine, s)++;
@@ -198,7 +203,7 @@ GuardOutcome CrashGuard::handle(const CrashVerdict &verdict, Engine &engine, Cor
     e.suspects = out.suspect_names;
     e.attempt = consecutive;
 
-    if (consecutive > kMaxAttempts)
+    if (fruitless > kMaxAttempts || consecutive > kMaxCrashesInRow)
     {
         restore(*cp, engine, core);
         engine.set_active(false);

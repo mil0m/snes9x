@@ -66,6 +66,9 @@ struct ByteBlame
     virtual size_t suspects(uint64_t after, uint64_t through, bool only_new) const = 0;
     // Act on them; `attempt` is the crash's number in a row (1-based).
     virtual ByteBlameResult act(uint64_t after, uint64_t through, unsigned attempt, bool only_new) = 0;
+    // Whether acting removes the bytes for good (put back clean), so every crash it acts on
+    // is progress that can't repeat forever, and needn't count towards giving up.
+    virtual bool fixes_for_good() const { return false; }
     virtual ~ByteBlame() = default;
 };
 
@@ -99,7 +102,9 @@ class CrashGuard
     static constexpr size_t kDefaultCheckpoints = 30;     // ~30 s of history
     static constexpr uint64_t kRollbackMargin = 30;       // go back this far before the trouble started
     static constexpr uint64_t kCleanFrames = 600;         // 10 s without a crash resets the attempt count
-    static constexpr unsigned kMaxAttempts = 5;
+    static constexpr unsigned kMaxAttempts = 5; // crashes in a row that fix nothing for good
+    // ...and in a row at all, even while each one puts some byte back for good.
+    static constexpr unsigned kMaxCrashesInRow = 40;
     static constexpr uint64_t kManualLookback = 120;      // a hand-marked crash blames the last 2 s
     // Each crash in a row goes this much further back: damage is often written long
     // before the game trips over it, and every checkpoint after it carries it along.
@@ -148,6 +153,7 @@ class CrashGuard
     std::optional<uint64_t> last_frame;
     std::optional<uint64_t> recovering_since; // frame we last rolled back to
     unsigned consecutive = 0;
+    unsigned fruitless = 0; // of those, the ones nothing was fixed for good in
     unsigned total = 0;
     bool manual_pending = false;
 };

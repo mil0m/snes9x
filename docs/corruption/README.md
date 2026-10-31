@@ -283,7 +283,10 @@ How the ROM behaves:
   the guard puts back only the changed bytes the game used just before it, and keeps every
   other change: code the game reached for the first time goes first (the newest half on the
   first crash, all of it on the second), then everything used before the crash. Classic
-  runs survive this way too, instead of giving up and losing the whole corruption. With
+  runs survive this way too, instead of giving up and losing the whole corruption: six
+  FF6 runs with 300 random bytes in its main code bank all played five minutes, keeping
+  40-260 of the changes, where the old guard left every one of them hung. A crash that puts
+  bytes back doesn't count towards giving up (only crashes that fix nothing do). With
   `"rom_policy": "reroll"` in the recipe, blamed bytes get a fresh random value instead of
   the clean one. Blamed bytes count as crashes in the crash map, and changed bytes the game
   kept using for 15 s count as calm, so **Avoid dangerous bytes** works on the ROM too.

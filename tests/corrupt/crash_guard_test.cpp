@@ -490,6 +490,8 @@ TEST_SUITE("blaming single bytes the game used (ROM)")
     {
         uint64_t used_at = 0;
         bool running_all_along = false; // used before every window too: not new
+        bool for_good = false;
+        bool fixes_for_good() const override { return for_good; }
         struct Act
         {
             uint64_t after, through;
@@ -622,4 +624,27 @@ TEST_SUITE("blaming single bytes the game used (ROM)")
         REQUIRE(rig.outcomes.back().kind == GuardOutcome::GaveUp);
         CHECK(bytes.acts.size() == CrashGuard::kMaxAttempts);
     }
+
+    TEST_CASE("crashes that put bytes back for good don't count towards giving up, up to a limit")
+    {
+        Rig rig(idle_recipe());
+        FakeBytes bytes;
+        bytes.for_good = true;
+        rig.guard.set_byte_blame(&bytes);
+        rig.frames(200);
+        auto crash = [&] {
+            bytes.used_at = rig.engine.current_frame();
+            rig.mem.of(Target::WRAM)[kCrashByte] = kCrashValue;
+            rig.frame();
+            rig.frames(5);
+        };
+        for (unsigned i = 0; i < 3 * CrashGuard::kMaxAttempts; i++)
+            crash();
+        CHECK(rig.outcomes.back().kind == GuardOutcome::RolledBack);
+        CHECK(rig.engine.active());
+        while (rig.outcomes.back().kind != GuardOutcome::GaveUp && rig.outcomes.size() < 100)
+            crash();
+        CHECK(rig.outcomes.size() == CrashGuard::kMaxCrashesInRow + 1);
+    }
 }
+
