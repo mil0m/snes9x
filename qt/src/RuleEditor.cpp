@@ -599,6 +599,16 @@ void RuleEditor::buildForm()
     connect(buttons, &QDialogButtonBox::accepted, this, &QDialog::accept);
     connect(buttons, &QDialogButtonBox::rejected, this, &QDialog::reject);
 
+    // Fields that share a form row with others get names of their own for screen readers.
+    for (auto [w, name] : std::initializer_list<std::pair<QWidget *, QString>>{
+             { first_edit, tr("First byte") }, { last_edit, tr("Last byte") },
+             { rect_width, tr("Rectangle width in bytes") }, { rect_height, tr("Rectangle height in rows") },
+             { rect_row, tr("Row width it was drawn in") }, { op_combo, tr("What to do") },
+             { copy_first, tr("Copy from, first byte") }, { copy_last, tr("Copy from, last byte") },
+             { when_combo, tr("When it fires") }, { window_start, tr("First frame") },
+             { window_end, tr("Last frame") } })
+        w->setAccessibleName(name);
+
     // Addresses and byte values in the same fixed-width font as the memory viewer.
     QFont fixed = QFontDatabase::systemFont(QFontDatabase::FixedFont);
     for (auto e : { first_edit, last_edit, swap_a, swap_b, copy_first, copy_last, stamp_from, fill_value,

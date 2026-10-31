@@ -1,5 +1,6 @@
 #include "doctest/doctest.h"
 #include "SurvivorsDialog.hpp"
+#include "UiKit.hpp"
 #include "corrupt/code_map.h"
 
 #include <QApplication>
@@ -113,4 +114,13 @@ TEST_CASE("the survivors dialog lists what proved itself, pins it with a note, a
     CHECK(child<QLabel>(d, "pins_empty")->isVisible());
     if (auto dir = getenv("CORRUPT_SHOTS_DIR"))
         d.grab().save(QString("%1/survivors-dialog-empty.png").arg(dir));
+}
+
+TEST_CASE("nothing in it is unnamed for a screen reader")
+{
+    FakeSurvivors src;
+    SurvivorsDialog d(src);
+    auto issues = ui::audit(&d);
+    CAPTURE(issues.join("\n").toStdString());
+    CHECK(issues.isEmpty());
 }

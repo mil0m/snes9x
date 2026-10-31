@@ -85,6 +85,7 @@ MemoryViewer::MemoryViewer(MemorySource &source, QWidget *parent)
     row_width->setPrefix(tr("Row "));
     row_width->setSuffix(tr(" bytes"));
     row_width->setSpecialValueText(tr("Row: Auto"));
+    row_width->setAccessibleName(tr("Row width in bytes"));
     row_width->setToolTip(tr("Bytes per row of dots. Step it one at a time (arrows or wheel) until the picture "
                              "lines up into columns: then a row of dots is a row of the game's data. 0 is Auto."));
     format_combo = new QComboBox(this);
@@ -92,11 +93,13 @@ MemoryViewer::MemoryViewer(MemorySource &source, QWidget *parent)
     for (auto f : { TileFormat::Bpp2, TileFormat::Bpp4, TileFormat::Bpp8, TileFormat::Mode7 })
         format_combo->addItem(tile_format_name(f), QString(tile_format_id(f)));
     format_combo->setCurrentIndex(1); // 4 bpp: most backgrounds and every sprite
+    format_combo->setAccessibleName(tr("Tile format"));
     format_combo->setToolTip(tr("How the tiles are stored. Clicking a tile area in the Map picks this for you."));
     palette_spin = new QSpinBox(this);
     palette_spin->setObjectName("palette");
     palette_spin->setPrefix(tr("Palette "));
     palette_spin->setSpecialValueText(tr("Palette: Grey"));
+    palette_spin->setAccessibleName(tr("Palette row"));
     palette_spin->setToolTip(tr("Which row of the game's palette colours the tiles. Sprites use 8-15 at 4 bpp. "
                                 "Grey shows the raw colour numbers."));
     per_row_spin = new QSpinBox(this);
@@ -104,6 +107,7 @@ MemoryViewer::MemoryViewer(MemorySource &source, QWidget *parent)
     per_row_spin->setRange(1, TileView::kMaxTilesPerRow);
     per_row_spin->setValue(16);
     per_row_spin->setSuffix(tr(" per row"));
+    per_row_spin->setAccessibleName(tr("Tiles per row"));
     per_row_spin->setToolTip(tr("Tiles per row. Big sprites and fonts often line up at 16 or 32."));
     target_combo = new QComboBox(this);
     target_combo->setObjectName("target");
@@ -140,12 +144,16 @@ MemoryViewer::MemoryViewer(MemorySource &source, QWidget *parent)
                                 "save, rom the game itself"));
     overlay_combo->setToolTip(tr("What the colours on top of the bytes show; the line under the view explains them"));
     goto_edit->setToolTip(tr("Type an offset like 0x1A00 and press Enter"));
-    top->addWidget(new QLabel(tr("Memory"), this));
-    top->addWidget(target_combo);
-    top->addWidget(new QLabel(tr("Show as"), this));
-    top->addWidget(mode_combo);
-    top->addWidget(new QLabel(tr("Colour by"), this));
-    top->addWidget(overlay_combo, 1);
+    // Each label names its control for screen readers and moves focus there on its mnemonic.
+    auto labelled = [&](const QString &text, QWidget *control, int stretch = 0) {
+        auto label = new QLabel(text, this);
+        label->setBuddy(control);
+        top->addWidget(label);
+        top->addWidget(control, stretch);
+    };
+    labelled(tr("&Memory"), target_combo);
+    labelled(tr("&Show as"), mode_combo);
+    labelled(tr("&Colour by"), overlay_combo, 1);
     top->addWidget(goto_edit);
     top->addWidget(clear);
     layout->addLayout(top);
@@ -171,11 +179,13 @@ MemoryViewer::MemoryViewer(MemorySource &source, QWidget *parent)
     paint_value->setRange(0, 255);
     paint_value->setDisplayIntegerBase(16);
     paint_value->setPrefix(tr("Value 0x"));
+    paint_value->setAccessibleName(tr("Value to paint"));
     paint_value->setToolTip(tr("The value to paint (Alt-click a byte to pick its value)"));
     brush_spin = new QSpinBox(view_options);
     brush_spin->setObjectName("brush");
     brush_spin->setRange(1, 64);
     brush_spin->setPrefix(tr("Brush "));
+    brush_spin->setAccessibleName(tr("Brush size"));
     brush_spin->setToolTip(tr("Brush size in bytes, square"));
     export_png_button = new QPushButton(tr("Export PNG…"), view_options);
     export_png_button->setObjectName("export_png");

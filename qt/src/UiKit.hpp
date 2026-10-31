@@ -53,6 +53,11 @@ int sectionGap(const QWidget *widget);
 // A form: labels on the left (left-aligned), fields that grow, rows that don't wrap.
 QFormLayout *form(QWidget *parent = nullptr);
 
+// What a screen reader or a keyboard user would miss: icon-only buttons without an
+// accessible name or tooltip, and inputs with neither a label (buddy) nor a name. One line
+// each, naming the widget.
+QStringList audit(QWidget *root);
+
 // A home folder path written with ~.
 QString shortPath(const QString &path);
 

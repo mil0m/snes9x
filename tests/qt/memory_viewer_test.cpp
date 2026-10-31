@@ -1,5 +1,6 @@
 #include "doctest/doctest.h"
 #include "MemoryViewer.hpp"
+#include "UiKit.hpp"
 #include "MemoryView.hpp"
 #include "PixelView.hpp"
 #include "TileView.hpp"
@@ -900,4 +901,13 @@ TEST_SUITE("the tile view in the viewer")
             v.grab().save(QString("%1/memory-viewer-tiles.png").arg(dir));
         }
     }
+}
+
+TEST_CASE("nothing in it is unnamed for a screen reader")
+{
+    FakeSource src;
+    MemoryViewer v(src);
+    auto issues = ui::audit(&v);
+    CAPTURE(issues.join("\n").toStdString());
+    CHECK(issues.isEmpty());
 }

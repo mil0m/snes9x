@@ -12,6 +12,11 @@
 #include <QLabel>
 #include <QPainter>
 #include <QPixmapCache>
+#include <QAbstractButton>
+#include <QAbstractSpinBox>
+#include <QComboBox>
+#include <QLineEdit>
+#include <QSlider>
 #include <QStyle>
 
 #include <algorithm>
@@ -263,6 +268,50 @@ QFormLayout *form(QWidget *parent)
     f->setLabelAlignment(Qt::AlignLeft | Qt::AlignVCenter);
     f->setRowWrapPolicy(QFormLayout::DontWrapRows);
     return f;
+}
+
+QStringList audit(QWidget *root)
+{
+    QStringList issues;
+    auto describe = [](QWidget *w) {
+        QString name = w->objectName().isEmpty() ? QString("(unnamed)") : w->objectName();
+        return QString("%1 %2").arg(w->metaObject()->className(), name);
+    };
+    QSet<QWidget *> labelled;
+    for (auto label : root->findChildren<QLabel *>())
+        if (label->buddy())
+            labelled.insert(label->buddy());
+    auto inside_compound = [](QWidget *w) { // a spin box's or combo box's own parts
+        for (auto p = w->parentWidget(); p; p = p->parentWidget())
+            if (qobject_cast<QAbstractSpinBox *>(p) || qobject_cast<QComboBox *>(p))
+                return true;
+        return false;
+    };
+    auto named_here_or_above = [root](QWidget *w) { // a compound widget named as a whole
+        for (auto p = w; p && p != root->parentWidget(); p = p->parentWidget())
+            if (!p->accessibleName().isEmpty())
+                return true;
+        return false;
+    };
+    for (auto b : root->findChildren<QAbstractButton *>())
+    {
+        if (!b->text().isEmpty() || b->icon().isNull() || inside_compound(b) ||
+            b->objectName().startsWith("qt_")) // Qt's own, like a dock's title buttons
+            continue;
+        if (b->accessibleName().isEmpty())
+            issues << describe(b) + ": icon button without an accessible name";
+        if (b->toolTip().isEmpty())
+            issues << describe(b) + ": icon button without a tooltip";
+    }
+    for (auto w : root->findChildren<QWidget *>())
+    {
+        bool input = qobject_cast<QLineEdit *>(w) || qobject_cast<QComboBox *>(w) ||
+                     qobject_cast<QAbstractSpinBox *>(w) || qobject_cast<QSlider *>(w);
+        if (!input || inside_compound(w) || labelled.contains(w) || named_here_or_above(w))
+            continue;
+        issues << describe(w) + ": input with no label or accessible name";
+    }
+    return issues;
 }
 
 QString shortPath(const QString &path)

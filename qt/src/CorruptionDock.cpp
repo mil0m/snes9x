@@ -710,6 +710,14 @@ void CorruptionDock::tour(const QString &dir)
         guide->close();
         refreshStatus();
         shot(findChild<QWidget *>("panel"), "12-panel-at-the-end");
+        // What a screen reader would miss, window by window (empty when all is well).
+        QFile audit(dir + "/audit.txt");
+        if (audit.open(QIODevice::WriteOnly | QIODevice::Text))
+            for (auto [name, w] : std::initializer_list<std::pair<const char *, QWidget *>>{
+                     { "panel", this }, { "memory viewer", memory_viewer }, { "survivors", survivors_dialog } })
+                if (w)
+                    for (auto &issue : ui::audit(w))
+                        audit.write(QString("%1: %2\n").arg(name, issue).toUtf8());
         QFile done(dir + "/done");
         done.open(QIODevice::WriteOnly);
     });

@@ -9,6 +9,10 @@
 #include <QFormLayout>
 #include <QImage>
 #include <QLabel>
+#include <QLineEdit>
+#include <QSpinBox>
+#include <QToolButton>
+#include <QVBoxLayout>
 #include <QPixmap>
 #include <QWidget>
 
@@ -168,4 +172,30 @@ TEST_CASE("a long path shows its start and end, with home as ~, and the whole of
     QApplication::processEvents();
     CHECK_FALSE(label->text().contains(QChar(0x2026)));
     CHECK(label->minimumSizeHint().width() < 100); // it never holds the panel wide
+}
+
+TEST_CASE("the audit finds icon buttons without a name or tooltip, and inputs nobody labels")
+{
+    QWidget w;
+    auto layout = new QVBoxLayout(&w);
+    auto bare = new QToolButton(&w);
+    bare->setIcon(ui::icon("trash"));
+    layout->addWidget(bare);
+    auto edit = new QLineEdit(&w);
+    layout->addWidget(edit);
+    auto spin = new QSpinBox(&w); // its own line edit is part of it, not a second input
+    layout->addWidget(spin);
+    auto issues = ui::audit(&w);
+    CHECK(issues.size() == 4); // the button: no name, no tooltip; the edit and the spin box: no label
+    bare->setToolTip("Remove the selected rule");
+    bare->setAccessibleName("Remove the selected rule");
+    auto label = new QLabel("Seed", &w);
+    label->setBuddy(edit);
+    spin->setAccessibleName("Zoom");
+    CHECK(ui::audit(&w).isEmpty());
+    // A labelled form row is labelled.
+    QWidget f;
+    auto form = ui::form(&f);
+    form->addRow("Name", new QLineEdit(&f));
+    CHECK(ui::audit(&f).isEmpty());
 }

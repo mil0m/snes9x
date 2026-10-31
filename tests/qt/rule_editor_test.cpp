@@ -2,6 +2,7 @@
 #include "corrupt/recipe_json.h"
 #include "corrupt/rule_text.h"
 #include "RuleEditor.hpp"
+#include "UiKit.hpp"
 
 #include <QApplication>
 #include <QCheckBox>
@@ -499,4 +500,13 @@ TEST_CASE("the editor's look: headed sections, not boxes; forms whose fields gro
     // Errors read as errors in both looks: the error tone, not a fixed red.
     auto error = child<QLabel>(e, "error");
     CHECK(error->palette().color(QPalette::WindowText) != e.palette().color(QPalette::WindowText));
+}
+
+TEST_CASE("nothing in it is unnamed for a screen reader")
+{
+    SizedMemory sizes;
+    RuleEditor e(default_rule(), sample_regions(), sizes);
+    auto issues = ui::audit(&e);
+    CAPTURE(issues.join("\n").toStdString());
+    CHECK(issues.isEmpty());
 }
