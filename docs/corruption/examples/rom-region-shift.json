@@ -1,0 +1,16 @@
+{
+  "format": 1,
+  "name": "ROM region shift",
+  "notes": "The old Photoshop favourite: a block of the ROM shifted one byte to the right as the game boots, so everything in it reads from its neighbour. Draw your own region in the memory viewer (Pixels, Alt-drag on the rom target, New Rule from Selection) and pick Shift.",
+  "seed": 2003,
+  "rules": [
+    {
+      "name": "shift",
+      "target": "rom",
+      "rect": { "start": "0x40000", "row": 256, "width": 256, "height": 16 },
+      "op": { "type": "shift", "dx": 1, "dy": 0 },
+      "when": { "at_load": true },
+      "count": 1
+    }
+  ]
+}

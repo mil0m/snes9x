@@ -289,6 +289,34 @@ How the ROM behaves:
 
 Plan and what's next: [`2026-10-31-rom-corruption-plan.md`](./2026-10-31-rom-corruption-plan.md).
 
+## Editing memory like a picture
+
+The way ROMs used to be corrupted in Photoshop, built in: the memory viewer's **Pixels**
+view is the canvas (one dot a byte, a row width you choose), and these work on any target,
+the ROM included:
+
+- **Rectangles**: Alt-drag (Option on a Mac) to select a rectangle in the current row width.
+  **New Rule from Selection** makes a rule for exactly that rectangle; the rule editor shows
+  it under **Shape**.
+- **Area operations**, for the whole rectangle or range at once: **Shift** (right by X bytes,
+  down by Y rows, wrapping round or filling), **Flip** (horizontally, vertically or both),
+  **Levels** (invert, posterize, threshold, gamma, contrast), **Filter** (blur, sharpen,
+  median, emboss, edges, max, min, over the 2D layout), **Stamp** (copy another region of the
+  same size onto it) and **Fill**. With **Once, when the run starts** they make a classic
+  corrupted ROM; with any other trigger they keep happening (a region that keeps sliding).
+  The per-byte ops (random, add, bit flips…) also work inside a rectangle. Starter: **ROM
+  region shift**.
+- **Paint**: switch on **Paint**, pick a value (or Alt-click a dot to take its value) and a
+  brush size, and drag. The bytes change at once and are kept in the recipe as **patches**,
+  which apply every time the run starts, so painted ROM is in the game from its first frame
+  and no rollback undoes it. Painting with no recipe loaded makes one. **Clear Paint** in the
+  panel forgets them.
+- **Round trip to a real image editor**: **Export PNG…** saves the rectangle (or the selected
+  range, or the whole memory) as a greyscale PNG in the current row width. Edit it anywhere,
+  keep it greyscale and the same size, and **Import PNG…** puts it back: the pixels that
+  changed become painted bytes. The PNG remembers where it came from; if an editor strips
+  that, it goes onto the current selection when the sizes match.
+
 ## Save backups
 
 Nothing to do: the game's save RAM is backed up when it loads, about once a minute while
@@ -326,6 +354,8 @@ so typos fail loudly.
 
 **`range`**: `[first, last]` inclusive, relative to the target (`wram` `0x0400` is
 `$7E:0400`), a name from the game's `regions.json`, or left out for the whole target.
+Or **`rect`** instead: `{ "start": "0x1000", "row": 64, "width": 16, "height": 32 }`, a
+rectangle with its top-left at `start`, in rows of `row` bytes.
 
 **`op`**, by `type`:
 
@@ -338,6 +368,14 @@ so typos fail loudly.
 | `copy` | `from` {`target`, `range`} or region, `length` | copies a block from a random spot in `from` |
 | `freeze` | `value` (optional) | holds a value, or whatever was there when first hit |
 | `shuffle` | `window` (2–256) | permutes the bytes after each picked address |
+| `shift` | `dx`, `dy`, `wrap` (default true), `value` (fill when not wrapping) | moves the whole area |
+| `flip` | `axis` (`horizontal`, `vertical`, `both`) | mirrors the whole area |
+| `levels` | `curve` (`invert`, `posterize`, `threshold`, `gamma`, `contrast`), `amount` | remaps every value |
+| `filter` | `kernel` (`blur`, `sharpen`, `median`, `emboss`, `edges`, `max`, `min`) | 3×3 over the area's rows |
+| `stamp` | `from` (the source's top-left) | copies a same-sized region onto the area |
+| `fill` | `value` | sets the whole area |
+
+The last six act on the whole area at once and ignore `count` and `pick`.
 
 **`when`**: exactly one of `every_frames`, `chance_per_frame` (0–1), `once_at_frame`,
 `hotkey` (1–9), or `at_load: true` (once as the run starts, before frame 1; on the ROM that's
@@ -350,7 +388,8 @@ firing it lowers the chance to fire),
 `salt` (re-rolls this rule's randomness; the crash guard sets it).
 
 **Per recipe, optional**: `intensity` (0–1, default 1; the Chaos slider), which multiplies
-every rule's intensity, and `anchor_state`, the file name of the recipe's saved moment.
+every rule's intensity, `anchor_state`, the file name of the recipe's saved moment, and
+`patches`, the painted bytes: `[{ "target": "rom", "at": "0x21A3F", "bytes": "EAEA" }]`.
 
 **Crash settings, per recipe, optional**:
 

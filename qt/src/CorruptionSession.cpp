@@ -765,6 +765,14 @@ void CorruptionSession::restoreCleanRom()
 
 std::string CorruptionSession::paint(Target t, const std::vector<uint32_t> &offsets, uint8_t value)
 {
+    std::vector<std::pair<uint32_t, uint8_t>> bytes;
+    for (auto o : offsets)
+        bytes.push_back({ o, value });
+    return setBytes(t, bytes);
+}
+
+std::string CorruptionSession::setBytes(Target t, const std::vector<std::pair<uint32_t, uint8_t>> &wanted)
+{
     std::lock_guard lock(mutex);
     if (!game_loaded)
         return "No game loaded";
@@ -772,9 +780,9 @@ std::string CorruptionSession::paint(Target t, const std::vector<uint32_t> &offs
         newRecipeLocked("Painted");
     std::vector<std::pair<uint32_t, uint8_t>> bytes;
     size_t size = rom.size(t);
-    for (auto o : offsets)
+    for (auto [o, v] : wanted)
         if (o < size && !rom.locked_mask().is_hot(t, o))
-            bytes.push_back({ o, value });
+            bytes.push_back({ o, v });
     if (bytes.empty())
         return {};
     engine.add_patches(t, bytes);

@@ -14,6 +14,7 @@
 #include <QScrollBar>
 #include <QPushButton>
 #include <QSpinBox>
+#include <QTemporaryDir>
 
 using namespace corrupt;
 
@@ -109,6 +110,12 @@ struct FakeSource : MemorySource
         uint8_t value;
     };
     std::vector<Paint> painted;
+    std::vector<std::pair<Target, std::vector<std::pair<uint32_t, uint8_t>>>> set;
+    std::string setBytes(Target t, const std::vector<std::pair<uint32_t, uint8_t>> &bytes) override
+    {
+        set.push_back({ t, bytes });
+        return {};
+    }
     std::string paint(Target t, const std::vector<uint32_t> &offsets, uint8_t value) override
     {
         painted.push_back({ t, offsets, value });
@@ -452,6 +459,57 @@ TEST_SUITE("the pixel view in the viewer")
         CHECK_FALSE(pixels->paintMode());
         choose(v, "mode", "hex");
         CHECK_FALSE(paint->isVisible());
+    }
+
+    TEST_CASE("Export PNG writes the selection as a picture; an edited copy comes back as paint")
+    {
+        QTemporaryDir dir;
+        FakeSource src;
+        MemoryViewer v(src);
+        v.show();
+        v.refresh();
+        choose(v, "mode", "pixels");
+        auto pixels = child<PixelView>(v, "pixels");
+        CHECK(child<QPushButton>(v, "export_png")->isVisible());
+        pixels->setRowWidth(32);
+        pixels->selectRect(0x400, 8, 4);
+        QString path = dir.filePath("rect.png");
+        v.exportPng(path);
+        QImage img(path);
+        REQUIRE(img.width() == 8);
+        REQUIRE(img.height() == 4);
+
+        img.setPixel(1, 2, qRgb(0x7E, 0x7E, 0x7E)); // an edit "in Photoshop"
+        QString edited = dir.filePath("edited.png");
+        REQUIRE(img.save(edited));
+        pixels->clearSelection(); // it finds its place from the picture, not the selection
+        v.importPng(edited);
+        REQUIRE(src.set.size() == 1);
+        CHECK(src.set[0].first == Target::WRAM);
+        REQUIRE(src.set[0].second.size() == 1);
+        CHECK(src.set[0].second[0].first == 0x400 + 2 * 32 + 1);
+        CHECK(src.set[0].second[0].second == 0x7E);
+        CHECK(child<QLabel>(v, "selection")->text().contains("1"));
+
+        // Nothing selected: the whole memory, in the current row width.
+        v.exportPng(dir.filePath("all.png"));
+        QImage all(dir.filePath("all.png"));
+        CHECK(all.width() == 32);
+        CHECK(all.height() == int(nominal_size(Target::WRAM) / 32));
+
+        // A picture without its place goes to the selection, if it's the right size.
+        QImage bare(8, 4, QImage::Format_Grayscale8);
+        bare.fill(0);
+        QString bare_path = dir.filePath("bare.png");
+        REQUIRE(bare.save(bare_path));
+        pixels->selectRect(0x800, 8, 4);
+        v.importPng(bare_path);
+        CHECK(src.set.size() == 2);
+        CHECK(src.set[1].second.size() > 0);
+        pixels->selectRect(0x800, 9, 4); // wrong size: refused, says why
+        v.importPng(bare_path);
+        CHECK(src.set.size() == 2);
+        CHECK(child<QLabel>(v, "selection")->text().contains("8x4"));
     }
 
     TEST_CASE("a rectangle drawn in the pixel view makes a rectangle rule")

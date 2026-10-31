@@ -38,6 +38,8 @@ struct MemorySource
     virtual std::string addRule(const corrupt::Rule &rule) = 0; // error or empty
     // Sets those bytes to `value` now and keeps them in the recipe as patches. Error or empty.
     virtual std::string paint(corrupt::Target target, const std::vector<uint32_t> &offsets, uint8_t value) = 0;
+    // The same for bytes that each get their own value (an imported picture).
+    virtual std::string setBytes(corrupt::Target target, const std::vector<std::pair<uint32_t, uint8_t>> &bytes) = 0;
     virtual std::string saveRegion(const std::string &name, const corrupt::AddressRange &range) = 0;
     virtual std::string renameRegion(const std::string &from, const std::string &to) = 0;
     virtual std::string deleteRegion(const std::string &name) = 0;
@@ -55,6 +57,12 @@ class MemoryViewer : public QWidget
 
     void refresh();                    // pull a fresh snapshot (the timer does this 10 times a second)
     corrupt::Rule ruleFromSelection() const; // what New Rule from Selection starts from
+
+    // The picture round trip (the buttons ask for a file, then call these). Export writes
+    // the rectangle, the selected range or the whole memory, in the pixel view's row width.
+    // Import puts an edited copy back where it came from (or onto the selection) as paint.
+    void exportPng(const QString &path);
+    void importPng(const QString &path);
 
     // Named regions. The buttons ask with dialogs and call these; each returns an error or empty.
     QString nameSelection(const QString &name, bool overwrite = false);
@@ -102,6 +110,8 @@ class MemoryViewer : public QWidget
     QLabel *zoom_label;
     QSpinBox *row_width;
     QPushButton *paint_button;
+    QPushButton *export_png_button;
+    QPushButton *import_png_button;
     QSpinBox *paint_value;
     QSpinBox *brush_spin;
     std::array<int, corrupt::kTargetCount> row_widths{}; // chosen per memory, 0 = auto

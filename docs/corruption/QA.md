@@ -273,3 +273,18 @@ scratch folder. By default Snes9x writes the `.srm` next to the ROM.
 7. Make a live rule that's sure to crash (a small range in the game's code, `random`, every 60 frames, `count` 50) with the guard on.
    - [ ] Crashes are caught and rolled back, and the game keeps running: the ROM bytes from after the checkpoint are put back.
 
+## 21. Editing memory like a picture
+1. Load FF6, open the memory viewer on **rom** in **Pixels**, and set the row width until something lines up (graphics show as tiles at 16, 32 or 64).
+2. Alt-drag a rectangle.
+   - [ ] It's outlined and stays put when you scroll. The line below says its size, corner and row width.
+3. **New Rule from Selection**, choose **Shift the whole area**, right by 1, and **Once, when the run starts**. OK, then turn the recipe on.
+   - [ ] The game restarts, and in the viewer the rectangle's contents have moved one dot to the right.
+4. Try **Flip**, **Levels → Posterize**, **Filter → Blur** and **Stamp** the same way.
+   - [ ] Each changes only the rectangle; the rule's summary says what it does.
+5. Switch on **Paint**, value 0x00, brush 4, and scribble over part of the ROM. Alt-click a dot.
+   - [ ] The dots turn black as you drag; Alt-click puts that dot's value in the value box. The panel's ROM line says how many bytes are painted.
+6. **Save** the recipe, turn it off and on.
+   - [ ] The paint is still there after the restart (it's in the recipe as patches). **Clear Paint** empties the count; the next start is clean.
+7. Select a rectangle, **Export PNG…**, open it in an image editor, draw on it, save it (same size, greyscale), and **Import PNG…**.
+   - [ ] The drawing appears in the viewer and counts as painted bytes.
+

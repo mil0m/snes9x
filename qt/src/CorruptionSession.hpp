@@ -124,6 +124,7 @@ class CorruptionSession
     // Painting: sets the bytes now and keeps them in the recipe as patches, which apply
     // whenever a run starts (a new recipe is made if none is loaded). Error or empty.
     std::string paint(corrupt::Target t, const std::vector<uint32_t> &offsets, uint8_t value);
+    std::string setBytes(corrupt::Target t, const std::vector<std::pair<uint32_t, uint8_t>> &bytes); // the same, a value each
     void clearPatches(); // forgets them; the bytes stay until the next run starts
 
     // Save backups.

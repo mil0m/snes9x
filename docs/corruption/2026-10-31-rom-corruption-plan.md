@@ -1,6 +1,6 @@
 # ROM corruption: plan (roadmap #22)
 
-**Status (2026-10-31):** reviewed by Mikael (answers at the end). Phase 1 done, pending QA.md section 20; phase 2 next.
+**Status (2026-10-31):** reviewed by Mikael (answers at the end). Phases 1 and 2 done, pending QA.md sections 20 and 21; phase 3 (the code map) next.
 
 Spec: [`2026-10-30-ram-corruption-design.md`](./2026-10-30-ram-corruption-design.md),
 phase 5 ("a ROM target applied at load time, or live"). Both modes are in (Mikael, 31 Oct).
@@ -328,6 +328,18 @@ Built in four steps, each pushed:
    width; import a PNG of the same size back, and the bytes that differ become patches.
 
 Sub-byte pixels (1, 2 or 4 bits per dot) come after, if wanted.
+
+Findings while building phase 2:
+
+- **Paint can't go through the ROM journal**: the journal is in time order and a rollback
+  pops from the end, so a frame-0 entry pushed after live edits would stop the undo early.
+  Painted bytes are written without a journal entry (`write_at_start`); only
+  `restore_clean` undoes them, and the next start re-applies them from the recipe.
+- **A rectangle keeps its own row width**: it's stored as drawn, so changing the view's row
+  width afterwards doesn't reshape it (the outline is only drawn while the widths match).
+- **The PNG remembers its place** in a text chunk (`snes9x-area`); Qt keeps it through a save
+  and load. Image editors may drop it, so Import falls back to the selection, and says the
+  size it needs when that doesn't match.
 
 ## Risks
 

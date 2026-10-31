@@ -1,4 +1,5 @@
 #include "MemoryViewer.hpp"
+#include "AreaImage.hpp"
 #include "MemoryView.hpp"
 #include "PixelView.hpp"
 #include "TileView.hpp"
@@ -6,6 +7,8 @@
 #include "corrupt/rule_text.h"
 
 #include <QComboBox>
+#include <QDir>
+#include <QFileDialog>
 #include <QFontDatabase>
 #include <QInputDialog>
 #include <QMessageBox>
@@ -148,10 +151,20 @@ MemoryViewer::MemoryViewer(MemorySource &source, QWidget *parent)
     brush_spin->setRange(1, 64);
     brush_spin->setPrefix(tr("Brush "));
     brush_spin->setToolTip(tr("Brush size in bytes, square"));
+    export_png_button = new QPushButton(tr("Export PNG…"), view_options);
+    export_png_button->setObjectName("export_png");
+    export_png_button->setToolTip(tr("Save the selection (or all of this memory) as a greyscale picture, one pixel a "
+                                     "byte in the current row width, to edit in any image editor"));
+    import_png_button = new QPushButton(tr("Import PNG…"), view_options);
+    import_png_button->setObjectName("import_png");
+    import_png_button->setToolTip(tr("Put an edited picture back where it was exported from: the pixels that "
+                                     "changed become painted bytes in the recipe"));
     options->addSpacing(12);
     options->addWidget(paint_button);
     options->addWidget(paint_value);
     options->addWidget(brush_spin);
+    options->addWidget(export_png_button);
+    options->addWidget(import_png_button);
     options->addWidget(format_combo);
     options->addWidget(palette_spin);
     options->addWidget(per_row_spin);
@@ -300,6 +313,18 @@ MemoryViewer::MemoryViewer(MemorySource &source, QWidget *parent)
     };
     pixels->onPick = [this](uint8_t v) { paint_value->setValue(v); };
     connect(paint_button, &QPushButton::toggled, this, [this](bool on) { pixels->setPaintMode(on); });
+    connect(export_png_button, &QPushButton::clicked, this, [this] {
+        auto path = QFileDialog::getSaveFileName(this, tr("Export PNG"),
+                                                 QDir::home().filePath(QString("%1.png").arg(target_name(target()))),
+                                                 tr("PNG picture (*.png)"));
+        if (!path.isEmpty())
+            exportPng(path);
+    });
+    connect(import_png_button, &QPushButton::clicked, this, [this] {
+        auto path = QFileDialog::getOpenFileName(this, tr("Import PNG"), QDir::homePath(), tr("PNG picture (*.png)"));
+        if (!path.isEmpty())
+            importPng(path);
+    });
     connect(paint_value, &QSpinBox::valueChanged, this, [this](int v) { pixels->setPaintValue(uint8_t(v)); });
     connect(brush_spin, &QSpinBox::valueChanged, this, [this](int v) { pixels->setBrush(v); });
     connect(mode_combo, &QComboBox::currentIndexChanged, this, [this] { modeChanged(); });
@@ -373,7 +398,8 @@ void MemoryViewer::modeChanged()
     hover_label->setVisible(m != "hex");
     row_width->setVisible(m == "pixels");
     for (QWidget *w : { static_cast<QWidget *>(paint_button), static_cast<QWidget *>(paint_value),
-                        static_cast<QWidget *>(brush_spin) })
+                        static_cast<QWidget *>(brush_spin), static_cast<QWidget *>(export_png_button),
+                        static_cast<QWidget *>(import_png_button) })
         w->setVisible(m == "pixels");
     if (m != "pixels" && paint_button->isChecked())
         paint_button->click(); // painting only works in the pixel view
@@ -535,6 +561,63 @@ Rule MemoryViewer::ruleFromSelection() const
         r.name = std::string(target_name(r.range.target)) + " " + hex4(sel->first).toStdString();
     }
     return r;
+}
+
+namespace
+{
+// What Export PNG covers: the rectangle, the selected range in rows, or the whole memory.
+ImageArea exportArea(const PixelView &pixels)
+{
+    auto &snap = pixels.snapshot();
+    auto t = snap.target;
+    auto w = uint32_t(pixels.columns());
+    if (auto rect = pixels.rectSelection())
+        return { { t, rect->start, rect->row, rect->width, rect->height }, rect->last() };
+    uint32_t first = 0, last = snap.bytes.empty() ? 0 : uint32_t(snap.bytes.size() - 1);
+    if (auto sel = pixels.selection())
+    {
+        first = sel->first;
+        last = sel->second;
+    }
+    uint32_t rows = (last - first + w) / w;
+    return { { t, first, w, w, rows }, last };
+}
+} // namespace
+
+void MemoryViewer::exportPng(const QString &path)
+{
+    auto where = exportArea(*pixels);
+    if (!areaToImage(pixels->snapshot().bytes, where).save(path, "PNG"))
+        selection_label->setText(tr("Couldn't write %1").arg(path));
+    else
+        selection_label->setText(tr("Exported %1x%2 bytes to %3").arg(where.area.width).arg(where.area.height).arg(path));
+}
+
+void MemoryViewer::importPng(const QString &path)
+{
+    QImage img(path);
+    if (img.isNull())
+    {
+        selection_label->setText(tr("Couldn't read %1 as a picture").arg(path));
+        return;
+    }
+    // Where it came from, if it says; else the selection, if it's the same size.
+    auto where = imageArea(img).value_or(exportArea(*pixels));
+    if (where.area.target != target())
+    {
+        selection_label->setText(tr("That picture is of %1: switch to it first").arg(target_name(where.area.target)));
+        return;
+    }
+    QString error;
+    auto bytes = imageToBytes(img, where, pixels->snapshot().bytes, &error);
+    if (!bytes)
+    {
+        selection_label->setText(error);
+        return;
+    }
+    auto err = source.setBytes(target(), *bytes);
+    selection_label->setText(err.empty() ? tr("Imported: %n byte(s) changed, kept as paint", "", int(bytes->size()))
+                                         : tr("Couldn't import: %1").arg(QString::fromStdString(err)));
 }
 
 void MemoryViewer::newRule()

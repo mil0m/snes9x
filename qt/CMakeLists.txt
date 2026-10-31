@@ -161,6 +161,7 @@ list(APPEND QT_GUI_SOURCES
     src/MemoryView.cpp
     src/MemoryViewer.cpp
     src/PixelView.cpp
+    src/AreaImage.cpp
     src/TileView.cpp
     src/QuitSignals.cpp
     src/SoftwareScalers.cpp

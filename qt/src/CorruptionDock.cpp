@@ -57,6 +57,10 @@ struct SessionMemorySource : MemorySource
     {
         return s.paint(t, offsets, value);
     }
+    std::string setBytes(Target t, const std::vector<std::pair<uint32_t, uint8_t>> &bytes) override
+    {
+        return s.setBytes(t, bytes);
+    }
     std::string saveRegion(const std::string &name, const AddressRange &range) override { return s.saveRegion(name, range); }
     std::string renameRegion(const std::string &from, const std::string &to) override { return s.renameRegion(from, to); }
     std::string deleteRegion(const std::string &name) override { return s.deleteRegion(name); }
