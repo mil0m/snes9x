@@ -1,6 +1,6 @@
 # ROM corruption: plan (roadmap #22)
 
-**Status (2026-10-31):** reviewed by Mikael (answers at the end). Phases 1-4 done, pending QA.md sections 20-23; phase 5 (code-aware ops) next.
+**Status (2026-10-31):** reviewed by Mikael (answers at the end). Phases 1-4 done, pending QA.md sections 20-23; phase 5 (code-aware ops) in progress.
 
 Spec: [`2026-10-30-ram-corruption-design.md`](./2026-10-30-ram-corruption-design.md),
 phase 5 ("a ROM target applied at load time, or live"). Both modes are in (Mikael, 31 Oct).
@@ -519,6 +519,56 @@ headless from power-on, `corrupt-smoke ... 18000 1 --guard [noblame]`, six seeds
 - **Guesses blame only newly reached bytes**, so a harmless change in code that runs every
   frame isn't reverted the first time the screen goes quiet.
 - macOS `bash` 3.2 has no `wait -n`; batch runs of three with a plain `wait`.
+
+## Phase 5 in detail
+
+**Code-aware ops: corruption that knows what each byte is.** Rules on the `rom` target can
+aim at bytes by their role in the code map, and three new ops change instructions as
+instructions.
+
+**Aiming** (any non-area op, `rom` rules only):
+
+- `"role"`: `opcode`, `operand`, `code` (either), `data`, `dma`, or `used` (anything the game
+  touched). Picks only bytes the code map (everyone's, combined) knows in that role, inside
+  the rule's range. Code run at both widths is skipped: it's the classic instant crash.
+- `"classes"` / `"except"`: instruction classes (`arith`, `logic`, `shift`, `compare`, `load`,
+  `store`, `transfer`, `branch`, `jump`, `return`, `stack`, `flags`, `width`, `block`,
+  `misc`). For an operand byte, the class of the instruction it belongs to. The editor
+  suggests leaving out `width` and `stack` but never forces it.
+- The candidates are worked out **once per run**, when a rule first fires, from the map as
+  it is then. So a recipe + seed replays exactly from its saved moment, and the next run
+  aims at everything explored since. No code map yet: the rule fires on nothing, and the
+  panel says so.
+
+So `operand` is `role: operand` with any value op (random, add, bitflip), and `nudge` is
+`role: operand` or `data` with a small `add`. No new op types for those.
+
+**New ops** (always aim at opcodes, `role` implied):
+
+- `opcode_swap`: replace an opcode with another from its **swap group**: same addressing
+  mode, same width rule (so the same length at every M/X), different meaning. Families:
+  `ORA AND EOR ADC CMP SBC LDA BIT`; `ASL LSR ROL ROR INC DEC`; `BPL BMI BVC BVS BCC BCS
+  BNE BEQ BRA`; `INX INY DEX DEY`; `CLC SEC CLI SEI CLD SED CLV`; `TAX TAY TXA TYA TXY TYX`;
+  `STA STZ`; `LDX LDY CPX CPY`; `STX STY`. Built from the instruction table and checked by
+  tests (every member the same length at all four widths).
+- `branch_flip`: a conditional branch becomes its opposite (`BEQ↔BNE`, `BCC↔BCS`,
+  `BPL↔BMI`, `BVC↔BVS`: one bit, `^ 0x20`).
+- `nop_out`: the whole instruction becomes `NOP`s, at the length it ran with.
+
+All plain byte writes, so the journal, rollback, blame by use and replays work as before.
+
+Built in four steps, each pushed:
+
+1. **Aiming and the ops** (`corrupt/code_aim`, no emulator): swap groups, the candidate
+   list for a role and classes, and the three ops on a ROM image plus flags. Unit tests.
+2. **Rules and the engine**: `role`/`classes`/`except` and the three op types in rules and
+   JSON, validation, the engine's code source (the session's combined map) and per-run
+   candidates, and the session wiring.
+3. **The real core**: test-ROM checks (an operand-only rule never misaligns code, a branch
+   flip, a NOP-out stops the frame counter), and FF6 runs comparing random bytes,
+   operand-only, opcode swaps and branch flips: crashes, survivors, and how long runs last.
+   Starter recipes from what works.
+4. **The rule editor**: a role choice, class checkboxes, the new ops; an offscreen Qt test.
 
 ## Risks
 
