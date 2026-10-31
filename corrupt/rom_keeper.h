@@ -36,6 +36,10 @@ class RomKeeper : public MemoryAccess
     uint8_t read(Target t, uint32_t offset) const override { return inner.read(t, offset); }
     const uint8_t *data(Target t) const override { return inner.data(t); }
     void write(Target t, uint32_t offset, uint8_t value) override;
+    // A write that belongs to the run's start (a painted patch): never undone by a rollback,
+    // only by restore_clean. Not journalled, so the journal stays in time order. (A live
+    // edit of the same byte from before the paint would still revert to its old value.)
+    void write_at_start(Target t, uint32_t offset, uint8_t value) override;
 
     // For the engine, so rules skip the locked bytes instead of logging writes that never land.
     const HotMask &locked_mask() const { return locked; }

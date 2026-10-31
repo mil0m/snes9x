@@ -472,6 +472,11 @@ std::string CorruptionSession::recipeJson(Recipe recipe) const
 void CorruptionSession::newRecipe(const std::string &name)
 {
     std::lock_guard lock(mutex);
+    newRecipeLocked(name);
+}
+
+void CorruptionSession::newRecipeLocked(const std::string &name)
+{
     if (!game_loaded)
         return;
     Recipe recipe;
@@ -736,6 +741,7 @@ CorruptionSession::Status CorruptionSession::status()
         for (auto t : kAllTargets)
             s.sizes[size_t(t)] = memory.size(t);
         s.rom_changed = rom.changed();
+        s.patched = patched_bytes(engine.recipe().patches);
     }
     s.policy = guard.get_policy();
     s.policy_overridden = policy_override.has_value();
@@ -755,6 +761,33 @@ void CorruptionSession::restoreCleanRom()
         return;
     rom.restore_clean();
     note("The ROM is clean again");
+}
+
+std::string CorruptionSession::paint(Target t, const std::vector<uint32_t> &offsets, uint8_t value)
+{
+    std::lock_guard lock(mutex);
+    if (!game_loaded)
+        return "No game loaded";
+    if (!has_recipe)
+        newRecipeLocked("Painted");
+    std::vector<std::pair<uint32_t, uint8_t>> bytes;
+    size_t size = rom.size(t);
+    for (auto o : offsets)
+        if (o < size && !rom.locked_mask().is_hot(t, o))
+            bytes.push_back({ o, value });
+    if (bytes.empty())
+        return {};
+    engine.add_patches(t, bytes);
+    for (auto &[o, v] : bytes)
+        rom.write_at_start(t, o, v); // a rollback mustn't undo paint
+    return {};
+}
+
+void CorruptionSession::clearPatches()
+{
+    std::lock_guard lock(mutex);
+    for (auto t : kAllTargets)
+        engine.clear_patches(t);
 }
 
 std::string CorruptionSession::exportRom(const fs::path &path)

@@ -1,5 +1,6 @@
 #pragma once
 #include "crash_detector.h"
+#include "patches.h"
 #include "policy.h"
 #include "rule.h"
 
@@ -28,6 +29,7 @@ struct Recipe
     double intensity = 1.0; // 0..1, multiplies every rule's intensity (the panel's Chaos slider)
     std::string anchor_state; // phase 3: save state the recipe starts from
     std::vector<Rule> rules;
+    std::vector<Patch> patches; // painted or imported bytes, applied as a run starts
 
     // Unset means "use the session's choice" (default policy, default detection).
     std::optional<PolicyKind> crash_policy;

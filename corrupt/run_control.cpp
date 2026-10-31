@@ -12,8 +12,10 @@ RunControl::Started RunControl::between_frames(Engine &engine, CoreAccess &core,
     if (rom)
     {
         rom->restore_clean();
-        classic = engine.fire_at_load(*rom, [](Target t) { return t == Target::ROM; }) > 0 ||
-                  engine.has_at_load(Target::ROM);
+        auto is_rom = [](Target t) { return t == Target::ROM; };
+        engine.fire_at_load(*rom, is_rom);
+        engine.apply_patches(*rom, is_rom);
+        classic = engine.has_at_load(Target::ROM) || engine.has_patches(Target::ROM);
     }
 
     Started result = Started::Fresh;
@@ -37,7 +39,11 @@ RunControl::Started RunControl::between_frames(Engine &engine, CoreAccess &core,
         current = core.save_state();
     }
     if (rom)
-        engine.fire_at_load(*rom, [](Target t) { return t != Target::ROM; });
+    {
+        auto not_rom = [](Target t) { return t != Target::ROM; };
+        engine.fire_at_load(*rom, not_rom);
+        engine.apply_patches(*rom, not_rom);
+    }
     engine.release();
     return result;
 }

@@ -60,6 +60,14 @@ void RomKeeper::write(Target t, uint32_t offset, uint8_t value)
     put(offset, value);
 }
 
+void RomKeeper::write_at_start(Target t, uint32_t offset, uint8_t value)
+{
+    if (t != Target::ROM || !loaded())
+        return inner.write(t, offset, value);
+    if (offset < clean_rom.size() && !locked.is_hot(Target::ROM, offset))
+        put(offset, value);
+}
+
 void RomKeeper::revert_after(uint64_t frame)
 {
     while (!journal.empty() && journal.back().frame > frame)

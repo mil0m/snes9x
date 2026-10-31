@@ -36,6 +36,8 @@ struct MemorySource
     virtual std::array<size_t, corrupt::kTargetCount> sizes() = 0;
     virtual corrupt::Regions regions() = 0;
     virtual std::string addRule(const corrupt::Rule &rule) = 0; // error or empty
+    // Sets those bytes to `value` now and keeps them in the recipe as patches. Error or empty.
+    virtual std::string paint(corrupt::Target target, const std::vector<uint32_t> &offsets, uint8_t value) = 0;
     virtual std::string saveRegion(const std::string &name, const corrupt::AddressRange &range) = 0;
     virtual std::string renameRegion(const std::string &from, const std::string &to) = 0;
     virtual std::string deleteRegion(const std::string &name) = 0;
@@ -99,6 +101,9 @@ class MemoryViewer : public QWidget
     QPushButton *zoom_in_button;
     QLabel *zoom_label;
     QSpinBox *row_width;
+    QPushButton *paint_button;
+    QSpinBox *paint_value;
+    QSpinBox *brush_spin;
     std::array<int, corrupt::kTargetCount> row_widths{}; // chosen per memory, 0 = auto
     QStackedWidget *stack;
     MemoryView *view;

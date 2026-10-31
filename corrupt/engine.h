@@ -68,6 +68,13 @@ class Engine
     size_t fire_at_load(MemoryAccess &mem, const std::function<bool(Target)> &which = {});
     bool has_at_load(Target t) const; // an enabled at_load rule on that target
 
+    // The recipe's patches (painted bytes): applied as the run starts, through `mem`,
+    // skipping locked bytes and never logged as rule writes. Returns the bytes written.
+    size_t apply_patches(MemoryAccess &mem, const std::function<bool(Target)> &which = {});
+    bool has_patches(Target t) const;
+    void add_patches(Target t, const std::vector<std::pair<uint32_t, uint8_t>> &bytes); // no restart
+    void clear_patches(Target t);                                                          // no restart
+
     // Held starts: with hold_starts(true), every (re)start waits at frame 0 until
     // release(), so the front end can snapshot the state (or load a saved one) at a
     // frame boundary first. Off by default.

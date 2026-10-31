@@ -685,7 +685,8 @@ ParseResult parse_recipe(std::string_view json_text, const Regions &regions)
         result.errors = ctx.errors;
         return result;
     }
-    check_keys(ctx, doc, "recipe", { "format", "name", "notes", "game", "seed", "intensity", "anchor_state", "rules", "crash_policy", "crash_detection" });
+    check_keys(ctx, doc, "recipe", { "format", "name", "notes", "game", "seed", "intensity", "anchor_state", "rules",
+                                     "patches", "crash_policy", "crash_detection" });
 
     if (!doc.contains("format") || !doc["format"].is_number_integer() || doc["format"].get<int>() != Recipe::kFormat)
     {
@@ -734,6 +735,58 @@ ParseResult parse_recipe(std::string_view json_text, const Regions &regions)
             ctx.fail("recipe.intensity", "expected a number within 0..1");
     }
 
+    if (doc.contains("patches"))
+    {
+        const json &ps = doc["patches"];
+        if (!ps.is_array())
+            ctx.fail("recipe.patches", "expected a list");
+        else
+        {
+            NominalMemory nominal;
+            for (size_t i = 0; i < ps.size(); i++)
+            {
+                std::string path = "patches[" + std::to_string(i) + "]";
+                const json &p = ps[i];
+                if (!require_object(ctx, p, path))
+                    continue;
+                check_keys(ctx, p, path, { "target", "at", "bytes" });
+                std::optional<Target> t = p.contains("target") ? get_target(ctx, p["target"], path + ".target") : std::nullopt;
+                std::optional<int64_t> at = p.contains("at") ? get_int_in(ctx, p["at"], path + ".at", 0, 0xFFFFFF) : std::nullopt;
+                std::string hexs = p.contains("bytes") && p["bytes"].is_string() ? p["bytes"].get<std::string>() : "";
+                std::vector<uint8_t> bytes;
+                bool good = !hexs.empty() && hexs.size() % 2 == 0;
+                for (size_t k = 0; good && k < hexs.size(); k += 2)
+                {
+                    char *end = nullptr;
+                    std::string two = hexs.substr(k, 2);
+                    long v = std::strtol(two.c_str(), &end, 16);
+                    good = end == two.c_str() + 2;
+                    bytes.push_back(uint8_t(v));
+                }
+                if (!t || !at)
+                {
+                    ctx.fail(path, "needs a target and at");
+                    continue;
+                }
+                if (!good)
+                {
+                    ctx.fail(path + ".bytes", "expected pairs of hex digits, like \"EA00FF\"");
+                    continue;
+                }
+                AddressRange span{ *t, uint32_t(*at), uint32_t(*at + int64_t(bytes.size()) - 1) };
+                if (auto err = validate_range(span, nominal))
+                {
+                    ctx.fail(path, *err);
+                    continue;
+                }
+                std::vector<std::pair<uint32_t, uint8_t>> pairs;
+                for (uint32_t k = 0; k < bytes.size(); k++)
+                    pairs.push_back({ uint32_t(*at) + k, bytes[k] });
+                add_patch_bytes(recipe.patches, *t, pairs);
+            }
+        }
+    }
+
     if (doc.contains("crash_policy"))
     {
         const json &p = doc["crash_policy"];
@@ -776,6 +829,22 @@ std::string write_recipe(const Recipe &recipe)
         doc["intensity"] = recipe.intensity;
     if (!recipe.anchor_state.empty())
         doc["anchor_state"] = recipe.anchor_state;
+    if (!recipe.patches.empty())
+    {
+        ojson ps = ojson::array();
+        for (auto &p : recipe.patches)
+        {
+            static const char *digits = "0123456789ABCDEF";
+            std::string hexs;
+            for (auto b : p.bytes)
+            {
+                hexs += digits[b >> 4];
+                hexs += digits[b & 15];
+            }
+            ps.push_back({ { "target", target_name(p.target) }, { "at", hex_addr(p.at) }, { "bytes", hexs } });
+        }
+        doc["patches"] = ps;
+    }
     if (recipe.crash_policy)
         doc["crash_policy"] = policy_name(*recipe.crash_policy);
     if (recipe.crash_detection)

@@ -286,6 +286,36 @@ void PixelView::resizeEvent(QResizeEvent *event)
     relayout(keep);
 }
 
+void PixelView::setPaintMode(bool on)
+{
+    paint_mode = on;
+    painting = false;
+    viewport()->setCursor(on ? Qt::CrossCursor : Qt::ArrowCursor);
+}
+
+void PixelView::paintAt(uint32_t offset)
+{
+    // A square brush centred on the byte, clipped to its row's edges and the memory's end.
+    int cols = columns_;
+    int cx = int(offset % uint32_t(cols)), cy = int(offset / uint32_t(cols));
+    std::vector<uint32_t> offsets;
+    for (int y = cy - (brush - 1) / 2; y <= cy + brush / 2; y++)
+        for (int x = cx - (brush - 1) / 2; x <= cx + brush / 2; x++)
+        {
+            if (x < 0 || x >= cols || y < 0)
+                continue;
+            size_t o = size_t(y) * size_t(cols) + size_t(x);
+            if (o < snap.bytes.size())
+            {
+                offsets.push_back(uint32_t(o));
+                snap.bytes[o] = paint_value;
+            }
+        }
+    viewport()->update();
+    if (!offsets.empty() && onPaint)
+        onPaint(offsets);
+}
+
 void PixelView::mousePressEvent(QMouseEvent *event)
 {
     if (event->button() != Qt::LeftButton)
@@ -293,6 +323,18 @@ void PixelView::mousePressEvent(QMouseEvent *event)
     auto at = offsetAt(event->position().toPoint());
     if (!at)
         return;
+    if (paint_mode)
+    {
+        if (event->modifiers() & Qt::AltModifier)
+        {
+            if (onPick)
+                onPick(snap.bytes[*at]);
+            return;
+        }
+        painting = true;
+        paintAt(*at);
+        return;
+    }
     rect_drag = event->modifiers() & Qt::AltModifier;
     if (rect_drag)
         setRectFrom(*at, *at);
@@ -309,6 +351,12 @@ void PixelView::mouseMoveEvent(QMouseEvent *event)
     auto at = offsetAt(pos);
     if (onHover)
         onHover(at);
+    if (painting)
+    {
+        if (at)
+            paintAt(*at);
+        return;
+    }
     if (!dragging || !anchor)
         return;
     if (pos.y() < 0)
@@ -326,6 +374,7 @@ void PixelView::mouseMoveEvent(QMouseEvent *event)
 
 void PixelView::mouseReleaseEvent(QMouseEvent *)
 {
+    painting = false;
     dragging = false;
 }
 

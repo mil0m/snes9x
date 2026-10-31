@@ -132,6 +132,26 @@ MemoryViewer::MemoryViewer(MemorySource &source, QWidget *parent)
     options->addWidget(zoom_in_button);
     options->addSpacing(12);
     options->addWidget(row_width);
+    paint_button = new QPushButton(tr("Paint"), view_options);
+    paint_button->setObjectName("paint");
+    paint_button->setCheckable(true);
+    paint_button->setToolTip(tr("Drag to paint bytes with the value, into the game and the recipe (as patches). "
+                                "Alt-click picks the value under the mouse."));
+    paint_value = new QSpinBox(view_options);
+    paint_value->setObjectName("paint_value");
+    paint_value->setRange(0, 255);
+    paint_value->setDisplayIntegerBase(16);
+    paint_value->setPrefix("0x");
+    paint_value->setToolTip(tr("The value to paint"));
+    brush_spin = new QSpinBox(view_options);
+    brush_spin->setObjectName("brush");
+    brush_spin->setRange(1, 64);
+    brush_spin->setPrefix(tr("Brush "));
+    brush_spin->setToolTip(tr("Brush size in bytes, square"));
+    options->addSpacing(12);
+    options->addWidget(paint_button);
+    options->addWidget(paint_value);
+    options->addWidget(brush_spin);
     options->addWidget(format_combo);
     options->addWidget(palette_spin);
     options->addWidget(per_row_spin);
@@ -273,6 +293,15 @@ MemoryViewer::MemoryViewer(MemorySource &source, QWidget *parent)
     pixels->onSelectionChanged = [this] { selectionChanged(); };
     pixels->onZoomChanged = [this] { zoomChanged(); };
     pixels->onHover = [this](std::optional<uint32_t> offset) { hovered(offset); };
+    pixels->onPaint = [this](const std::vector<uint32_t> &offsets) {
+        auto err = this->source.paint(target(), offsets, uint8_t(paint_value->value()));
+        if (!err.empty())
+            selection_label->setText(tr("Couldn't paint: %1").arg(QString::fromStdString(err)));
+    };
+    pixels->onPick = [this](uint8_t v) { paint_value->setValue(v); };
+    connect(paint_button, &QPushButton::toggled, this, [this](bool on) { pixels->setPaintMode(on); });
+    connect(paint_value, &QSpinBox::valueChanged, this, [this](int v) { pixels->setPaintValue(uint8_t(v)); });
+    connect(brush_spin, &QSpinBox::valueChanged, this, [this](int v) { pixels->setBrush(v); });
     connect(mode_combo, &QComboBox::currentIndexChanged, this, [this] { modeChanged(); });
     connect(row_width, &QSpinBox::valueChanged, this, [this](int bytes) {
         row_widths[size_t(target())] = bytes;
@@ -343,6 +372,11 @@ void MemoryViewer::modeChanged()
     view_options->setVisible(m != "hex");
     hover_label->setVisible(m != "hex");
     row_width->setVisible(m == "pixels");
+    for (QWidget *w : { static_cast<QWidget *>(paint_button), static_cast<QWidget *>(paint_value),
+                        static_cast<QWidget *>(brush_spin) })
+        w->setVisible(m == "pixels");
+    if (m != "pixels" && paint_button->isChecked())
+        paint_button->click(); // painting only works in the pixel view
     for (QWidget *w : { static_cast<QWidget *>(format_combo), static_cast<QWidget *>(palette_spin),
                         static_cast<QWidget *>(per_row_spin) })
         w->setVisible(m == "tiles");

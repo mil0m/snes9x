@@ -153,6 +153,43 @@ void Engine::set_locked(HotMask mask)
     hot_and_locked.merge(locked);
 }
 
+size_t Engine::apply_patches(MemoryAccess &mem, const std::function<bool(Target)> &which)
+{
+    size_t written = 0;
+    for (auto &p : current.patches)
+    {
+        if (which && !which(p.target))
+            continue;
+        for (uint32_t i = 0; i < p.bytes.size(); i++)
+        {
+            uint32_t at = p.at + i;
+            if (at >= mem.size(p.target) || locked.is_hot(p.target, at) || mem.read(p.target, at) == p.bytes[i])
+                continue;
+            mem.write_at_start(p.target, at, p.bytes[i]);
+            written++;
+        }
+    }
+    return written;
+}
+
+bool Engine::has_patches(Target t) const
+{
+    for (auto &p : current.patches)
+        if (p.target == t)
+            return true;
+    return false;
+}
+
+void Engine::add_patches(Target t, const std::vector<std::pair<uint32_t, uint8_t>> &bytes)
+{
+    add_patch_bytes(current.patches, t, bytes);
+}
+
+void Engine::clear_patches(Target t)
+{
+    std::erase_if(current.patches, [t](const Patch &p) { return p.target == t; });
+}
+
 bool Engine::has_at_load(Target t) const
 {
     for (auto &rule : current.rules)

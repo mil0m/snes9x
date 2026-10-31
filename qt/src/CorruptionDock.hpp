@@ -82,6 +82,7 @@ class CorruptionDock : public QDockWidget
     QLabel *status_label;
     QLabel *rom_label;
     QPushButton *restore_rom_button;
+    QPushButton *clear_paint_button;
     QListWidget *backup_list;
     QLabel *message_label;
 };

@@ -102,6 +102,18 @@ struct FakeSource : MemorySource
     std::vector<std::string> users_of_stats{ "boss rush" };
     Regions regions() override { return named; }
     std::string addRule(const Rule &) override { return {}; }
+    struct Paint
+    {
+        Target target;
+        std::vector<uint32_t> offsets;
+        uint8_t value;
+    };
+    std::vector<Paint> painted;
+    std::string paint(Target t, const std::vector<uint32_t> &offsets, uint8_t value) override
+    {
+        painted.push_back({ t, offsets, value });
+        return {};
+    }
     std::string saveRegion(const std::string &name, const AddressRange &range) override
     {
         if (auto err = validate_region_name(name))
@@ -405,6 +417,41 @@ TEST_SUITE("the pixel view in the viewer")
         choose(v, "mode", "hex");
         CHECK(hex->selection() == std::pair{ 0x8000u, 0x80FFu });
         CHECK_FALSE(hex->cellRect(0x8000).isEmpty());
+    }
+
+    TEST_CASE("Paint: the toolbar's value and brush go to the pixel view; strokes reach the game")
+    {
+        FakeSource src;
+        MemoryViewer v(src);
+        v.show();
+        v.refresh();
+        choose(v, "mode", "pixels");
+        auto pixels = child<PixelView>(v, "pixels");
+        auto paint = child<QPushButton>(v, "paint");
+        CHECK(paint->isVisible());
+        paint->click();
+        CHECK(pixels->paintMode());
+        child<QSpinBox>(v, "paint_value")->setValue(0xEA);
+        child<QSpinBox>(v, "brush")->setValue(2);
+        pixels->setRowWidth(64);
+        QPoint at = pixels->pixelRect(0x200).center();
+        QMouseEvent press(QEvent::MouseButtonPress, QPointF(at), pixels->viewport()->mapToGlobal(QPointF(at)),
+                          Qt::LeftButton, Qt::LeftButton, Qt::NoModifier);
+        QApplication::sendEvent(pixels->viewport(), &press);
+        QMouseEvent release(QEvent::MouseButtonRelease, QPointF(at), pixels->viewport()->mapToGlobal(QPointF(at)),
+                            Qt::LeftButton, Qt::NoButton, Qt::NoModifier);
+        QApplication::sendEvent(pixels->viewport(), &release);
+        REQUIRE(src.painted.size() == 1);
+        CHECK(src.painted[0].target == Target::WRAM);
+        CHECK(src.painted[0].value == 0xEA);
+        CHECK(src.painted[0].offsets.size() == 4); // a 2x2 brush
+
+        pixels->onPick(0x33); // as an alt-click does
+        CHECK(child<QSpinBox>(v, "paint_value")->value() == 0x33);
+        paint->click();
+        CHECK_FALSE(pixels->paintMode());
+        choose(v, "mode", "hex");
+        CHECK_FALSE(paint->isVisible());
     }
 
     TEST_CASE("a rectangle drawn in the pixel view makes a rectangle rule")

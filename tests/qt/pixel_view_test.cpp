@@ -232,6 +232,48 @@ TEST_CASE("alt-drag draws a rectangle in the row width; a plain click goes back 
     CHECK(s.view.selection() == std::pair{ 0x10u, 0x10u });
 }
 
+TEST_CASE("paint mode: strokes paint with a square brush; alt-click picks a value")
+{
+    Shown s(8);
+    s.view.setRowWidth(32);
+    std::vector<std::vector<uint32_t>> strokes;
+    std::optional<uint8_t> picked;
+    s.view.onPaint = [&](const std::vector<uint32_t> &offsets) { strokes.push_back(offsets); };
+    s.view.onPick = [&](uint8_t v) { picked = v; };
+    s.view.setPaintMode(true);
+    s.view.setPaintValue(0xAB);
+
+    click(s.view, s.view.pixelRect(2 * 32 + 5).center());
+    REQUIRE(strokes.size() == 1);
+    CHECK(strokes[0] == std::vector<uint32_t>{ 2 * 32 + 5 });
+    CHECK(s.view.snapshot().bytes[2 * 32 + 5] == 0xAB); // shows at once, before the game's next snapshot
+    CHECK_FALSE(s.view.selection());                    // painting doesn't select
+
+    s.view.setBrush(3);
+    strokes.clear();
+    click(s.view, s.view.pixelRect(4 * 32 + 0).center()); // at the left edge: clipped
+    REQUIRE(strokes.size() == 1);
+    CHECK(strokes[0].size() == 6); // columns 0-1 of rows 3-5
+    for (auto o : strokes[0])
+    {
+        CHECK(o % 32 <= 1);
+        CHECK(o / 32 >= 3);
+        CHECK(o / 32 <= 5);
+    }
+
+    auto snap = s.view.snapshot();
+    snap.bytes[0x50] = 0x42; // what's there
+    s.view.setSnapshot(snap);
+    click(s.view, s.view.pixelRect(0x50).center(), Qt::AltModifier);
+    CHECK(picked == uint8_t(0x42));
+
+    s.view.setPaintMode(false); // back to selecting
+    strokes.clear();
+    click(s.view, s.view.pixelRect(0x10).center());
+    CHECK(strokes.empty());
+    CHECK(s.view.selection());
+}
+
 TEST_CASE("select() scrolls the range into view; a new target clears it")
 {
     Shown s(8);

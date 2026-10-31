@@ -53,6 +53,10 @@ struct SessionMemorySource : MemorySource
     std::array<size_t, kTargetCount> sizes() override { return s.status().sizes; }
     Regions regions() override { return s.regions(); }
     std::string addRule(const Rule &rule) override { return s.addRule(rule); }
+    std::string paint(Target t, const std::vector<uint32_t> &offsets, uint8_t value) override
+    {
+        return s.paint(t, offsets, value);
+    }
     std::string saveRegion(const std::string &name, const AddressRange &range) override { return s.saveRegion(name, range); }
     std::string renameRegion(const std::string &from, const std::string &to) override { return s.renameRegion(from, to); }
     std::string deleteRegion(const std::string &name) override { return s.deleteRegion(name); }
@@ -175,12 +179,17 @@ CorruptionDock::CorruptionDock(EmuApplication &app, QWidget *parent)
     auto export_rom = button(tr("Export ROM…"), run_box);
     export_rom->setObjectName("export_rom");
     export_rom->setToolTip(tr("Save the ROM as it is now as a .sfc, with its checksum fixed"));
+    clear_paint_button = button(tr("Clear Paint"), run_box);
+    clear_paint_button->setObjectName("clear_paint");
+    clear_paint_button->setToolTip(tr("Forget the painted bytes in this recipe. They stay in memory until the next run starts."));
     rom_row->addWidget(rom_label, 1);
+    rom_row->addWidget(clear_paint_button);
     rom_row->addWidget(restore_rom_button);
     rom_row->addWidget(export_rom);
     run_layout->addRow(tr("ROM"), rom_row);
     layout->addWidget(run_box);
     connect(restore_rom_button, &QPushButton::clicked, [] { CorruptionSession::get().restoreCleanRom(); });
+    connect(clear_paint_button, &QPushButton::clicked, [] { CorruptionSession::get().clearPatches(); });
     connect(export_rom, &QPushButton::clicked, this, &CorruptionDock::exportRom);
 
     connect(active_check, &QCheckBox::clicked, [](bool on) { CorruptionSession::get().setActive(on); });
@@ -357,10 +366,14 @@ void CorruptionDock::refreshStatus()
     if (!seed_edit->hasFocus())
         seed_edit->setText(status.has_recipe ? QString::number(status.engine.seed) : QString());
 
-    rom_label->setText(!status.game_loaded         ? QString()
+    QString rom_text = !status.game_loaded         ? QString()
                        : status.rom_changed == 0 ? tr("clean")
-                                                 : tr("%n byte(s) changed", "", int(status.rom_changed)));
+                                                 : tr("%n byte(s) changed", "", int(status.rom_changed));
+    if (status.patched)
+        rom_text += tr(" · %n byte(s) painted", "", int(status.patched));
+    rom_label->setText(rom_text);
     restore_rom_button->setEnabled(status.rom_changed > 0);
+    clear_paint_button->setEnabled(status.patched > 0);
 
     status_label->setText(status.has_recipe
                               ? tr("%1%2%3 - frame %4 - %5 firings")

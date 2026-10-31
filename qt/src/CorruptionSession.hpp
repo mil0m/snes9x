@@ -60,6 +60,7 @@ class CorruptionSession
         size_t hot_blocks = 0; // crash map: 16-byte blocks rules with avoid_hot stay out of
 
         size_t rom_changed = 0; // ROM bytes that differ from the clean ROM
+        size_t patched = 0;     // painted bytes kept in the recipe
     };
 
     // Called by Snes9xController around ROM loading (emulation thread suspended).
@@ -120,6 +121,11 @@ class CorruptionSession
     void restoreCleanRom();
     std::string exportRom(const std::filesystem::path &path); // error or empty; the checksum is fixed
 
+    // Painting: sets the bytes now and keeps them in the recipe as patches, which apply
+    // whenever a run starts (a new recipe is made if none is loaded). Error or empty.
+    std::string paint(corrupt::Target t, const std::vector<uint32_t> &offsets, uint8_t value);
+    void clearPatches(); // forgets them; the bytes stay until the next run starts
+
     // Save backups.
     std::filesystem::path backupDir();
     std::vector<corrupt::BackupInfo> backups();
@@ -129,6 +135,7 @@ class CorruptionSession
 
   private:
     CorruptionSession() = default;
+    void newRecipeLocked(const std::string &name);
     static void frameHook();
     void onFrame();
     void backupNow(const char *reason);

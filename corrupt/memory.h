@@ -38,6 +38,9 @@ struct MemoryAccess
     virtual size_t size(Target t) const = 0;
     virtual uint8_t read(Target t, uint32_t offset) const = 0;
     virtual void write(Target t, uint32_t offset, uint8_t value) = 0;
+    // A write that belongs to the run's start (painted patches): the ROM keeper never undoes
+    // it on a rollback. Elsewhere it's a plain write.
+    virtual void write_at_start(Target t, uint32_t offset, uint8_t value) { write(t, offset, value); }
     // The target's bytes in one piece, when they are (for reading a whole ROM quickly).
     virtual const uint8_t *data(Target) const { return nullptr; }
     virtual ~MemoryAccess() = default;

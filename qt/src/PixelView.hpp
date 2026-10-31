@@ -59,6 +59,16 @@ class PixelView : public QAbstractScrollArea, public MemoryPane
     std::optional<uint32_t> offsetAt(QPoint pos) const;
     QRect pixelRect(uint32_t offset) const; // empty when the byte isn't visible
 
+    // Paint mode: dragging paints `paintValue` with a square brush (shown at once in this
+    // view, and handed to onPaint to write into the game); Alt-click picks the value under
+    // the mouse (onPick). Selecting is off while painting.
+    void setPaintMode(bool on);
+    bool paintMode() const { return paint_mode; }
+    void setPaintValue(uint8_t value) { paint_value = value; }
+    void setBrush(int size) { brush = std::clamp(size, 1, 64); }
+    std::function<void(const std::vector<uint32_t> &)> onPaint;
+    std::function<void(uint8_t)> onPick;
+
     std::function<void()> onZoomChanged;
     std::function<void(std::optional<uint32_t>)> onHover; // the byte under the mouse, or none
 
@@ -90,6 +100,11 @@ class PixelView : public QAbstractScrollArea, public MemoryPane
     std::optional<RectSelection> rect_sel;
     bool dragging = false;
     bool rect_drag = false;
+    bool paint_mode = false;
+    bool painting = false;
+    uint8_t paint_value = 0;
+    int brush = 1;
+    void paintAt(uint32_t offset);
     void setRectFrom(uint32_t a, uint32_t c); // the rectangle with these two corners
     OverlayScale scale;
     int zoom_ = 1; // the whole of WRAM fits in the window
