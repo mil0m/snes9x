@@ -1,6 +1,6 @@
 # Visual UI pass: plan
 
-**Status (2026-10-31):** researched, not started. Follows the UX pass
+**Status (2026-10-31):** choices confirmed by Mikael (all three as proposed); in progress. Follows the UX pass
 ([its plan](./2026-10-31-ux-pass-plan.md)), which fixed words and flow; this one is about
 how it looks: spacing, hierarchy, density, colour, icons, light and dark.
 
@@ -38,7 +38,7 @@ how it looks: spacing, hierarchy, density, colour, icons, light and dark.
   but quiet: spacing and separators instead of frames), Qt Creator (flat panels, 4/8
   spacing).
 
-## Choices (to confirm with Mikael)
+## Choices (confirmed by Mikael, 2026-10-31)
 
 1. Native style on macOS, Fusion with a palette elsewhere; no app-wide style sheet.
 2. One icon set, about 20 icons, as light and dark themes: **Tabler** (MIT, the widest
@@ -73,8 +73,19 @@ address padding differs between lists and the gutter.
 
 ## Verifying
 
-- The UI tour (`SNES9X_UI_TOUR`) in a matrix: light and dark (forcing the palette offscreen,
-  where the colour scheme is unknown), at `QT_SCALE_FACTOR` 1 and 2.
+- `tests/qt/ui_tour.sh <out> [rom] [--dark] [--scale N]` runs the UI tour
+  (`SNES9X_UI_TOUR`) with a scratch config and a ROM copy.
+- **Offscreen draws Fusion, not the Mac style**: the `macos` style paints nothing offscreen
+  (it needs real NSViews), though its sizes still apply. So the matrix is:
+  - `TOUR_PLATFORM=cocoa` with `SNES9X_COLOR_SCHEME=light|dark`: the real native look, at
+    Retina 2×. `grab()` needs no screen-recording permission, but the windows do appear on
+    screen for about 30 seconds (muted, scratch config).
+  - Offscreen Fusion, light and `--dark`, at `QT_SCALE_FACTOR` 1 and 2: what Erik sees on
+    Linux or Windows, and the scale check.
+- First native run (the Mac in dark mode) found more than the review's list: form labels
+  right-aligned with fields that don't grow (the Mac `QFormLayout` defaults), squashed spin
+  boxes, the Seed and note fields drawn with a bright square frame, the "Go to" field too
+  narrow to show its hint, and the More button drawn as a small square bevel.
 - Real macOS screenshots in Light, Dark and Increase Contrast, by Mikael.
 - Xcode's Accessibility Inspector over the panel and dialogs; one keyboard-only run.
 - A fresh-eyes visual review of the final tour, like the UX pass had.

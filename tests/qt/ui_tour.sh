@@ -1,0 +1,53 @@
+#!/bin/bash
+# Screenshots of every corruption window (the app's SNES9X_UI_TOUR), with no screen.
+#
+#   tests/qt/ui_tour.sh <out dir> [rom] [--dark] [--scale N]
+#
+# Uses a scratch config (muted, never the real library) and a copy of the ROM, because the
+# game's .srm is written next to it. --dark forces the Fusion dark palette (offscreen has no
+# colour scheme to follow). --scale sets QT_SCALE_FACTOR. Pictures land in <out dir>.
+set -u
+here="$(cd "$(dirname "$0")/../.." && pwd)"
+out=""; rom=""; dark=""; scale=1
+while [ $# -gt 0 ]; do
+    case "$1" in
+        --dark) dark="--dark" ;;
+        --scale) shift; scale="$1" ;;
+        *) if [ -z "$out" ]; then out="$1"; else rom="$1"; fi ;;
+    esac
+    shift
+done
+[ -n "$out" ] || { echo "usage: $0 <out dir> [rom] [--dark] [--scale N]"; exit 2; }
+[ -n "$rom" ] || rom="$HOME/Library/Application Support/OpenEmu/Game Library/roms/Super Nintendo (SNES)/Final Fantasy 6 T-Edition.sfc"
+app="$here/build/qt/snes9x-qt"
+[ -x "$app" ] || { echo "build the app first: ./build-mac.sh qt"; exit 2; }
+
+mkdir -p "$out"
+out="$(cd "$out" && pwd)"
+scratch="$(mktemp -d "${TMPDIR:-/tmp}/snes9x-tour.XXXXXX")"
+mkdir -p "$scratch/config/snes9x" "$scratch/library" "$scratch/rom"
+cat > "$scratch/config/snes9x/snes9x-qt.conf" <<EOF
+[General]
+PauseEmulationWhenUnfocused=false
+
+[Sound]
+Mute=true
+
+[Corruption]
+LibraryRoot=$scratch/library
+PanelVisible=true
+EOF
+cp "$rom" "$scratch/rom/"
+copy="$scratch/rom/$(basename "$rom")"
+
+rm -f "$out/done"
+SNES9X_UI_TOUR="$out" XDG_CONFIG_HOME="$scratch/config" QT_QPA_PLATFORM="${TOUR_PLATFORM:-offscreen}" \
+    QT_SCALE_FACTOR="$scale" timeout -k 3 -s KILL 60 "$app" $dark "$copy" > "$scratch/log.txt" 2>&1
+if [ -f "$out/done" ]; then
+    echo "tour: $(ls "$out"/*.png | wc -l | tr -d ' ') pictures in $out"
+    rm -rf "$scratch"
+else
+    echo "tour did not finish; log: $scratch/log.txt"
+    tail -20 "$scratch/log.txt"
+    exit 1
+fi

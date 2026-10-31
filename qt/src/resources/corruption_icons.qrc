@@ -1,0 +1,32 @@
+<RCC>
+  <qresource prefix="/corruption-icons">
+    <file alias="alert-circle.svg">corruption-icons/alert-circle.svg</file>
+    <file alias="alert-triangle.svg">corruption-icons/alert-triangle.svg</file>
+    <file alias="arrow-back-up.svg">corruption-icons/arrow-back-up.svg</file>
+    <file alias="bolt.svg">corruption-icons/bolt.svg</file>
+    <file alias="circle-check.svg">corruption-icons/circle-check.svg</file>
+    <file alias="copy.svg">corruption-icons/copy.svg</file>
+    <file alias="device-floppy.svg">corruption-icons/device-floppy.svg</file>
+    <file alias="dice-5.svg">corruption-icons/dice-5.svg</file>
+    <file alias="eraser.svg">corruption-icons/eraser.svg</file>
+    <file alias="file-export.svg">corruption-icons/file-export.svg</file>
+    <file alias="file-plus.svg">corruption-icons/file-plus.svg</file>
+    <file alias="folder-open.svg">corruption-icons/folder-open.svg</file>
+    <file alias="grid-dots.svg">corruption-icons/grid-dots.svg</file>
+    <file alias="help-circle.svg">corruption-icons/help-circle.svg</file>
+    <file alias="history.svg">corruption-icons/history.svg</file>
+    <file alias="info-circle.svg">corruption-icons/info-circle.svg</file>
+    <file alias="pencil.svg">corruption-icons/pencil.svg</file>
+    <file alias="pin.svg">corruption-icons/pin.svg</file>
+    <file alias="pinned-off.svg">corruption-icons/pinned-off.svg</file>
+    <file alias="player-stop.svg">corruption-icons/player-stop.svg</file>
+    <file alias="plus.svg">corruption-icons/plus.svg</file>
+    <file alias="refresh.svg">corruption-icons/refresh.svg</file>
+    <file alias="restore.svg">corruption-icons/restore.svg</file>
+    <file alias="search.svg">corruption-icons/search.svg</file>
+    <file alias="tag.svg">corruption-icons/tag.svg</file>
+    <file alias="trash.svg">corruption-icons/trash.svg</file>
+    <file alias="zoom-in.svg">corruption-icons/zoom-in.svg</file>
+    <file alias="zoom-out.svg">corruption-icons/zoom-out.svg</file>
+  </qresource>
+</RCC>

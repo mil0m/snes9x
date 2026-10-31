@@ -162,6 +162,7 @@ list(APPEND QT_GUI_SOURCES
     src/MemoryViewer.cpp
     src/SurvivorsDialog.cpp
     src/GuideWindow.cpp
+    src/UiKit.cpp
     src/PixelView.cpp
     src/AreaImage.cpp
     src/TileView.cpp
@@ -285,7 +286,7 @@ list(APPEND SOURCES ../external/imgui/imgui.cpp
     ../external/imgui/snes9x_imgui.cpp)
 list(APPEND INCLUDES ../external/imgui)
 
-add_executable(snes9x-qt ${QT_GUI_SOURCES} ${SOURCES} ${PLATFORM_SOURCES} src/resources/snes9x.qrc src/resources/corruption_examples.qrc)
+add_executable(snes9x-qt ${QT_GUI_SOURCES} ${SOURCES} ${PLATFORM_SOURCES} src/resources/snes9x.qrc src/resources/corruption_examples.qrc src/resources/corruption_icons.qrc)
 
 if(${CMAKE_SYSTEM_NAME} STREQUAL "Windows")
     set_target_properties(snes9x-qt PROPERTIES WIN32_EXECUTABLE True)
