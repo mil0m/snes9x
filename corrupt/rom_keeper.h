@@ -44,6 +44,15 @@ class RomKeeper : public MemoryAccess
     // For the engine, so rules skip the locked bytes instead of logging writes that never land.
     const HotMask &locked_mask() const { return locked; }
 
+    // Called whenever a byte starts (true) or stops (false) differing from the clean ROM.
+    std::function<void(uint32_t offset, bool changed)> on_change;
+    // Called when a game loads or closes: every byte is clean again, without a notice each.
+    std::function<void()> on_forget;
+
+    // Writes that stand for the rest of the run, like a crash policy's fix: no rollback
+    // undoes them, because the bytes' journal entries go too. One pass over the journal.
+    void settle(const std::vector<std::pair<uint32_t, uint8_t>> &bytes);
+
     void restore_clean();               // the run starts over: every edit undone, the journal emptied
     void revert_after(uint64_t frame);  // undo the edits made after `frame`, newest first
     void after_guard(const GuardOutcome &out); // a rollback reverts; giving up restores the clean ROM

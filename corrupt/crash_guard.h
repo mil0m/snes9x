@@ -48,6 +48,23 @@ struct JournalEntry
     unsigned attempt = 0; // crashes in a row, this one included
 };
 
+// A second source of suspects besides the rules' writes: single bytes the game used in
+// the crash window (the ROM blame, corrupt/rom_blame.h). Called by the guard while it
+// handles a crash, after the rollback.
+struct ByteBlameResult
+{
+    std::vector<uint32_t> offsets; // what was acted on, most suspicious first
+    std::string text;              // "reverted 2 ROM bytes"
+};
+struct ByteBlame
+{
+    // How many suspects frames (after, through] have.
+    virtual size_t suspects(uint64_t after, uint64_t through) const = 0;
+    // Act on them; `attempt` is the crash's number in a row (1-based).
+    virtual ByteBlameResult act(uint64_t after, uint64_t through, unsigned attempt) = 0;
+    virtual ~ByteBlame() = default;
+};
+
 struct GuardOutcome
 {
     enum Kind

@@ -1,6 +1,7 @@
 #include "rom_keeper.h"
 
 #include <cstring>
+#include <unordered_set>
 
 namespace corrupt
 {
@@ -22,6 +23,8 @@ void RomKeeper::game_loaded(const std::vector<AddressRange> &locked_ranges)
     // add_block works in 16-byte blocks; ranges that don't start on one are widened.
     journal.clear();
     changed_bytes = 0;
+    if (on_forget)
+        on_forget();
 }
 
 void RomKeeper::game_closed()
@@ -30,6 +33,8 @@ void RomKeeper::game_closed()
     locked = {};
     journal.clear();
     changed_bytes = 0;
+    if (on_forget)
+        on_forget();
 }
 
 void RomKeeper::put(uint32_t offset, uint8_t value)
@@ -40,9 +45,31 @@ void RomKeeper::put(uint32_t offset, uint8_t value)
     inner.write(Target::ROM, offset, value);
     uint8_t c = clean_rom[offset];
     if (before == c)
+    {
         changed_bytes++;
+        if (on_change)
+            on_change(offset, true);
+    }
     else if (value == c)
+    {
         changed_bytes--;
+        if (on_change)
+            on_change(offset, false);
+    }
+}
+
+void RomKeeper::settle(const std::vector<std::pair<uint32_t, uint8_t>> &bytes)
+{
+    if (!loaded() || bytes.empty())
+        return;
+    std::unordered_set<uint32_t> settled;
+    for (auto [offset, value] : bytes)
+        if (offset < clean_rom.size() && !locked.is_hot(Target::ROM, offset))
+        {
+            put(offset, value);
+            settled.insert(offset);
+        }
+    std::erase_if(journal, [&](const Edit &e) { return settled.count(e.offset) != 0; });
 }
 
 void RomKeeper::write(Target t, uint32_t offset, uint8_t value)
