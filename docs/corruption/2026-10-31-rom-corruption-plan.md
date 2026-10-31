@@ -1,6 +1,6 @@
 # ROM corruption: plan (roadmap #22)
 
-**Status (2026-10-31):** reviewed by Mikael (answers at the end). Phases 1 and 2 done, pending QA.md sections 20 and 21; phase 3 (the code map) next.
+**Status (2026-10-31):** reviewed by Mikael (answers at the end). Phases 1 and 2 done, pending QA.md sections 20 and 21; phase 3 (the code map) in progress.
 
 Spec: [`2026-10-30-ram-corruption-design.md`](./2026-10-30-ram-corruption-design.md),
 phase 5 ("a ROM target applied at load time, or live"). Both modes are in (Mikael, 31 Oct).
@@ -340,6 +340,73 @@ Findings while building phase 2:
 - **The PNG remembers its place** in a text chunk (`snes9x-area`); Qt keeps it through a save
   and load. Image editors may drop it, so Import falls back to the selection, and says the
   size it needs when that doesn't match.
+
+## Phase 3 in detail
+
+**The code map: what every ROM byte is, learned by watching the game run.** Nothing here
+changes what corruption does yet; it's the knowledge phases 4-6 aim with.
+
+Per ROM byte, one byte of flags:
+
+| Bit | Flag | Set by |
+|---|---|---|
+| 0x01 | `opcode` | the tracer: an instruction started here |
+| 0x02 | `operand` | the tracer: inside an instruction, after its opcode |
+| 0x04 | `op8` | the tracer: part of an instruction whose width depends on M or X, run with that flag set (8-bit) |
+| 0x08 | `op16` | the same, run 16-bit. Both bits: the code runs at both widths, a classic crash source |
+| 0x10 | `data` | the core: a CPU read that isn't the running instruction's own bytes (tables, text, pointers, vectors) |
+| 0x20 | `dma` | the core: a CPU-to-PPU DMA read it (graphics, maps, palettes) |
+
+Built in four steps, each pushed:
+
+1. **The instruction table and disassembler** (`corrupt/opcodes`, no emulator). All 256
+   opcodes: mnemonic, addressing mode, class (`arith`, `logic`, `shift`, `compare`, `load`,
+   `store`, `transfer`, `branch`, `jump`, `return`, `stack`, `flags`, `width`, `block`,
+   `misc`) and what decides their width (M, X or nothing). `op_length(op, m8, x8)` is
+   `constexpr`, so the tracer's wrappers get each instruction's length at compile time.
+   `disassemble(bytes, m8, x8, address)` gives `BNE $1A4D`, `LDA [$12],Y`, `MVN $7E,$7F`.
+   The lengths are checked against the core's own `S9xOpLengths*` tables in the
+   real-core tests, so the table can't drift from the emulator.
+2. **The code map** (`corrupt/code_map`, no emulator): the flags, coverage counts (opcode,
+   operand, code, data, DMA, both widths), merging (a union), `instruction_at(offset)` for
+   hover (walks back to the opcode that covers the byte, at the width it ran), and a file
+   format: magic, ROM size, then runs of (flags, length as a varint). A 6 MB ROM that's
+   mostly unexplored is a few KB. `Library::code_map_path` is `codemap.<user>.bin` next
+   to the crash map; loading reads everyone's, skips files for another ROM size, and keeps
+   this person's separate (the only one written). `CodeMapKeeper` holds mine and the
+   others, saves every minute while mine grows, and on close.
+3. **The tracer in the real core** (`corrupt/core_access`):
+   - `RomTracer` wraps all 256 opcodes in the six `S9xOpcodes*` tables with
+     `template <int Table, int Op>` wrappers (1,536 functions). The table fixes M and X
+     (E1, M1X1, M1X0, M0X1, M0X0), so length and width are constants; the slow table
+     reads them from P at run time and looks every byte up through the memory map,
+     since it's the one used where an instruction crosses a 4 KB block. The fast tables
+     find the opcode as `CPU.PCBase + PC - 1`, no map lookup.
+   - Chained with the reset watch: the tracer saves whatever is in the table (maybe the
+     reset watch's wrapper) and calls it. Installing or moving the reset watch lifts the
+     tracer first and puts it back after, so neither ever saves the other's stale entry.
+   - Core change, tiny and null-guarded like the WRAM counters: `uint8 *S9xRomFlags`
+     (null when off) and the running instruction's ROM span, set by the wrapper.
+     `getset.h`'s plain-memory read paths mark `data` unless the byte is inside that span
+     (operand fetches through `S9xGetByte` in the slow paths, `JMP (a,X)`, would
+     otherwise look like data). `dma.cpp` marks `dma` in the loop it already has for WRAM.
+   - The test ROM gets a variant whose NMI runs `REP`, a 16-bit immediate, a 16-bit and an
+     8-bit data read from a ROM table and a DMA from ROM, so the real-core tests can check
+     exact flags per byte. Also: installing and removing restores every table entry, and
+     the reset watch still counts with the tracer on.
+   - `corrupt-smoke <rom> <recipe> 0 <frames> --codemap [file]` runs plain, then traced,
+     prints frames per second for both, the coverage and the busiest code banks, and can
+     write the map. Budget: tracing costs under 15%.
+4. **Session and viewer.** The session records whenever a game is loaded (if the speed
+   allows; otherwise only while the viewer shows the ROM) into this person's map. The
+   snapshot carries the combined map's flags and each 4 KB ROM chunk's CPU address (the
+   mapping's canonical bank: `$C0-$FF` for HiROM, `$80-$FF` for LoROM). Overlays **Code**
+   (opcodes strong, operands lighter, both widths in a warning tint), **Data** and **DMA**.
+   Hovering a ROM byte in the pixel view adds `$C2:1A3F  D0 0C  BNE $1A4D (branch)` or
+   `data`/`dma`. The panel's status line shows the coverage.
+
+Not traced in v1: HDMA tables (read through their own pointers), code run from WRAM or
+SRAM (not ROM), and the SA-1's own CPU.
 
 ## Risks
 
