@@ -24,6 +24,8 @@ void put16(std::vector<uint8_t> &rom, uint16_t addr, uint16_t value)
 
 } // namespace
 
+void fix_checksum(std::vector<uint8_t> &rom);
+
 std::vector<uint8_t> build(Crash crash)
 {
     std::vector<uint8_t> rom(kSize, 0xEA); // NOP padding
@@ -77,7 +79,12 @@ std::vector<uint8_t> build(Crash crash)
     put16(rom, 0xFFFA, 0x8030); // emulation NMI
     put16(rom, 0xFFFC, 0x8000); // RESET
 
-    // Checksum.
+    fix_checksum(rom);
+    return rom;
+}
+
+void fix_checksum(std::vector<uint8_t> &rom)
+{
     put16(rom, 0xFFDC, 0xFFFF);
     put16(rom, 0xFFDE, 0x0000);
     uint16_t sum = 0;
@@ -85,6 +92,40 @@ std::vector<uint8_t> build(Crash crash)
         sum = uint16_t(sum + b);
     put16(rom, 0xFFDC, uint16_t(~sum));
     put16(rom, 0xFFDE, sum);
+}
+
+std::vector<uint8_t> build_traced()
+{
+    auto rom = build(Crash::None);
+    put(rom, 0x8030, { 0x4C, 0x40, 0x80 }); // nmi: JMP $8040
+    put(rom, 0x8040, {
+        0xC2, 0x20,             // REP #$20         16-bit A
+        0xA9, 0x34, 0x12,       // LDA #$1234       a 16-bit immediate
+        0xAD, 0x00, 0x90,       // LDA $9000        reads $9000-$9001
+        0xE2, 0x20,             // SEP #$20
+        0xA9, 0x05,             // LDA #$05         an 8-bit immediate
+        0xAF, 0x10, 0x90, 0x00, // LDA $00:9010     reads $9010
+        0xA9, 0x01,             // LDA #$01         DMA channel 0: one register, to VRAM
+        0x8D, 0x00, 0x43,       // STA $4300
+        0xA9, 0x18,             // LDA #$18
+        0x8D, 0x01, 0x43,       // STA $4301
+        0x9C, 0x02, 0x43,       // STZ $4302        from $00:A000
+        0xA9, 0xA0,             // LDA #$A0
+        0x8D, 0x03, 0x43,       // STA $4303
+        0x9C, 0x04, 0x43,       // STZ $4304
+        0xA9, 0x20,             // LDA #$20         32 bytes
+        0x8D, 0x05, 0x43,       // STA $4305
+        0x9C, 0x06, 0x43,       // STZ $4306
+        0xA9, 0x01,             // LDA #$01
+        0x8D, 0x0B, 0x42,       // STA $420B        go
+        0xE6, 0x11,             // INC $11
+        0x40,                   // RTI
+    });
+    for (int i = 0; i < 0x40; i++)
+        rom[traced::kTable + i] = uint8_t(0x80 + i);
+    for (int i = 0; i < traced::kDmaBytes + 16; i++)
+        rom[traced::kDmaSource + i] = uint8_t(i);
+    fix_checksum(rom);
     return rom;
 }
 

@@ -23,6 +23,9 @@ static inline void S9xReschedule (void);
 void (*S9xCorruptFrameHook)(void) = nullptr;
 // Corruption tooling (getset.h): WRAM read and write counts, when set.
 uint32 *S9xWramReads = nullptr, *S9xWramWrites = nullptr;
+// Corruption tooling (getset.h, dma.cpp): the code map's flags per ROM byte, when recording.
+uint8 *S9xRomFlags = nullptr;
+uint32 S9xRomFetchFrom = 0, S9xRomFetchTo = 0;
 
 void S9xMainLoop (void)
 {

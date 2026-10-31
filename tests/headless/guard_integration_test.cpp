@@ -4,6 +4,7 @@
 #include "headless_core.h"
 #include "test_rom.h"
 
+#include "corrupt/code_map.h"
 #include "corrupt/core_access.h"
 #include "corrupt/core_memory.h"
 #include "corrupt/crash_guard.h"
@@ -13,6 +14,7 @@
 #include "corrupt/memory_watch.h"
 
 #include "snes9x.h"
+#include "memmap.h"
 void S9xSoftReset(void); // cpuexec.h pulls in the whole CPU core
 
 using namespace corrupt;
@@ -478,6 +480,133 @@ TEST_SUITE("ROM corruption in the real core")
         CHECK(h.outcomes[0].kind == GuardOutcome::RolledBack);
         CHECK(h.outcomes.size() == 1); // without the undo the STP would stay and crash again
         CHECK(h.memory.read(Target::ROM, kMainWai) == 0xCB); // the WAI is back
+        CHECK(alive(h));
+    }
+}
+
+extern uint8 S9xOpLengthsM0X0[256], S9xOpLengthsM0X1[256], S9xOpLengthsM1X0[256], S9xOpLengthsM1X1[256];
+
+TEST_SUITE("the code map tracer in the real core")
+{
+    namespace cf = codeflag;
+    namespace tr = testrom::traced;
+
+    TEST_CASE("instruction lengths agree with the core's own tables")
+    {
+        for (int op = 0; op < 256; op++)
+        {
+            CAPTURE(op);
+            CHECK(op_length(uint8_t(op), false, false) == S9xOpLengthsM0X0[op]);
+            CHECK(op_length(uint8_t(op), false, true) == S9xOpLengthsM0X1[op]);
+            CHECK(op_length(uint8_t(op), true, false) == S9xOpLengthsM1X0[op]);
+            CHECK(op_length(uint8_t(op), true, true) == S9xOpLengthsM1X1[op]);
+        }
+    }
+
+    TEST_CASE("it marks opcodes, operands, widths, data reads and DMA, byte for byte")
+    {
+        REQUIRE(headless::init());
+        REQUIRE(headless::load_rom_memory(testrom::build_traced()));
+        SnesCoreAccess::watch_resets();
+        CodeMap map(Memory.CalculatedSize);
+        RomTracer tracer;
+        REQUIRE(tracer.start(map));
+        headless::run_frames(10);
+        tracer.stop();
+        CHECK(!(CPU.Flags & HALTED_FLAG));
+
+        uint32_t n = tr::kNmi;
+        CHECK(map.at(n + 0) == cf::Opcode); // REP: no width of its own
+        CHECK(map.at(n + 1) == cf::Operand);
+        CHECK(map.at(n + 2) == (cf::Opcode | cf::Op16)); // LDA #$1234
+        CHECK(map.at(n + 3) == (cf::Operand | cf::Op16));
+        CHECK(map.at(n + 4) == (cf::Operand | cf::Op16));
+        CHECK(map.at(n + 5) == (cf::Opcode | cf::Op16)); // LDA $9000: its operand isn't data
+        CHECK(map.at(n + 6) == (cf::Operand | cf::Op16));
+        CHECK(map.at(n + 7) == (cf::Operand | cf::Op16));
+        CHECK(map.at(n + 8) == cf::Opcode); // SEP
+        CHECK(map.at(n + 10) == (cf::Opcode | cf::Op8)); // LDA #$05
+        CHECK(map.at(n + 11) == (cf::Operand | cf::Op8));
+        CHECK(map.at(n + 12) == (cf::Opcode | cf::Op8)); // LDA long
+        CHECK(map.at(n + 15) == (cf::Operand | cf::Op8));
+        CHECK(map.at(n + 0x34) == cf::Opcode); // RTI
+        CHECK(map.at(n + 0x35) == 0);          // never runs
+
+        CHECK(map.at(tr::kTable + 0) == cf::Data); // the 16-bit read
+        CHECK(map.at(tr::kTable + 1) == cf::Data);
+        CHECK(map.at(tr::kTable + 2) == 0);
+        CHECK(map.at(tr::kTable + 0x10) == cf::Data); // the 8-bit read
+        CHECK(map.at(tr::kTable + 0x11) == 0);
+
+        CHECK(map.at(tr::kDmaSource) == cf::Dma);
+        CHECK(map.at(tr::kDmaSource + tr::kDmaBytes - 1) == cf::Dma);
+        CHECK(map.at(tr::kDmaSource + tr::kDmaBytes) == 0);
+
+        CHECK(map.at(0x0000) == cf::Opcode);            // SEI, in emulation mode
+        CHECK(map.at(0x0003) == (cf::Opcode | cf::Op8)); // STZ $10
+        CHECK(map.at(0x0011) == cf::Opcode);            // WAI in the main loop
+        CHECK(map.at(0x0030) == cf::Opcode);            // the JMP to the handler
+        CHECK(map.at(0x0031) == cf::Operand);
+        CHECK((map.at(0x7FEA) & cf::Data)); // the NMI vector, read by the CPU
+        CHECK(map.at(0x5000) == 0);         // padding nobody touches
+
+        auto c = map.coverage();
+        CHECK(c.data == 5); // the table bytes and the NMI vector
+        CHECK(c.dma == size_t(tr::kDmaBytes));
+        CHECK(c.both_widths == 0);
+    }
+
+    TEST_CASE("ROM offsets get the CPU addresses a LoROM game runs them from")
+    {
+        REQUIRE(headless::init());
+        REQUIRE(headless::load_rom_memory(testrom::build_traced()));
+        auto where = SnesCoreAccess::rom_addresses();
+        REQUIRE(where.chunks.size() == 8); // 32 KB
+        CHECK(where.cpu_address(0x0000) == 0x808000);
+        CHECK(where.cpu_address(tr::kNmi) == 0x808040);
+        CHECK(where.cpu_address(0x7FFF) == 0x80FFFF);
+        CHECK(where.cpu_address(0x8000) == std::nullopt);
+    }
+
+    TEST_CASE("it records nothing once stopped, and puts every table entry back")
+    {
+        REQUIRE(headless::init());
+        REQUIRE(headless::load_rom_memory(testrom::build_traced()));
+        SnesCoreAccess::watch_resets();
+        auto before = RomTracer::opcode_tables();
+        CodeMap map(Memory.CalculatedSize);
+        {
+            RomTracer tracer;
+            REQUIRE(tracer.start(map));
+            CHECK(RomTracer::opcode_tables() != before);
+            CHECK(!RomTracer().start(map)); // one at a time
+        } // stops when it goes
+        CHECK(RomTracer::opcode_tables() == before);
+        headless::run_frames(5);
+        CHECK(map.coverage().seen == 0);
+        CodeMap wrong(Memory.CalculatedSize + 1);
+        CHECK(!RomTracer().start(wrong));
+    }
+
+    TEST_CASE("it chains with the reset watch, which keeps counting reboots")
+    {
+        Harness h(testrom::Crash::Reboot, trigger_at(100000), PolicyKind::Skip);
+        auto watched = RomTracer::opcode_tables();
+        CodeMap map(Memory.CalculatedSize);
+        RomTracer tracer;
+        REQUIRE(tracer.start(map));
+        auto before = h.access.sample().reboots;
+        h.run(100);
+        h.memory.write(Target::WRAM, testrom::kTriggerAddr, testrom::kTriggerValue);
+        h.run(60);
+        CHECK(h.access.sample().reboots == before + 1);
+        // Resetting the console moves the reset watch; the tracer stays on top of it.
+        h.access.reset_console();
+        h.run(30);
+        CHECK(map.at(0x0018) == cf::Opcode); // the JML back to reset
+        CHECK(map.at(0x0019) == cf::Operand);
+        tracer.stop();
+        CHECK(RomTracer::opcode_tables() == watched);
         CHECK(alive(h));
     }
 }

@@ -27,4 +27,16 @@ constexpr uint32_t kFrameCounterAddr = 0x11; // WRAM, incremented by NMI
 
 std::vector<uint8_t> build(Crash crash);
 
+// Crash::None, whose NMI handler also runs what the code map test looks for: REP, a
+// 16-bit immediate, a 16-bit read from a ROM table, SEP, an 8-bit immediate, an 8-bit
+// read, and a DMA of 32 bytes from ROM to VRAM. ROM offsets (the ROM starts at $8000).
+std::vector<uint8_t> build_traced();
+namespace traced
+{
+constexpr uint32_t kNmi = 0x0040;       // the handler's REP
+constexpr uint32_t kTable = 0x1000;     // $9000: 16-bit read at +0, 8-bit at +0x10
+constexpr uint32_t kDmaSource = 0x2000; // $A000
+constexpr int kDmaBytes = 32;
+} // namespace traced
+
 } // namespace testrom

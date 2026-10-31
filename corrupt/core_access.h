@@ -1,4 +1,5 @@
 #pragma once
+#include "code_map.h"
 #include "crash_guard.h"
 #include "memory_map.h"
 #include "memory_watch.h"
@@ -34,6 +35,10 @@ class SnesCoreAccess : public CoreAccess
     static void watch_resets();
     static void unwatch_resets();
 
+    // Where each 4 KB of ROM shows up for the CPU: the bank games normally run it from
+    // ($C0-$FF for HiROM, $80-$FF:8000 for LoROM), for disassembly and the viewer.
+    static RomAddresses rom_addresses();
+
     // The live layout for the memory viewer's map: where the PPU reads the picture
     // from VRAM, and where the sound DSP keeps its echo buffer and samples in ARAM.
     static VideoLayout video_layout();
@@ -57,6 +62,27 @@ class WramAccessCounter
 
   private:
     std::vector<uint32_t> reads, writes;
+};
+
+// Records the code map while started: every instruction the CPU runs from ROM marks its
+// opcode, operands and width, and the core marks the ROM bytes the CPU reads as data and
+// DMA reads. Costs a wrapped call per instruction while on, nothing while off. Only one
+// may record at a time. Start and stop between frames; the map must stay alive and keep
+// its size until stop (or the tracer goes).
+class RomTracer
+{
+  public:
+    ~RomTracer() { stop(); }
+    bool start(CodeMap &map); // false when another records, no ROM is loaded, or the size is wrong
+    void stop();
+    bool tracing() const { return mine; }
+
+    // Every entry of the CPU's six opcode tables, for tests: what the tracer and the reset
+    // watch change and must put back.
+    static std::vector<uintptr_t> opcode_tables();
+
+  private:
+    bool mine = false;
 };
 
 } // namespace corrupt

@@ -26,12 +26,19 @@
 // With a dir it also writes wram.bin and the averages a frame as wram.reads.f32 and
 // wram.writes.f32 (raw floats), which CORRUPT_DUMP_DIR turns into viewer pictures.
 //
+// With --codemap it records the code map for `frames` frames after the warmup (the recipe
+// is only read, not run), twice, alternating with plain runs of the same frames from the
+// same state, and prints the speed with and without tracing (best of two), the coverage,
+// the ROM banks with the most code, and the first instructions it found. With a file it
+// also writes the map there, in the library's format.
+//
 // With --learn [held] it plays the recipe guarded for five seeds while learning a crash
 // map, then plays `held` other seeds three ways: plain, avoiding the learned hot blocks,
 // and avoiding as many random blocks the rules wrote (the control). `from` skips that many
 // held-out seeds, to split a long comparison over several processes.
 #include "headless_core.h"
 
+#include "corrupt/code_map.h"
 #include "corrupt/core_access.h"
 #include "corrupt/core_memory.h"
 #include "corrupt/crash_guard.h"
@@ -48,6 +55,7 @@
 #include "memmap.h"
 
 #include <algorithm>
+#include <chrono>
 #include <cstdio>
 #include <fstream>
 #include <random>
@@ -447,6 +455,80 @@ int run_access(int frames, const char *dir)
     return 0;
 }
 
+int run_codemap(int frames, const char *file)
+{
+    auto start = headless::save_state();
+    CodeMap map(Memory.CalculatedSize);
+    RomTracer tracer;
+    auto timed = [&](bool traced) {
+        headless::load_state(start);
+        if (traced && !tracer.start(map))
+            return -1.0;
+        auto t0 = std::chrono::steady_clock::now();
+        headless::run_frames(frames);
+        double s = std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count();
+        tracer.stop();
+        return frames / s;
+    };
+    double plain = 0, traced = 0;
+    for (int round = 0; round < 2; round++)
+    {
+        plain = std::max(plain, timed(false));
+        traced = std::max(traced, timed(true));
+    }
+    if (traced < 0)
+    {
+        fprintf(stderr, "the tracer didn't start\n");
+        return 1;
+    }
+    printf("speed    %.0f fps plain, %.0f fps traced: tracing costs %.1f%%\n", plain, traced,
+           100.0 * (plain / traced - 1.0));
+
+    auto c = map.coverage();
+    auto pct = [&](size_t n) { return 100.0 * double(n) / double(c.size); };
+    printf("coverage %zu bytes of ROM: code %zu (%.2f%%: %zu opcodes, %zu operands), data %zu (%.2f%%), dma %zu (%.2f%%)\n",
+           c.size, c.code, pct(c.code), c.opcode, c.operand, c.data, pct(c.data), c.dma, pct(c.dma));
+    printf("widths   %zu code bytes ran both 8- and 16-bit\n", c.both_widths);
+
+    auto where = SnesCoreAccess::rom_addresses();
+    std::vector<std::pair<uint32_t, size_t>> banks; // ROM offset of each 64 KB, code bytes in it
+    for (uint32_t b = 0; b < map.size(); b += 0x10000)
+    {
+        size_t n = 0;
+        for (uint32_t i = b; i < std::min<size_t>(map.size(), b + 0x10000); i++)
+            n += (map.at(i) & codeflag::Code) != 0;
+        if (n)
+            banks.push_back({ b, n });
+    }
+    std::sort(banks.begin(), banks.end(), [](auto &a, auto &b) { return a.second > b.second; });
+    printf("banks    with the most code (ROM offset, CPU address):\n");
+    for (size_t i = 0; i < banks.size() && i < 8; i++)
+    {
+        auto at = where.cpu_address(banks[i].first);
+        printf("  %s  %s  %zu code bytes\n", hex(banks[i].first).c_str(),
+               at ? hex(*at).c_str() : "unmapped", banks[i].second);
+    }
+    std::span<const uint8_t> bytes(Memory.ROM, Memory.CalculatedSize);
+    printf("sample   the first instructions found:\n");
+    int shown = 0;
+    for (uint32_t i = 0; i < map.size() && shown < 8; i++)
+        if (map.at(i) & codeflag::Opcode)
+            if (auto in = instruction_at(bytes, map, i, where))
+            {
+                printf("  %s  %-14s %s%s\n", in->address ? hex(*in->address).c_str() : hex(i).c_str(),
+                       in->text.c_str(), class_name(in->cls), in->both_widths ? "  (both widths)" : "");
+                shown++;
+            }
+    if (file)
+    {
+        auto encoded = encode_code_map(map);
+        std::ofstream out(file, std::ios::binary);
+        out.write(encoded.data(), std::streamsize(encoded.size()));
+        printf("wrote    %s (%zu bytes)\n", file, encoded.size());
+    }
+    return 0;
+}
+
 } // namespace
 
 int main(int argc, char **argv)
@@ -527,6 +609,8 @@ int main(int argc, char **argv)
         }
         return 0;
     }
+    if (argc > 5 && std::string(argv[5]) == "--codemap")
+        return run_codemap(frames, argc > 6 ? argv[6] : nullptr);
     if (argc > 5 && std::string(argv[5]) == "--access")
         return run_access(frames, argc > 6 ? argv[6] : nullptr);
     if (argc > 6 && std::string(argv[5]) == "--dump")

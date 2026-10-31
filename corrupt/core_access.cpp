@@ -1,4 +1,8 @@
 #include "core_access.h"
+#include "opcodes.h"
+
+#include <array>
+#include <utility>
 
 #include "snes9x.h"
 #include "memmap.h"
@@ -40,6 +44,141 @@ uint64_t picture_hash()
     return h;
 }
 
+// The code map's tracer: every opcode in the CPU's six tables wrapped, so each instruction
+// run from ROM marks its bytes. The fast tables fix M and X (E1, M1X1, M1X0, M0X1, M0X0),
+// so each wrapper knows its instruction's length and width at compile time, and finds the
+// opcode at CPU.PCBase + PC - 1 (those tables only run where PCBase is valid and the
+// instruction doesn't cross a 4 KB block). The slow table reads the flags at run time and
+// looks each byte up through the memory map.
+namespace rom_trace
+{
+
+constexpr int kTables = 6;
+constexpr int kSlow = 5;
+SOpcodes *const tables[kTables] = { S9xOpcodesE1, S9xOpcodesM1X1, S9xOpcodesM1X0,
+                                    S9xOpcodesM0X1, S9xOpcodesM0X0, S9xOpcodesSlow };
+void (*original[kTables][256])(void) = {};
+bool installed = false;
+uint8 *flags = nullptr; // the map being recorded into, sized like the ROM
+
+constexpr uint8_t width_flag(uint8_t op, bool m8, bool x8)
+{
+    switch (op_width(op))
+    {
+    case WidthBy::M: return m8 ? codeflag::Op8 : codeflag::Op16;
+    case WidthBy::X: return x8 ? codeflag::Op8 : codeflag::Op16;
+    case WidthBy::None: return 0;
+    }
+    return 0;
+}
+
+const uint8 *byte_at(uint32 address)
+{
+    uint8 *block = Memory.Map[(address & 0xFFFFFF) >> MEMMAP_SHIFT];
+    if (reinterpret_cast<uintptr_t>(block) < CMemory::MAP_LAST)
+        return nullptr;
+    return block + (address & 0xFFFF);
+}
+
+void trace_slow(uint8 op)
+{
+    bool e = CheckEmulation();
+    bool m8 = e || CheckMemory();
+    bool x8 = e || CheckIndex();
+    int length = op_length(op, m8, x8);
+    uint8 w = width_flag(op, m8, x8);
+    uint16 pc = uint16(Registers.PCw - 1);
+    S9xRomFetchFrom = S9xRomFetchTo = 0;
+    for (int i = 0; i < length; i++)
+    {
+        const uint8 *p = byte_at((uint32(Registers.PB) << 16) | uint16(pc + i));
+        uintptr_t o = uintptr_t(p) - uintptr_t(Memory.ROM);
+        if (!p || o >= Memory.CalculatedSize)
+            continue;
+        flags[o] |= (i ? codeflag::Operand : codeflag::Opcode) | w;
+        if (i == 0)
+        {
+            S9xRomFetchFrom = uint32(o);
+            S9xRomFetchTo = uint32(o + length);
+        }
+    }
+}
+
+template <int T, int Op>
+void traced()
+{
+    if constexpr (T == kSlow)
+        trace_slow(uint8(Op));
+    else
+    {
+        constexpr bool m8 = T == 0 || T == 1 || T == 2;
+        constexpr bool x8 = T == 0 || T == 1 || T == 3;
+        constexpr int length = op_length(uint8_t(Op), m8, x8);
+        constexpr uint8 w = width_flag(uint8_t(Op), m8, x8);
+        uintptr_t o = uintptr_t(CPU.PCBase + uint16(Registers.PCw - 1)) - uintptr_t(Memory.ROM);
+        if (o < Memory.CalculatedSize && length <= Memory.CalculatedSize - o)
+        {
+            uint8 *f = flags + o;
+            f[0] |= codeflag::Opcode | w;
+            for (int i = 1; i < length; i++)
+                f[i] |= codeflag::Operand | w;
+            S9xRomFetchFrom = uint32(o);
+            S9xRomFetchTo = uint32(o + length);
+        }
+        else
+            S9xRomFetchFrom = S9xRomFetchTo = 0;
+    }
+    original[T][Op]();
+}
+
+template <int T, size_t... Ops>
+constexpr std::array<void (*)(void), 256> wrapper_row(std::index_sequence<Ops...>)
+{
+    return { &traced<T, int(Ops)>... };
+}
+
+const std::array<void (*)(void), 256> wrappers[kTables] = {
+    wrapper_row<0>(std::make_index_sequence<256>()), wrapper_row<1>(std::make_index_sequence<256>()),
+    wrapper_row<2>(std::make_index_sequence<256>()), wrapper_row<3>(std::make_index_sequence<256>()),
+    wrapper_row<4>(std::make_index_sequence<256>()), wrapper_row<5>(std::make_index_sequence<256>()),
+};
+
+// Puts the wrappers in, saving whatever the tables hold (the reset watch's wrapper too).
+void wrap()
+{
+    for (int t = 0; t < kTables; t++)
+        for (int op = 0; op < 256; op++)
+        {
+            original[t][op] = tables[t][op].S9xOpcode;
+            tables[t][op].S9xOpcode = wrappers[t][op];
+        }
+    installed = true;
+}
+
+void unwrap()
+{
+    if (!installed)
+        return;
+    for (int t = 0; t < kTables; t++)
+        for (int op = 0; op < 256; op++)
+            tables[t][op].S9xOpcode = original[t][op];
+    installed = false;
+}
+
+// Anything else that edits the tables (the reset watch) does it with the tracer lifted,
+// so neither ever saves or restores the other's stale entry.
+template <typename F>
+void lifted(F &&edit)
+{
+    bool was = installed;
+    unwrap();
+    edit();
+    if (was)
+        wrap();
+}
+
+} // namespace rom_trace
+
 // The reset watch. The core runs each instruction through a table of opcode handlers
 // (one table per CPU mode, plus a slow-path one), and the tables are plain globals, so
 // the reset handler's first opcode can be wrapped without touching the core's source.
@@ -78,7 +217,7 @@ void wrapped()
 
 void (*const wrappers[kTables])(void) = { wrapped<0>, wrapped<1>, wrapped<2>, wrapped<3>, wrapped<4>, wrapped<5> };
 
-void uninstall()
+void unhook()
 {
     if (!installed)
         return;
@@ -87,9 +226,9 @@ void uninstall()
     installed = false;
 }
 
-void install()
+void hook()
 {
-    uninstall();
+    unhook();
     const uint8 *lo = byte_at(0x00FFFC), *hi = byte_at(0x00FFFD);
     if (!lo || !hi)
         return;
@@ -105,6 +244,16 @@ void install()
         tables[t][opcode].S9xOpcode = wrappers[t];
     }
     installed = true;
+}
+
+void uninstall()
+{
+    rom_trace::lifted(unhook);
+}
+
+void install()
+{
+    rom_trace::lifted(hook);
 }
 
 } // namespace reset_watch
@@ -163,6 +312,35 @@ std::vector<uint8_t> SnesCoreAccess::rom_image(bool fix_checksum)
     fields[2] = uint8_t(sum & 0xFF);
     fields[3] = uint8_t(sum >> 8);
     return image;
+}
+
+RomAddresses SnesCoreAccess::rom_addresses()
+{
+    RomAddresses out;
+    if (!Memory.ROM || !Memory.CalculatedSize)
+        return out;
+    size_t chunks = (Memory.CalculatedSize + RomAddresses::kChunk - 1) / RomAddresses::kChunk;
+    out.chunks.assign(chunks, RomAddresses::kNone);
+    std::vector<int> best(chunks, 0);
+    for (uint32 block = 0; block < 0x1000; block++)
+    {
+        uint32 address = block << MEMMAP_SHIFT;
+        const uint8 *p = reset_watch::byte_at(address);
+        uintptr_t o = uintptr_t(p) - uintptr_t(Memory.ROM);
+        if (!p || o >= Memory.CalculatedSize || o % RomAddresses::kChunk)
+            continue;
+        uint32 bank = address >> 16;
+        bool a15 = address & 0x8000;
+        int score = Memory.HiROM ? (bank >= 0xC0 ? 4 : bank >= 0x40 && bank < 0x7E ? 3 : bank >= 0x80 && a15 ? 2 : 1)
+                                 : (bank >= 0x80 && a15 ? 4 : a15 && bank < 0x7E ? 3 : bank >= 0xC0 ? 2 : 1);
+        size_t chunk = o / RomAddresses::kChunk;
+        if (score > best[chunk])
+        {
+            best[chunk] = score;
+            out.chunks[chunk] = address;
+        }
+    }
+    return out;
 }
 
 VideoLayout SnesCoreAccess::video_layout()
@@ -269,6 +447,37 @@ void WramAccessCounter::take(MemoryWatch &watch)
 {
     if (counting())
         watch.observe_accesses(reads, writes);
+}
+
+bool RomTracer::start(CodeMap &map)
+{
+    if (rom_trace::installed || !Memory.ROM || map.size() != Memory.CalculatedSize || map.empty())
+        return false;
+    rom_trace::flags = map.data();
+    S9xRomFetchFrom = S9xRomFetchTo = 0;
+    S9xRomFlags = map.data();
+    rom_trace::wrap();
+    mine = true;
+    return true;
+}
+
+void RomTracer::stop()
+{
+    if (!mine)
+        return;
+    rom_trace::unwrap();
+    S9xRomFlags = nullptr;
+    rom_trace::flags = nullptr;
+    mine = false;
+}
+
+std::vector<uintptr_t> RomTracer::opcode_tables()
+{
+    std::vector<uintptr_t> out;
+    for (auto *table : rom_trace::tables)
+        for (int op = 0; op < 256; op++)
+            out.push_back(reinterpret_cast<uintptr_t>(table[op].S9xOpcode));
+    return out;
 }
 
 } // namespace corrupt

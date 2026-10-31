@@ -56,6 +56,22 @@ static inline void S9xCountWram (uint32 *counts, const uint8 *p, int bytes)
 	}
 }
 
+// Corruption tooling (corrupt/): the code map's flags, one byte per ROM byte, while it records
+// (null otherwise), and the ROM span of the instruction running now, whose own operand
+// fetches aren't data. Defined in cpuexec.cpp; the flags are corrupt/code_map.h's.
+extern uint8	*S9xRomFlags;
+extern uint32	S9xRomFetchFrom, S9xRomFetchTo;
+#define S9X_ROM_DATA	0x10
+#define S9X_ROM_DMA		0x20
+
+static inline void S9xMarkRom (const uint8 *p, int bytes, uint8 flag)
+{
+	uintptr_t	o = (uintptr_t) p - (uintptr_t) Memory.ROM; // wraps to huge below the ROM
+	for (int i = 0; i < bytes; i++, o++)
+		if (o < Memory.CalculatedSize && (o < S9xRomFetchFrom || o >= S9xRomFetchTo))
+			S9xRomFlags[o] |= flag;
+}
+
 static inline int32 memory_speed (uint32 address)
 {
 	if (address & 0x408000)
@@ -87,6 +103,8 @@ inline uint8 S9xGetByte (uint32 Address)
 		byte = *(GetAddress + (Address & 0xffff));
 		if (S9X_WRAM_COUNTING(S9xWramReads))
 			S9xCountWram(S9xWramReads, GetAddress + (Address & 0xffff), 1);
+		if (S9X_WRAM_COUNTING(S9xRomFlags))
+			S9xMarkRom(GetAddress + (Address & 0xffff), 1, S9X_ROM_DATA);
 		addCyclesInMemoryAccess;
 		return (byte);
 	}
@@ -218,6 +236,8 @@ inline uint16 S9xGetWord (uint32 Address, enum s9xwrap_t w = WRAP_NONE)
 		word = READ_WORD(GetAddress + (Address & 0xffff));
 		if (S9X_WRAM_COUNTING(S9xWramReads))
 			S9xCountWram(S9xWramReads, GetAddress + (Address & 0xffff), 2);
+		if (S9X_WRAM_COUNTING(S9xRomFlags))
+			S9xMarkRom(GetAddress + (Address & 0xffff), 2, S9X_ROM_DATA);
 		addCyclesInMemoryAccess_x2;
 		return (word);
 	}

@@ -123,15 +123,20 @@ bool8 S9xDoDMA (uint8 Channel)
 		count = 0x10000;
 
 	// Corruption tooling: CPU-to-PPU transfers read their source through a base pointer,
-	// so count it here (PPU-to-CPU ones write through S9xSetByte, which counts itself).
-	if (S9X_WRAM_COUNTING(S9xWramReads) && !d->ReverseTransfer)
+	// so count it here (PPU-to-CPU ones write through S9xSetByte, which counts itself),
+	// for the WRAM read counts and the code map's DMA flag.
+	if ((S9X_WRAM_COUNTING(S9xWramReads) || S9X_WRAM_COUNTING(S9xRomFlags)) && !d->ReverseTransfer)
 	{
 		uint16	a = d->AAddress;
 		for (int32 i = 0; i < count; i++, a += inc)
 		{
 			uint8	*base = S9xGetBasePointer((d->ABank << 16) + a);
-			if (base)
+			if (!base)
+				continue;
+			if (S9xWramReads)
 				S9xCountWram(S9xWramReads, base + a, 1);
+			if (S9xRomFlags)
+				S9xMarkRom(base + a, 1, S9X_ROM_DMA);
 		}
 	}
 
