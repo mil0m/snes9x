@@ -313,7 +313,7 @@ instruction for one of the same length, flip a branch, and find the exact byte t
 Not seen yet: code the game runs from WRAM (FF6 T-Edition's title screen waits in WRAM, for
 one), HDMA tables, and the SA-1's own CPU.
 
-Plan and what's next: [`2026-10-31-rom-corruption-plan.md`](./2026-10-31-rom-corruption-plan.md).
+Plan and what's next: [`2026-10-31-rom-corruption-plan.md`](./2026-10-31-rom-corruption-plan.md). Beyond it, game-aware corruption (jump tables, state jumps, game profiles mapped with Claude, a search for golden moments): [`2026-10-31-horizons.md`](./2026-10-31-horizons.md).
 
 ## Editing memory like a picture
 
