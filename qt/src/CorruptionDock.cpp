@@ -1,5 +1,6 @@
 #include "CorruptionDock.hpp"
 #include "SurvivorsDialog.hpp"
+#include "GuideWindow.hpp"
 #include "CorruptionSession.hpp"
 #include "EmuApplication.hpp"
 #include "EmuConfig.hpp"
@@ -150,6 +151,7 @@ CorruptionDock::CorruptionDock(EmuApplication &app, QWidget *parent)
     guide_button->setObjectName("guide");
     guide_button->setToolTip(tr("How everything here works, in plain words"));
     top_row->addWidget(guide_button);
+    connect(guide_button, &QPushButton::clicked, [this] { openGuide({}); });
     layout->addLayout(top_row);
 
     // While nothing is loaded: where to start.
@@ -506,6 +508,16 @@ CorruptionDock::CorruptionDock(EmuApplication &app, QWidget *parent)
     refreshStatus();
 }
 
+void CorruptionDock::openGuide(const QString &section)
+{
+    if (!guide)
+        guide = new GuideWindow(this);
+    guide->showSection(section);
+    guide->show();
+    guide->raise();
+    guide->activateWindow();
+}
+
 void CorruptionDock::openViewer()
 {
     if (!memory_viewer)
@@ -613,6 +625,15 @@ void CorruptionDock::tour(const QString &dir)
             shot(survivors_dialog, "09-survivors");
             survivors_dialog->close();
         }
+        openGuide({});
+    });
+    steps->push_back([=, this] {
+        shot(guide, "10-guide");
+        openGuide(tr("Getting back to normal"));
+    });
+    steps->push_back([=, this] {
+        shot(guide, "11-guide-section");
+        guide->close();
         QFile done(dir + "/done");
         done.open(QIODevice::WriteOnly);
     });

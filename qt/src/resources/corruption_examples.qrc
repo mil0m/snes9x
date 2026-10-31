@@ -4,8 +4,17 @@
     <file alias="low-wram-roulette.json">../../../docs/corruption/examples/low-wram-roulette.json</file>
     <file alias="music-mangler.json">../../../docs/corruption/examples/music-mangler.json</file>
     <file alias="palette-drift.json">../../../docs/corruption/examples/palette-drift.json</file>
+    <file alias="rom-branch-flips.json">../../../docs/corruption/examples/rom-branch-flips.json</file>
+    <file alias="rom-classic-sprinkle.json">../../../docs/corruption/examples/rom-classic-sprinkle.json</file>
+    <file alias="rom-live-drip.json">../../../docs/corruption/examples/rom-live-drip.json</file>
+    <file alias="rom-opcode-swap.json">../../../docs/corruption/examples/rom-opcode-swap.json</file>
+    <file alias="rom-operand-nudge.json">../../../docs/corruption/examples/rom-operand-nudge.json</file>
+    <file alias="rom-region-shift.json">../../../docs/corruption/examples/rom-region-shift.json</file>
     <file alias="sprite-jitter.json">../../../docs/corruption/examples/sprite-jitter.json</file>
     <file alias="stat-swap-hotkey.json">../../../docs/corruption/examples/stat-swap-hotkey.json</file>
     <file alias="tile-rot.json">../../../docs/corruption/examples/tile-rot.json</file>
+  </qresource>
+  <qresource prefix="/corruption-guide">
+    <file alias="GUIDE.md">../../../docs/corruption/GUIDE.md</file>
   </qresource>
 </RCC>

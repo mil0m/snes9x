@@ -23,3 +23,17 @@ TEST_CASE("every bundled example recipe is valid")
     }
     CHECK(count >= 6);
 }
+
+// The app bundles the starters through a Qt resource file; one left out there never shows up.
+TEST_CASE("every example recipe is bundled with the app, and so is the guide")
+{
+    std::ifstream in(std::string(CORRUPT_EXAMPLES_DIR) + "/../../../qt/src/resources/corruption_examples.qrc");
+    std::stringstream qrc;
+    qrc << in.rdbuf();
+    REQUIRE(!qrc.str().empty());
+    for (auto &file : std::filesystem::directory_iterator(CORRUPT_EXAMPLES_DIR))
+        if (file.path().extension() == ".json")
+            CHECK_MESSAGE(qrc.str().find("alias=\"" + file.path().filename().string() + "\"") != std::string::npos,
+                          file.path().filename().string() << " is missing from corruption_examples.qrc");
+    CHECK(qrc.str().find("GUIDE.md") != std::string::npos);
+}

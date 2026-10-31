@@ -40,7 +40,8 @@ build_app() {
 build_qt() {
   submodules
   cmake -S qt -B build/qt -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH="$(brew --prefix qt)" >/dev/null
-  cmake --build build/qt | tail -1
+  # Quiet when it builds; the compiler's errors when it doesn't.
+  if ! out=$(cmake --build build/qt 2>&1); then echo "$out" | grep -v '^\[' >&2; exit 1; fi
   echo "Qt: $(pwd)/build/qt/snes9x-qt"
 }
 
