@@ -84,7 +84,7 @@ Use a game you have never set up (a fresh library folder, so no recipes exist fo
    - [ ] A backup from closing exists on the next launch.
 
 ## 6. Sound
-1. Pick **Starter: Music mangler**, press **Corrupt (F7)**, and wait a few firings (5 s each).
+1. Pick **Starter: Music mangler**, press **Corrupt (F7)**, and wait a few changes (5 s each).
    - [ ] The music audibly glitches. It may also stop entirely; that's expected.
 
 ## 7. Crash guard
@@ -134,7 +134,7 @@ Use a game you have never set up (a fresh library folder, so no recipes exist fo
    - [ ] The changes made stop counting up. Back to 100 %: they resume, and *On for N s* never reset.
 3. With two rules, drag one rule's **Strength** slider to 0 %.
    - [ ] Only that rule goes quiet.
-4. Bind **Corruption: More Chaos** and **Less Chaos** under *Settings > Shortcuts*, and press them.
+4. Bind **Corruption: More Chaos** and **Less Chaos** under *Options > Shortcuts…*, and press them.
    - [ ] The message says `Corruption chaos 40%` and so on, and the Chaos slider follows.
 5. Pick **Starter: Music mangler** (one byte each time), set its rule to 20 %, and listen for a minute.
    - [ ] Glitches come noticeably less often than at 100 %.
@@ -344,7 +344,7 @@ Use a game you have never set up (a fresh library folder, so no recipes exist fo
 8. Does the game run noticeably slower than before? (It should cost about 5%.)
 
 ## 23. Blame by execution
-1. Load FF6 with a library set. Make a recipe with one rule: target **rom**, range `0x0`-`0xFFFF`, *Random value* 0-255, **When**: once, when the run starts, **Bytes each time** 300. Press **Corrupt (F7)** (the console restarts from the corrupted ROM).
+1. Load FF6 with a library set. Make a recipe with one rule: **Memory** rom, range `0x0`-`0xFFFF`, *Random value* 0-255, **When**: once, when the run starts, **Bytes each time** 300. Press **Corrupt (F7)** (the console restarts from the corrupted ROM).
 2. Open the memory viewer on **rom**, **Pixels**, **Colour by: Changes**.
    - [ ] 300 orange dots in the first 64 KB; dim ones the game hasn't used, bright ones it has. Hovering says `changed from 0x…, used in N frames` or `not used yet`.
    - [ ] The ROM section says *300 bytes changed, N of them used by the game so far.*, and N grows as you play.
@@ -367,7 +367,7 @@ Use a game you have never set up (a fresh library folder, so no recipes exist fo
    - [ ] The game plays on, and something behaves oddly sooner or later.
 3. Pick **Starter: Opcode swap**. Open its rule in the editor.
    - [ ] **What** says *Swap opcodes*, **Aim** has *All but these instructions* with `stack` and `width` ticked, and the choice of bytes is greyed out (code ops always aim at opcodes).
-4. Make a rule on **rom**, range `0x0`-`0xFFFF`, *Add / subtract* -2..2, every 600 frames, **Bytes each time** 2, **Aim: Operands**, **Only these instructions**: `arith`, `compare`.
+4. Make a rule on **rom**, range `0x0`-`0xFFFF`, *Add / subtract* -2..2, every 600 frames, **Bytes each time** 2, **Bytes: Operands** (under Aim), **Only these instructions**: `arith`, `compare`.
    - [ ] The summary line ends `operands of arith, compare`. OK is greyed out if you tick nothing under *Only*.
    - [ ] While it runs, every new orange dot is on a lighter-teal (operand) byte, never on a bright opcode.
 5. Switch the rule's **Memory** to **wram**.
