@@ -35,7 +35,6 @@ class CorruptionDock : public QDockWidget
     void rebuildRules();
     void chooseLibrary();
     void exportRom();
-    void loadSelectedRecipe();
     void saveAs();
     void save();
     void newRecipe();
@@ -46,7 +45,10 @@ class CorruptionDock : public QDockWidget
     void editRule(int row);
     void duplicateRule();
     void removeRule();
-    void addExample();
+    void recipeChosen(int index); // a library recipe or a starter, from the recipe list
+    void syncRecipeChoice();      // the list shows what's loaded
+    QString hotkey(int shortcut) const; // "F7", or "no hotkey"
+    static QString policyText(corrupt::PolicyKind p);
     void restoreSelectedBackup();
     void showMessage(const QString &text, bool error = false);
     void openViewer();
@@ -63,18 +65,30 @@ class CorruptionDock : public QDockWidget
     std::string shown_message;
     int ticks = 0;
     std::vector<unsigned> shown_rule_crashes;
+    uint64_t shown_choice_generation = UINT64_MAX;
+    std::filesystem::path shown_recipe_path;
+
+    struct Starter
+    {
+        QString resource;
+        corrupt::Recipe recipe;
+    };
+    std::vector<Starter> starters; // the example recipes that come with the app
 
     QLabel *game_label;
-    QLineEdit *library_edit;
+    QPushButton *guide_button;
+    QLabel *start_card;
+    QLabel *library_label;
     QComboBox *recipe_combo;
-    QComboBox *example_combo;
     QCheckBox *moments_check;
     MemoryViewer *memory_viewer = nullptr;
     std::unique_ptr<MemorySource> memory_source;
     std::unique_ptr<SurvivorSource> survivor_source;
     SurvivorsDialog *survivors_dialog = nullptr;
     QPushButton *survivors_button = nullptr;
-    QCheckBox *active_check;
+    QPushButton *corrupt_button;
+    QPushButton *back_button;
+    QLabel *rules_empty;
     QLineEdit *seed_edit;
     QTableWidget *rules_table;
     std::vector<IntensitySlider *> rule_sliders;

@@ -82,6 +82,7 @@ static const char *shortcut_names[] =
     "CorruptionMarkCrash",
     "CorruptionMore",
     "CorruptionLess",
+    "CorruptionBackToNormal",
 };
 
 static const char *default_controller_keys[] =
@@ -156,6 +157,7 @@ static const char *default_controller_keys[] =
     "", //    eCorruptionMarkCrash
     "", //    eCorruptionMore
     "", //    eCorruptionLess
+    "Keyboard Shift+F7", //    eCorruptionBackToNormal
 };
 
 const char **EmuConfig::getDefaultShortcutKeys()

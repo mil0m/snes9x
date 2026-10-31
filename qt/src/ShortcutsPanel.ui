@@ -406,6 +406,11 @@
        <string>Corruption: Less Chaos</string>
       </property>
      </row>
+     <row>
+      <property name="text">
+       <string>Corruption: Back to Normal</string>
+      </property>
+     </row>
      <column>
       <property name="text">
        <string>Binding #1</string>

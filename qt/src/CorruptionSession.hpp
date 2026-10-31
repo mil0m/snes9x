@@ -61,6 +61,7 @@ class CorruptionSession
         std::vector<unsigned> rule_crashes;
         size_t hot_blocks = 0; // crash map: 16-byte blocks rules with avoid_hot stay out of
 
+        bool can_go_back = false; // a run started (its moment is there to go back to), or the ROM changed
         size_t rom_changed = 0; // ROM bytes that differ from the clean ROM
         size_t rom_used = 0;    // ...of which the game has run or read since they changed
         size_t survivors = 0;   // ...of which proved themselves (see survivors())
@@ -82,6 +83,9 @@ class CorruptionSession
     void newRecipe(const std::string &name); // an empty recipe for the loaded game
     void setActive(bool active);
     bool toggleActive(); // returns the new state
+    // Back to normal: corruption off, the clean ROM back, and the game back at the moment the
+    // run started, so what it did to RAM is gone too. Happens between frames.
+    void backToNormal();
     uint64_t reroll();   // returns the new seed
     void setSeed(uint64_t seed);
     void pressHotkey(int n);
@@ -188,6 +192,7 @@ class CorruptionSession
     corrupt::CodeCoverage code_coverage;
     std::filesystem::path code_map_root;    // the library the map came from (and is saved to)
     bool code_map_reload = false;           // the library changed: reload between frames
+    bool back_to_normal = false;            // asked for; done between frames
     uint64_t code_frames = 0;
     std::vector<corrupt::MapArea> live_map; // VRAM or ARAM layout, re-read between frames while watched
     bool saved_moments = true;

@@ -102,6 +102,17 @@ void CorruptionSession::betweenFrames()
     std::lock_guard lock(mutex);
     if (!game_loaded)
         return;
+    if (back_to_normal)
+    {
+        back_to_normal = false;
+        engine.set_active(false);
+        rom.restore_clean();
+        bool moment = control.has_anchor() && access.load_state(control.anchor());
+        guard.reset();
+        note(moment ? "Back to normal: the clean game, at the moment the run started"
+                    : "Back to normal: the clean ROM (no run to go back to)");
+        S9xSetInfoString("Corruption: back to normal");
+    }
     auto started = control.between_frames(engine, access, &rom);
     if (started != RunControl::Started::Nothing)
     {
@@ -833,6 +844,7 @@ CorruptionSession::Status CorruptionSession::status()
         for (auto t : kAllTargets)
             s.sizes[size_t(t)] = memory.size(t);
         s.rom_changed = rom.changed();
+        s.can_go_back = control.has_anchor() || rom.changed() > 0;
         s.rom_used = rom_blame.used();
         s.survivors = rom_blame.survivor_count(kSurvivorFrames);
         s.pins = engine.recipe().pins.size();
@@ -848,6 +860,13 @@ CorruptionSession::Status CorruptionSession::status()
     s.code = code_coverage;
     s.message = message;
     return s;
+}
+
+void CorruptionSession::backToNormal()
+{
+    std::lock_guard lock(mutex);
+    if (game_loaded)
+        back_to_normal = true;
 }
 
 void CorruptionSession::restoreCleanRom()

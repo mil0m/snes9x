@@ -499,6 +499,11 @@ void EmuApplication::handleCorruptionBinding(const std::string &name)
         auto result = session.saveRecipeAs(recipe_name, "");
         text = result.error.empty() ? "Saved recipe " + result.path.filename().string() : "Couldn't save: " + result.error;
     }
+    else if (name == "CorruptionBackToNormal")
+    {
+        session.backToNormal();
+        return; // the session shows its own message
+    }
     else if (name == "CorruptionMarkCrash")
     {
         session.markCrash();
