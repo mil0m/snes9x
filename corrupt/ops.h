@@ -10,6 +10,8 @@
 namespace corrupt
 {
 
+struct HotMask;
+
 // One byte the engine changed. Only real changes are logged (old != new);
 // phase 2 attributes crashes from these.
 struct WriteEvent
@@ -57,9 +59,11 @@ struct OpState
     std::unordered_map<uint64_t, uint8_t> held; // freeze: (target, offset) -> value
 };
 
+// With skip, bytes it marks hot are left alone. The values are still drawn for them, so the
+// other addresses get exactly the writes they would have without it.
 std::vector<WriteEvent> apply_op(const Op &op, OpState &state, MemoryAccess &mem,
                                  const AddressRange &range, const std::vector<uint32_t> &addresses,
-                                 Rng &rng);
+                                 Rng &rng, const HotMask *skip = nullptr);
 
 std::optional<std::string> validate_op(const Op &op, const AddressRange &range, const MemoryAccess &mem);
 

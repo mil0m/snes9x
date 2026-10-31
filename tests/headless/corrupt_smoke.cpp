@@ -144,6 +144,9 @@ int guarded_learning(const Recipe &recipe, int frames, CrashMapKeeper &keeper, b
             continue;
         caught++;
         gave_up = out.kind == GuardOutcome::GaveUp;
+        if (getenv("CORRUPT_LEARN_VERBOSE"))
+            printf("    frame %llu: %s, back to %llu\n", (unsigned long long)engine.current_frame(),
+                   out.summary.c_str(), (unsigned long long)out.restored_frame);
         if (keeper.crashed(out) && !fixed)
             engine.set_hot_mask(keeper.hot_mask());
     }

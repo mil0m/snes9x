@@ -1,4 +1,5 @@
 #include "ops.h"
+#include "crash_map.h"
 
 #include <algorithm>
 
@@ -12,10 +13,11 @@ struct Writer
 {
     MemoryAccess &mem;
     std::vector<WriteEvent> events;
+    const HotMask *skip = nullptr;
 
     void put(Target t, uint32_t offset, uint8_t value)
     {
-        if (offset >= mem.size(t))
+        if (offset >= mem.size(t) || (skip && skip->is_hot(t, offset)))
             return;
         uint8_t old = mem.read(t, offset);
         if (old == value)
@@ -74,9 +76,9 @@ std::optional<OpType> parse_op(std::string_view name)
 
 std::vector<WriteEvent> apply_op(const Op &op, OpState &state, MemoryAccess &mem,
                                  const AddressRange &range, const std::vector<uint32_t> &addresses,
-                                 Rng &rng)
+                                 Rng &rng, const HotMask *skip)
 {
-    Writer w{ mem, {} };
+    Writer w{ mem, {}, skip };
     const Target t = range.target;
 
     switch (op.type)

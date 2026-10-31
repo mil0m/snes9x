@@ -113,14 +113,8 @@ std::vector<WriteEvent> tick_rule(const Rule &rule, RuleRuntime &rt, MemoryAcces
     else
         addresses = pick_distinct(rule.range, count, rng);
 
-    if (rule.avoid_hot && hot && !hot->empty())
-    {
-        std::erase_if(addresses, [&](uint32_t a) { return hot->is_hot(rule.range.target, a); });
-        if (addresses.empty())
-            return {};
-    }
-
-    return apply_op(scaled_op(rule.op, intensity), rt.op_state, mem, rule.range, addresses, rng);
+    const HotMask *skip = rule.avoid_hot && hot && !hot->empty() ? hot : nullptr;
+    return apply_op(scaled_op(rule.op, intensity), rt.op_state, mem, rule.range, addresses, rng, skip);
 }
 
 std::optional<std::string> validate_rule(const Rule &rule, const MemoryAccess &mem)

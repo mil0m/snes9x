@@ -298,6 +298,34 @@ TEST_SUITE("avoiding the crash map's hot bytes")
         CHECK(std::any_of(hit.begin(), hit.end(), [](uint32_t x) { return x >= 0x140 && x <= 0x14F; }));
     }
 
+    TEST_CASE("avoiding only drops the hot writes; every other write stays the same")
+    {
+        // Values are drawn per picked address, so skipping one mustn't shift the values of
+        // the ones after it: then avoiding would also re-roll writes that weren't hot.
+        for (auto type : { OpType::Random, OpType::Add, OpType::Bitflip })
+        {
+            CAPTURE(int(type));
+            auto rule = incrementer(8, Pick::Fresh);
+            rule.op = { .type = type, .min = type == OpType::Add ? -9 : 0, .max = type == OpType::Add ? 9 : 255,
+                        .bits = 3 };
+            Rule avoiding = rule;
+            avoiding.avoid_hot = true;
+            FakeMemory plain, avoided;
+            RuleRuntime rp, ra;
+            auto hot = hot_0x140();
+            run_avoiding(rule, rp, plain, hot, 200);
+            run_avoiding(avoiding, ra, avoided, hot, 200);
+            auto &p = plain.of(Target::WRAM), &a = avoided.of(Target::WRAM);
+            size_t differ = 0;
+            for (uint32_t x = 0; x < p.size(); x++)
+                if (x < 0x140 || x > 0x14F)
+                    differ += p[x] != a[x];
+            CHECK(differ == 0);
+            for (uint32_t x = 0x140; x <= 0x14F; x++)
+                CHECK(a[x] == 0);
+        }
+    }
+
     TEST_CASE("sticky picks skip hot bytes too, even ones that turn hot later")
     {
         FakeMemory mem;
