@@ -33,6 +33,7 @@ struct Recipe
 
     // Unset means "use the session's choice" (default policy, default detection).
     std::optional<PolicyKind> crash_policy;
+    std::optional<RomPolicy> rom_policy; // for changed ROM bytes blamed by use
     std::optional<DetectorConfig> crash_detection;
 };
 

@@ -257,6 +257,20 @@ TEST_CASE("partial detection settings keep the defaults for the rest")
     CHECK(r.recipe->crash_detection->frozen_frames == DetectorConfig{}.frozen_frames);
 }
 
+TEST_CASE("the ROM policy round-trips, and is left out when unset")
+{
+    auto r = parse_recipe(R"({"format":1,"rules":[],"rom_policy":"reroll"})", {});
+    REQUIRE_MESSAGE(r.recipe, first_error(r));
+    CHECK(r.recipe->rom_policy == RomPolicy::Reroll);
+    auto again = parse_recipe(write_recipe(*r.recipe), {});
+    REQUIRE(again.recipe);
+    CHECK(again.recipe->rom_policy == RomPolicy::Reroll);
+    auto plain = parse_recipe(R"({"format":1,"rules":[]})", {});
+    CHECK_FALSE(plain.recipe->rom_policy);
+    CHECK(write_recipe(*plain.recipe).find("rom_policy") == std::string::npos);
+    CHECK_FALSE(parse_recipe(R"({"format":1,"rules":[],"rom_policy":"skip"})", {}).recipe);
+}
+
 TEST_CASE("bad crash settings are errors")
 {
     CHECK_FALSE(parse_recipe(R"({"format":1,"rules":[],"crash_policy":"yolo"})", {}).recipe);

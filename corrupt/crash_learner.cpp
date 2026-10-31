@@ -23,7 +23,7 @@ void CrashLearner::observe(const std::deque<LoggedEvent> &log, uint64_t frame, C
     while (it != log.begin() && std::prev(it)->frame > seen)
         --it;
     for (; it != log.end(); ++it)
-        if (it->frame <= frame)
+        if (it->frame <= frame && !(no_rom && it->write.target == Target::ROM))
             writes.push_back({ it->frame, it->write.target, it->write.offset });
     seen = std::max(seen, frame);
 

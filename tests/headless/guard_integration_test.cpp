@@ -10,6 +10,7 @@
 #include "corrupt/crash_guard.h"
 #include "corrupt/hook.h"
 #include "corrupt/rom_keeper.h"
+#include "corrupt/rom_blame.h"
 #include "corrupt/run_control.h"
 #include "corrupt/memory_watch.h"
 
@@ -37,10 +38,17 @@ struct Harness
     std::vector<GuardOutcome> outcomes;
     std::vector<RunControl::Started> starts;
 
+    RomBlame *blame = nullptr; // collects after every frame, before the guard, when set
+
     Harness(testrom::Crash crash, Recipe recipe, PolicyKind policy)
+        : Harness(testrom::build(crash), std::move(recipe), policy)
+    {
+    }
+
+    Harness(const std::vector<uint8_t> &rom_image, Recipe recipe, PolicyKind policy)
     {
         REQUIRE(headless::init());
-        REQUIRE(headless::load_rom_memory(testrom::build(crash)));
+        REQUIRE(headless::load_rom_memory(rom_image));
         SnesCoreAccess::watch_resets();
         rom.set_clock([this] { return engine.current_frame(); });
         rom.game_loaded(SnesCoreAccess::locked_rom());
@@ -68,6 +76,8 @@ struct Harness
             headless::run_frames(1);
             if (auto s = control.between_frames(engine, access, &rom); s != RunControl::Started::Nothing)
                 starts.push_back(s);
+            if (blame)
+                blame->collect(engine.current_frame());
             auto out = guard.between_frames(engine, access);
             rom.after_guard(out);
             if (out.kind != GuardOutcome::Nothing)
@@ -466,6 +476,55 @@ TEST_SUITE("ROM corruption in the real core")
         CHECK(h.memory.read(Target::ROM, 0x7FDE) != image[0x7FDE]); // the live ROM keeps its header
         auto raw = SnesCoreAccess::rom_image(false);
         CHECK(raw[0x7FDE] == h.memory.read(Target::ROM, 0x7FDE));
+    }
+
+    TEST_CASE("blame by execution: only the changed byte the game ran into is reverted")
+    {
+        namespace rare = testrom::rare;
+        constexpr uint32_t kPadding = 0x5000; // never run, never read
+        Recipe recipe;
+        recipe.name = "classic";
+        recipe.seed = 1;
+        recipe.rules = { poke_rom(rare::kRoutine, 0xDB, { .type = TriggerType::AtLoad }), // INC -> STP
+                         poke_rom(kNmiInc, 0xC6, { .type = TriggerType::AtLoad }),        // INC -> DEC, harmless
+                         poke_rom(kPadding, 0x12, { .type = TriggerType::AtLoad }) };
+        Harness h(testrom::build_rare(), recipe, PolicyKind::Skip);
+        CodeMap map(Memory.CalculatedSize);
+        RomTracer tracer;
+        REQUIRE(tracer.start(map));
+        RomBlame blame(h.rom);
+        blame.attach(map.data(), map.size());
+        h.guard.set_byte_blame(&blame);
+        h.blame = &blame;
+        h.engine.hold_starts(true);
+        h.engine.set_active(false);
+        h.engine.set_active(true);
+        h.run(200); // boots from the corrupted ROM; the routine hasn't run yet
+        CHECK(h.outcomes.empty());
+        CHECK(blame.watched() == 3);
+        CHECK(blame.used() == 1); // the DEC
+        CHECK(alive(h));
+
+        uint8_t runs = h.wram(rare::kRunsAddr);
+        h.memory.write(Target::WRAM, testrom::kTriggerAddr, testrom::kTriggerValue); // the player goes somewhere new
+        h.run(60);
+        REQUIRE(h.outcomes.size() == 1); // STP: caught
+        auto &out = h.outcomes[0];
+        CHECK(out.kind == GuardOutcome::RolledBack);
+        CHECK(out.suspects.empty()); // no rule wrote anything near the crash
+        CHECK(out.rom_blamed == std::vector<uint32_t>{ rare::kRoutine });
+        CHECK(h.memory.read(Target::ROM, rare::kRoutine) == 0xE6); // the STP is gone for good
+        CHECK(h.memory.read(Target::ROM, kNmiInc) == 0xC6);       // the rest of the corruption stays
+        CHECK(h.memory.read(Target::ROM, kPadding) == 0x12);
+        CHECK(h.rom.changed() == 2);
+        CHECK(alive(h));
+
+        h.memory.write(Target::WRAM, testrom::kTriggerAddr, testrom::kTriggerValue); // and there again
+        h.run(10);
+        CHECK(h.outcomes.size() == 1);
+        CHECK(h.wram(rare::kRunsAddr) == uint8_t(runs + 1)); // the routine ran, fixed
+        CHECK(alive(h));
+        tracer.stop();
     }
 
     TEST_CASE("live: a ROM edit that crashes the game is rolled back and undone")

@@ -10,15 +10,6 @@
 namespace corrupt
 {
 
-// What to do with changed ROM bytes blamed for a crash.
-enum class RomPolicy
-{
-    Revert, // back to the clean value (default)
-    Reroll, // a fresh random value
-};
-const char *rom_policy_name(RomPolicy p);
-std::optional<RomPolicy> parse_rom_policy(std::string_view name);
-
 // How one changed ROM byte has been used since it changed. Frames are the engine's.
 struct ByteUse
 {

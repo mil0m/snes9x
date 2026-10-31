@@ -58,4 +58,22 @@ ActionKind decide(PolicyKind policy, unsigned rule_crashes)
     return ActionKind::Reroll;
 }
 
+const char *rom_policy_name(RomPolicy p)
+{
+    switch (p)
+    {
+    case RomPolicy::Revert: return "revert";
+    case RomPolicy::Reroll: return "reroll";
+    }
+    return "revert";
+}
+
+std::optional<RomPolicy> parse_rom_policy(std::string_view name)
+{
+    for (auto p : { RomPolicy::Revert, RomPolicy::Reroll })
+        if (name == rom_policy_name(p))
+            return p;
+    return std::nullopt;
+}
+
 } // namespace corrupt

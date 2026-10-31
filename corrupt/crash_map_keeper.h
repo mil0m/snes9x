@@ -21,6 +21,11 @@ class CrashMapKeeper
     // After the guard rolled back. True when the hot set changed: give the engine hot_mask().
     bool crashed(const GuardOutcome &out);
 
+    // ROM blamed by use (corrupt/rom_blame.h): crashed() also counts the outcome's
+    // rom_blamed bytes, rom_survived() their survivals, and ROM writes stop counting.
+    void learn_rom_by_use(bool on) { learner.skip_rom(on); }
+    void rom_survived(const std::vector<uint32_t> &offsets);
+
     bool save_due() const;
     bool unsaved() const { return dirty; } // anything learned since the last save, e.g. on close
     bool saved(); // call after writing mine(); true when the hot set changed meanwhile

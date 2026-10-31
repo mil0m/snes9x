@@ -39,4 +39,14 @@ constexpr uint32_t kDmaSource = 0x2000; // $A000
 constexpr int kDmaBytes = 32;
 } // namespace traced
 
+// Crash::None, whose main loop calls a routine only while $7E:0010 is $42: code the game
+// rarely reaches, like a new area. The routine counts its runs in $7E:0012 and clears
+// the trigger. ROM offsets.
+std::vector<uint8_t> build_rare();
+namespace rare
+{
+constexpr uint32_t kRoutine = 0x0060; // INC $12 (E6 12); STZ $10; RTS
+constexpr uint32_t kRunsAddr = 0x12;  // WRAM
+} // namespace rare
+
 } // namespace testrom

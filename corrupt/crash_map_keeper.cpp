@@ -1,5 +1,7 @@
 #include "crash_map_keeper.h"
 
+#include <set>
+
 namespace corrupt
 {
 
@@ -33,11 +35,29 @@ bool CrashMapKeeper::crashed(const GuardOutcome &out)
         return false;
     CrashMap learned;
     learner.crash(out.blame_after, out.blame_through, out.restored_frame, learned);
+    std::set<uint32_t> blocks;
+    for (auto o : out.rom_blamed)
+        if (blocks.insert(o / CrashMap::kBlock).second)
+            learned.add_crash(Target::ROM, o);
     if (learned.empty())
         return false;
     own.merge(learned);
     dirty = crash_unsaved = true;
     return rebuild();
+}
+
+void CrashMapKeeper::rom_survived(const std::vector<uint32_t> &offsets)
+{
+    std::set<uint32_t> blocks;
+    CrashMap learned;
+    for (auto o : offsets)
+        if (blocks.insert(o / CrashMap::kBlock).second)
+            learned.add_survival(Target::ROM, o);
+    if (learned.empty())
+        return;
+    own.merge(learned);
+    all.merge(learned);
+    dirty = true;
 }
 
 bool CrashMapKeeper::save_due() const

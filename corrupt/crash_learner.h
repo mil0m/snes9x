@@ -34,6 +34,8 @@ class CrashLearner
     void crash(uint64_t after, uint64_t through, uint64_t restored, CrashMap &map);
 
     void reset(); // a new game
+    // ROM writes are left out: the ROM blame learns from what the game used instead.
+    void skip_rom(bool on) { no_rom = on; }
     size_t pending() const { return writes.size(); }
 
   private:
@@ -46,6 +48,7 @@ class CrashLearner
     static uint64_t key(Target t, uint32_t offset) { return uint64_t(t) << 32 | offset / CrashMap::kBlock; }
     void forget_after(uint64_t frame);
 
+    bool no_rom = false;
     std::deque<Write> writes; // in frame order
     uint64_t seen = 0;        // the last frame collected
     std::unordered_map<uint64_t, uint64_t> last_survival; // block -> frame of the write last credited

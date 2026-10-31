@@ -482,3 +482,124 @@ TEST_SUITE("the crash map with the guard")
         CHECK(rig.engine.active());
     }
 }
+
+TEST_SUITE("blaming single bytes the game used (ROM)")
+{
+    // Stands in for the ROM blame: two changed bytes, used in frame `used_at`.
+    struct FakeBytes : ByteBlame
+    {
+        uint64_t used_at = 0;
+        struct Act
+        {
+            uint64_t after, through;
+            unsigned attempt;
+        };
+        std::vector<Act> acts;
+
+        size_t suspects(uint64_t after, uint64_t through) const override
+        {
+            return used_at && used_at > after && used_at <= through ? 2 : 0;
+        }
+        ByteBlameResult act(uint64_t after, uint64_t through, unsigned attempt) override
+        {
+            acts.push_back({ after, through, attempt });
+            return { { 0x10, 0x20 }, "reverted 2 ROM bytes" };
+        }
+    };
+
+    Recipe idle_recipe() // a rule that never writes
+    {
+        Recipe r = recipe_of({ poke_crash_byte(1, 0, 0) });
+        r.rules[0].when = { .type = TriggerType::Hotkey, .hotkey = 1 };
+        return r;
+    }
+
+    TEST_CASE("bytes used before a crash are blamed and acted on; no rule is punished")
+    {
+        Rig rig(idle_recipe());
+        FakeBytes bytes;
+        rig.guard.set_byte_blame(&bytes);
+        rig.frames(200);
+        bytes.used_at = 150;
+        rig.mem.of(Target::WRAM)[kCrashByte] = kCrashValue;
+        rig.frame();
+        REQUIRE(rig.outcomes.size() == 1);
+        auto &out = rig.outcomes[0];
+        CHECK(out.kind == GuardOutcome::RolledBack);
+        CHECK(out.suspects.empty());
+        CHECK(out.rom_blamed == std::vector<uint32_t>{ 0x10, 0x20 });
+        CHECK(out.rom_action == "reverted 2 ROM bytes");
+        CHECK(out.summary.find("reverted 2 ROM bytes") != std::string::npos);
+        CHECK(rig.guard.rule_crashes(rig.engine) == std::vector<unsigned>{ 0 });
+        REQUIRE(bytes.acts.size() == 1);
+        CHECK(bytes.acts[0].attempt == 1);
+        CHECK(bytes.acts[0].after == out.restored_frame);
+        CHECK(bytes.acts[0].through == out.blame_through);
+        REQUIRE(rig.journal.size() == 1);
+        CHECK(rig.journal[0].rom_action == "reverted 2 ROM bytes");
+        CHECK(rig.journal[0].rom_blamed == std::vector<uint32_t>{ 0x10, 0x20 });
+        CHECK(rig.journal[0].action == "none");
+    }
+
+    TEST_CASE("it rolls back far enough to get before the use")
+    {
+        Rig rig(idle_recipe());
+        FakeBytes bytes;
+        rig.guard.set_byte_blame(&bytes);
+        rig.frames(400);
+        bytes.used_at = 150; // long before the trouble: latent damage
+        rig.mem.of(Target::WRAM)[kCrashByte] = kCrashValue;
+        rig.frame();
+        REQUIRE(rig.outcomes.size() == 1);
+        CHECK(rig.outcomes[0].restored_frame == 120); // the newest checkpoint with the use after it
+    }
+
+    TEST_CASE("repeat crashes tell it which attempt this is")
+    {
+        Rig rig(idle_recipe());
+        FakeBytes bytes;
+        rig.guard.set_byte_blame(&bytes);
+        rig.frames(200);
+        bytes.used_at = 150;
+        rig.mem.of(Target::WRAM)[kCrashByte] = kCrashValue;
+        rig.frame();
+        rig.frames(10);
+        bytes.used_at = rig.engine.current_frame(); // the replay uses it again
+        rig.mem.of(Target::WRAM)[kCrashByte] = kCrashValue;
+        rig.frame();
+        REQUIRE(bytes.acts.size() == 2);
+        CHECK(bytes.acts[1].attempt == 2);
+    }
+
+    TEST_CASE("a frozen picture with only used bytes to blame is a crash, not a calm screen")
+    {
+        Rig rig(idle_recipe());
+        FakeBytes bytes;
+        rig.guard.set_byte_blame(&bytes);
+        rig.frames(200);
+        bytes.used_at = 190;
+        rig.core.frozen = true;
+        rig.core.pressing = true;
+        rig.frames(600);
+        REQUIRE_FALSE(rig.outcomes.empty());
+        CHECK(rig.outcomes[0].verdict.signal == CrashSignal::FrozenPicture);
+        CHECK(!bytes.acts.empty());
+    }
+
+    TEST_CASE("giving up doesn't act on the bytes (the clean ROM comes back anyway)")
+    {
+        Rig rig(idle_recipe());
+        FakeBytes bytes;
+        rig.guard.set_byte_blame(&bytes);
+        rig.frames(200);
+        for (unsigned i = 0; i <= CrashGuard::kMaxAttempts; i++)
+        {
+            bytes.used_at = rig.engine.current_frame();
+            rig.mem.of(Target::WRAM)[kCrashByte] = kCrashValue;
+            rig.frame();
+            rig.frames(5);
+        }
+        REQUIRE(rig.outcomes.back().kind == GuardOutcome::GaveUp);
+        CHECK(bytes.acts.size() == CrashGuard::kMaxAttempts);
+    }
+}

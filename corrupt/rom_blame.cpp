@@ -7,24 +7,6 @@
 namespace corrupt
 {
 
-const char *rom_policy_name(RomPolicy p)
-{
-    switch (p)
-    {
-    case RomPolicy::Revert: return "revert";
-    case RomPolicy::Reroll: return "reroll";
-    }
-    return "revert";
-}
-
-std::optional<RomPolicy> parse_rom_policy(std::string_view name)
-{
-    for (auto p : { RomPolicy::Revert, RomPolicy::Reroll })
-        if (name == rom_policy_name(p))
-            return p;
-    return std::nullopt;
-}
-
 RomBlame::RomBlame(RomKeeper &rom) : rom(rom)
 {
     rom.on_change = [this](uint32_t offset, bool now_changed) { changed(offset, now_changed); };

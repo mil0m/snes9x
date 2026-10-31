@@ -81,3 +81,16 @@ TEST_CASE("appending builds a JSON-lines file, one file per person")
     CHECK(lines == 2);
     fs::remove_all(dir);
 }
+
+TEST_CASE("ROM bytes blamed by use are in the line, as hex offsets")
+{
+    corrupt::JournalEntry e;
+    e.kind = corrupt::JournalEntry::Crash;
+    e.rom_blamed = { 0x1A3F, 0x20 };
+    e.rom_action = "reverted 2 ROM bytes";
+    auto line = corrupt::journal_line(e, corrupt::BackupClock::time_point{});
+    CHECK(line.find("\"rom_action\":\"reverted 2 ROM bytes\"") != std::string::npos);
+    CHECK(line.find("\"rom_bytes\":[\"0x1A3F\",\"0x20\"]") != std::string::npos);
+    corrupt::JournalEntry plain;
+    CHECK(corrupt::journal_line(plain, corrupt::BackupClock::time_point{}).find("rom_") == std::string::npos);
+}

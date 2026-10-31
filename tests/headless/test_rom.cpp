@@ -129,4 +129,20 @@ std::vector<uint8_t> build_traced()
     return rom;
 }
 
+std::vector<uint8_t> build_rare()
+{
+    auto rom = build(Crash::None);
+    put(rom, 0x8018, {
+        0x20, 0x60, 0x80, // JSR $8060
+        0x80, 0xF4,       // BRA main
+    });
+    put(rom, 0x8060, {
+        0xE6, 0x12, // INC $12
+        0x64, 0x10, // STZ $10
+        0x60,       // RTS
+    });
+    fix_checksum(rom);
+    return rom;
+}
+
 } // namespace testrom

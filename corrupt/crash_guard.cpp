@@ -139,27 +139,33 @@ GuardOutcome CrashGuard::handle(const CrashVerdict &verdict, Engine &engine, Cor
     uint64_t target = verdict.since_frame > back ? verdict.since_frame - back : 0;
     uint64_t through = verdict.signal == CrashSignal::Manual ? verdict.frame : verdict.since_frame;
 
-    // The newest checkpoint before the trouble that has corruption to blame after it.
+    // The newest checkpoint before the trouble that has corruption to blame after it:
+    // rules' writes, or single bytes the game used (the ROM blame).
     const Checkpoint *cp = nullptr;
     std::vector<uint32_t> suspects;
+    size_t byte_suspects = 0;
+    auto blame_after = [&](const Checkpoint &c) {
+        suspects = suspects_between(engine, c.frame, through);
+        byte_suspects = bytes ? bytes->suspects(c.frame, through) : 0;
+        return !suspects.empty() || byte_suspects;
+    };
     for (auto it = ring.rbegin(); it != ring.rend(); ++it)
     {
         if (it->frame > target)
             continue;
         cp = &*it;
-        suspects = suspects_between(engine, cp->frame, through);
-        if (!suspects.empty())
+        if (blame_after(*cp))
             break;
     }
     if (!cp && !ring.empty())
     {
         cp = &ring.front();
-        suspects = suspects_between(engine, cp->frame, through);
+        blame_after(*cp);
     }
     if (!cp)
         return {};
 
-    if (suspects.empty())
+    if (suspects.empty() && !byte_suspects)
     {
         if (verdict.heuristic)
             return {}; // a calm screen with nothing corrupted is just a calm screen
@@ -209,6 +215,14 @@ GuardOutcome CrashGuard::handle(const CrashVerdict &verdict, Engine &engine, Cor
         out.action = decide(policy, crashes_of(engine, suspects.front()));
     uint64_t restored = cp->frame;
     restore(*cp, engine, core);
+    if (byte_suspects)
+    {
+        auto acted = bytes->act(restored, through, consecutive);
+        out.rom_blamed = std::move(acted.offsets);
+        out.rom_action = std::move(acted.text);
+        e.rom_blamed = out.rom_blamed;
+        e.rom_action = out.rom_action;
+    }
 
     for (auto s : suspects)
     {
@@ -234,9 +248,13 @@ GuardOutcome CrashGuard::handle(const CrashVerdict &verdict, Engine &engine, Cor
 
     recovering_since = restored;
     out.kind = GuardOutcome::RolledBack;
+    std::vector<std::string> did;
+    if (!suspects.empty())
+        did.push_back(action_name(out.action) + std::string(" ") + join(out.suspect_names));
+    if (!out.rom_action.empty())
+        did.push_back(out.rom_action);
     out.summary = "Crash caught (" + verdict.text + "): back " + seconds(verdict.frame - restored) + ", " +
-                  (suspects.empty() ? std::string("no rule to blame")
-                                    : action_name(out.action) + std::string(" ") + join(out.suspect_names));
+                  (did.empty() ? std::string("no rule to blame") : join(did));
     e.kind = JournalEntry::Crash;
     e.action = suspects.empty() ? "none" : action_name(out.action);
     journal(e, engine);

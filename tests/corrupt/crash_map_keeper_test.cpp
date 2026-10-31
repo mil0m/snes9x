@@ -143,4 +143,35 @@ TEST_SUITE("crash map keeper")
         CHECK(f.keeper.counts_per_block(Target::WRAM, 0x20).size() == 2); // blocks past the end left out
         CHECK(f.keeper.hot_per_block(Target::VRAM, 32) == std::vector<uint8_t>(2, 0));
     }
+
+    TEST_CASE("ROM blamed by use: blamed bytes are crashes for their block, survivors are survivals")
+    {
+        Feed f;
+        f.keeper.learn_rom_by_use(true);
+        f.frames(10);
+        GuardOutcome out = f.crash_now();
+        out.rom_blamed = { 0x1234, 0x1238, 0x2000 }; // two in one block
+        f.keeper.crashed(out);
+        CHECK(f.keeper.mine().counts(Target::ROM, 0x1230).crashes == 1);
+        CHECK(f.keeper.mine().counts(Target::ROM, 0x2000).crashes == 1);
+        f.keeper.rom_survived({ 0x5000, 0x5001 });
+        CHECK(f.keeper.mine().counts(Target::ROM, 0x5000).survivals == 1);
+        CHECK(f.keeper.unsaved());
+    }
+
+    TEST_CASE("with ROM blamed by use, ROM writes in the log no longer count")
+    {
+        Feed f;
+        f.keeper.learn_rom_by_use(true);
+        for (int i = 0; i < 10; i++)
+        {
+            f.frame++;
+            f.log.push_back({ f.frame, 0, { Target::ROM, 0x4000, 0, 1 } });
+            f.log.push_back({ f.frame, 0, { Target::WRAM, 0x100, 0, 1 } });
+            f.keeper.observe(f.log, f.frame);
+        }
+        f.keeper.crashed(f.crash_now());
+        CHECK(f.keeper.mine().counts(Target::ROM, 0x4000).crashes == 0);
+        CHECK(f.keeper.mine().counts(Target::WRAM, 0x100).crashes == 1);
+    }
 }

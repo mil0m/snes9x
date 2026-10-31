@@ -1,5 +1,7 @@
 #include "journal.h"
 
+#include <cstdio>
+
 #include "nlohmann/json.hpp"
 
 #include <fstream>
@@ -54,6 +56,18 @@ std::string journal_line(const JournalEntry &e, BackupClock::time_point now)
         j["suspects"] = e.suspects;
         j["action"] = e.action;
         j["attempt"] = e.attempt;
+        if (!e.rom_blamed.empty() || !e.rom_action.empty())
+        {
+            j["rom_action"] = e.rom_action;
+            auto bytes = nlohmann::ordered_json::array();
+            for (auto o : e.rom_blamed)
+            {
+                char hex[16];
+                std::snprintf(hex, sizeof hex, "0x%X", o);
+                bytes.push_back(hex);
+            }
+            j["rom_bytes"] = bytes;
+        }
     }
     else
         j["frame"] = e.frame;

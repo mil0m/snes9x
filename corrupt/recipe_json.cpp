@@ -686,7 +686,7 @@ ParseResult parse_recipe(std::string_view json_text, const Regions &regions)
         return result;
     }
     check_keys(ctx, doc, "recipe", { "format", "name", "notes", "game", "seed", "intensity", "anchor_state", "rules",
-                                     "patches", "crash_policy", "crash_detection" });
+                                     "patches", "crash_policy", "rom_policy", "crash_detection" });
 
     if (!doc.contains("format") || !doc["format"].is_number_integer() || doc["format"].get<int>() != Recipe::kFormat)
     {
@@ -796,6 +796,15 @@ ParseResult parse_recipe(std::string_view json_text, const Regions &regions)
             ctx.fail("recipe.crash_policy", "expected one of reroll, skip, dampen, disable, escalate");
     }
 
+    if (doc.contains("rom_policy"))
+    {
+        const json &p = doc["rom_policy"];
+        if (p.is_string() && parse_rom_policy(p.get<std::string>()))
+            recipe.rom_policy = parse_rom_policy(p.get<std::string>());
+        else
+            ctx.fail("recipe.rom_policy", "expected revert or reroll");
+    }
+
     if (doc.contains("crash_detection"))
         recipe.crash_detection = parse_detection(ctx, doc["crash_detection"]);
 
@@ -847,6 +856,8 @@ std::string write_recipe(const Recipe &recipe)
     }
     if (recipe.crash_policy)
         doc["crash_policy"] = policy_name(*recipe.crash_policy);
+    if (recipe.rom_policy)
+        doc["rom_policy"] = rom_policy_name(*recipe.rom_policy);
     if (recipe.crash_detection)
         doc["crash_detection"] = detection_json(*recipe.crash_detection);
 

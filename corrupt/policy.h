@@ -28,6 +28,15 @@ const char *policy_name(PolicyKind p);
 std::optional<PolicyKind> parse_policy(std::string_view name);
 const char *action_name(ActionKind a);
 
+// What to do with single changed ROM bytes blamed for a crash (corrupt/rom_blame.h).
+enum class RomPolicy
+{
+    Revert, // back to the clean value (default)
+    Reroll, // a fresh random value
+};
+const char *rom_policy_name(RomPolicy p);
+std::optional<RomPolicy> parse_rom_policy(std::string_view name);
+
 // Escalate's ladder, by how many crashes this rule has been a suspect in (1-based).
 ActionKind escalation_action(unsigned crashes);
 

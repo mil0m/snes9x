@@ -46,6 +46,8 @@ struct JournalEntry
     std::vector<std::string> suspects;
     std::string action;
     unsigned attempt = 0; // crashes in a row, this one included
+    std::vector<uint32_t> rom_blamed; // single bytes acted on (ByteBlame), most suspicious first
+    std::string rom_action;
 };
 
 // A second source of suspects besides the rules' writes: single bytes the game used in
@@ -81,6 +83,8 @@ struct GuardOutcome
     uint64_t restored_frame = 0;
     uint64_t blame_after = 0;   // the writes blamed: frames (blame_after, blame_through]
     uint64_t blame_through = 0;
+    std::vector<uint32_t> rom_blamed; // what the byte blame acted on
+    std::string rom_action;           // "reverted 2 ROM bytes"
     std::string summary; // short text for an on-screen message
 };
 
@@ -102,6 +106,8 @@ class CrashGuard
     GuardOutcome between_frames(Engine &engine, CoreAccess &core);
 
     void set_policy(PolicyKind p) { policy = p; }
+    // Single bytes to blame besides the rules (the ROM blame); null for none.
+    void set_byte_blame(ByteBlame *b) { bytes = b; }
     PolicyKind get_policy() const { return policy; }
     void set_detector_config(const DetectorConfig &c) { detector.set_config(c); }
     const DetectorConfig &detector_config() const { return detector.get_config(); }
@@ -131,6 +137,7 @@ class CrashGuard
     void journal(JournalEntry e, const Engine &engine);
 
     CrashDetector detector;
+    ByteBlame *bytes = nullptr;
     PolicyKind policy = PolicyKind::Reroll;
     std::deque<Checkpoint> ring;
     unsigned &crashes_of(const Engine &engine, uint32_t rule_index);
