@@ -95,7 +95,7 @@ void trace_slow(uint8 op)
         uintptr_t o = uintptr_t(p) - uintptr_t(Memory.ROM);
         if (!p || o >= Memory.CalculatedSize)
             continue;
-        flags[o] |= (i ? codeflag::Operand : codeflag::Opcode) | w;
+        flags[o] |= (i ? codeflag::Operand : codeflag::Opcode) | w | codeflag::Touched;
         if (i == 0)
         {
             S9xRomFetchFrom = uint32(o);
@@ -119,9 +119,9 @@ void traced()
         if (o < Memory.CalculatedSize && length <= Memory.CalculatedSize - o)
         {
             uint8 *f = flags + o;
-            f[0] |= codeflag::Opcode | w;
+            f[0] |= codeflag::Opcode | w | codeflag::Touched;
             for (int i = 1; i < length; i++)
-                f[i] |= codeflag::Operand | w;
+                f[i] |= codeflag::Operand | w | codeflag::Touched;
             S9xRomFetchFrom = uint32(o);
             S9xRomFetchTo = uint32(o + length);
         }

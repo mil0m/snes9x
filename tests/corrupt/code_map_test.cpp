@@ -74,6 +74,25 @@ TEST_SUITE("code map")
         CHECK(map.fingerprint() != f1);
     }
 
+    TEST_CASE("the touched bit is never saved and never counts as growth")
+    {
+        CodeMap map(32);
+        map.mark(3, cf::Opcode);
+        auto print = map.fingerprint();
+        auto plain = encode_code_map(map);
+        map.mark(3, cf::Touched);
+        map.mark(4, cf::Operand | cf::Touched);
+        map.mark(4, cf::Touched);
+        CHECK(map.fingerprint() == print + 1); // the operand flag, not the touched bits
+        CodeMap only_code(32);
+        only_code.mark(3, cf::Opcode);
+        only_code.mark(4, cf::Operand);
+        CHECK(encode_code_map(map) == encode_code_map(only_code));
+        CHECK(encode_code_map(map) != plain);
+        CHECK(map.coverage().seen == 2);
+        CHECK((cf::All & cf::Touched) == 0);
+    }
+
     TEST_CASE("the file is run-length encoded and round-trips")
     {
         CodeMap map(6 * 1024 * 1024); // FF6's size, mostly unexplored

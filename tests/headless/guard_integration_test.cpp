@@ -515,40 +515,53 @@ TEST_SUITE("the code map tracer in the real core")
         tracer.stop();
         CHECK(!(CPU.Flags & HALTED_FLAG));
 
+        auto at = [&](uint32_t o) { return uint8_t(map.at(o) & cf::All); }; // without the touched bit
         uint32_t n = tr::kNmi;
-        CHECK(map.at(n + 0) == cf::Opcode); // REP: no width of its own
-        CHECK(map.at(n + 1) == cf::Operand);
-        CHECK(map.at(n + 2) == (cf::Opcode | cf::Op16)); // LDA #$1234
-        CHECK(map.at(n + 3) == (cf::Operand | cf::Op16));
-        CHECK(map.at(n + 4) == (cf::Operand | cf::Op16));
-        CHECK(map.at(n + 5) == (cf::Opcode | cf::Op16)); // LDA $9000: its operand isn't data
-        CHECK(map.at(n + 6) == (cf::Operand | cf::Op16));
-        CHECK(map.at(n + 7) == (cf::Operand | cf::Op16));
-        CHECK(map.at(n + 8) == cf::Opcode); // SEP
-        CHECK(map.at(n + 10) == (cf::Opcode | cf::Op8)); // LDA #$05
-        CHECK(map.at(n + 11) == (cf::Operand | cf::Op8));
-        CHECK(map.at(n + 12) == (cf::Opcode | cf::Op8)); // LDA long
-        CHECK(map.at(n + 15) == (cf::Operand | cf::Op8));
-        CHECK(map.at(n + 0x34) == cf::Opcode); // RTI
-        CHECK(map.at(n + 0x35) == 0);          // never runs
+        CHECK(at(n + 0) == cf::Opcode); // REP: no width of its own
+        CHECK(at(n + 1) == cf::Operand);
+        CHECK(at(n + 2) == (cf::Opcode | cf::Op16)); // LDA #$1234
+        CHECK(at(n + 3) == (cf::Operand | cf::Op16));
+        CHECK(at(n + 4) == (cf::Operand | cf::Op16));
+        CHECK(at(n + 5) == (cf::Opcode | cf::Op16)); // LDA $9000: its operand isn't data
+        CHECK(at(n + 6) == (cf::Operand | cf::Op16));
+        CHECK(at(n + 7) == (cf::Operand | cf::Op16));
+        CHECK(at(n + 8) == cf::Opcode); // SEP
+        CHECK(at(n + 10) == (cf::Opcode | cf::Op8)); // LDA #$05
+        CHECK(at(n + 11) == (cf::Operand | cf::Op8));
+        CHECK(at(n + 12) == (cf::Opcode | cf::Op8)); // LDA long
+        CHECK(at(n + 15) == (cf::Operand | cf::Op8));
+        CHECK(at(n + 0x34) == cf::Opcode); // RTI
+        CHECK(at(n + 0x35) == 0);          // never runs
 
-        CHECK(map.at(tr::kTable + 0) == cf::Data); // the 16-bit read
-        CHECK(map.at(tr::kTable + 1) == cf::Data);
-        CHECK(map.at(tr::kTable + 2) == 0);
-        CHECK(map.at(tr::kTable + 0x10) == cf::Data); // the 8-bit read
-        CHECK(map.at(tr::kTable + 0x11) == 0);
+        CHECK(at(tr::kTable + 0) == cf::Data); // the 16-bit read
+        CHECK(at(tr::kTable + 1) == cf::Data);
+        CHECK(at(tr::kTable + 2) == 0);
+        CHECK(at(tr::kTable + 0x10) == cf::Data); // the 8-bit read
+        CHECK(at(tr::kTable + 0x11) == 0);
 
-        CHECK(map.at(tr::kDmaSource) == cf::Dma);
-        CHECK(map.at(tr::kDmaSource + tr::kDmaBytes - 1) == cf::Dma);
-        CHECK(map.at(tr::kDmaSource + tr::kDmaBytes) == 0);
+        CHECK(at(tr::kDmaSource) == cf::Dma);
+        CHECK(at(tr::kDmaSource + tr::kDmaBytes - 1) == cf::Dma);
+        CHECK(at(tr::kDmaSource + tr::kDmaBytes) == 0);
 
-        CHECK(map.at(0x0000) == cf::Opcode);            // SEI, in emulation mode
-        CHECK(map.at(0x0003) == (cf::Opcode | cf::Op8)); // STZ $10
-        CHECK(map.at(0x0011) == cf::Opcode);            // WAI in the main loop
-        CHECK(map.at(0x0030) == cf::Opcode);            // the JMP to the handler
-        CHECK(map.at(0x0031) == cf::Operand);
-        CHECK((map.at(0x7FEA) & cf::Data)); // the NMI vector, read by the CPU
-        CHECK(map.at(0x5000) == 0);         // padding nobody touches
+        CHECK(at(0x0000) == cf::Opcode);            // SEI, in emulation mode
+        CHECK(at(0x0003) == (cf::Opcode | cf::Op8)); // STZ $10
+        CHECK(at(0x0011) == cf::Opcode);            // WAI in the main loop
+        CHECK(at(0x0030) == cf::Opcode);            // the JMP to the handler
+        CHECK(at(0x0031) == cf::Operand);
+        CHECK((at(0x7FEA) & cf::Data)); // the NMI vector, read by the CPU
+        CHECK(at(0x5000) == 0);         // padding nobody touches
+
+        // Every byte used carries the touched bit too, and nothing else does.
+        for (uint32_t o : { n, n + 3, n + 0x34, tr::kTable, tr::kTable + 0x10, tr::kDmaSource, 0x0011u, 0x7FEAu })
+        {
+            CAPTURE(o);
+            CHECK((map.at(o) & cf::Touched));
+        }
+        for (uint32_t o : { n + 0x35, tr::kTable + 2, tr::kDmaSource + tr::kDmaBytes, 0x5000u })
+        {
+            CAPTURE(o);
+            CHECK(map.at(o) == 0);
+        }
 
         auto c = map.coverage();
         CHECK(c.data == 5); // the table bytes and the NMI vector
@@ -603,8 +616,8 @@ TEST_SUITE("the code map tracer in the real core")
         // Resetting the console moves the reset watch; the tracer stays on top of it.
         h.access.reset_console();
         h.run(30);
-        CHECK(map.at(0x0018) == cf::Opcode); // the JML back to reset
-        CHECK(map.at(0x0019) == cf::Operand);
+        CHECK((map.at(0x0018) & cf::All) == cf::Opcode); // the JML back to reset
+        CHECK((map.at(0x0019) & cf::All) == cf::Operand);
         tracer.stop();
         CHECK(RomTracer::opcode_tables() == watched);
         CHECK(alive(h));

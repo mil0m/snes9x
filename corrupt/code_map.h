@@ -22,8 +22,11 @@ constexpr uint8_t Op8 = 0x04;     // in an M- or X-dependent instruction, run 8-
 constexpr uint8_t Op16 = 0x08;    // the same, run 16-bit (both: runs at both widths)
 constexpr uint8_t Data = 0x10;    // the CPU read it as data
 constexpr uint8_t Dma = 0x20;     // a DMA read it
+// Used since the crash blame last looked (corrupt/rom_blame.h), set with any of the above.
+// Never saved, never counted: it is cleared and set again all the time.
+constexpr uint8_t Touched = 0x80;
 constexpr uint8_t Code = Opcode | Operand;
-constexpr uint8_t All = 0x3F;
+constexpr uint8_t All = 0x3F; // what the file keeps
 } // namespace codeflag
 
 struct CodeCoverage

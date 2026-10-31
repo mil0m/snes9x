@@ -63,13 +63,14 @@ extern uint8	*S9xRomFlags;
 extern uint32	S9xRomFetchFrom, S9xRomFetchTo;
 #define S9X_ROM_DATA	0x10
 #define S9X_ROM_DMA		0x20
+#define S9X_ROM_TOUCHED	0x80 // used since the crash blame last looked; set with every mark
 
 static inline void S9xMarkRom (const uint8 *p, int bytes, uint8 flag)
 {
 	uintptr_t	o = (uintptr_t) p - (uintptr_t) Memory.ROM; // wraps to huge below the ROM
 	for (int i = 0; i < bytes; i++, o++)
 		if (o < Memory.CalculatedSize && (o < S9xRomFetchFrom || o >= S9xRomFetchTo))
-			S9xRomFlags[o] |= flag;
+			S9xRomFlags[o] |= flag | S9X_ROM_TOUCHED;
 }
 
 static inline int32 memory_speed (uint32 address)

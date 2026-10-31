@@ -37,6 +37,7 @@ CodeCoverage CodeMap::coverage() const
     c.size = bytes.size();
     for (uint8_t f : bytes)
     {
+        f &= codeflag::All;
         if (!f)
             continue;
         c.seen++;
@@ -58,10 +59,10 @@ uint64_t CodeMap::fingerprint() const
     {
         uint64_t word;
         std::memcpy(&word, bytes.data() + i, 8);
-        bits += std::popcount(word);
+        bits += std::popcount(word & 0x3F3F3F3F3F3F3F3FULL); // codeflag::All in every byte
     }
     for (; i < bytes.size(); i++)
-        bits += std::popcount(bytes[i]);
+        bits += std::popcount(uint8_t(bytes[i] & codeflag::All));
     return bits;
 }
 
@@ -72,12 +73,13 @@ std::string encode_code_map(const CodeMap &map)
     for (int i = 0; i < 4; i++)
         out += char((size >> (8 * i)) & 0xFF);
     auto &f = map.flags();
+    auto kept = [&](size_t i) { return uint8_t(f[i] & codeflag::All); };
     for (size_t i = 0; i < f.size();)
     {
         size_t j = i + 1;
-        while (j < f.size() && f[j] == f[i])
+        while (j < f.size() && kept(j) == kept(i))
             j++;
-        out += char(f[i]);
+        out += char(kept(i));
         put_varint(out, j - i);
         i = j;
     }
