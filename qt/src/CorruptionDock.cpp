@@ -7,6 +7,7 @@
 #include "IntensitySlider.hpp"
 #include "MemoryViewer.hpp"
 #include "RuleEditor.hpp"
+#include "UiKit.hpp"
 #include "corrupt/rule_text.h"
 
 #include <QApplication>
@@ -21,6 +22,7 @@
 #include <QFile>
 #include <QFileDialog>
 #include <QFormLayout>
+#include <QGridLayout>
 #include <QGroupBox>
 #include <QHBoxLayout>
 #include <QHeaderView>
@@ -32,6 +34,8 @@
 #include <QMenu>
 #include <QMessageBox>
 #include <QPushButton>
+#include <QScrollArea>
+#include <QScrollBar>
 #include <QTableWidget>
 #include <QToolButton>
 #include <QUrl>
@@ -87,19 +91,24 @@ struct SessionSurvivors : SurvivorSource
     void unpin(const std::vector<uint32_t> &offsets) override { s.unpin(offsets); }
 };
 
-QPushButton *button(const QString &text, QWidget *parent)
+QPushButton *button(const QString &text, QWidget *parent, const char *icon = nullptr)
 {
     auto b = new QPushButton(text, parent);
     b->setAutoDefault(false);
+    if (icon)
+        b->setIcon(ui::icon(icon));
     return b;
 }
 
-// Helper text: quieter than the controls, but not greyed out like something disabled.
-void hint(QLabel *label)
+// An icon-only button: the tooltip says what it does, and screen readers read the same.
+QToolButton *tool(const char *icon, const QString &what, QWidget *parent)
 {
-    auto pal = label->palette();
-    pal.setColor(QPalette::WindowText, pal.color(QPalette::PlaceholderText));
-    label->setPalette(pal);
+    auto b = new QToolButton(parent);
+    b->setIcon(ui::icon(icon));
+    b->setToolTip(what);
+    b->setAccessibleName(what);
+    b->setAutoRaise(true);
+    return b;
 }
 
 QString plural(qulonglong n, const QString &one, const QString &many)
@@ -137,8 +146,27 @@ CorruptionDock::CorruptionDock(EmuApplication &app, QWidget *parent)
     : QDockWidget(tr("Corruption"), parent), app(app)
 {
     setObjectName("CorruptionDock");
-    auto root = new QWidget(this);
+    // The panel scrolls when the window is short, instead of holding the window tall.
+    auto scroll = new QScrollArea(this);
+    scroll->setObjectName("panel_scroll");
+    scroll->setWidgetResizable(true);
+    scroll->setFrameShape(QFrame::NoFrame);
+    scroll->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    auto root = new QWidget(scroll);
+    root->setObjectName("panel");
     auto layout = new QVBoxLayout(root);
+    layout->setContentsMargins(8, 8, 8, 8);
+    layout->setSpacing(ui::sectionGap(root));
+    // A section: a bold heading and its controls, set apart by space rather than a box.
+    auto section = [&](const QString &title, const char *name) {
+        auto box = new QWidget(root);
+        box->setObjectName(name);
+        auto v = new QVBoxLayout(box);
+        v->setContentsMargins(0, 0, 0, 0);
+        v->addWidget(ui::heading(title, box));
+        layout->addWidget(box);
+        return v;
+    };
 
     // The game, and the guide.
     auto top_row = new QHBoxLayout;
@@ -147,12 +175,13 @@ CorruptionDock::CorruptionDock(EmuApplication &app, QWidget *parent)
     game_label->setWordWrap(true);
     QFont title_font = game_label->font();
     title_font.setBold(true);
+    title_font.setPointSizeF(title_font.pointSizeF() * 1.15);
     game_label->setFont(title_font);
     top_row->addWidget(game_label, 1);
-    guide_button = button(tr("? Guide"), root);
+    guide_button = button(tr("Guide"), root, "help-circle");
     guide_button->setObjectName("guide");
     guide_button->setToolTip(tr("How everything here works, in plain words"));
-    top_row->addWidget(guide_button);
+    top_row->addWidget(guide_button, 0, Qt::AlignTop);
     connect(guide_button, &QPushButton::clicked, [this] { openGuide({}); });
     layout->addLayout(top_row);
 
@@ -164,28 +193,32 @@ CorruptionDock::CorruptionDock(EmuApplication &app, QWidget *parent)
     start_card->setMargin(8);
     start_card->setText(tr("<b>Start here.</b> 1. Pick a recipe below: the <i>starters</i> come with the app. "
                            "2. Press <b>Corrupt</b> (%1) and watch the game. 3. <b>Back to normal</b> (%2) "
-                           "undoes everything. <b>? Guide</b> explains the rest.")
+                           "undoes everything. <b>Guide</b> explains the rest.")
                             .arg(hotkey(EmuConfig::eCorruptionToggle), hotkey(EmuConfig::eCorruptionBackToNormal)));
     layout->addWidget(start_card);
 
     // Recipe: what to corrupt.
-    auto recipe_box = new QGroupBox(tr("Recipe"), root);
-    auto recipe_layout = new QVBoxLayout(recipe_box);
+    auto recipe_layout = section(tr("Recipe"), "recipe_section");
+    auto recipe_box = recipe_layout->parentWidget();
     auto recipe_row = new QHBoxLayout;
     recipe_combo = new QComboBox(recipe_box);
     recipe_combo->setObjectName("recipe");
+    recipe_combo->setSizeAdjustPolicy(QComboBox::AdjustToMinimumContentsLengthWithIcon);
+    recipe_combo->setMinimumContentsLength(12);
     recipe_combo->setToolTip(tr("Your recipes for this game, then the starters that come with the app. Choosing "
                                 "one loads it."));
+    recipe_combo->setAccessibleName(tr("Recipe"));
     recipe_row->addWidget(recipe_combo, 1);
     auto new_recipe = button(tr("New"), recipe_box);
+    new_recipe->setObjectName("new_recipe");
     new_recipe->setToolTip(tr("Start an empty recipe for this game"));
     save_button = button(tr("Save"), recipe_box);
     save_button->setObjectName("save");
     save_button->setToolTip(tr("Save the recipe (with its pins, and its start moment if that's on) in the library"));
-    auto more = new QToolButton(recipe_box);
+    // A push button with a menu: the style draws the arrow beside the text, not over it.
+    auto more = button(tr("More"), recipe_box);
     more->setObjectName("recipe_more");
-    more->setText(tr("More"));
-    more->setPopupMode(QToolButton::InstantPopup);
+    more->setToolTip(tr("Save As, Share, Import, and the library folder"));
     auto menu = new QMenu(more);
     auto save_as = menu->addAction(tr("Save As…"));
     auto share = menu->addAction(tr("Share…"));
@@ -207,12 +240,15 @@ CorruptionDock::CorruptionDock(EmuApplication &app, QWidget *parent)
                                  "when the recipe is loaded, so the same seed plays out the same way."));
     moments_check->setChecked(app.config->corruption_saved_moments);
     recipe_layout->addWidget(moments_check);
-    library_label = new QLabel(recipe_box);
+    library_label = new ui::ElidedLabel(recipe_box);
     library_label->setObjectName("library");
-    library_label->setWordWrap(true);
-    hint(library_label);
+    ui::setTone(library_label, ui::Tone::Secondary);
     recipe_layout->addWidget(library_label);
-    layout->addWidget(recipe_box);
+
+    // What just happened (loaded, saved, couldn't): right under the recipe, where it's seen.
+    message_line = new ui::StatusLine(root);
+    message_line->setObjectName("message");
+    layout->addWidget(message_line);
 
     for (auto &file : QDir(":/corruption-examples").entryList({ "*.json" }, QDir::Files, QDir::Name))
     {
@@ -244,7 +280,8 @@ CorruptionDock::CorruptionDock(EmuApplication &app, QWidget *parent)
         if (path.isEmpty())
             return;
         auto err = CorruptionSession::get().shareRecipe(path.toStdString());
-        showMessage(err.empty() ? tr("Saved %1. Send it to a friend: they choose More > Import.").arg(path) : qs(err),
+        showMessage(err.empty() ? tr("Saved %1. Send it to a friend: they choose More > Import.").arg(ui::shortPath(path))
+                                : qs(err),
                     !err.empty());
     });
     connect(import, &QAction::triggered, [this] {
@@ -273,18 +310,16 @@ CorruptionDock::CorruptionDock(EmuApplication &app, QWidget *parent)
     });
 
     // Corrupt: on, off, back to normal.
-    auto run_box = new QGroupBox(tr("Corrupt"), root);
-    auto run_layout = new QVBoxLayout(run_box);
+    auto run_layout = section(tr("Corrupt"), "corrupt_section");
+    auto run_box = run_layout->parentWidget();
     auto run_row = new QHBoxLayout;
-    corrupt_button = button(tr("Corrupt (%1)").arg(hotkey(EmuConfig::eCorruptionToggle)), run_box);
+    // Not a toggle that looks pressed (it read as disabled): the words and icon say what a
+    // press does, and Corrupt is the default-looking button while it's off.
+    corrupt_button = button(tr("Corrupt (%1)").arg(hotkey(EmuConfig::eCorruptionToggle)), run_box, "bolt");
     corrupt_button->setObjectName("corrupt");
-    corrupt_button->setCheckable(true);
-    corrupt_button->setMinimumHeight(34);
-    corrupt_button->setToolTip(tr("Turn the recipe on or off. Off keeps what it already changed; Back to normal "
-                                  "undoes it. Hotkey: %1").arg(hotkey(EmuConfig::eCorruptionToggle)));
-    back_button = button(tr("Back to Normal (%1)").arg(hotkey(EmuConfig::eCorruptionBackToNormal)), run_box);
+    back_button = button(tr("Back to Normal (%1)").arg(hotkey(EmuConfig::eCorruptionBackToNormal)), run_box,
+                         "arrow-back-up");
     back_button->setObjectName("back_to_normal");
-    back_button->setMinimumHeight(34);
     back_button->setToolTip(tr("Turn corruption off, put the ROM back to clean, and take the game back to the "
                                "moment the run started, so everything it changed is gone. Hotkey: %1")
                                 .arg(hotkey(EmuConfig::eCorruptionBackToNormal)));
@@ -295,12 +330,13 @@ CorruptionDock::CorruptionDock(EmuApplication &app, QWidget *parent)
     status_label->setObjectName("run_status");
     status_label->setWordWrap(true);
     run_layout->addWidget(status_label);
-    auto run_form = new QFormLayout;
+    auto run_form = ui::form();
     chaos_slider = new IntensitySlider(run_box);
     chaos_slider->setObjectName("chaos");
     chaos_slider->setToolTip(tr("How hard the whole recipe hits: turns every rule up or down together. Hotkeys: "
                                 "%1 more, %2 less.")
                                  .arg(hotkey(EmuConfig::eCorruptionMore), hotkey(EmuConfig::eCorruptionLess)));
+    chaos_slider->setAccessibleName(tr("Chaos"));
     chaos_slider->onChanged = [](double v) { CorruptionSession::get().setIntensity(v); };
     run_form->addRow(tr("Chaos"), chaos_slider);
     auto seed_row = new QHBoxLayout;
@@ -308,17 +344,21 @@ CorruptionDock::CorruptionDock(EmuApplication &app, QWidget *parent)
     seed_edit->setObjectName("seed");
     seed_edit->setToolTip(tr("The dice. The same recipe with the same seed, from the same start, does the same "
                              "thing every time. Type one and press Enter to use it."));
-    auto reroll = button(tr("Re-roll (%1)").arg(hotkey(EmuConfig::eCorruptionReroll)), run_box);
+    auto reroll = reroll_button = button(tr("Re-roll (%1)").arg(hotkey(EmuConfig::eCorruptionReroll)), run_box, "dice-5");
     reroll->setObjectName("reroll");
     reroll->setToolTip(tr("New dice: same recipe, different corruption, starting over. Hotkey: %1")
                            .arg(hotkey(EmuConfig::eCorruptionReroll)));
     seed_row->addWidget(seed_edit, 1);
     seed_row->addWidget(reroll);
-    run_form->addRow(tr("Seed"), seed_row);
+    auto seed_label = new QLabel(tr("Seed"), run_box);
+    seed_label->setBuddy(seed_edit);
+    run_form->addRow(seed_label, seed_row);
     run_layout->addLayout(run_form);
-    layout->addWidget(run_box);
 
-    connect(corrupt_button, &QPushButton::clicked, [](bool on) { CorruptionSession::get().setActive(on); });
+    connect(corrupt_button, &QPushButton::clicked, [] {
+        auto &session = CorruptionSession::get();
+        session.setActive(!session.status().engine.active);
+    });
     connect(back_button, &QPushButton::clicked, [] { CorruptionSession::get().backToNormal(); });
     connect(reroll, &QPushButton::clicked, [this] {
         seed_edit->setText(QString::number(CorruptionSession::get().reroll()));
@@ -329,43 +369,65 @@ CorruptionDock::CorruptionDock(EmuApplication &app, QWidget *parent)
         if (ok)
             CorruptionSession::get().setSeed(seed);
         else
-            showMessage(tr("The seed must be a number"), true);
+            showMessage(tr("The seed must be a number. Type digits, or press Re-roll for a new one."), true);
     });
 
-    // Rules
-    auto rules_box = new QGroupBox(tr("Rules"), root);
-    auto rules_layout = new QVBoxLayout(rules_box);
-    rules_table = new QTableWidget(0, 7, rules_box);
+    // Rules: few columns, and the description wraps, so the table fits the panel's width.
+    auto rules_layout = section(tr("Rules"), "rules_section");
+    auto rules_box = rules_layout->parentWidget();
+    rules_table = new QTableWidget(0, kColumns, rules_box);
     rules_table->setObjectName("rules");
-    rules_table->setHorizontalHeaderLabels(
-        { tr("On"), tr("Rule"), tr("Memory"), tr("What"), tr("When"), tr("Strength"), tr("Crashes") });
-    rules_table->horizontalHeaderItem(5)->setToolTip(tr("How hard this rule hits, on top of Chaos"));
-    rules_table->horizontalHeaderItem(6)->setToolTip(tr("How often the crash guard blamed this rule"));
+    rules_table->setHorizontalHeaderLabels({ tr("On"), tr("Rule"), tr("What it does"), tr("Strength"), tr("Crashes") });
+    rules_table->horizontalHeaderItem(kStrength)->setToolTip(tr("How hard this rule hits, on top of Chaos"));
+    rules_table->horizontalHeaderItem(kCrashes)->setToolTip(tr("How often the crash guard blamed this rule"));
+    rules_table->horizontalHeaderItem(kCrashes)->setTextAlignment(Qt::AlignRight | Qt::AlignVCenter);
     rules_table->verticalHeader()->setVisible(false);
-    rules_table->horizontalHeader()->setSectionResizeMode(QHeaderView::ResizeToContents);
-    rules_table->horizontalHeader()->setStretchLastSection(true);
+    auto header = rules_table->horizontalHeader();
+    header->setSectionResizeMode(kOn, QHeaderView::ResizeToContents);
+    header->setSectionResizeMode(kName, QHeaderView::Interactive);
+    header->setSectionResizeMode(kWhat, QHeaderView::Stretch);
+    header->setSectionResizeMode(kStrength, QHeaderView::Fixed);
+    header->setSectionResizeMode(kCrashes, QHeaderView::ResizeToContents);
+    header->setStretchLastSection(false);
+    header->setHighlightSections(false);
+    rules_table->setColumnWidth(kStrength, fontMetrics().horizontalAdvance("100%") + 72);
+    rules_table->setWordWrap(true);
+    rules_table->setTextElideMode(Qt::ElideRight);
+    rules_table->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    rules_table->setSizeAdjustPolicy(QAbstractScrollArea::AdjustToContents);
     rules_table->setEditTriggers(QAbstractItemView::NoEditTriggers);
     rules_table->setSelectionMode(QAbstractItemView::SingleSelection);
     rules_table->setSelectionBehavior(QAbstractItemView::SelectRows);
     rules_table->setToolTip(tr("Each rule changes some memory now and then. Double-click one to edit it."));
-    rules_layout->addWidget(rules_table, 1);
+    rules_table->setAccessibleName(tr("Rules"));
+    rules_layout->addWidget(rules_table);
+    // The wrapped descriptions need taller rows when the panel narrows.
+    connect(header, &QHeaderView::sectionResized, this, [this](int column) {
+        if (column == kWhat)
+            QTimer::singleShot(0, rules_table, [this] { rules_table->resizeRowsToContents(); });
+    });
     rules_empty = new QLabel(tr("No rules yet. Add Rule, or pick a starter in the recipe list above."), rules_box);
     rules_empty->setObjectName("rules_empty");
     rules_empty->setWordWrap(true);
-    hint(rules_empty);
+    ui::setTone(rules_empty, ui::Tone::Secondary);
     rules_layout->addWidget(rules_empty);
     connect(rules_table, &QTableWidget::cellDoubleClicked, [this](int row, int column) {
-        if (column != 0 && column != 5)
+        if (column != kOn && column != kStrength)
             editRule(row);
     });
 
     auto rule_buttons = new QHBoxLayout;
-    add_rule_button = button(tr("Add Rule"), rules_box);
+    add_rule_button = button(tr("Add Rule…"), rules_box, "plus");
+    add_rule_button->setObjectName("add_rule");
     add_rule_button->setToolTip(tr("A new rule: which memory, what to do to it, and when"));
-    edit_rule_button = button(tr("Edit"), rules_box);
-    duplicate_rule_button = button(tr("Duplicate"), rules_box);
-    remove_rule_button = button(tr("Remove"), rules_box);
-    auto viewer_button = button(tr("Memory Viewer…"), rules_box);
+    // The selected rule's actions: small icon buttons, named for screen readers.
+    edit_rule_button = tool("pencil", tr("Edit the selected rule"), rules_box);
+    edit_rule_button->setObjectName("edit_rule");
+    duplicate_rule_button = tool("copy", tr("Duplicate the selected rule"), rules_box);
+    duplicate_rule_button->setObjectName("duplicate_rule");
+    remove_rule_button = tool("trash", tr("Remove the selected rule"), rules_box);
+    remove_rule_button->setObjectName("remove_rule");
+    auto viewer_button = button(tr("Memory Viewer…"), rules_box, "grid-dots");
     viewer_button->setObjectName("memory_viewer");
     viewer_button->setToolTip(tr("Look inside the game's memory: what changes, what the recipe hits, where the "
                                  "code is. Select bytes there to make a rule from them."));
@@ -376,44 +438,50 @@ CorruptionDock::CorruptionDock(EmuApplication &app, QWidget *parent)
     rule_buttons->addStretch(1);
     rule_buttons->addWidget(viewer_button);
     rules_layout->addLayout(rule_buttons);
-    layout->addWidget(rules_box, 1);
     connect(add_rule_button, &QPushButton::clicked, this, &CorruptionDock::addRule);
-    connect(edit_rule_button, &QPushButton::clicked, [this] { editRule(selectedRule()); });
-    connect(duplicate_rule_button, &QPushButton::clicked, this, &CorruptionDock::duplicateRule);
-    connect(remove_rule_button, &QPushButton::clicked, this, &CorruptionDock::removeRule);
+    connect(edit_rule_button, &QToolButton::clicked, [this] { editRule(selectedRule()); });
+    connect(duplicate_rule_button, &QToolButton::clicked, this, &CorruptionDock::duplicateRule);
+    connect(remove_rule_button, &QToolButton::clicked, this, &CorruptionDock::removeRule);
     connect(viewer_button, &QPushButton::clicked, this, &CorruptionDock::openViewer);
     connect(rules_table, &QTableWidget::itemChanged, [this](QTableWidgetItem *item) {
-        if (item->column() == 0)
+        if (item->column() == kOn)
             CorruptionSession::get().setRuleEnabled(size_t(item->row()), item->checkState() == Qt::Checked);
     });
 
     // Crash guard
-    auto guard_box = new QGroupBox(tr("Crash Guard"), root);
-    auto guard_layout = new QFormLayout(guard_box);
+    auto guard_layout = section(tr("Crash Guard"), "guard_section");
+    auto guard_box = guard_layout->parentWidget();
     detect_check = new QCheckBox(tr("Catch crashes and go back a few seconds"), guard_box);
     detect_check->setObjectName("detect");
     detect_check->setToolTip(tr("Notices when the game freezes, goes black, stops or reboots itself, takes it back "
                                 "to a moment before, and changes what caused it so it plays on."));
     detect_check->setChecked(true);
-    guard_layout->addRow(detect_check);
+    guard_layout->addWidget(detect_check);
+    auto guard_form = ui::form();
     policy_combo = new QComboBox(guard_box);
     policy_combo->setObjectName("policy");
+    policy_combo->setSizeAdjustPolicy(QComboBox::AdjustToMinimumContentsLengthWithIcon);
+    policy_combo->setMinimumContentsLength(16);
     policy_combo->addItem(tr("Whatever the recipe says"), QString());
     for (auto p : { PolicyKind::Reroll, PolicyKind::Skip, PolicyKind::Dampen, PolicyKind::Disable, PolicyKind::Escalate })
         policy_combo->addItem(policyText(p), QString(policy_name(p)));
     policy_combo->setToolTip(tr("What to do with the rule that caused a crash. Changed ROM bytes the game used "
                                 "are put back either way."));
-    guard_layout->addRow(tr("Then"), policy_combo);
+    guard_form->addRow(tr("Then"), policy_combo);
+    guard_layout->addLayout(guard_form);
     crash_label = new QLabel(guard_box);
     crash_label->setObjectName("crash_status");
     crash_label->setWordWrap(true);
-    guard_layout->addRow(crash_label);
-    auto mark = button(tr("It Crashed: Go Back Now"), guard_box);
+    guard_layout->addWidget(crash_label);
+    // For the rare miss: an ordinary button, not one as big as Corrupt.
+    auto mark = button(tr("It Crashed: Go Back"), guard_box, "history");
     mark->setObjectName("mark_crash");
     mark->setToolTip(tr("For a crash the guard missed: go back about two seconds and blame what changed. Hotkey: %1")
                          .arg(hotkey(EmuConfig::eCorruptionMarkCrash)));
-    guard_layout->addRow(mark);
-    layout->addWidget(guard_box);
+    auto mark_row = new QHBoxLayout;
+    mark_row->addWidget(mark);
+    mark_row->addStretch(1);
+    guard_layout->addLayout(mark_row);
 
     connect(detect_check, &QCheckBox::clicked, [](bool on) { CorruptionSession::get().setDetectionEnabled(on); });
     connect(policy_combo, &QComboBox::activated, [this](int index) {
@@ -423,35 +491,35 @@ CorruptionDock::CorruptionDock(EmuApplication &app, QWidget *parent)
     connect(mark, &QPushButton::clicked, [] { CorruptionSession::get().markCrash(); });
 
     // The ROM: the game itself.
-    auto rom_box = new QGroupBox(tr("ROM (the Game Itself)"), root);
-    auto rom_layout = new QVBoxLayout(rom_box);
+    auto rom_layout = section(tr("ROM (the Game Itself)"), "rom_section");
+    auto rom_box = rom_layout->parentWidget();
     rom_label = new QLabel(rom_box);
     rom_label->setObjectName("rom_status");
     rom_label->setWordWrap(true);
     rom_layout->addWidget(rom_label);
-    auto rom_row = new QHBoxLayout;
-    survivors_button = button(tr("Survivors…"), rom_box);
+    survivors_button = button(tr("Survivors…"), rom_box, "pin");
     survivors_button->setObjectName("survivors");
     survivors_button->setToolTip(tr("ROM changes the game keeps using without crashing. Pin the ones you like to "
                                     "keep them in the recipe."));
-    clear_paint_button = button(tr("Clear Paint"), rom_box);
+    clear_paint_button = button(tr("Clear Paint"), rom_box, "eraser");
     clear_paint_button->setObjectName("clear_paint");
     clear_paint_button->setToolTip(tr("Forget the bytes painted in the memory viewer. They stay until the next run "
                                       "starts."));
-    restore_rom_button = button(tr("Restore Clean ROM"), rom_box);
+    restore_rom_button = button(tr("Restore Clean ROM"), rom_box, "restore");
     restore_rom_button->setObjectName("restore_rom");
     restore_rom_button->setToolTip(tr("Undo every change to the ROM now, and leave RAM as it is"));
-    auto export_rom = button(tr("Export ROM…"), rom_box);
+    auto export_rom = button(tr("Export ROM…"), rom_box, "file-export");
     export_rom->setObjectName("export_rom");
     export_rom->setToolTip(tr("Save the ROM as it is now as a .sfc file (checksum fixed), for other emulators or "
                               "a flash cart"));
-    rom_row->addWidget(survivors_button);
-    rom_row->addWidget(clear_paint_button);
-    rom_row->addWidget(restore_rom_button);
-    rom_row->addWidget(export_rom);
-    rom_row->addStretch(1);
-    rom_layout->addLayout(rom_row);
-    layout->addWidget(rom_box);
+    // Two by two, so the four fit a narrow panel.
+    auto rom_grid = new QGridLayout;
+    rom_grid->addWidget(survivors_button, 0, 0);
+    rom_grid->addWidget(export_rom, 0, 1);
+    rom_grid->addWidget(restore_rom_button, 1, 0);
+    rom_grid->addWidget(clear_paint_button, 1, 1);
+    rom_grid->setColumnStretch(2, 1);
+    rom_layout->addLayout(rom_grid);
     connect(restore_rom_button, &QPushButton::clicked, [] { CorruptionSession::get().restoreCleanRom(); });
     connect(clear_paint_button, &QPushButton::clicked, [] { CorruptionSession::get().clearPatches(); });
     connect(survivors_button, &QPushButton::clicked, [this] {
@@ -468,45 +536,44 @@ CorruptionDock::CorruptionDock(EmuApplication &app, QWidget *parent)
     connect(export_rom, &QPushButton::clicked, this, &CorruptionDock::exportRom);
 
     // Game save backups
-    auto backup_box = new QGroupBox(tr("Game Save Backups"), root);
-    auto backup_layout = new QVBoxLayout(backup_box);
+    auto backup_layout = section(tr("Game Save Backups"), "backup_section");
+    auto backup_box = backup_layout->parentWidget();
     auto backup_about = new QLabel(tr("Your in-game saves (the cartridge's battery save), copied automatically "
                                       "while you play. This doesn't undo corruption: Back to normal does."),
                                    backup_box);
     backup_about->setWordWrap(true);
-    hint(backup_about);
+    ui::setTone(backup_about, ui::Tone::Secondary);
     backup_layout->addWidget(backup_about);
     backup_list = new QListWidget(backup_box);
     backup_list->setObjectName("backups");
-    backup_list->setMaximumHeight(100);
+    backup_list->setAccessibleName(tr("Game save backups"));
+    backup_list->setMaximumHeight(backup_list->fontMetrics().height() * 6);
     backup_layout->addWidget(backup_list);
     auto backup_buttons = new QHBoxLayout;
-    auto restore = button(tr("Restore This Save…"), backup_box);
+    auto restore = button(tr("Restore This Save…"), backup_box, "device-floppy");
     restore->setObjectName("restore_backup");
     restore->setToolTip(tr("Replace the game's save with the selected copy and restart the game. Your current "
                            "save is copied first."));
-    auto open_backups = button(tr("Open Folder"), backup_box);
+    auto open_backups = button(tr("Open Folder"), backup_box, "folder-open");
     backup_buttons->addWidget(restore);
     backup_buttons->addWidget(open_backups);
     backup_buttons->addStretch(1);
     backup_layout->addLayout(backup_buttons);
-    layout->addWidget(backup_box);
     connect(restore, &QPushButton::clicked, this, &CorruptionDock::restoreSelectedBackup);
     connect(open_backups, &QPushButton::clicked, [] {
         auto dir = CorruptionSession::get().backupDir();
         QDir().mkpath(qs(dir.string()));
         QDesktopServices::openUrl(QUrl::fromLocalFile(qs(dir.string())));
     });
-
-    message_label = new QLabel(root);
-    message_label->setObjectName("message");
-    message_label->setWordWrap(true);
-    message_label->setTextInteractionFlags(Qt::TextSelectableByMouse);
-    layout->addWidget(message_label);
+    layout->addStretch(1);
 
     if (auto dir = qgetenv("SNES9X_UI_TOUR"); !dir.isEmpty())
         QTimer::singleShot(4000, this, [this, dir] { tour(QString::fromLocal8Bit(dir)); });
-    setWidget(root);
+    scroll->setWidget(root);
+    // A scroll area doesn't pass its contents' minimum width on: without this the dock
+    // could narrow until the buttons are cut off at the right.
+    scroll->setMinimumWidth(root->minimumSizeHint().width() + scroll->verticalScrollBar()->sizeHint().width());
+    setWidget(scroll);
 
     connect(&timer, &QTimer::timeout, this, &CorruptionDock::refreshStatus);
     timer.start(250);
@@ -562,6 +629,7 @@ void CorruptionDock::tour(const QString &dir)
         setVisible(true);
         shot(window(), "01-window");
         shot(this, "02-panel-no-recipe");
+        shot(findChild<QWidget *>("panel"), "02-panel-no-recipe-all");
     });
     steps->push_back([=, this] {
         QFile file(":/corruption-examples/low-wram-roulette.json");
@@ -575,6 +643,7 @@ void CorruptionDock::tour(const QString &dir)
     steps->push_back([=, this] {
         refreshStatus();
         shot(this, "03-panel-running");
+        shot(findChild<QWidget *>("panel"), "03-panel-running-all");
         auto status = CorruptionSession::get().status();
         if (!status.rules.empty())
         {
@@ -603,7 +672,7 @@ void CorruptionDock::tour(const QString &dir)
     steps->push_back([=, this] { CorruptionSession::get().backToNormal(); });
     steps->push_back([=, this] {
         refreshStatus();
-        shot(this, "05b-panel-back-to-normal");
+        shot(findChild<QWidget *>("panel"), "05b-panel-back-to-normal");
     });
     steps->push_back([=, this] {
         choose(memory_viewer, "mode", "pixels");
@@ -639,6 +708,8 @@ void CorruptionDock::tour(const QString &dir)
     steps->push_back([=, this] {
         shot(guide, "11-guide-section");
         guide->close();
+        refreshStatus();
+        shot(findChild<QWidget *>("panel"), "12-panel-at-the-end");
         QFile done(dir + "/done");
         done.open(QIODevice::WriteOnly);
     });
@@ -689,9 +760,11 @@ void CorruptionDock::refreshStatus()
         syncRecipeChoice();
     }
     start_card->setVisible(status.game_loaded && !status.has_recipe);
-    library_label->setText(tr("Library: %1").arg(qs(app.config->corruption_library_root)));
+    library_label->setFullText(tr("Library: %1").arg(ui::shortPath(qs(app.config->corruption_library_root))));
 
     chaos_slider->setEnabled(status.has_recipe);
+    seed_edit->setEnabled(status.has_recipe);
+    reroll_button->setEnabled(status.has_recipe);
     chaos_slider->refresh(status.intensity);
     for (size_t i = 0; i < rule_sliders.size() && i < status.rules.size(); i++)
         rule_sliders[i]->refresh(status.rules[i].intensity); // a crash-guard dampen moves it
@@ -705,14 +778,21 @@ void CorruptionDock::refreshStatus()
     rules_empty->setVisible(status.has_recipe ? status.rules.empty() : false);
 
     {
-        QSignalBlocker block(corrupt_button);
+        bool on = status.engine.active;
         corrupt_button->setEnabled(status.has_recipe);
-        corrupt_button->setChecked(status.engine.active);
-        corrupt_button->setText(status.engine.active ? tr("Corrupting… (%1 to stop)").arg(hotkey(EmuConfig::eCorruptionToggle))
-                                                     : tr("Corrupt (%1)").arg(hotkey(EmuConfig::eCorruptionToggle)));
-        corrupt_button->setToolTip(status.has_recipe ? tr("Turn the recipe on or off. Off keeps what it already "
-                                                          "changed; Back to normal undoes it.")
-                                                     : tr("Pick a recipe first"));
+        if (shown_active != int(on) + 2 * int(status.has_recipe))
+        {
+            shown_active = int(on) + 2 * int(status.has_recipe);
+            corrupt_button->setText(on ? tr("Stop (%1)").arg(hotkey(EmuConfig::eCorruptionToggle))
+                                       : tr("Corrupt (%1)").arg(hotkey(EmuConfig::eCorruptionToggle)));
+            corrupt_button->setIcon(ui::icon(on ? "player-stop" : "bolt"));
+            // The obvious next step looks it: Corrupt while it's off, nothing special while on.
+            corrupt_button->setDefault(!on && status.has_recipe);
+            corrupt_button->setToolTip(!status.has_recipe ? tr("Pick a recipe first")
+                                       : on ? tr("Stop corrupting. What it already changed stays; Back to normal "
+                                                 "undoes it. Hotkey: %1").arg(hotkey(EmuConfig::eCorruptionToggle))
+                                            : tr("Start the recipe. Hotkey: %1").arg(hotkey(EmuConfig::eCorruptionToggle)));
+        }
     }
     back_button->setEnabled(status.can_go_back || status.engine.active);
     if (!seed_edit->hasFocus())
@@ -791,17 +871,17 @@ void CorruptionDock::refreshStatus()
         QSignalBlocker block_rules(rules_table);
         for (int i = 0; i < rules_table->rowCount() && i < int(status.rule_crashes.size()); i++)
         {
-            rules_table->setItem(i, 6, new QTableWidgetItem(QString::number(status.rule_crashes[size_t(i)])));
-            if (rules_table->item(i, 0))
-                rules_table->item(i, 0)->setCheckState(status.rules[size_t(i)].enabled ? Qt::Checked : Qt::Unchecked);
+            rules_table->setItem(i, kCrashes, crashItem(status.rule_crashes[size_t(i)]));
+            if (rules_table->item(i, kOn))
+                rules_table->item(i, kOn)->setCheckState(status.rules[size_t(i)].enabled ? Qt::Checked : Qt::Unchecked);
         }
     }
 
     if (status.message != shown_message)
     {
         shown_message = status.message;
-        if (message_label->property("source").toString() != "error")
-            message_label->setText(qs(status.message));
+        if (!showing_error)
+            message_line->setMessage(qs(status.message));
     }
 
     if (++ticks % 16 == 0) // every 4 s: new automatic backups show up
@@ -822,21 +902,35 @@ void CorruptionDock::rebuildRules()
         auto on = new QTableWidgetItem;
         on->setFlags(Qt::ItemIsUserCheckable | Qt::ItemIsEnabled);
         on->setCheckState(r.enabled ? Qt::Checked : Qt::Unchecked);
-        rules_table->setItem(i, 0, on);
-        rules_table->setItem(i, 1, new QTableWidgetItem(qs(r.name)));
-        rules_table->setItem(i, 2, new QTableWidgetItem(qs(describe_range(r))));
-        rules_table->setItem(i, 3, new QTableWidgetItem(qs(describe_op(r))));
-        rules_table->setItem(i, 4, new QTableWidgetItem(qs(describe_trigger(r.when))));
+        rules_table->setItem(i, kOn, on);
+        auto name = new QTableWidgetItem(qs(r.name));
+        name->setToolTip(qs(r.name));
+        rules_table->setItem(i, kName, name);
+        auto what = new QTableWidgetItem(qs(describe_rule(r)));
+        what->setToolTip(qs(describe_rule(r)));
+        rules_table->setItem(i, kWhat, what);
         unsigned crashes = size_t(i) < status.rule_crashes.size() ? status.rule_crashes[size_t(i)] : 0;
-        rules_table->setItem(i, 6, new QTableWidgetItem(QString::number(crashes)));
+        rules_table->setItem(i, kCrashes, crashItem(crashes));
         auto slider = new IntensitySlider;
-        slider->setMinimumWidth(110);
         slider->setIntensity(r.intensity);
+        slider->setAccessibleName(tr("Strength of %1").arg(qs(r.name)));
         slider->onChanged = [i](double v) { CorruptionSession::get().setRuleIntensity(size_t(i), v); };
-        rules_table->setCellWidget(i, 5, slider);
+        rules_table->setCellWidget(i, kStrength, slider);
         rule_sliders.push_back(slider);
     }
+    // Names take what they need, up to a share of the panel; the description gets the rest.
+    rules_table->resizeColumnToContents(kName);
+    rules_table->setColumnWidth(kName, std::min(rules_table->columnWidth(kName), fontMetrics().horizontalAdvance("M") * 9));
+    rules_table->resizeRowsToContents();
+    rules_table->setVisible(!status.rules.empty());
     selectRule(std::min(selected, rules_table->rowCount() - 1));
+}
+
+QTableWidgetItem *CorruptionDock::crashItem(unsigned crashes)
+{
+    auto item = new QTableWidgetItem(QString::number(crashes));
+    item->setTextAlignment(Qt::AlignRight | Qt::AlignVCenter);
+    return item;
 }
 
 int CorruptionDock::selectedRule()
@@ -1155,9 +1249,8 @@ void CorruptionDock::restoreSelectedBackup()
 
 void CorruptionDock::showMessage(const QString &text, bool error)
 {
-    message_label->setText(text);
-    message_label->setProperty("source", error ? "error" : "info");
-    message_label->setStyleSheet(error ? "color: #d33;" : "");
-    if (error)
-        QTimer::singleShot(8000, this, [this] { message_label->setProperty("source", "info"); message_label->setStyleSheet(""); });
+    message_line->setMessage(text, error ? ui::Tone::Error : ui::Tone::Normal);
+    showing_error = error;
+    if (error) // the session's next news can replace it after a while, not at once
+        QTimer::singleShot(8000, this, [this] { showing_error = false; });
 }

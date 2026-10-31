@@ -5,6 +5,7 @@
 #include "UiKit.hpp"
 
 #include <QApplication>
+#include <QDir>
 #include <QFormLayout>
 #include <QImage>
 #include <QLabel>
@@ -147,4 +148,24 @@ TEST_CASE("the section gap is wider than the gap between controls")
     QWidget w;
     CHECK(ui::sectionGap(&w) >= 12);
     CHECK(ui::sectionGap(&w) <= 24);
+}
+
+TEST_CASE("a long path shows its start and end, with home as ~, and the whole of it in the tooltip")
+{
+    QWidget w;
+    auto label = new ui::ElidedLabel(&w);
+    QString path = QDir::homePath() + "/Documents/Some/Very/Long/Folder/Names/Snes9x Corruptions";
+    label->setFullText(QObject::tr("Library: %1").arg(ui::shortPath(path)));
+    w.resize(2100, 100);
+    w.show();
+    label->resize(160, label->sizeHint().height());
+    QApplication::processEvents();
+    CHECK(ui::shortPath(path).startsWith("~/Documents"));
+    CHECK(label->text().contains(QChar(0x2026))); // …
+    CHECK(label->text().endsWith("ions")); // the folder's own name, at the end
+    CHECK(label->toolTip().contains("~/Documents/Some/Very/Long"));
+    label->resize(2000, label->height());
+    QApplication::processEvents();
+    CHECK_FALSE(label->text().contains(QChar(0x2026)));
+    CHECK(label->minimumSizeHint().width() < 100); // it never holds the panel wide
 }

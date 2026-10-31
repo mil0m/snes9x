@@ -9,13 +9,13 @@
 #include <QPixmap>
 #include <QString>
 #include <QStringList>
+#include <QLabel>
 #include <QWidget>
 
 #include <cstddef>
 #include <cstdint>
 
 class QFormLayout;
-class QLabel;
 
 namespace ui
 {
@@ -52,6 +52,26 @@ int sectionGap(const QWidget *widget);
 
 // A form: labels on the left, right-aligned, fields that grow, rows that don't wrap.
 QFormLayout *form(QWidget *parent = nullptr);
+
+// A home folder path written with ~.
+QString shortPath(const QString &path);
+
+// One line that shortens itself in the middle to fit, with all of it in the tooltip.
+class ElidedLabel : public QLabel
+{
+  public:
+    explicit ElidedLabel(QWidget *parent = nullptr);
+    void setFullText(const QString &text);
+    QString fullText() const { return full; }
+    QSize minimumSizeHint() const override;
+
+  protected:
+    void resizeEvent(QResizeEvent *event) override;
+
+  private:
+    void elide();
+    QString full;
+};
 
 // One line of status: an icon, a colour and the words together, never colour alone.
 class StatusLine : public QWidget

@@ -17,6 +17,13 @@ class QLineEdit;
 class QListWidget;
 class QPushButton;
 class QTableWidget;
+class QTableWidgetItem;
+class QToolButton;
+namespace ui
+{
+class ElidedLabel;
+class StatusLine;
+} // namespace ui
 
 // The corruption panel: pick a recipe for the loaded game, toggle it, re-roll,
 // save it to the library, and restore save backups.
@@ -53,6 +60,7 @@ class CorruptionDock : public QDockWidget
     void restoreSelectedBackup();
     void showMessage(const QString &text, bool error = false);
     void openViewer();
+    static QTableWidgetItem *crashItem(unsigned crashes);
     // SNES9X_UI_TOUR=<dir>: screenshots of every corruption window, for UX work (see
     // docs/corruption/README.md, "Developing").
     void tour(const QString &dir);
@@ -79,7 +87,7 @@ class CorruptionDock : public QDockWidget
     QLabel *game_label;
     QPushButton *guide_button;
     QLabel *start_card;
-    QLabel *library_label;
+    ui::ElidedLabel *library_label;
     QComboBox *recipe_combo;
     QCheckBox *moments_check;
     MemoryViewer *memory_viewer = nullptr;
@@ -92,14 +100,15 @@ class CorruptionDock : public QDockWidget
     QPushButton *back_button;
     QLabel *rules_empty;
     QLineEdit *seed_edit;
+    QPushButton *reroll_button;
     QTableWidget *rules_table;
     std::vector<IntensitySlider *> rule_sliders;
     IntensitySlider *chaos_slider;
     QPushButton *save_button;
     QPushButton *add_rule_button;
-    QPushButton *edit_rule_button;
-    QPushButton *duplicate_rule_button;
-    QPushButton *remove_rule_button;
+    QToolButton *edit_rule_button;
+    QToolButton *duplicate_rule_button;
+    QToolButton *remove_rule_button;
     QCheckBox *detect_check;
     QComboBox *policy_combo;
     QLabel *crash_label;
@@ -108,5 +117,10 @@ class CorruptionDock : public QDockWidget
     QPushButton *restore_rom_button;
     QPushButton *clear_paint_button;
     QListWidget *backup_list;
-    QLabel *message_label;
+    ui::StatusLine *message_line;
+    bool showing_error = false;
+    int shown_active = -1;
+
+    // The rules table's columns.
+    enum { kOn, kName, kWhat, kStrength, kCrashes, kColumns };
 };

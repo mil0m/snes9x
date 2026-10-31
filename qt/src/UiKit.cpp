@@ -264,6 +264,46 @@ QFormLayout *form(QWidget *parent)
     return f;
 }
 
+QString shortPath(const QString &path)
+{
+    QString home = QDir::homePath();
+    if (!home.isEmpty() && (path == home || path.startsWith(home + "/")))
+        return "~" + path.mid(home.size());
+    return QDir::toNativeSeparators(path);
+}
+
+ElidedLabel::ElidedLabel(QWidget *parent)
+    : QLabel(parent)
+{
+    setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Preferred);
+    setTextInteractionFlags(Qt::NoTextInteraction);
+}
+
+void ElidedLabel::setFullText(const QString &text)
+{
+    full = text;
+    setToolTip(text);
+    elide();
+}
+
+QSize ElidedLabel::minimumSizeHint() const
+{
+    return { fontMetrics().horizontalAdvance("M") * 4, QLabel::minimumSizeHint().height() };
+}
+
+void ElidedLabel::resizeEvent(QResizeEvent *event)
+{
+    QLabel::resizeEvent(event);
+    elide();
+}
+
+void ElidedLabel::elide()
+{
+    QString shown = fontMetrics().elidedText(full, Qt::ElideMiddle, std::max(width() - 2, 0));
+    if (shown != text())
+        setText(shown);
+}
+
 StatusLine::StatusLine(QWidget *parent)
     : QWidget(parent)
 {

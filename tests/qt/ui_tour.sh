@@ -30,8 +30,9 @@ mkdir -p "$out"
 out="$(cd "$out" && pwd)"
 scratch="$(mktemp -d "${TMPDIR:-/tmp}/snes9x-tour.XXXXXX")"
 mkdir -p "$scratch/config/snes9x" "$scratch/library" "$scratch/rom"
+# QSettings writes a group named General as [%General]; a plain [General] is ignored.
 cat > "$scratch/config/snes9x/snes9x-qt.conf" <<EOF
-[General]
+[%General]
 PauseEmulationWhenUnfocused=false
 
 [Sound]
