@@ -199,3 +199,21 @@ TEST_CASE("the audit finds icon buttons without a name or tooltip, and inputs no
     form->addRow("Name", new QLineEdit(&f));
     CHECK(ui::audit(&f).isEmpty());
 }
+
+TEST_CASE("forms in different sections share one label width, so their fields line up")
+{
+    QWidget w;
+    auto v = new QVBoxLayout(&w);
+    auto a = ui::form();
+    auto b = ui::form();
+    v->addLayout(a);
+    v->addLayout(b);
+    a->addRow("Name", new QLineEdit(&w));
+    b->addRow("Bytes each time", new QLineEdit(&w));
+    ui::alignForms(&w);
+    w.show();
+    QApplication::processEvents();
+    auto field = [](QFormLayout *f) { return f->itemAt(0, QFormLayout::FieldRole)->widget()->x(); };
+    CHECK(field(a) == field(b));
+    CHECK(ui::row(new QLineEdit(&w))->count() == 1);
+}

@@ -35,7 +35,8 @@ TileView::TileView(QWidget *parent)
 
 int TileView::addressWidth() const
 {
-    return fontMetrics().horizontalAdvance("0x" + QString(corrupt::address_digits(snap.target), QChar('0'))) + 10;
+    // Room after the label for the row ticks and marks, so they never sit on the last digit.
+    return fontMetrics().horizontalAdvance("0x" + QString(corrupt::address_digits(snap.target), QChar('0'))) + 20;
 }
 
 int TileView::imageLeft() const
@@ -388,7 +389,9 @@ void TileView::paintEvent(QPaintEvent *)
         for (int r = 1; r < rows; r++)
             p.drawLine(imageLeft() + first_col * cell(), r * cell(), imageLeft() + (first_col + cols) * cell(), r * cell());
     }
-    p.setPen(palette().color(QPalette::Mid));
+    QColor frame = palette().color(QPalette::WindowText); // a quiet edge in light and dark
+    frame.setAlphaF(0.25f);
+    p.setPen(frame);
     p.drawRect(QRect(imageLeft(), 0, per_row * cell(), rows * cell()).adjusted(-1, -1, 0, 0));
     p.fillRect(QRect(0, 0, addressWidth() - 1, viewport()->height()), background);
 

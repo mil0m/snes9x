@@ -1,6 +1,6 @@
 # Visual UI pass: plan
 
-**Status (2026-10-31):** choices confirmed by Mikael (all three as proposed); in progress. Follows the UX pass
+**Status (2026-10-31):** done (a6a9fabc..). Choices confirmed by Mikael, all three as proposed. Real-Mac checks in Light, Dark and Increase Contrast, the Accessibility Inspector and a keyboard-only run still need Mikael. Follows the UX pass
 ([its plan](./2026-10-31-ux-pass-plan.md)), which fixed words and flow; this one is about
 how it looks: spacing, hierarchy, density, colour, icons, light and dark.
 
@@ -94,3 +94,26 @@ address padding differs between lists and the gutter.
 
 Write the checklist above as a small project skill (`.claude/skills/qt-widgets-ui`), so the
 next window or panel starts from it instead of from scratch.
+
+## How it went
+
+- **UiKit** (`qt/src/UiKit.*`) carries the rules: tones that keep 4.5:1 in light and dark,
+  `ui::icon` (one Tabler set recoloured from the palette at paint time, instead of PCSX2's
+  two copies: same result, follows a live theme switch), headings, forms with one label
+  column, `ui::row`, `ElidedLabel`, `StatusLine`, and `ui::audit` for accessibility.
+- One address padding everywhere (`corrupt::hex_address`: wram and sram 5 digits, rom 6,
+  the rest 4).
+- Every known problem above is fixed. The first native-Mac tour found more (see
+  "Verifying"), and so did the fresh-eyes review of the six-look tour. Fixed from the
+  review: the gutter tick on the last digit, the cut-off recipe name (the list now has its
+  own row), a ~3 pt shift in sections that start with a bare checkbox or combo box,
+  different label columns per section in the editor, a blank strip under the rules table,
+  bevelled icon and menu buttons on the Mac, the empty copies box, the Named-areas buttons
+  spread apart, the stark guide table lines in dark, an error with no icon, the guide's
+  "Corrupt (again)" row.
+- Left as they are: Mac text fields are square with a light edge in dark mode (the native
+  style draws them that way; no style sheet); Corrupt isn't accent-coloured on the Mac (it
+  draws default buttons only in dialogs); the Tiles view at 16 tiles a row still leaves room
+  beside the picture (now in the window colour, framed quietly; a "fit to width" choice
+  would be a feature, not a fix).
+- The lessons are in the project skill `.claude/skills/qt-widgets-ui`.

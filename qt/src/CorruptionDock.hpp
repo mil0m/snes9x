@@ -61,6 +61,7 @@ class CorruptionDock : public QDockWidget
     void showMessage(const QString &text, bool error = false);
     void openViewer();
     static QTableWidgetItem *crashItem(unsigned crashes);
+    void fitRulesTable();
     // SNES9X_UI_TOUR=<dir>: screenshots of every corruption window, for UX work (see
     // docs/corruption/README.md, "Developing").
     void tour(const QString &dir);
@@ -106,9 +107,9 @@ class CorruptionDock : public QDockWidget
     IntensitySlider *chaos_slider;
     QPushButton *save_button;
     QPushButton *add_rule_button;
-    QToolButton *edit_rule_button;
-    QToolButton *duplicate_rule_button;
-    QToolButton *remove_rule_button;
+    QPushButton *edit_rule_button;
+    QPushButton *duplicate_rule_button;
+    QPushButton *remove_rule_button;
     QCheckBox *detect_check;
     QComboBox *policy_combo;
     QLabel *crash_label;

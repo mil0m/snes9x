@@ -65,18 +65,18 @@ MemoryViewer::MemoryViewer(MemorySource &source, QWidget *parent)
     mode_combo->addItem(tr("Tiles"), QString("tiles"));
     mode_combo->setToolTip(tr("Pixels: every byte is one dot coloured by its value, so a whole memory fits on screen.\n"
                               "Tiles: the bytes decoded as SNES graphics, in the game's own colours."));
-    zoom_out_button = new QToolButton(this);
+    zoom_out_button = new QPushButton(this);
     zoom_out_button->setObjectName("zoom_out");
     zoom_out_button->setIcon(ui::icon("zoom-out"));
     zoom_out_button->setToolTip(tr("Zoom out (Ctrl+wheel)"));
     zoom_out_button->setAccessibleName(tr("Zoom out"));
-    zoom_in_button = new QToolButton(this);
+    zoom_in_button = new QPushButton(this);
     zoom_in_button->setObjectName("zoom_in");
     zoom_in_button->setIcon(ui::icon("zoom-in"));
     zoom_in_button->setToolTip(tr("Zoom in (Ctrl+wheel)"));
     zoom_in_button->setAccessibleName(tr("Zoom in"));
-    zoom_out_button->setAutoRaise(true); // flat, like a toolbar: the Mac draws a raised one as a bevel
-    zoom_in_button->setAutoRaise(true);
+    zoom_out_button->setAutoDefault(false);
+    zoom_in_button->setAutoDefault(false);
     zoom_label = new QLabel(this);
     zoom_label->setObjectName("zoom");
     row_width = new QSpinBox(this);
@@ -277,6 +277,16 @@ MemoryViewer::MemoryViewer(MemorySource &source, QWidget *parent)
                                "to select it."));
     copies_layout->addWidget(find);
     copies_layout->addWidget(copies_list);
+    // Until a search, a line saying what it's for rather than an empty box.
+    auto copies_hint = new QLabel(tr("Not searched yet. Find Copies looks for the game's sprite table and palette "
+                                     "in WRAM, the copies worth corrupting."),
+                                  copies_box);
+    copies_hint->setObjectName("copies_hint");
+    copies_hint->setWordWrap(true);
+    ui::setTone(copies_hint, ui::Tone::Secondary);
+    copies_layout->addWidget(copies_hint);
+    copies_layout->addStretch(1);
+    copies_list->hide();
 
     auto [regions_box, regions_layout] = section(tr("Named areas"));
     regions_list = new QListWidget(regions_box);
@@ -294,10 +304,10 @@ MemoryViewer::MemoryViewer(MemorySource &source, QWidget *parent)
     name_button->setEnabled(false);
     rename_button = new QPushButton(ui::icon("pencil"), tr("Rename…"), regions_box);
     delete_button = new QPushButton(ui::icon("trash"), tr("Delete…"), regions_box);
-    region_buttons->addWidget(name_button);
-    region_buttons->addStretch(1);
+    region_buttons->addWidget(name_button); // the three together
     region_buttons->addWidget(rename_button);
     region_buttons->addWidget(delete_button);
+    region_buttons->addStretch(1);
     regions_layout->addWidget(regions_empty);
     regions_layout->addWidget(regions_list);
     regions_layout->addStretch(1); // the heading stays at the top, the buttons at the bottom
@@ -801,6 +811,9 @@ void MemoryViewer::newRule()
 
 void MemoryViewer::findCopies()
 {
+    if (auto hint = findChild<QLabel *>("copies_hint"))
+        hint->hide();
+    copies_list->show();
     copies_list->clear();
     for (auto of : { Target::OAM, Target::CGRAM })
         for (auto &run : source.findCopies(of))

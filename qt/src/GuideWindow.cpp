@@ -4,6 +4,7 @@
 #include <QAbstractTextDocumentLayout>
 #include <QScrollBar>
 #include <QTextBlock>
+#include <QTextTable>
 #include <QTextBrowser>
 #include <QTextCursor>
 #include <QTextDocument>
@@ -34,6 +35,20 @@ GuideWindow::GuideWindow(QWidget *parent) : QWidget(parent, Qt::Window)
                 format.setBottomMargin(6);
                 cursor.setPosition(block.position());
                 cursor.setBlockFormat(format);
+            }
+        // Table lines in a quiet colour from the palette: the default is stark white in dark.
+        QColor line = palette().color(QPalette::WindowText);
+        line.setAlphaF(0.25f);
+        for (auto frame : browser->document()->rootFrame()->childFrames())
+            if (auto table = qobject_cast<QTextTable *>(frame))
+            {
+                auto format = table->format();
+                format.setBorderBrush(line);
+                format.setBorderStyle(QTextFrameFormat::BorderStyle_Solid);
+                format.setBorderCollapse(true);
+                format.setBorder(1);
+                format.setCellPadding(4);
+                table->setFormat(format);
             }
     }
     else

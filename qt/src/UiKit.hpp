@@ -16,6 +16,7 @@
 #include <cstdint>
 
 class QFormLayout;
+class QLayout;
 
 namespace ui
 {
@@ -57,6 +58,15 @@ QFormLayout *form(QWidget *parent = nullptr);
 // accessible name or tooltip, and inputs with neither a label (buddy) nor a name. One line
 // each, naming the widget.
 QStringList audit(QWidget *root);
+
+// A checkbox or combo box on a row of its own, inside a layout. Put bare in a vertical
+// layout or a form row, the Mac style shifts the whole column right (its layout margins)
+// or cuts a checkbox's descenders.
+QLayout *row(QWidget *w);
+
+// One label column for every form under root: the same width, so fields line up from
+// section to section.
+void alignForms(QWidget *root);
 
 // A home folder path written with ~.
 QString shortPath(const QString &path);

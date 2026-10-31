@@ -96,7 +96,7 @@ class ToneKeeper : public QObject
     }
 };
 
-const QStringList kIcons = { "alert-circle", "alert-triangle", "arrow-back-up", "bolt", "circle-check", "copy",
+const QStringList kIcons = { "alert-circle", "alert-triangle", "arrow-back-up", "bolt", "chevron-down", "circle-check", "copy",
                              "device-floppy", "dice-5", "eraser", "file-export", "file-plus", "folder-open",
                              "grid-dots", "help-circle", "history", "info-circle", "pencil", "pin", "pinned-off",
                              "player-stop", "plus", "refresh", "restore", "search", "tag", "trash", "zoom-in",
@@ -257,6 +257,29 @@ int sectionGap(const QWidget *widget)
     if (gap < 0)
         gap = 6;
     return std::clamp(gap * 2 + 4, 12, 24);
+}
+
+QLayout *row(QWidget *w)
+{
+    auto r = new QHBoxLayout;
+    r->setContentsMargins(0, 0, 0, 0);
+    r->addWidget(w);
+    return r;
+}
+
+void alignForms(QWidget *root)
+{
+    QList<QWidget *> labels;
+    int widest = 0;
+    for (auto f : root->findChildren<QFormLayout *>())
+        for (int i = 0; i < f->rowCount(); i++)
+            if (auto item = f->itemAt(i, QFormLayout::LabelRole); item && item->widget())
+            {
+                labels << item->widget();
+                widest = std::max(widest, item->widget()->sizeHint().width());
+            }
+    for (auto l : labels)
+        l->setMinimumWidth(widest);
 }
 
 QFormLayout *form(QWidget *parent)

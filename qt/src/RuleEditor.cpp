@@ -158,16 +158,6 @@ QLabel *hint_label(const QString &text, QWidget *parent)
     return label;
 }
 
-// A checkbox on a form row of its own, in a layout: as a bare form row, the Mac style
-// gives it less height than its text and cuts off the descenders.
-QLayout *own_row(QWidget *w)
-{
-    auto row = new QHBoxLayout;
-    row->setContentsMargins(0, 0, 0, 0);
-    row->addWidget(w);
-    return row;
-}
-
 void select(QComboBox *c, const QString &data)
 {
     int i = c->findData(data);
@@ -208,7 +198,8 @@ RuleEditor::RuleEditor(const Rule &rule, const Regions &regions, const MemoryAcc
     buildForm();
     load(rule);
     refresh();
-    fitToContents(); // now, so it never first opens too short
+    ui::alignForms(sections); // one label column through every section
+    fitToContents();          // now, so it never first opens too short
 }
 
 void RuleEditor::buildForm()
@@ -301,7 +292,7 @@ void RuleEditor::buildForm()
     for (auto t : kOps)
         op_combo->addItem(op_label(t), QString(op_name(t)));
     op_combo->setToolTip(tr("What to do to each picked byte"));
-    what->addWidget(op_combo);
+    what->addLayout(ui::row(op_combo));
     op_pages = new QStackedWidget(what_box);
     op_pages->setObjectName("op_pages");
     what->addWidget(op_pages);
@@ -331,7 +322,7 @@ void RuleEditor::buildForm()
     add_max->setToolTip(add_min->toolTip());
     f->addRow(tr("Smallest change"), add_min);
     f->addRow(tr("Largest change"), add_max);
-    f->addRow(own_row(add_clamp));
+    f->addRow(ui::row(add_clamp));
 
     auto bitflip_page = page(f);
     bitflip_mode = combo(bitflip_page, "bitflip_mode");
@@ -397,7 +388,7 @@ void RuleEditor::buildForm()
     shift_fill = line(shift_page, "shift_fill", "0x00");
     f->addRow(tr("Right by (bytes)"), shift_dx);
     f->addRow(tr("Down by (rows)"), shift_dy);
-    f->addRow(own_row(shift_wrap));
+    f->addRow(ui::row(shift_wrap));
     f->addRow(tr("Fill with"), shift_fill);
 
     auto flip_page = page(f);
@@ -505,7 +496,7 @@ void RuleEditor::buildForm()
     for (auto t : kTriggers)
         when_combo->addItem(trigger_label(t), QString(trigger_name(t)));
     when_combo->setToolTip(tr("When the rule fires. 60 frames are about a second"));
-    when->addWidget(when_combo);
+    when->addLayout(ui::row(when_combo));
     when_pages = new QStackedWidget(when_box);
     when->addWidget(when_pages);
     auto when_page = [this](const QString &label, QWidget *field) {
@@ -574,12 +565,12 @@ void RuleEditor::buildForm()
     enabled_check = new QCheckBox(tr("Enabled"), how_box);
     enabled_check->setObjectName("enabled");
     enabled_check->setToolTip(tr("Off: the rule stays in the recipe but does nothing"));
-    how->addRow(own_row(enabled_check));
+    how->addRow(ui::row(enabled_check));
     avoid_check = new QCheckBox(tr("Avoid dangerous bytes"), how_box);
     avoid_check->setObjectName("avoid_hot");
     avoid_check->setToolTip(tr("Skip bytes the crash map has learned crash this game (the memory viewer's "
                                "Danger overlay). Fewer crashes, longer runs; the map grows as you play."));
-    how->addRow(own_row(avoid_check));
+    how->addRow(ui::row(avoid_check));
     layout->addWidget(how_box);
 
     layout->addStretch(1);
@@ -587,11 +578,18 @@ void RuleEditor::buildForm()
     summary_label->setObjectName("summary");
     summary_label->setWordWrap(true);
     outer->addWidget(summary_label);
+    // An error is an icon, the error colour and words, together.
+    auto error_row = new QHBoxLayout;
+    error_icon = new QLabel(this);
+    error_icon->setObjectName("error_icon");
+    error_icon->setAccessibleName(tr("Error"));
     error_label = new QLabel(this);
     error_label->setObjectName("error");
     error_label->setWordWrap(true);
     ui::setTone(error_label, ui::Tone::Error);
-    outer->addWidget(error_label);
+    error_row->addWidget(error_icon, 0, Qt::AlignTop);
+    error_row->addWidget(error_label, 1);
+    outer->addLayout(error_row);
 
     buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, this);
     buttons->setObjectName("buttons");
@@ -1016,5 +1014,9 @@ void RuleEditor::refresh()
     }
     summary_label->setText(qs(describe_rule(b.rule)));
     error_label->setText(b.error);
+    error_icon->setVisible(!b.error.isEmpty());
+    if (!b.error.isEmpty())
+        error_icon->setPixmap(ui::pixmap("alert-circle", ui::toneColor(ui::Tone::Error, palette()),
+                                         error_label->fontMetrics().height(), devicePixelRatioF()));
     buttons->button(QDialogButtonBox::Ok)->setEnabled(b.error.isEmpty());
 }

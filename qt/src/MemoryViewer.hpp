@@ -107,8 +107,8 @@ class MemoryViewer : public QWidget
     QLineEdit *goto_edit;
     QComboBox *mode_combo;
     QWidget *view_options;
-    class QToolButton *zoom_out_button;
-    class QToolButton *zoom_in_button;
+    QPushButton *zoom_out_button;
+    QPushButton *zoom_in_button;
     QLabel *zoom_label;
     QSpinBox *row_width;
     QPushButton *paint_button;

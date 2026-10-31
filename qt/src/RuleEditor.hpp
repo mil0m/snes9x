@@ -115,5 +115,6 @@ class RuleEditor : public QDialog
 
     QLabel *summary_label;
     QLabel *error_label;
+    QLabel *error_icon;
     QDialogButtonBox *buttons;
 };

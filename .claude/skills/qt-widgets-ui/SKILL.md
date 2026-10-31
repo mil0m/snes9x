@@ -20,7 +20,8 @@ dark both first-class**. Words and flow come first (the UX pass); this is how it
 | A message line | `ui::StatusLine` → `setMessage(text, tone)`: icon + colour + words together |
 | An icon | `ui::icon("name")` (follows palette, disabled, dark); a fixed colour: `ui::pixmap(name, colour, size, dpr)` |
 | A section | `ui::heading(title, parent)` over its controls; space between sections `ui::sectionGap(w)` |
-| A form | `ui::form(parent)`: left labels, fields that grow, no wrapping |
+| A form | `ui::form(parent)`: left labels, fields that grow, no wrapping; `ui::alignForms(root)` gives every form under root one label column |
+| A checkbox or combo box in a vertical layout | `layout->addLayout(ui::row(w))`, never `addWidget(w)` (see the Mac pitfalls) |
 | A long path | `ui::ElidedLabel` + `ui::shortPath()` (`~`, middle elision, full path in tooltip) |
 | An address | `corrupt::hex_address(offset, target)` — same digits everywhere (wram/sram 5, rom 6, else 4) |
 | Accessibility check | `ui::audit(widget)` → list of unnamed icon buttons and unlabelled inputs; assert empty in the widget's test |
@@ -43,10 +44,11 @@ UiKit.cpp (the test renders every name). The SVG keeps `stroke="currentColor"`.
    `resizeRowsToContents` (re-run when that column resizes), numbers right-aligned,
    `ScrollBarAlwaysOff` horizontally. Hide an empty table and show a Secondary hint instead.
 6. **Buttons**: primary actions icon + text; row-contextual actions (edit/duplicate/remove)
-   as auto-raise `QToolButton`s with tooltip **and** accessible name. A push button with a
-   menu (`setMenu`), not a `QToolButton` with a popup. A toggle that reads as "pressed =
-   disabled" is wrong: change the text and icon instead (Corrupt ⇄ Stop) and use
-   `setDefault(true)` for the obvious next step.
+   as icon-only `QPushButton`s with tooltip **and** accessible name. A menu button is a
+   plain push button whose `clicked` pops the menu, with a `chevron-down` icon after the
+   word (`setLayoutDirection(Qt::RightToLeft)`). A toggle that reads as "pressed = disabled"
+   is wrong: change the text and icon instead (Corrupt ⇄ Stop) and use `setDefault(true)`
+   for the obvious next step (Fusion shows it; the Mac draws it only in dialogs).
 7. **Monospace** (`QFontDatabase::systemFont(FixedFont)`) for addresses, bytes, hex fields.
 8. **Accessibility**: label buddies (`QFormLayout::addRow(QString, widget)` does it; a field
    inside a row layout needs `setAccessibleName`), names on icon buttons and sliders, a sane
@@ -59,10 +61,17 @@ UiKit.cpp (the test renders every name). The SVG keeps `stroke="currentColor"`.
 ## Mac-style pitfalls (all hit in this repo)
 
 - **`setMinimumHeight`/`setFixedWidth` on a `QPushButton`** turns it into a square bevel
-  button. Leave push buttons at their natural size; use `QToolButton` + `setAutoRaise(true)`
-  for small icon buttons (a non-raised one is a bevel too).
-- **A bare `QCheckBox` as a `QFormLayout` row** gets less height than its text: descenders
-  are cut. Put it in a layout first (`RuleEditor.cpp`'s `own_row`).
+  button. Leave push buttons at their natural size.
+- **`QToolButton` is a square bevel box on the Mac, even with `setAutoRaise(true)`**, and
+  `QPushButton::setMenu` draws a square-cornered pull-down. Next to rounded push buttons both
+  look out of place: use icon-only push buttons, and pop menus from `clicked`.
+- **A bare `QCheckBox` or `QComboBox` added straight to a vertical layout shifts that whole
+  layout ~3 pt right** (its Mac layout margins), so headings stop lining up; **as a bare
+  `QFormLayout` row a checkbox loses height** and its descenders are cut. Always
+  `ui::row(w)`.
+- **Separate forms per section get separate label columns**: `ui::alignForms(root)`.
+- **Gutters**: leave room after a text label for tick marks (the pixel and tile views use
+  label width + 20), or the tick lands on the last digit.
 - **`QScrollArea` hides its content's minimum width**: set
   `scroll->setMinimumWidth(content->minimumSizeHint().width() + scrollbar width)` or the dock
   narrows until buttons are cut off on the right.

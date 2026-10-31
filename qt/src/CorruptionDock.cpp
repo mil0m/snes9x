@@ -101,13 +101,14 @@ QPushButton *button(const QString &text, QWidget *parent, const char *icon = nul
 }
 
 // An icon-only button: the tooltip says what it does, and screen readers read the same.
-QToolButton *tool(const char *icon, const QString &what, QWidget *parent)
+// A push button rather than a tool button: rounded like the buttons beside it on the Mac.
+QPushButton *tool(const char *icon, const QString &what, QWidget *parent)
 {
-    auto b = new QToolButton(parent);
+    auto b = new QPushButton(parent);
+    b->setAutoDefault(false);
     b->setIcon(ui::icon(icon));
     b->setToolTip(what);
     b->setAccessibleName(what);
-    b->setAutoRaise(true);
     return b;
 }
 
@@ -207,16 +208,18 @@ CorruptionDock::CorruptionDock(EmuApplication &app, QWidget *parent)
     recipe_combo->setMinimumContentsLength(12);
     recipe_combo->setToolTip(tr("Your recipes for this game, then the starters that come with the app. Choosing "
                                 "one loads it."));
+    recipe_combo->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
     recipe_combo->setAccessibleName(tr("Recipe"));
-    recipe_row->addWidget(recipe_combo, 1);
+    recipe_layout->addLayout(ui::row(recipe_combo)); // the whole width: names are long
     auto new_recipe = button(tr("New"), recipe_box);
     new_recipe->setObjectName("new_recipe");
     new_recipe->setToolTip(tr("Start an empty recipe for this game"));
     save_button = button(tr("Save"), recipe_box);
     save_button->setObjectName("save");
     save_button->setToolTip(tr("Save the recipe (with its pins, and its start moment if that's on) in the library"));
-    // A push button with a menu: the style draws the arrow beside the text, not over it.
-    auto more = button(tr("More"), recipe_box);
+    // A plain push button that opens the menu (the Mac draws a menu button square-cornered).
+    auto more = button(tr("More"), recipe_box, "chevron-down");
+    more->setLayoutDirection(Qt::RightToLeft); // the arrow after the word
     more->setObjectName("recipe_more");
     more->setToolTip(tr("Save As, Share, Import, and the library folder"));
     auto menu = new QMenu(more);
@@ -229,17 +232,18 @@ CorruptionDock::CorruptionDock(EmuApplication &app, QWidget *parent)
     auto open_folder = menu->addAction(tr("Open This Game's Recipe Folder"));
     auto rescan = menu->addAction(tr("Look for New Recipe Files"));
     auto choose_library = menu->addAction(tr("Choose the Library Folder…"));
-    more->setMenu(menu);
+    connect(more, &QPushButton::clicked, [more, menu] { menu->popup(more->mapToGlobal(QPoint(0, more->height()))); });
     recipe_row->addWidget(new_recipe);
     recipe_row->addWidget(save_button);
     recipe_row->addWidget(more);
+    recipe_row->addStretch(1);
     recipe_layout->addLayout(recipe_row);
     moments_check = new QCheckBox(tr("Remember where each run starts"), recipe_box);
     moments_check->setObjectName("moments");
     moments_check->setToolTip(tr("Save the moment a run started (a save state) with the recipe, and go back to it "
                                  "when the recipe is loaded, so the same seed plays out the same way."));
     moments_check->setChecked(app.config->corruption_saved_moments);
-    recipe_layout->addWidget(moments_check);
+    recipe_layout->addLayout(ui::row(moments_check));
     library_label = new ui::ElidedLabel(recipe_box);
     library_label->setObjectName("library");
     ui::setTone(library_label, ui::Tone::Secondary);
@@ -394,7 +398,7 @@ CorruptionDock::CorruptionDock(EmuApplication &app, QWidget *parent)
     rules_table->setWordWrap(true);
     rules_table->setTextElideMode(Qt::ElideRight);
     rules_table->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
-    rules_table->setSizeAdjustPolicy(QAbstractScrollArea::AdjustToContents);
+
     rules_table->setEditTriggers(QAbstractItemView::NoEditTriggers);
     rules_table->setSelectionMode(QAbstractItemView::SingleSelection);
     rules_table->setSelectionBehavior(QAbstractItemView::SelectRows);
@@ -404,7 +408,7 @@ CorruptionDock::CorruptionDock(EmuApplication &app, QWidget *parent)
     // The wrapped descriptions need taller rows when the panel narrows.
     connect(header, &QHeaderView::sectionResized, this, [this](int column) {
         if (column == kWhat)
-            QTimer::singleShot(0, rules_table, [this] { rules_table->resizeRowsToContents(); });
+            QTimer::singleShot(0, rules_table, [this] { fitRulesTable(); });
     });
     rules_empty = new QLabel(tr("No rules yet. Add Rule, or pick a starter in the recipe list above."), rules_box);
     rules_empty->setObjectName("rules_empty");
@@ -439,9 +443,9 @@ CorruptionDock::CorruptionDock(EmuApplication &app, QWidget *parent)
     rule_buttons->addWidget(viewer_button);
     rules_layout->addLayout(rule_buttons);
     connect(add_rule_button, &QPushButton::clicked, this, &CorruptionDock::addRule);
-    connect(edit_rule_button, &QToolButton::clicked, [this] { editRule(selectedRule()); });
-    connect(duplicate_rule_button, &QToolButton::clicked, this, &CorruptionDock::duplicateRule);
-    connect(remove_rule_button, &QToolButton::clicked, this, &CorruptionDock::removeRule);
+    connect(edit_rule_button, &QPushButton::clicked, [this] { editRule(selectedRule()); });
+    connect(duplicate_rule_button, &QPushButton::clicked, this, &CorruptionDock::duplicateRule);
+    connect(remove_rule_button, &QPushButton::clicked, this, &CorruptionDock::removeRule);
     connect(viewer_button, &QPushButton::clicked, this, &CorruptionDock::openViewer);
     connect(rules_table, &QTableWidget::itemChanged, [this](QTableWidgetItem *item) {
         if (item->column() == kOn)
@@ -456,7 +460,7 @@ CorruptionDock::CorruptionDock(EmuApplication &app, QWidget *parent)
     detect_check->setToolTip(tr("Notices when the game freezes, goes black, stops or reboots itself, takes it back "
                                 "to a moment before, and changes what caused it so it plays on."));
     detect_check->setChecked(true);
-    guard_layout->addWidget(detect_check);
+    guard_layout->addLayout(ui::row(detect_check));
     auto guard_form = ui::form();
     policy_combo = new QComboBox(guard_box);
     policy_combo->setObjectName("policy");
@@ -929,9 +933,19 @@ void CorruptionDock::rebuildRules()
     // Names take what they need, up to a share of the panel; the description gets the rest.
     rules_table->resizeColumnToContents(kName);
     rules_table->setColumnWidth(kName, std::min(rules_table->columnWidth(kName), fontMetrics().horizontalAdvance("M") * 9));
-    rules_table->resizeRowsToContents();
+    fitRulesTable();
     rules_table->setVisible(!status.rules.empty());
     selectRule(std::min(selected, rules_table->rowCount() - 1));
+}
+
+void CorruptionDock::fitRulesTable()
+{
+    // Exactly as tall as its rows: no blank strip that looks like an empty rule.
+    rules_table->resizeRowsToContents();
+    int height = rules_table->horizontalHeader()->height() + 2 * rules_table->frameWidth();
+    for (int r = 0; r < rules_table->rowCount(); r++)
+        height += rules_table->rowHeight(r);
+    rules_table->setFixedHeight(height);
 }
 
 QTableWidgetItem *CorruptionDock::crashItem(unsigned crashes)

@@ -53,7 +53,8 @@ PixelView::PixelView(QWidget *parent)
 
 int PixelView::addressWidth() const
 {
-    return fontMetrics().horizontalAdvance("0x" + QString(corrupt::address_digits(snap.target), QChar('0'))) + 10;
+    // Room after the label for the row ticks and marks, so they never sit on the last digit.
+    return fontMetrics().horizontalAdvance("0x" + QString(corrupt::address_digits(snap.target), QChar('0'))) + 20;
 }
 
 int PixelView::imageLeft() const

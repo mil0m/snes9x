@@ -27,7 +27,7 @@ There are four ways to undo something. Only one of them undoes everything.
 
 | Button | What it does |
 |---|---|
-| **Corrupt** (again) | Stops corrupting. What it already changed **stays**: the game keeps running, glitched. |
+| **Stop** (Corrupt, while it runs) | Stops corrupting. What it already changed **stays**: the game keeps running, glitched. |
 | **Back to Normal** | Stops, puts the game's ROM back to clean, and takes the game back to the moment you pressed Corrupt. Everything it did is gone (and so is your play since then). |
 | **Restore Clean ROM** | Puts only the ROM back. What corruption did to RAM stays. |
 | **Restore This Save…** (Game Save Backups) | Has nothing to do with corruption: it restores your **in-game save** (the cartridge's battery save) from a copy and restarts the game. |
