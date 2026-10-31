@@ -132,6 +132,7 @@ void PixelView::setSnapshot(const MemorySnapshot &snapshot)
     {
         anchor.reset();
         cursor.reset();
+        rect_sel.reset();
         dragging = false;
     }
     relayout(keep);
@@ -214,13 +215,37 @@ std::optional<uint32_t> PixelView::offsetAt(QPoint pos) const
 
 std::optional<std::pair<uint32_t, uint32_t>> PixelView::selection() const
 {
+    if (rect_sel)
+        return std::pair{ rect_sel->start, rect_sel->last() };
     if (!anchor || !cursor)
         return std::nullopt;
     return std::pair{ std::min(*anchor, *cursor), std::max(*anchor, *cursor) };
 }
 
+void PixelView::setRectFrom(uint32_t a, uint32_t c)
+{
+    auto w = uint32_t(columns_);
+    uint32_t x0 = std::min(a % w, c % w), x1 = std::max(a % w, c % w);
+    uint32_t y0 = std::min(a / w, c / w), y1 = std::max(a / w, c / w);
+    anchor = a;
+    cursor = c;
+    rect_sel = RectSelection{ y0 * w + x0, w, x1 - x0 + 1, y1 - y0 + 1 };
+    viewport()->update();
+    if (onSelectionChanged)
+        onSelectionChanged();
+}
+
+void PixelView::selectRect(uint32_t start, uint32_t width, uint32_t height)
+{
+    if (snap.bytes.empty() || !width || !height)
+        return;
+    auto w = uint32_t(columns_);
+    setRectFrom(start, start + (height - 1) * w + std::min(width, w) - 1);
+}
+
 void PixelView::setSelectionTo(uint32_t a, uint32_t c)
 {
+    rect_sel.reset();
     anchor = a;
     cursor = c;
     viewport()->update();
@@ -246,6 +271,7 @@ void PixelView::select(uint32_t first, uint32_t last)
 
 void PixelView::clearSelection()
 {
+    rect_sel.reset();
     anchor.reset();
     cursor.reset();
     viewport()->update();
@@ -267,7 +293,10 @@ void PixelView::mousePressEvent(QMouseEvent *event)
     auto at = offsetAt(event->position().toPoint());
     if (!at)
         return;
-    if (event->modifiers() & Qt::ShiftModifier && anchor)
+    rect_drag = event->modifiers() & Qt::AltModifier;
+    if (rect_drag)
+        setRectFrom(*at, *at);
+    else if (event->modifiers() & Qt::ShiftModifier && anchor && !rect_sel)
         setSelectionTo(*anchor, *at);
     else
         setSelectionTo(*at, *at);
@@ -287,7 +316,12 @@ void PixelView::mouseMoveEvent(QMouseEvent *event)
     else if (pos.y() >= viewport()->height())
         verticalScrollBar()->setValue(verticalScrollBar()->value() + 1);
     if (at && at != cursor)
-        setSelectionTo(*anchor, *at);
+    {
+        if (rect_drag)
+            setRectFrom(*anchor, *at);
+        else
+            setSelectionTo(*anchor, *at);
+    }
 }
 
 void PixelView::mouseReleaseEvent(QMouseEvent *)
@@ -377,7 +411,7 @@ void PixelView::paintEvent(QPaintEvent *)
                 if (float t = overlayLevel(snap, overlay, offset, scale); t > 0.0f)
                     colour = blend(colour, hot, 0.2f + 0.8f * t);
             }
-            if (sel && offset >= sel->first && offset <= sel->second)
+            if (sel && offset >= sel->first && offset <= sel->second && (!rect_sel || rect_sel->contains(uint32_t(offset))))
                 colour = blend(colour, highlight, 0.45f);
             line[c] = colour;
         }
@@ -414,6 +448,17 @@ void PixelView::paintEvent(QPaintEvent *)
             if (any)
                 hot_rows.push_back(r);
         }
+    }
+
+    // A rectangle selection gets an outline, so it reads at any zoom and over any overlay.
+    if (rect_sel && rect_sel->row == uint32_t(columns_))
+    {
+        int top = int(rect_sel->start / uint32_t(columns_)) - first_row;
+        int left = int(rect_sel->start % uint32_t(columns_));
+        QRect box(imageLeft() + left * zoom_, top * zoom_, int(rect_sel->width) * zoom_, int(rect_sel->height) * zoom_);
+        p.setBrush(Qt::NoBrush);
+        p.setPen(QPen(palette().color(QPalette::Highlight), 2));
+        p.drawRect(box.adjusted(-1, -1, 0, 0));
     }
 
     p.fillRect(QRect(0, 0, addressWidth() - 1, viewport()->height()), background); // rows scroll under it

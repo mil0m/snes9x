@@ -188,6 +188,50 @@ TEST_CASE("dragging selects a range in either direction; shift-click extends")
     CHECK(changes >= 2);
 }
 
+TEST_CASE("alt-drag draws a rectangle in the row width; a plain click goes back to ranges")
+{
+    Shown s(8);
+    s.view.setRowWidth(32);
+    auto move = [&](uint32_t offset, Qt::KeyboardModifiers mods) {
+        QMouseEvent e(QEvent::MouseMove, QPointF(s.view.pixelRect(offset).center()), QPointF(), Qt::NoButton,
+                      Qt::LeftButton, mods);
+        QApplication::sendEvent(s.view.viewport(), &e);
+    };
+    // From column 6 of row 4 up and left to column 2 of row 1: a 5x4 rectangle.
+    mouse(s.view, QEvent::MouseButtonPress, s.view.pixelRect(4 * 32 + 6).center(), Qt::AltModifier);
+    move(1 * 32 + 2, Qt::AltModifier);
+    mouse(s.view, QEvent::MouseButtonRelease, s.view.pixelRect(32 + 2).center(), Qt::AltModifier);
+    auto rect = s.view.rectSelection();
+    REQUIRE(rect);
+    CHECK(rect->start == 32 + 2);
+    CHECK(rect->row == 32);
+    CHECK(rect->width == 5);
+    CHECK(rect->height == 4);
+    CHECK(s.view.selection() == std::pair{ 32u + 2, 4u * 32 + 6 }); // its bounding range
+
+    // Painted: inside the rectangle, not the bytes of the bounding range beside it.
+    QImage img = s.view.viewport()->grab().toImage();
+    QColor highlight = s.view.palette().color(QPalette::Highlight);
+    auto tinted = [&](uint32_t offset) {
+        s.view.clearSelection(); // compare against the same byte unselected
+        QImage plain = s.view.viewport()->grab().toImage();
+        bool t = img.pixelColor(s.view.pixelRect(offset).center()) != plain.pixelColor(s.view.pixelRect(offset).center());
+        s.view.selectRect(32 + 2, 5, 4);
+        return t;
+    };
+    CHECK(tinted(2 * 32 + 4));
+    CHECK_FALSE(tinted(2 * 32 + 20)); // in the bounding range, outside the rectangle
+    (void)highlight;
+    shot(s.view, "pixel-view-rect");
+
+    // It keeps its shape when the row width changes; a plain click selects a range again.
+    s.view.setRowWidth(64);
+    CHECK(s.view.rectSelection()->row == 32);
+    click(s.view, s.view.pixelRect(0x10).center());
+    CHECK_FALSE(s.view.rectSelection());
+    CHECK(s.view.selection() == std::pair{ 0x10u, 0x10u });
+}
+
 TEST_CASE("select() scrolls the range into view; a new target clears it")
 {
     Shown s(8);

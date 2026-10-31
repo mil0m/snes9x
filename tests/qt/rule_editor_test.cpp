@@ -106,6 +106,47 @@ std::vector<Rule> sample_rules()
     r.range = { Target::WRAM, 0x0100, 0x01FF };
     r.region = "enemy_table";
     rules.push_back(r);
+
+    // Rectangles and area ops.
+    r = base();
+    set_rect(r, Target::ROM, 0x1000, Rect{ 64, 16, 32 });
+    r.op = { .type = OpType::Shift, .dx = 3, .dy = -2 };
+    r.when = { .type = TriggerType::AtLoad };
+    rules.push_back(r);
+
+    r = base();
+    set_rect(r, Target::WRAM, 0x2000, Rect{ 32, 8, 4 });
+    r.op = { .type = OpType::Shift, .value = uint8_t(0x7F), .dx = -1, .wrap = false };
+    rules.push_back(r);
+
+    r = base();
+    r.op = { .type = OpType::Flip, .axis = Axis::Vertical };
+    rules.push_back(r);
+
+    r = base();
+    r.op = { .type = OpType::Levels, .curve = Curve::Posterize, .amount = 4 };
+    rules.push_back(r);
+
+    r = base();
+    r.op = { .type = OpType::Levels, .curve = Curve::Gamma, .amount = 2.5 };
+    rules.push_back(r);
+
+    r = base();
+    r.op = { .type = OpType::Levels, .curve = Curve::Invert };
+    rules.push_back(r);
+
+    r = base();
+    r.op = { .type = OpType::Filter, .kernel = Kernel::Emboss };
+    rules.push_back(r);
+
+    r = base();
+    set_rect(r, Target::WRAM, 0x2000, Rect{ 16, 4, 4 });
+    r.op = { .type = OpType::Stamp, .source = 0x3000 };
+    rules.push_back(r);
+
+    r = base();
+    r.op = { .type = OpType::Fill, .value = uint8_t(0xEA) };
+    rules.push_back(r);
     return rules;
 }
 
@@ -148,6 +189,37 @@ TEST_CASE("a rule goes through the editor unchanged, for every op and trigger")
         CHECK(e.error().isEmpty());
         CHECK(ok_enabled(e));
     }
+}
+
+TEST_CASE("a rectangle is drawn from its corner, row width and size; area ops need no count")
+{
+    SizedMemory sizes;
+    RuleEditor e(default_rule(), sample_regions(), sizes);
+    choose(e, "target", "rom");
+    child<QLineEdit>(e, "first")->setText("0x8000");
+    choose(e, "shape", "rect");
+    child<QSpinBox>(e, "rect_row")->setValue(64);
+    child<QSpinBox>(e, "rect_width")->setValue(16);
+    child<QSpinBox>(e, "rect_height")->setValue(8);
+    CHECK_FALSE(child<QLineEdit>(e, "last")->isEnabled()); // follows from the rectangle
+    choose(e, "op", "shift");
+    child<QSpinBox>(e, "shift_dx")->setValue(5);
+    CHECK_FALSE(child<QSpinBox>(e, "count")->isEnabled());
+    auto r = e.rule();
+    REQUIRE(r.rect);
+    CHECK(r.range.first == 0x8000);
+    CHECK(r.range.last == 0x8000 + 7 * 64 + 15);
+    CHECK(r.rect->width == 16);
+    CHECK(r.op.type == OpType::Shift);
+    CHECK(r.op.dx == 5);
+    CHECK(e.error().isEmpty());
+
+    choose(e, "shape", "range"); // back to a plain range
+    child<QLineEdit>(e, "last")->setText("0x80FF");
+    CHECK_FALSE(e.rule().rect);
+    choose(e, "op", "random");
+    CHECK(child<QSpinBox>(e, "count")->isEnabled());
+    maybe_shot(e, "rule-editor-rect");
 }
 
 TEST_CASE("editing fields builds the matching rule")

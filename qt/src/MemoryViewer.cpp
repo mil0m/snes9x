@@ -470,6 +470,17 @@ void MemoryViewer::selectionChanged()
         selection_label->setText(tr("Drag across bytes to select a range"));
         return;
     }
+    if (auto rect = mode() == "pixels" ? pixels->rectSelection() : std::nullopt)
+    {
+        selection_label->setText(tr("%1 %2x%3 at %4 in rows of %5 (%6 bytes)")
+                                     .arg(target_name(pane()->snapshot().target))
+                                     .arg(rect->width)
+                                     .arg(rect->height)
+                                     .arg(hex4(rect->start))
+                                     .arg(rect->row)
+                                     .arg(rect->width * rect->height));
+        return;
+    }
     selection_label->setText(QString("%1 %2..%3 (%4 bytes)")
                                  .arg(target_name(pane()->snapshot().target), hex4(sel->first), hex4(sel->second))
                                  .arg(sel->second - sel->first + 1));
@@ -478,7 +489,13 @@ void MemoryViewer::selectionChanged()
 Rule MemoryViewer::ruleFromSelection() const
 {
     Rule r = default_rule();
-    if (auto sel = pane()->selection())
+    if (auto rect = mode() == "pixels" ? pixels->rectSelection() : std::nullopt)
+    {
+        set_rect(r, pane()->snapshot().target, rect->start, Rect{ rect->row, rect->width, rect->height });
+        r.name = std::string(target_name(r.range.target)) + " " + std::to_string(rect->width) + "x" +
+                 std::to_string(rect->height) + " at " + hex4(rect->start).toStdString();
+    }
+    else if (auto sel = pane()->selection())
     {
         r.range = { pane()->snapshot().target, sel->first, sel->second };
         r.name = std::string(target_name(r.range.target)) + " " + hex4(sel->first).toStdString();

@@ -407,6 +407,28 @@ TEST_SUITE("the pixel view in the viewer")
         CHECK_FALSE(hex->cellRect(0x8000).isEmpty());
     }
 
+    TEST_CASE("a rectangle drawn in the pixel view makes a rectangle rule")
+    {
+        FakeSource src;
+        MemoryViewer v(src);
+        v.show();
+        v.refresh();
+        choose(v, "mode", "pixels");
+        auto pixels = child<PixelView>(v, "pixels");
+        pixels->setRowWidth(64);
+        pixels->selectRect(0x1000, 16, 8);
+        Rule r = v.ruleFromSelection();
+        REQUIRE(r.rect);
+        CHECK(r.range.first == 0x1000u);
+        CHECK(r.rect->row == 64);
+        CHECK(r.rect->width == 16);
+        CHECK(r.rect->height == 8);
+        CHECK(r.range.last == 0x1000u + 7 * 64 + 15);
+        CHECK(r.name == "wram 16x8 at 0x1000");
+        CHECK(child<QLabel>(v, "selection")->text().contains("16")); // says it's a rectangle
+        CHECK(child<QLabel>(v, "selection")->text().contains("rows of 64"));
+    }
+
     TEST_CASE("in pixel mode the map, copies, go to and new rule use the pixel view")
     {
         FakeSource src;

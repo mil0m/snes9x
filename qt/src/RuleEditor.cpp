@@ -11,6 +11,7 @@
 #include <QLabel>
 #include <QLineEdit>
 #include <QPushButton>
+#include <QSignalBlocker>
 #include <QSpinBox>
 #include <QStackedWidget>
 #include <QVBoxLayout>
@@ -22,8 +23,9 @@ using namespace corrupt;
 namespace
 {
 
-constexpr OpType kOps[] = { OpType::Random, OpType::Add, OpType::Bitflip, OpType::Swap,
-                            OpType::Copy, OpType::Freeze, OpType::Shuffle };
+constexpr OpType kOps[] = { OpType::Random, OpType::Add,   OpType::Bitflip, OpType::Swap,   OpType::Copy,
+                            OpType::Freeze, OpType::Shuffle, OpType::Shift,  OpType::Flip,   OpType::Levels,
+                            OpType::Filter, OpType::Stamp,   OpType::Fill };
 constexpr TriggerType kTriggers[] = { TriggerType::EveryFrames, TriggerType::ChancePerFrame,
                                       TriggerType::OnceAtFrame, TriggerType::Hotkey, TriggerType::AtLoad };
 
@@ -53,6 +55,12 @@ QString op_label(OpType t)
     case OpType::Copy: return QObject::tr("Copy a block");
     case OpType::Freeze: return QObject::tr("Freeze");
     case OpType::Shuffle: return QObject::tr("Shuffle a window");
+    case OpType::Shift: return QObject::tr("Shift the whole area");
+    case OpType::Flip: return QObject::tr("Flip the whole area");
+    case OpType::Levels: return QObject::tr("Levels: remap values");
+    case OpType::Filter: return QObject::tr("Filter (blur, sharpen…)");
+    case OpType::Stamp: return QObject::tr("Stamp another area onto it");
+    case OpType::Fill: return QObject::tr("Fill with a value");
     }
     return {};
 }
@@ -201,6 +209,24 @@ void RuleEditor::buildForm()
     range_row->addWidget(new QLabel(tr("to"), where_box));
     range_row->addWidget(last_edit);
     where->addRow(tr("From"), range_row);
+    shape_combo = combo(where_box, "shape");
+    shape_combo->addItem(tr("A range of bytes"), QString("range"));
+    shape_combo->addItem(tr("A rectangle (as drawn in the pixel view)"), QString("rect"));
+    where->addRow(tr("Shape"), shape_combo);
+    rect_fields = new QWidget(where_box);
+    auto rect_layout = new QHBoxLayout(rect_fields);
+    rect_layout->setContentsMargins(0, 0, 0, 0);
+    rect_width = spin(rect_fields, "rect_width", 1, 0xFFFFFF);
+    rect_height = spin(rect_fields, "rect_height", 1, 0xFFFFFF);
+    rect_row = spin(rect_fields, "rect_row", 1, 0xFFFFFF);
+    rect_layout->addWidget(rect_width);
+    rect_layout->addWidget(new QLabel(QString::fromUtf8("×"), rect_fields));
+    rect_layout->addWidget(rect_height);
+    rect_layout->addWidget(new QLabel(tr("in rows of"), rect_fields));
+    rect_layout->addWidget(rect_row);
+    rect_fields->setToolTip(tr("Width and height in bytes and rows, from the From byte as its top-left corner. "
+                               "Rows of: the pixel view's row width it was drawn in."));
+    where->addRow(tr("Rectangle"), rect_fields);
     layout->addWidget(where_box);
 
     // What
@@ -286,6 +312,52 @@ void RuleEditor::buildForm()
     auto shuffle_page = page(f);
     shuffle_window = spin(shuffle_page, "shuffle_window", 2, 256);
     f->addRow(tr("Window (bytes)"), shuffle_window);
+
+    auto shift_page = page(f);
+    shift_dx = spin(shift_page, "shift_dx", -0xFFFF, 0xFFFF);
+    shift_dy = spin(shift_page, "shift_dy", -0xFFFF, 0xFFFF);
+    shift_wrap = new QCheckBox(tr("Wrap around (what leaves one side comes back on the other)"), shift_page);
+    shift_wrap->setObjectName("shift_wrap");
+    shift_fill = line(shift_page, "shift_fill", "0x00");
+    f->addRow(tr("Right by (bytes)"), shift_dx);
+    f->addRow(tr("Down by (rows)"), shift_dy);
+    f->addRow(shift_wrap);
+    f->addRow(tr("Fill with"), shift_fill);
+
+    auto flip_page = page(f);
+    flip_axis = combo(flip_page, "flip_axis");
+    flip_axis->addItem(tr("Horizontally (each row reversed)"), QString(axis_name(Axis::Horizontal)));
+    flip_axis->addItem(tr("Vertically (the rows upside down)"), QString(axis_name(Axis::Vertical)));
+    flip_axis->addItem(tr("Both"), QString(axis_name(Axis::Both)));
+    f->addRow(tr("Flip"), flip_axis);
+
+    auto levels_page = page(f);
+    levels_curve = combo(levels_page, "levels_curve");
+    levels_curve->addItem(tr("Invert"), QString(curve_name(Curve::Invert)));
+    levels_curve->addItem(tr("Posterize (levels)"), QString(curve_name(Curve::Posterize)));
+    levels_curve->addItem(tr("Threshold (from)"), QString(curve_name(Curve::Threshold)));
+    levels_curve->addItem(tr("Gamma (above 1 brightens)"), QString(curve_name(Curve::Gamma)));
+    levels_curve->addItem(tr("Contrast (-1 to 1)"), QString(curve_name(Curve::Contrast)));
+    levels_amount = new QDoubleSpinBox(levels_page);
+    levels_amount->setObjectName("levels_amount");
+    levels_amount->setRange(-1.0, 255.0);
+    levels_amount->setDecimals(2);
+    f->addRow(tr("Curve"), levels_curve);
+    f->addRow(tr("Amount"), levels_amount);
+
+    auto filter_page = page(f);
+    filter_kernel = combo(filter_page, "filter_kernel");
+    for (auto k : { Kernel::Blur, Kernel::Sharpen, Kernel::Median, Kernel::Emboss, Kernel::Edges, Kernel::Max, Kernel::Min })
+        filter_kernel->addItem(QString(kernel_name(k)), QString(kernel_name(k)));
+    f->addRow(tr("Filter"), filter_kernel);
+
+    auto stamp_page = page(f);
+    stamp_from = line(stamp_page, "stamp_from", "0x0000");
+    f->addRow(tr("Copy from (top-left)"), stamp_from);
+
+    auto fill_page = page(f);
+    fill_value = line(fill_page, "fill_value", "0x00");
+    f->addRow(tr("Value"), fill_value);
     layout->addWidget(what_box);
 
     // When
@@ -403,6 +475,10 @@ void RuleEditor::load(const Rule &r)
     select(target_combo, target_name(r.range.target));
     first_edit->setText(hex4(r.range.first));
     last_edit->setText(hex4(r.range.last));
+    select(shape_combo, r.rect ? "rect" : "range");
+    rect_row->setValue(r.rect ? int(r.rect->row) : 64);
+    rect_width->setValue(r.rect ? int(r.rect->width) : 16);
+    rect_height->setValue(r.rect ? int(r.rect->height) : 16);
 
     // Every op page gets a sensible start, so switching op shows usable values.
     random_min->setValue(0);
@@ -419,6 +495,13 @@ void RuleEditor::load(const Rule &r)
     copy_length->setValue(1);
     freeze_value->setText("0x00");
     shuffle_window->setValue(8);
+    shift_dx->setValue(1);
+    shift_dy->setValue(0);
+    shift_wrap->setChecked(true);
+    shift_fill->setText("0x00");
+    levels_amount->setValue(4);
+    stamp_from->setText(hex4(r.range.first));
+    fill_value->setText("0x00");
 
     const Op &op = r.op;
     select(op_combo, op_name(op.type));
@@ -463,6 +546,28 @@ void RuleEditor::load(const Rule &r)
         break;
     case OpType::Shuffle:
         shuffle_window->setValue(op.window);
+        break;
+    case OpType::Shift:
+        shift_dx->setValue(op.dx);
+        shift_dy->setValue(op.dy);
+        shift_wrap->setChecked(op.wrap);
+        shift_fill->setText(hex2(op.value.value_or(0)));
+        break;
+    case OpType::Flip:
+        select(flip_axis, axis_name(op.axis));
+        break;
+    case OpType::Levels:
+        select(levels_curve, curve_name(op.curve));
+        levels_amount->setValue(op.amount);
+        break;
+    case OpType::Filter:
+        select(filter_kernel, kernel_name(op.kernel));
+        break;
+    case OpType::Stamp:
+        stamp_from->setText(hex4(op.source));
+        break;
+    case OpType::Fill:
+        fill_value->setText(hex2(op.value.value_or(0)));
         break;
     }
 
@@ -515,8 +620,15 @@ RuleEditor::Built RuleEditor::build() const
 
     r.range.target = target_of(target_combo);
     r.region = region_combo->currentData().toString().toStdString();
+    r.rect.reset();
     if (auto it = regions.find(r.region); it != regions.end())
         r.range = it->second;
+    else if (shape_combo->currentData() == "rect")
+    {
+        auto first = number(first_edit, "from", 0, UINT32_MAX, err);
+        set_rect(r, r.range.target, uint32_t(first.value_or(0)),
+                 Rect{ uint32_t(rect_row->value()), uint32_t(rect_width->value()), uint32_t(rect_height->value()) });
+    }
     else
     {
         r.region.clear();
@@ -570,6 +682,31 @@ RuleEditor::Built RuleEditor::build() const
     case OpType::Shuffle:
         op.window = shuffle_window->value();
         break;
+    case OpType::Shift:
+        op.dx = shift_dx->value();
+        op.dy = shift_dy->value();
+        op.wrap = shift_wrap->isChecked();
+        if (!op.wrap)
+            if (auto v = number(shift_fill, "fill", 0, 255, err))
+                op.value = uint8_t(*v);
+        break;
+    case OpType::Flip:
+        op.axis = parse_axis(flip_axis->currentData().toString().toStdString()).value_or(Axis::Horizontal);
+        break;
+    case OpType::Levels:
+        op.curve = parse_curve(levels_curve->currentData().toString().toStdString()).value_or(Curve::Invert);
+        op.amount = op.curve == Curve::Invert ? 0.0 : levels_amount->value();
+        break;
+    case OpType::Filter:
+        op.kernel = parse_kernel(filter_kernel->currentData().toString().toStdString()).value_or(Kernel::Blur);
+        break;
+    case OpType::Stamp:
+        op.source = uint32_t(number(stamp_from, "copy from", 0, UINT32_MAX, err).value_or(0));
+        break;
+    case OpType::Fill:
+        if (auto v = number(fill_value, "value", 0, 255, err))
+            op.value = uint8_t(*v);
+        break;
     }
     r.op = op;
 
@@ -618,12 +755,27 @@ void RuleEditor::refresh()
     swap_a->setEnabled(swap_mode->currentData() == "fixed");
     swap_b->setEnabled(swap_mode->currentData() == "fixed");
     freeze_value->setEnabled(freeze_mode->currentData() == "value");
+    shift_fill->setEnabled(!shift_wrap->isChecked());
+    levels_amount->setEnabled(levels_curve->currentData() != QString(curve_name(Curve::Invert)));
+    bool custom_range = region_combo->currentData().toString().isEmpty();
+    bool rect = shape_combo->currentData() == "rect";
+    shape_combo->setEnabled(custom_range);
+    rect_fields->setEnabled(custom_range && rect);
+    last_edit->setEnabled(custom_range && !rect);
+    auto area_op = is_area_op(parse_op(op_combo->currentData().toString().toStdString()).value_or(OpType::Random));
+    count_spin->setEnabled(!area_op); // area ops act on the whole area
+    pick_combo->setEnabled(!area_op);
     bool at_load = when_combo->currentData() == QString(trigger_name(TriggerType::AtLoad));
     window_enabled->setEnabled(!at_load); // the run's start isn't a frame
     window_start->setEnabled(window_enabled->isChecked());
     window_end->setEnabled(window_enabled->isChecked());
 
     auto b = build();
+    if (custom_range && rect)
+    {
+        QSignalBlocker quiet(last_edit);
+        last_edit->setText(hex4(b.rule.range.last)); // the rectangle's bottom-right byte
+    }
     summary_label->setText(qs(describe_rule(b.rule)));
     error_label->setText(b.error);
     buttons->button(QDialogButtonBox::Ok)->setEnabled(b.error.isEmpty());

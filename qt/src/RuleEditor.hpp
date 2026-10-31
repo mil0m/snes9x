@@ -51,6 +51,9 @@ class RuleEditor : public QDialog
     QComboBox *region_combo;
     QLineEdit *first_edit;
     QLineEdit *last_edit;
+    QComboBox *shape_combo;
+    QSpinBox *rect_row, *rect_width, *rect_height;
+    QWidget *rect_fields;
 
     QComboBox *op_combo;
     QStackedWidget *op_pages;
@@ -69,6 +72,15 @@ class RuleEditor : public QDialog
     QComboBox *freeze_mode;
     QLineEdit *freeze_value;
     QSpinBox *shuffle_window;
+    QSpinBox *shift_dx, *shift_dy;
+    QCheckBox *shift_wrap;
+    QLineEdit *shift_fill;
+    QComboBox *flip_axis;
+    QComboBox *levels_curve;
+    QDoubleSpinBox *levels_amount;
+    QComboBox *filter_kernel;
+    QLineEdit *stamp_from;
+    QLineEdit *fill_value;
 
     QComboBox *when_combo;
     QStackedWidget *when_pages;
