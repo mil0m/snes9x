@@ -59,6 +59,24 @@ std::string describe_op(const Rule &rule)
     case OpType::Shuffle:
         text = "shuffle " + plural(op.window, "byte");
         break;
+    case OpType::Shift:
+        return "shift " + std::to_string(op.dx) + ", " + std::to_string(op.dy) + (op.wrap ? "" : ", no wrap");
+    case OpType::Flip:
+        return op.axis == Axis::Both ? "flip both ways" : std::string("flip ") + axis_name(op.axis);
+    case OpType::Levels:
+    {
+        if (op.curve == Curve::Invert)
+            return "invert";
+        char buf[48];
+        snprintf(buf, sizeof(buf), "%s %g", curve_name(op.curve), op.amount);
+        return buf;
+    }
+    case OpType::Filter:
+        return std::string(kernel_name(op.kernel)) + " filter";
+    case OpType::Stamp:
+        return "stamp from " + hex4(op.source);
+    case OpType::Fill:
+        return "fill " + hex2(op.value.value_or(0));
     }
     return text + " x" + std::to_string(rule.count);
 }
@@ -88,6 +106,9 @@ std::string describe_trigger(const Trigger &t)
 std::string describe_range(const Rule &rule)
 {
     std::string where = target_name(rule.range.target);
+    if (rule.rect)
+        return where + " " + std::to_string(rule.rect->width) + "x" + std::to_string(rule.rect->height) + " at " +
+               hex4(rule.range.first) + " (rows of " + std::to_string(rule.rect->row) + ")";
     if (!rule.region.empty())
         return where + " " + rule.region;
     return where + " " + hex4(rule.range.first) + ".." + hex4(rule.range.last);

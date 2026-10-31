@@ -143,6 +143,66 @@ TEST_CASE("every field survives a round trip")
     CHECK(write_recipe(*again.recipe) == write_recipe(*r.recipe));
 }
 
+TEST_CASE("rectangles and area ops survive a round trip")
+{
+    auto r = parse_recipe(R"({"format":1,"rules":[
+        {"target":"rom","rect":{"start":"0x1000","row":64,"width":16,"height":32},"op":{"type":"shift","dx":3,"dy":-1},"when":{"at_load":true}},
+        {"target":"wram","rect":{"start":"0x2000","row":32,"width":8,"height":4},"op":{"type":"shift","dx":-2,"wrap":false,"value":"0x7F"},"when":{"every_frames":60}},
+        {"target":"rom","range":["0x0","0xFFF"],"op":{"type":"flip","axis":"vertical"},"when":{"at_load":true}},
+        {"target":"rom","range":["0x0","0xFFF"],"op":{"type":"levels","curve":"posterize","amount":4},"when":{"at_load":true}},
+        {"target":"rom","range":["0x0","0xFFF"],"op":{"type":"levels","curve":"invert"},"when":{"at_load":true}},
+        {"target":"vram","range":["0x0","0xFFF"],"op":{"type":"filter","kernel":"median"},"when":{"every_frames":2}},
+        {"target":"rom","rect":{"start":"0x0","row":16,"width":4,"height":4},"op":{"type":"stamp","from":"0x800"},"when":{"at_load":true}},
+        {"target":"rom","range":["0x10","0x1F"],"op":{"type":"fill","value":"0xEA"},"when":{"at_load":true}},
+        {"target":"wram","rect":{"start":"0x100","row":8,"width":4,"height":3},"op":{"type":"random"},"when":{"every_frames":1},"count":3}]})",
+                          {});
+    REQUIRE_MESSAGE(r.recipe, first_error(r));
+    auto &rules = r.recipe->rules;
+    REQUIRE(rules[0].rect);
+    CHECK(rules[0].range.first == 0x1000);
+    CHECK(rules[0].range.last == 0x1000 + 31 * 64 + 15);
+    CHECK(rules[0].rect->row == 64);
+    CHECK(rules[0].op.dx == 3);
+    CHECK(rules[0].op.dy == -1);
+    CHECK_FALSE(rules[1].op.wrap);
+    CHECK(rules[1].op.value == uint8_t(0x7F));
+    CHECK(rules[2].op.axis == Axis::Vertical);
+    CHECK(rules[3].op.curve == Curve::Posterize);
+    CHECK(rules[3].op.amount == 4);
+    CHECK(rules[5].op.kernel == Kernel::Median);
+    CHECK(rules[6].op.source == 0x800);
+    CHECK(rules[7].op.value == uint8_t(0xEA));
+    CHECK(rules[8].rect->height == 3);
+
+    auto text = write_recipe(*r.recipe);
+    CHECK(text.find("\"rect\"") != std::string::npos);
+    auto again = parse_recipe(text, {});
+    REQUIRE_MESSAGE(again.recipe, first_error(again));
+    CHECK(write_recipe(*again.recipe) == text);
+}
+
+TEST_CASE("levels without an amount get a sensible one; bad area settings are errors")
+{
+    auto r = parse_recipe(R"({"format":1,"rules":[
+        {"target":"rom","range":["0","9"],"op":{"type":"levels","curve":"gamma"},"when":{"at_load":true}},
+        {"target":"rom","range":["0","9"],"op":{"type":"levels","curve":"posterize"},"when":{"at_load":true}}]})", {});
+    REQUIRE_MESSAGE(r.recipe, first_error(r));
+    CHECK(r.recipe->rules[0].op.amount == doctest::Approx(1.5));
+    CHECK(r.recipe->rules[1].op.amount == 4);
+
+    for (auto bad : { R"({"target":"rom","range":["0","9"],"rect":{"start":"0","row":8,"width":2,"height":2},"op":{"type":"fill"},"when":{"at_load":true}})",
+                      R"({"target":"rom","rect":{"start":"0","row":8,"width":9,"height":2},"op":{"type":"fill"},"when":{"at_load":true}})",
+                      R"({"target":"rom","rect":{"start":"0","row":8,"width":2},"op":{"type":"fill"},"when":{"at_load":true}})",
+                      R"({"target":"rom","range":["0","9"],"op":{"type":"flip","axis":"diagonal"},"when":{"at_load":true}})",
+                      R"({"target":"rom","range":["0","9"],"op":{"type":"filter","kernel":"glow"},"when":{"at_load":true}})",
+                      R"({"target":"rom","range":["0","9"],"op":{"type":"levels","curve":"threshold","amount":300},"when":{"at_load":true}})",
+                      R"({"target":"oam","range":["0","9"],"op":{"type":"stamp","from":"0x21F"},"when":{"at_load":true}})" })
+    {
+        CAPTURE(bad);
+        CHECK_FALSE(parse_recipe(std::string(R"({"format":1,"rules":[)") + bad + "]}", {}).recipe);
+    }
+}
+
 TEST_CASE("rule salt round-trips and is omitted when zero")
 {
     auto r = parse_recipe(R"({"format":1,"name":"s","rules":[

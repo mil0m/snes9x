@@ -61,14 +61,84 @@ const char *op_name(OpType t)
     case OpType::Copy: return "copy";
     case OpType::Freeze: return "freeze";
     case OpType::Shuffle: return "shuffle";
+    case OpType::Shift: return "shift";
+    case OpType::Flip: return "flip";
+    case OpType::Levels: return "levels";
+    case OpType::Filter: return "filter";
+    case OpType::Stamp: return "stamp";
+    case OpType::Fill: return "fill";
     }
     return "?";
 }
 
+const char *axis_name(Axis a)
+{
+    switch (a)
+    {
+    case Axis::Horizontal: return "horizontal";
+    case Axis::Vertical: return "vertical";
+    case Axis::Both: return "both";
+    }
+    return "?";
+}
+
+std::optional<Axis> parse_axis(std::string_view name)
+{
+    for (auto a : { Axis::Horizontal, Axis::Vertical, Axis::Both })
+        if (name == axis_name(a))
+            return a;
+    return std::nullopt;
+}
+
+const char *curve_name(Curve c)
+{
+    switch (c)
+    {
+    case Curve::Invert: return "invert";
+    case Curve::Posterize: return "posterize";
+    case Curve::Threshold: return "threshold";
+    case Curve::Gamma: return "gamma";
+    case Curve::Contrast: return "contrast";
+    }
+    return "?";
+}
+
+std::optional<Curve> parse_curve(std::string_view name)
+{
+    for (auto c : { Curve::Invert, Curve::Posterize, Curve::Threshold, Curve::Gamma, Curve::Contrast })
+        if (name == curve_name(c))
+            return c;
+    return std::nullopt;
+}
+
+const char *kernel_name(Kernel k)
+{
+    switch (k)
+    {
+    case Kernel::Blur: return "blur";
+    case Kernel::Sharpen: return "sharpen";
+    case Kernel::Median: return "median";
+    case Kernel::Emboss: return "emboss";
+    case Kernel::Edges: return "edges";
+    case Kernel::Max: return "max";
+    case Kernel::Min: return "min";
+    }
+    return "?";
+}
+
+std::optional<Kernel> parse_kernel(std::string_view name)
+{
+    for (auto k : { Kernel::Blur, Kernel::Sharpen, Kernel::Median, Kernel::Emboss, Kernel::Edges, Kernel::Max, Kernel::Min })
+        if (name == kernel_name(k))
+            return k;
+    return std::nullopt;
+}
+
 std::optional<OpType> parse_op(std::string_view name)
 {
-    for (auto t : { OpType::Add, OpType::Random, OpType::Bitflip, OpType::Swap,
-                    OpType::Copy, OpType::Freeze, OpType::Shuffle })
+    for (auto t : { OpType::Add, OpType::Random, OpType::Bitflip, OpType::Swap, OpType::Copy, OpType::Freeze,
+                    OpType::Shuffle, OpType::Shift, OpType::Flip, OpType::Levels, OpType::Filter, OpType::Stamp,
+                    OpType::Fill })
         if (name == op_name(t))
             return t;
     return std::nullopt;
@@ -175,6 +245,14 @@ std::vector<WriteEvent> apply_op(const Op &op, OpState &state, MemoryAccess &mem
                 w.put(t, a, bytes[a - p]);
         }
         break;
+
+    case OpType::Shift:
+    case OpType::Flip:
+    case OpType::Levels:
+    case OpType::Filter:
+    case OpType::Stamp:
+    case OpType::Fill:
+        break; // area ops: apply_area_op
     }
 
     return w.events;
@@ -234,6 +312,14 @@ std::optional<std::string> validate_op(const Op &op, const AddressRange &range, 
         if (op.window < 2 || op.window > 256)
             return "window must be within 2..256";
         break;
+
+    case OpType::Shift:
+    case OpType::Flip:
+    case OpType::Levels:
+    case OpType::Filter:
+    case OpType::Stamp:
+    case OpType::Fill:
+        break; // area ops: validate_area_op, which knows the rectangle
     }
     return std::nullopt;
 }

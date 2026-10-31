@@ -1,4 +1,5 @@
 #pragma once
+#include "area_ops.h"
 #include "crash_map.h"
 #include "memory.h"
 #include "ops.h"
@@ -21,6 +22,9 @@ struct Rule
     std::string name;
     AddressRange range;
     std::string region; // named region the range came from, kept for saving; empty if literal
+    // A rectangle instead of a plain range: range.first is its top-left byte and range.last
+    // its bottom-right one (keep them in step with set_rect).
+    std::optional<Rect> rect;
     Op op;
     Trigger when;
     uint32_t count = 1;
@@ -51,5 +55,8 @@ std::vector<WriteEvent> tick_rule(const Rule &rule, RuleRuntime &rt, MemoryAcces
                                   const HotMask *locked = nullptr);
 
 std::optional<std::string> validate_rule(const Rule &rule, const MemoryAccess &mem);
+
+// Makes the rule cover a rectangle with its top-left at `start` (range.last follows).
+void set_rect(Rule &rule, Target target, uint32_t start, Rect rect);
 
 } // namespace corrupt

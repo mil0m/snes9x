@@ -102,21 +102,34 @@ std::vector<WriteEvent> tick_rule(const Rule &rule, RuleRuntime &rt, MemoryAcces
     }
 
     Rng rng = Rng::for_firing(seed, rule_index, rt.firings++);
+    const HotMask *skip = rule.avoid_hot && hot && !hot->empty() ? hot
+                          : locked && !locked->empty()              ? locked
+                                                                    : nullptr;
+    if (is_area_op(rule.op.type))
+        return apply_area_op(rule.op, area_of(rule.range, rule.rect), mem, rng, skip);
+
     uint32_t count = std::max<uint32_t>(1, uint32_t(std::lround(expected)));
+    // A rectangle picks among its cells; a plain range as before, so old recipes replay.
+    auto pick = [&](uint32_t n) {
+        if (!rule.rect)
+            return pick_distinct(rule.range, n, rng);
+        Area area = area_of(rule.range, rule.rect);
+        auto cells = pick_distinct({ rule.range.target, 0, area.cells() - 1 }, n, rng);
+        for (auto &c : cells)
+            c = area.cell(c);
+        return cells;
+    };
 
     std::vector<uint32_t> addresses;
     if (rule.pick == Pick::Sticky)
     {
         if (rt.sticky.empty())
-            rt.sticky = pick_distinct(rule.range, rule.count, rng);
+            rt.sticky = pick(rule.count);
         addresses.assign(rt.sticky.begin(), rt.sticky.begin() + std::min<size_t>(count, rt.sticky.size()));
     }
     else
-        addresses = pick_distinct(rule.range, count, rng);
+        addresses = pick(count);
 
-    const HotMask *skip = rule.avoid_hot && hot && !hot->empty() ? hot
-                          : locked && !locked->empty()              ? locked
-                                                                    : nullptr;
     return apply_op(scaled_op(rule.op, intensity), rt.op_state, mem, rule.range, addresses, rng, skip);
 }
 
@@ -124,7 +137,17 @@ std::optional<std::string> validate_rule(const Rule &rule, const MemoryAccess &m
 {
     if (auto err = validate_range(rule.range, mem))
         return "range: " + *err;
+    Area area = area_of(rule.range, rule.rect);
+    if (rule.rect)
+    {
+        if (auto err = validate_area(area, mem))
+            return "rect: " + *err;
+        if (area.last() != rule.range.last)
+            return "rect: its bottom-right byte doesn't match the range";
+    }
     if (auto err = validate_op(rule.op, rule.range, mem))
+        return std::string("op: ") + *err;
+    if (auto err = validate_area_op(rule.op, area, mem))
         return std::string("op: ") + *err;
     if (auto err = validate_trigger(rule.when))
         return "when: " + *err;
@@ -133,6 +156,14 @@ std::optional<std::string> validate_rule(const Rule &rule, const MemoryAccess &m
     if (rule.intensity < 0.0 || rule.intensity > 1.0)
         return "intensity must be within 0..1";
     return std::nullopt;
+}
+
+void set_rect(Rule &rule, Target target, uint32_t start, Rect rect)
+{
+    rule.rect = rect;
+    rule.range = { target, start, start };
+    rule.range.last = area_of(rule.range, rule.rect).last();
+    rule.region.clear();
 }
 
 } // namespace corrupt

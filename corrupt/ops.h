@@ -31,7 +31,49 @@ enum class OpType
     Copy,    // copy `length` bytes from a random spot in `from` to each picked address
     Freeze,  // hold `value`, or the value seen when first hit
     Shuffle, // permute the `window` bytes starting at each picked address
+
+    // Area ops: act on the rule's whole range or rectangle at once (area_ops.h).
+    Shift,  // move it by (dx, dy), wrapping or filling with `value`
+    Flip,   // mirror it along `axis`
+    Levels, // remap every value through `curve` (with `amount`)
+    Filter, // a 3x3 `kernel` over the 2D layout
+    Stamp,  // copy the same-sized region at `source` onto it
+    Fill,   // set every byte to `value`
 };
+
+enum class Axis
+{
+    Horizontal, // each row reversed
+    Vertical,   // the rows in reverse order
+    Both,
+};
+
+enum class Curve
+{
+    Invert,    // 255 - v
+    Posterize, // `amount` levels
+    Threshold, // 255 from `amount` up, else 0
+    Gamma,     // `amount` above 1 brightens
+    Contrast,  // `amount` -1..1
+};
+
+enum class Kernel
+{
+    Blur,
+    Sharpen,
+    Median,
+    Emboss,
+    Edges,
+    Max,
+    Min,
+};
+
+const char *axis_name(Axis a);
+std::optional<Axis> parse_axis(std::string_view name);
+const char *curve_name(Curve c);
+std::optional<Curve> parse_curve(std::string_view name);
+const char *kernel_name(Kernel k);
+std::optional<Kernel> parse_kernel(std::string_view name);
 
 const char *op_name(OpType t);
 std::optional<OpType> parse_op(std::string_view name);
@@ -51,6 +93,15 @@ struct Op
     uint32_t length = 1;
     std::optional<uint8_t> value;
     int window = 8;
+    // Area ops.
+    int dx = 0;
+    int dy = 0;
+    bool wrap = true;
+    Axis axis = Axis::Horizontal;
+    Curve curve = Curve::Invert;
+    double amount = 0.0;
+    Kernel kernel = Kernel::Blur;
+    uint32_t source = 0; // stamp: the top-left of the region copied from
 };
 
 // Per-rule state that has to survive between firings.

@@ -162,11 +162,13 @@ void parse_op_json(Ctx &ctx, const json &o, const std::string &path, Op &op, con
 {
     if (!require_object(ctx, o, path))
         return;
-    check_keys(ctx, o, path, { "type", "min", "max", "mode", "bits", "mask", "width", "a", "b", "from", "length", "value", "window" });
+    check_keys(ctx, o, path, { "type", "min", "max", "mode", "bits", "mask", "width", "a", "b", "from", "length", "value",
+                               "window", "dx", "dy", "wrap", "axis", "curve", "amount", "kernel" });
 
     if (!o.contains("type") || !o["type"].is_string() || !parse_op(o["type"].get<std::string>()))
     {
-        ctx.fail(path + ".type", "expected one of add, random, bitflip, swap, copy, freeze, shuffle");
+        ctx.fail(path + ".type", "expected one of add, random, bitflip, swap, copy, freeze, shuffle, shift, flip, "
+                                 "levels, filter, stamp, fill");
         return;
     }
     op.type = *parse_op(o["type"].get<std::string>());
@@ -201,6 +203,36 @@ void parse_op_json(Ctx &ctx, const json &o, const std::string &path, Op &op, con
     opt_field("value", op.value, 0, 255);
     opt_field("a", op.a, 0, 0xFFFFFF);
     opt_field("b", op.b, 0, 0xFFFFFF);
+    int_field("dx", op.dx, -0xFFFF, 0xFFFF);
+    int_field("dy", op.dy, -0xFFFF, 0xFFFF);
+    if (o.contains("wrap"))
+    {
+        if (o["wrap"].is_boolean())
+            op.wrap = o["wrap"].get<bool>();
+        else
+            ctx.fail(path + ".wrap", "expected true or false");
+    }
+    auto named = [&](const char *key, auto parse, auto &out, const char *expected) {
+        if (!o.contains(key))
+            return;
+        auto v = o[key].is_string() ? parse(o[key].get<std::string>()) : std::nullopt;
+        if (v)
+            out = *v;
+        else
+            ctx.fail(path + "." + key, std::string("expected one of ") + expected);
+    };
+    named("axis", parse_axis, op.axis, "horizontal, vertical, both");
+    named("curve", parse_curve, op.curve, "invert, posterize, threshold, gamma, contrast");
+    named("kernel", parse_kernel, op.kernel, "blur, sharpen, median, emboss, edges, max, min");
+    if (o.contains("amount"))
+    {
+        if (o["amount"].is_number())
+            op.amount = o["amount"].get<double>();
+        else
+            ctx.fail(path + ".amount", "expected a number");
+    }
+    else if (op.type == OpType::Levels) // a missing amount would make most curves do nothing
+        op.amount = op.curve == Curve::Posterize ? 4 : op.curve == Curve::Threshold ? 128 : op.curve == Curve::Gamma ? 1.5 : 0.5;
 
     if (o.contains("mode"))
     {
@@ -211,7 +243,9 @@ void parse_op_json(Ctx &ctx, const json &o, const std::string &path, Op &op, con
             ctx.fail(path + ".mode", "expected \"wrap\" or \"clamp\"");
     }
 
-    if (o.contains("from"))
+    if (o.contains("from") && op.type == OpType::Stamp)
+        int_field("from", op.source, 0, 0xFFFFFF); // the top-left of the region it copies
+    else if (o.contains("from"))
     {
         const json &f = o["from"];
         std::string fpath = path + ".from";
@@ -303,7 +337,8 @@ std::optional<Rule> parse_rule(Ctx &ctx, const json &r, size_t index, const Regi
         return std::nullopt;
 
     size_t errors_before = ctx.errors.size();
-    check_keys(ctx, r, path, { "name", "target", "range", "op", "when", "count", "pick", "enabled", "intensity", "avoid_hot", "salt" });
+    check_keys(ctx, r, path, { "name", "target", "range", "rect", "op", "when", "count", "pick", "enabled", "intensity",
+                               "avoid_hot", "salt" });
 
     Rule rule;
     rule.name = r.contains("name") && r["name"].is_string() ? r["name"].get<std::string>() : "rule " + std::to_string(index + 1);
@@ -315,11 +350,40 @@ std::optional<Rule> parse_rule(Ctx &ctx, const json &r, size_t index, const Regi
         if (!target)
             return std::nullopt;
     }
-    auto range = get_range(ctx, r, path, target, regions);
-    if (range)
+    std::optional<std::pair<AddressRange, std::string>> range;
+    if (r.contains("rect"))
     {
-        rule.range = range->first;
-        rule.region = range->second;
+        const json &rc = r["rect"];
+        std::string rpath = path + ".rect";
+        if (r.contains("range"))
+            ctx.fail(path, "has both a range and a rect; use one");
+        else if (!target)
+            ctx.fail(path, "a rect needs a target");
+        else if (require_object(ctx, rc, rpath))
+        {
+            check_keys(ctx, rc, rpath, { "start", "row", "width", "height" });
+            std::optional<int64_t> v[4];
+            const char *keys[4] = { "start", "row", "width", "height" };
+            for (int i = 0; i < 4; i++)
+                if (!rc.contains(keys[i]))
+                    ctx.fail(rpath, std::string("needs ") + keys[i]);
+                else
+                    v[i] = get_int_in(ctx, rc[keys[i]], rpath + "." + keys[i], 0, 0xFFFFFF);
+            if (v[0] && v[1] && v[2] && v[3])
+            {
+                set_rect(rule, *target, uint32_t(*v[0]), Rect{ uint32_t(*v[1]), uint32_t(*v[2]), uint32_t(*v[3]) });
+                range = std::pair{ rule.range, std::string() };
+            }
+        }
+    }
+    else
+    {
+        range = get_range(ctx, r, path, target, regions);
+        if (range)
+        {
+            rule.range = range->first;
+            rule.region = range->second;
+        }
     }
 
     if (r.contains("op"))
@@ -442,6 +506,33 @@ ojson op_json(const Op &op)
         break;
     case OpType::Shuffle:
         o["window"] = op.window;
+        break;
+    case OpType::Shift:
+        o["dx"] = op.dx;
+        o["dy"] = op.dy;
+        if (!op.wrap)
+        {
+            o["wrap"] = false;
+            if (op.value)
+                o["value"] = hex_byte(*op.value);
+        }
+        break;
+    case OpType::Flip:
+        o["axis"] = axis_name(op.axis);
+        break;
+    case OpType::Levels:
+        o["curve"] = curve_name(op.curve);
+        if (op.curve != Curve::Invert)
+            o["amount"] = op.amount;
+        break;
+    case OpType::Filter:
+        o["kernel"] = kernel_name(op.kernel);
+        break;
+    case OpType::Stamp:
+        o["from"] = hex_addr(op.source);
+        break;
+    case OpType::Fill:
+        o["value"] = hex_byte(op.value.value_or(0));
         break;
     }
     return o;
@@ -696,7 +787,10 @@ std::string write_recipe(const Recipe &recipe)
         ojson j;
         j["name"] = r.name;
         j["target"] = target_name(r.range.target);
-        if (r.region.empty())
+        if (r.rect)
+            j["rect"] = { { "start", hex_addr(r.range.first) }, { "row", r.rect->row }, { "width", r.rect->width },
+                          { "height", r.rect->height } };
+        else if (r.region.empty())
             j["range"] = range_json(r.range);
         else
             j["range"] = r.region;

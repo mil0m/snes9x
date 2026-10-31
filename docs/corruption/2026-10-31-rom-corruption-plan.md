@@ -298,6 +298,37 @@ Findings while building phase 1:
   is empty while it knows nothing about a target, and the viewer refreshes a big target
   twice a second instead of ten times.
 
+## Phase 2 in detail
+
+Built in four steps, each pushed:
+
+1. **Rectangles and area ops in the engine.** A rule can cover a rectangle instead of a
+   range: `"rect": { "start": "0x1000", "row": 64, "width": 16, "height": 32 }` (top-left
+   byte, row width, width and height in bytes). Every existing op works on it, picking
+   bytes inside the rectangle. Six new **area ops** act on the whole region at once
+   (a plain range counts as one row):
+   - `shift`: `dx`, `dy` (bytes, rows; negative is left or up), `wrap` (default true; false
+     fills with `value`, default 0).
+   - `flip`: `axis` `horizontal`, `vertical` or `both`.
+   - `levels`: `curve` `invert`, `posterize` (`amount` levels, 2-128), `threshold`
+     (`amount` 0-255), `gamma` (`amount` 0.1-10), `contrast` (`amount` -1..1).
+   - `filter`: `kernel` `blur`, `sharpen`, `median`, `emboss`, `edges`, `max`, `min`
+     (3×3 over the 2D layout; the edges repeat).
+   - `stamp`: copies the same-sized region starting at `from` onto this one.
+   - `fill`: every byte to `value`.
+   Area ops ignore `count` and `pick`; intensity below 1 is the chance to fire, as for
+   one-byte rules. Their writes go through the same masks (locked bytes, avoid_hot).
+2. **Rectangle selection in the viewer.** Alt-drag in the pixel view draws a rectangle in
+   the current row width; New Rule from Selection makes a rect rule. The rule editor
+   shows the rectangle and the new ops.
+3. **Paint.** A paint mode in the pixel view: a value (eyedropper with Alt-click), brush
+   size, strokes written at once through the session and kept in the recipe as a
+   `patches` list that applies when the run starts, like `at_load`.
+4. **PNG round trip.** Export a selection (or all) as an 8-bit greyscale PNG at the row
+   width; import a PNG of the same size back, and the bytes that differ become patches.
+
+Sub-byte pixels (1, 2 or 4 bits per dot) come after, if wanted.
+
 ## Risks
 
 - **Tracer speed.** An extra indirect call on every instruction. Installed only while

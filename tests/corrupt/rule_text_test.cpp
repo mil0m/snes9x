@@ -33,6 +33,24 @@ TEST_CASE("each op has a short description")
     CHECK(describe_op(with_op({ .type = OpType::Freeze, .value = uint8_t(0) }, 2)) == "freeze at 0x00 x2");
     CHECK(describe_op(with_op({ .type = OpType::Freeze })) == "freeze as hit x1");
     CHECK(describe_op(with_op({ .type = OpType::Shuffle, .window = 8 })) == "shuffle 8 bytes x1");
+    // Area ops work on the whole area: no count.
+    CHECK(describe_op(with_op({ .type = OpType::Shift, .dx = 3, .dy = -1 }, 5)) == "shift 3, -1");
+    CHECK(describe_op(with_op({ .type = OpType::Shift, .dx = 2, .wrap = false })) == "shift 2, 0, no wrap");
+    CHECK(describe_op(with_op({ .type = OpType::Flip, .axis = Axis::Both })) == "flip both ways");
+    CHECK(describe_op(with_op({ .type = OpType::Flip, .axis = Axis::Vertical })) == "flip vertical");
+    CHECK(describe_op(with_op({ .type = OpType::Levels, .curve = Curve::Invert })) == "invert");
+    CHECK(describe_op(with_op({ .type = OpType::Levels, .curve = Curve::Posterize, .amount = 4 })) == "posterize 4");
+    CHECK(describe_op(with_op({ .type = OpType::Levels, .curve = Curve::Gamma, .amount = 1.5 })) == "gamma 1.5");
+    CHECK(describe_op(with_op({ .type = OpType::Filter, .kernel = Kernel::Median })) == "median filter");
+    CHECK(describe_op(with_op({ .type = OpType::Stamp, .source = 0x800 })) == "stamp from 0x0800");
+    CHECK(describe_op(with_op({ .type = OpType::Fill, .value = uint8_t(0xEA) })) == "fill 0xEA");
+}
+
+TEST_CASE("a rectangle reads as its corner and size")
+{
+    Rule r;
+    set_rect(r, Target::ROM, 0x1000, Rect{ 64, 16, 32 });
+    CHECK(describe_range(r) == "rom 16x32 at 0x1000 (rows of 64)");
 }
 
 TEST_CASE("each trigger has a short description")
