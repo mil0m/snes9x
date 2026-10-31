@@ -19,6 +19,8 @@ void Engine::replace_rule(size_t index, Rule rule)
     if (index >= current.rules.size())
         return;
     current.rules[index] = std::move(rule);
+    aimed.erase(ids[index]);
+    run_flags = {}; // an edited rule aims with the map as it is now
     ids[index] = next_id++;
     runtimes[index] = RuleRuntime{};
     mutes[index] = 0;
@@ -38,6 +40,7 @@ void Engine::remove_rule(size_t index)
     if (index >= current.rules.size())
         return;
     current.rules.erase(current.rules.begin() + std::ptrdiff_t(index));
+    aimed.erase(ids[index]);
     ids.erase(ids.begin() + std::ptrdiff_t(index));
     runtimes.erase(runtimes.begin() + std::ptrdiff_t(index));
     mutes.erase(mutes.begin() + std::ptrdiff_t(index));
@@ -113,6 +116,8 @@ void Engine::restart()
     runtimes.assign(current.rules.size(), RuleRuntime{});
     mutes.assign(current.rules.size(), 0); // they refer to frames of the previous run
     log.clear();
+    aimed.clear(); // the next run aims at the map as it is then
+    run_flags = {};
     frame = 0;
     pending_hotkeys = 0;
     released = false;
@@ -131,7 +136,7 @@ size_t Engine::fire_at_load(MemoryAccess &mem, const std::function<bool(Target)>
         if (which && !which(rule.range.target))
             continue;
         auto events = tick_rule(rule, runtimes[i], mem, Rng::rule_seed(current.seed, rule.salt), i, 0, 0,
-                                current.intensity, &hot_and_locked, &locked);
+                                current.intensity, &hot_and_locked, &locked, aim_for(i, mem));
         for (auto &e : events)
             log.push_back({ 0, i, e });
         written += events.size();
@@ -213,13 +218,52 @@ void Engine::on_frame(MemoryAccess &mem)
             continue;
         auto &rule = current.rules[i];
         auto events = tick_rule(rule, runtimes[i], mem, Rng::rule_seed(current.seed, rule.salt), i, frame, hotkeys,
-                                current.intensity, &hot_and_locked, &locked);
+                                current.intensity, &hot_and_locked, &locked, aim_for(i, mem));
         for (auto &e : events)
             log.push_back({ frame, i, e });
     }
 
     while (log.size() > kEventLogLimit)
         log.pop_front();
+}
+
+const AimedBytes *Engine::aim_for(uint32_t index, MemoryAccess &mem)
+{
+    const Rule &rule = current.rules[index];
+    if (!needs_aim(rule))
+        return nullptr;
+    if (run_flags.empty() && code_flags)
+        run_flags = code_flags();
+    std::span<const uint8_t> flags = run_flags;
+    if (flags.empty() && !aimed.count(ids[index]))
+    {
+        aimed_now = { nullptr, flags }; // nothing known yet: try again next time
+        return &aimed_now;
+    }
+    auto [it, fresh] = aimed.try_emplace(ids[index]);
+    if (fresh)
+    {
+        size_t size = mem.size(Target::ROM);
+        if (const uint8_t *raw = mem.data(Target::ROM))
+            it->second = aim_rule(rule, { raw, size }, flags);
+        else
+        {
+            std::vector<uint8_t> rom(size);
+            for (size_t i = 0; i < size; i++)
+                rom[i] = mem.read(Target::ROM, uint32_t(i));
+            it->second = aim_rule(rule, rom, flags);
+        }
+    }
+    aimed_now = { &it->second, flags };
+    return &aimed_now;
+}
+
+size_t Engine::aimed_count(size_t index) const
+{
+    if (index >= ids.size())
+        return 0;
+    auto it = aimed.find(ids[index]);
+    return it == aimed.end() ? 0 : it->second.size();
 }
 
 EngineSnapshot Engine::snapshot() const

@@ -172,6 +172,7 @@ class CorruptionSession
     corrupt::RomTracer tracer;
     corrupt::RomAddresses rom_where;        // for disassembly in the viewer
     std::vector<uint8_t> code_shown;        // everyone's map, copied between frames while the viewer shows the ROM
+    std::vector<uint8_t> code_for_aim;      // everyone's map as aimed rules saw it when this run started
     corrupt::CodeCoverage code_coverage;
     std::filesystem::path code_map_root;    // the library the map came from (and is saved to)
     bool code_map_reload = false;           // the library changed: reload between frames

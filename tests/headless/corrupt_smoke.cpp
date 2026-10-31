@@ -115,6 +115,25 @@ bool classic(const Recipe &recipe)
 int run_guarded(const Recipe &recipe, int frames, bool blame_by_use)
 {
     CodeMap map(Memory.CalculatedSize);
+    // A code map saved earlier (--codemap's file) gives aimed rules something to aim at.
+    if (const char *file = getenv("CORRUPT_CODEMAP"))
+    {
+        std::ifstream in(file, std::ios::binary);
+        std::string bytes((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+        std::string error;
+        auto loaded = decode_code_map(bytes, error);
+        if (loaded && map.merge(*loaded))
+            printf("codemap  %zu code bytes known from %s\n", map.coverage().code, file);
+        else
+            printf("codemap  %s not used: %s\n", file, error.empty() ? "another ROM size" : error.c_str());
+    }
+    std::vector<uint8_t> aim_flags;
+    engine.set_code_flags([&] {
+        aim_flags = map.flags();
+        for (auto &f : aim_flags)
+            f &= codeflag::All;
+        return std::span<const uint8_t>(aim_flags);
+    });
     RomTracer tracer;
     RomBlame blame(rom); // before the run starts, so it sees the at_load changes
     if (blame_by_use && tracer.start(map))
@@ -173,6 +192,7 @@ int run_guarded(const Recipe &recipe, int frames, bool blame_by_use)
     if (tracer.tracing())
         printf("codemap  %zu code bytes seen\n", map.coverage().code);
     tracer.stop();
+    engine.set_code_flags({});
     printf("reboots  %u seen by the reset watch (rolled-back ones included)\n", access.sample().reboots);
     printf("writes   %zu verified in emulator memory, %zu mismatched\n", verified, mismatched);
     return mismatched == 0 ? 0 : 1;

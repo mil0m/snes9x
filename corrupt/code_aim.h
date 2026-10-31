@@ -40,6 +40,11 @@ struct Aim
 // ORA EOR CMP LDA BIT; the shifts with INC DEC; the branches; ...). Alone: just itself.
 std::span<const uint8_t> swap_group(uint8_t op);
 
+constexpr bool is_code_op(OpType t)
+{
+    return t == OpType::OpcodeSwap || t == OpType::BranchFlip || t == OpType::NopOut;
+}
+
 constexpr bool is_conditional_branch(uint8_t op) { return (op & 0x1F) == 0x10; } // BPL BMI ... BEQ
 constexpr uint8_t flipped_branch(uint8_t op) { return uint8_t(op ^ 0x20); }
 

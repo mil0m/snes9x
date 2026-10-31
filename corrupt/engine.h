@@ -2,6 +2,8 @@
 #include "recipe.h"
 
 #include <deque>
+#include <span>
+#include <unordered_map>
 #include <functional>
 #include <string>
 #include <vector>
@@ -59,6 +61,12 @@ class Engine
     void rename_region(const std::string &from, const std::string &to); // empty `to`: unnamed; no restart
     void set_hot_mask(HotMask mask); // for rules with avoid_hot; no restart
     void set_locked(HotMask mask);   // bytes no rule may write (the ROM header and vectors); no restart
+    // Where aimed ROM rules learn what each byte is: the code map's flags (everyone's).
+    // Called once per run, when an aimed rule first fires; the span must stay valid until
+    // the next run starts.
+    void set_code_flags(std::function<std::span<const uint8_t>()> flags) { code_flags = std::move(flags); }
+    // How many bytes an aimed rule picks from this run (0 until it first fires).
+    size_t aimed_count(size_t index) const;
 
     void on_frame(MemoryAccess &mem);
 
@@ -105,6 +113,7 @@ class Engine
 
   private:
     void restart();
+    const AimedBytes *aim_for(uint32_t index, MemoryAccess &mem);
 
     Recipe current;
     std::vector<RuleRuntime> runtimes;
@@ -119,6 +128,10 @@ class Engine
     uint16_t pending_hotkeys = 0;
     bool hold = false;
     bool released = false;
+    std::function<std::span<const uint8_t>()> code_flags;
+    std::unordered_map<uint64_t, std::vector<uint32_t>> aimed; // by rule id, for this run
+    AimedBytes aimed_now;
+    std::span<const uint8_t> run_flags; // the code map this run aims with
 };
 
 } // namespace corrupt

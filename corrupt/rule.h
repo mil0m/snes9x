@@ -1,5 +1,6 @@
 #pragma once
 #include "area_ops.h"
+#include "code_aim.h"
 #include "crash_map.h"
 #include "memory.h"
 #include "ops.h"
@@ -32,6 +33,7 @@ struct Rule
     bool enabled = true;
     double intensity = 1.0; // 0..1, scales count and the op's strength
     bool avoid_hot = false; // skip addresses the crash map has learned are dangerous
+    Aim aim;                // ROM only: pick bytes by their role in the code map
     uint64_t salt = 0;      // mixed into this rule's seed; re-rolling one rule changes it
 };
 
@@ -43,6 +45,23 @@ struct RuleRuntime
     uint64_t firings = 0;
 };
 
+// Whether the rule picks from the code map (an aim, or a code op).
+inline bool needs_aim(const Rule &rule)
+{
+    return rule.aim.active() || is_code_op(rule.op.type);
+}
+
+// For a rule that needs aim: the ROM offsets it may pick (worked out once per run), and
+// the code map, which code ops read widths from.
+struct AimedBytes
+{
+    const std::vector<uint32_t> *bytes = nullptr;
+    std::span<const uint8_t> flags;
+};
+
+// The offsets the rule may pick from the ROM and code map as they are now.
+std::vector<uint32_t> aim_rule(const Rule &rule, std::span<const uint8_t> rom, std::span<const uint8_t> flags);
+
 // Runs one rule for one frame. `frame` counts from activation, starting at 1.
 // `scale` multiplies the rule's intensity (the recipe's intensity). With rule.avoid_hot,
 // writes to bytes that `hot` marks are skipped, and every other write is the same as without
@@ -52,7 +71,7 @@ struct RuleRuntime
 std::vector<WriteEvent> tick_rule(const Rule &rule, RuleRuntime &rt, MemoryAccess &mem,
                                   uint64_t seed, uint32_t rule_index, uint64_t frame,
                                   uint16_t pressed_hotkeys, double scale = 1.0, const HotMask *hot = nullptr,
-                                  const HotMask *locked = nullptr);
+                                  const HotMask *locked = nullptr, const AimedBytes *aimed = nullptr);
 
 std::optional<std::string> validate_rule(const Rule &rule, const MemoryAccess &mem);
 

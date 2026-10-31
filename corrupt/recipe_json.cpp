@@ -338,7 +338,7 @@ std::optional<Rule> parse_rule(Ctx &ctx, const json &r, size_t index, const Regi
 
     size_t errors_before = ctx.errors.size();
     check_keys(ctx, r, path, { "name", "target", "range", "rect", "op", "when", "count", "pick", "enabled", "intensity",
-                               "avoid_hot", "salt" });
+                               "avoid_hot", "salt", "role", "classes", "except" });
 
     Rule rule;
     rule.name = r.contains("name") && r["name"].is_string() ? r["name"].get<std::string>() : "rule " + std::to_string(index + 1);
@@ -408,6 +408,33 @@ std::optional<Rule> parse_rule(Ctx &ctx, const json &r, size_t index, const Regi
         else if (p != "fresh")
             ctx.fail(path + ".pick", "expected \"fresh\" or \"sticky\"");
     }
+
+    if (r.contains("role"))
+    {
+        auto role = r["role"].is_string() ? parse_role(r["role"].get<std::string>()) : std::nullopt;
+        if (role)
+            rule.aim.role = *role;
+        else
+            ctx.fail(path + ".role", "expected one of any, opcode, operand, code, data, dma, used");
+    }
+    for (auto [key, out] : { std::pair{ "classes", &rule.aim.classes }, std::pair{ "except", &rule.aim.except } })
+        if (r.contains(key))
+        {
+            const json &list = r[key];
+            if (!list.is_array())
+                ctx.fail(path + "." + key, "expected a list of instruction classes");
+            else
+                for (auto &c : list)
+                {
+                    auto cls = c.is_string() ? class_from_name(c.get<std::string>()) : std::nullopt;
+                    if (cls)
+                        out->push_back(*cls);
+                    else
+                        ctx.fail(path + "." + key, "unknown class " + c.dump() +
+                                                       "; expected arith, logic, shift, compare, load, store, transfer, "
+                                                       "branch, jump, return, stack, flags, width, block or misc");
+                }
+        }
 
     for (auto [key, out] : { std::pair{ "enabled", &rule.enabled }, std::pair{ "avoid_hot", &rule.avoid_hot } })
         if (r.contains(key))
@@ -885,6 +912,16 @@ std::string write_recipe(const Recipe &recipe)
             j["intensity"] = r.intensity;
         if (r.avoid_hot)
             j["avoid_hot"] = true;
+        if (r.aim.role != Role::Any)
+            j["role"] = role_name(r.aim.role);
+        for (auto [key, list] : { std::pair{ "classes", &r.aim.classes }, std::pair{ "except", &r.aim.except } })
+            if (!list->empty())
+            {
+                auto names = json::array();
+                for (auto c : *list)
+                    names.push_back(class_name(c));
+                j[key] = names;
+            }
         if (r.salt)
             j["salt"] = r.salt;
         rules.push_back(j);

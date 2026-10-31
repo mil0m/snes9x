@@ -213,6 +213,13 @@ void CorruptionSession::gameLoaded()
     rom.set_clock([this] { return engine.current_frame(); });
     rom.game_loaded(SnesCoreAccess::locked_rom()); // still clean: nothing has run yet
     engine.set_locked(rom.locked_mask());
+    // Aimed ROM rules pick from everyone's code map, as it is when their run starts.
+    engine.set_code_flags([this] {
+        code_for_aim = code_map.combined().flags();
+        for (auto &f : code_for_aim)
+            f &= codeflag::All;
+        return std::span<const uint8_t>(code_for_aim);
+    });
 
     backupNow("load"); // before the first frame runs
     message = "Loaded " + game_folder_name(game.title, game.sha256);
