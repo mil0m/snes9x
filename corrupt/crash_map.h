@@ -24,6 +24,9 @@ class CrashMap
     static constexpr uint32_t kBlock = 16;
     static constexpr uint32_t kHotCrashes = 2; // one crash is never enough
     static constexpr double kHotDanger = 0.4; // 0.5 helped less on held-out seeds in FE4
+    // ...and its crash rate must be this many times the rest of that memory's. Where crash
+    // loops blame nearly every block (FF6), the top of the noise is only ~2x and isn't hot.
+    static constexpr double kHotLift = 3.0;
 
     void add_crash(Target t, uint32_t offset, uint32_t n = 1);
     void add_survival(Target t, uint32_t offset, uint32_t n = 1);
@@ -33,7 +36,9 @@ class CrashMap
 
     BlockCounts counts(Target t, uint32_t offset) const;
     double danger(Target t, uint32_t offset) const { return danger_of(counts(t, offset)); }
-    bool hot(Target t, uint32_t offset) const { return hot_of(counts(t, offset)); }
+    bool hot(Target t, uint32_t offset) const { return hot_in(t, counts(t, offset)); }
+    bool hot_in(Target t, BlockCounts c) const; // c: one of t's blocks
+    double others_rate(Target t, BlockCounts c) const; // crash rate of t's other blocks
     size_t hot_blocks() const; // across all targets
 
     // Keyed by the block's first offset, in order.
@@ -41,10 +46,12 @@ class CrashMap
 
     // A crash rate with a small prior, 0..1.
     static double danger_of(BlockCounts c) { return c.crashes / (c.crashes + c.survivals + 2.0); }
+    // The block's own half of hot; hot_in() also compares it with the rest of the memory.
     static bool hot_of(BlockCounts c) { return c.crashes >= kHotCrashes && danger_of(c) >= kHotDanger; }
 
   private:
     std::array<std::map<uint32_t, BlockCounts>, kTargetCount> per_target;
+    std::array<BlockCounts, kTargetCount> totals{}; // summed over each memory's blocks
 };
 
 // The hot blocks as a per-byte lookup, for the engine to check picked addresses quickly.

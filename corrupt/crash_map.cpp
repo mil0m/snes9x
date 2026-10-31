@@ -23,11 +23,13 @@ uint32_t largest_size(Target t)
 void CrashMap::add_crash(Target t, uint32_t offset, uint32_t n)
 {
     per_target[size_t(t)][block_of(offset)].crashes += n;
+    totals[size_t(t)].crashes += n;
 }
 
 void CrashMap::add_survival(Target t, uint32_t offset, uint32_t n)
 {
     per_target[size_t(t)][block_of(offset)].survivals += n;
+    totals[size_t(t)].survivals += n;
 }
 
 void CrashMap::merge(const CrashMap &other)
@@ -38,6 +40,8 @@ void CrashMap::merge(const CrashMap &other)
             auto &mine = per_target[t][block];
             mine.crashes += c.crashes;
             mine.survivals += c.survivals;
+            totals[t].crashes += c.crashes;
+            totals[t].survivals += c.survivals;
         }
 }
 
@@ -45,6 +49,7 @@ void CrashMap::clear()
 {
     for (auto &m : per_target)
         m.clear();
+    totals = {};
 }
 
 bool CrashMap::empty() const
@@ -62,12 +67,27 @@ BlockCounts CrashMap::counts(Target t, uint32_t offset) const
     return it == m.end() ? BlockCounts{} : it->second;
 }
 
+double CrashMap::others_rate(Target t, BlockCounts c) const
+{
+    auto &all = totals[size_t(t)];
+    double writes = double(all.crashes + all.survivals) - (c.crashes + c.survivals);
+    return writes > 0 ? (all.crashes - c.crashes) / writes : 0.0;
+}
+
+bool CrashMap::hot_in(Target t, BlockCounts c) const
+{
+    if (!hot_of(c))
+        return false;
+    double rate = double(c.crashes) / (c.crashes + c.survivals);
+    return rate >= kHotLift * others_rate(t, c);
+}
+
 size_t CrashMap::hot_blocks() const
 {
     size_t n = 0;
-    for (auto &m : per_target)
-        for (auto &[block, c] : m)
-            n += hot_of(c);
+    for (auto t : kAllTargets)
+        for (auto &[block, c] : per_target[size_t(t)])
+            n += hot_in(t, c);
     return n;
 }
 
@@ -94,7 +114,7 @@ HotMask hot_mask(const CrashMap &map)
     HotMask mask;
     for (auto t : kAllTargets)
         for (auto &[block, c] : map.blocks(t))
-            if (CrashMap::hot_of(c))
+            if (map.hot_in(t, c))
                 mask.add_block(t, block);
     return mask;
 }

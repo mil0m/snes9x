@@ -23,12 +23,15 @@ weirder instead of ending in a crash.
   300 blocks a crash. The innocent ones keep surviving afterwards; the guilty ones crash
   nearly every time. Splitting the blame (1/300 each) would never let a culprit stand out.
 - **Danger** = crashes / (crashes + survivals + 2), a crash rate with a small prior.
-  **Hot** = at least 2 crashes and danger of at least 0.4 (0.5 at first; see findings).
+  **Hot** = at least 2 crashes, danger of at least 0.4 (0.5 at first), and a raw crash
+  rate at least 3× that of the memory's other blocks (added after testing; see findings).
   One crash never makes a block hot. Starting values, to tune from play.
-- **`avoid_hot` drops hot addresses** after a rule picks them (it doesn't draw new ones),
-  so rules without it replay exactly as before, and avoiding rules do a little less in
-  dangerous memory. With `avoid_hot`, replays only match while the map is the same. It
-  steers the picked addresses; a copy or swap's second address isn't checked.
+- **`avoid_hot` skips the writes to hot bytes** and nothing else: the rule picks and
+  draws its values as usual, so rules without it replay exactly as before, and an
+  avoiding rule makes exactly the writes the plain one would, minus the hot ones (also a
+  copy or swap's other end). With `avoid_hot`, replays only match while the map is the
+  same. (At first it removed hot addresses before drawing the values, which re-rolled
+  the writes after them; see findings.)
 - **Files**: `crashmap.<user>.json` in the game's library folder, one per person like the
   journal, holding only that person's counts. Every `crashmap.*.json` is read and summed
   when the game loads. Hex block keys, sorted, so diffs stay readable. Saved after each
@@ -73,6 +76,27 @@ weirder instead of ending in a crash.
   - Pocky & Rocky: crashes spread over 82 blocks with no clear hot spot; 16 → 16.
   - Reusing the learning seed instead (23 → 3) only showed that avoiding the exact writes
     that crashed avoids those crashes. The held-out seeds are the honest number.
+- **More testing (2026-10-31), with a control.** `--learn` now plays each held-out seed
+  three ways from the same start: plain, avoiding the learned blocks, and avoiding as
+  many random blocks the rules wrote. Both masks are fixed during the test, and it counts
+  the writes. `tests/headless/learn_summary.py` sums split runs.
+  - FE4, 20 held-out seeds: plain 231 crashes, learned 208, random 231. The two masks drop
+    about as many writes (149 and 136 of 11,995), but random never changed a crash and
+    learned changed 9 seeds (5 better, 4 worse). So the map does find culprits; the net
+    gain is about 10 %, because a run that avoids one crash plays on differently and can
+    crash elsewhere later.
+  - FF6 (a faster roulette: 4 bytes every 20 frames), 10 seeds: plain 56, learned **105**,
+    random 56. Avoiding made it worse. The 3 hot blocks had danger 0.40-0.45 while the
+    whole of WRAM ran at 0.20: crash loops blamed 501 of 512 blocks, so these were just the
+    top of the noise. Skipping writes to them led seed 55 into a crash loop at frame 3600
+    that the plain run never met. Hot now also needs a crash rate 3× the rest of the
+    memory's: FE4 keeps the same 6 blocks (5-8× its 0.09) and the same result; FF6 marks
+    none and is back to 56.
+  - Pocky & Rocky and Goof Troop learned nothing on either roulette (no block stood out;
+    Goof Troop hardly crashes).
+  - Avoiding first removed the hot addresses before drawing the values, which re-rolled
+    the values of every later address in the firing. Now the values are drawn for all
+    of them and only the hot writes are skipped (a test checks the rest is identical).
 - **Ideas for later, from the data:** a relative score (a block's crashes against how
   often its neighbours were blamed alongside it) could pick culprits out of crash loops;
   the guard's re-rolls are natural experiments (a crash that goes away when one rule's

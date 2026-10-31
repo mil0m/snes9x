@@ -217,18 +217,22 @@ conflicts. It's the data for deciding which policy suits which game.
 
 **The crash map.** The guard also learns where corruption crashes each game. Every
 memory is split into 16-byte blocks, and each block counts writes followed by a crash
-(the last 3 s before the trouble) and writes followed by 15 calm seconds. A block with at
-least 2 crashes and a crash rate of 0.4 or more (counted with a small prior) is
-**dangerous**. Rules with **Avoid dangerous bytes** ticked (the rule editor; `avoid_hot`
-in the JSON) skip those bytes, so runs crash less and last longer. The memory viewer's
+(the last 3 s before the trouble) and writes followed by 15 calm seconds. A block is
+**dangerous** when it has at least 2 crashes, a crash rate of 0.4 or more (counted with a
+small prior), and a crash rate at least 3 times the rest of that memory's. The last part
+matters in games whose crashes blame nearly everything: there the busiest blocks reach 0.4
+by chance. Rules with **Avoid dangerous bytes** ticked (the rule editor; `avoid_hot` in
+the JSON) skip their writes to those bytes, and every other write stays exactly the same. The memory viewer's
 **Danger** overlay shows the map in red, and the panel says how many dangerous areas it
 knows. It's kept in `<game>/crashmap.<you>.json`, one file per person like the journal;
 everyone's files add up when the game loads, so you and Erik teach each other's
-recipes. It learns slowly, because random writes hit any one block rarely: on Fire
-Emblem 4, five 5-minute sessions of the low-WRAM roulette marked 6 blocks, and avoiding
-them cut crashes on fresh seeds from 22 to 17. On Pocky & Rocky the crashes were too
-spread out to mark anything yet. Avoiding rules don't replay exactly once the map
-changes.
+recipes. It learns slowly, and only some games have clear dangerous spots. On Fire
+Emblem 4, five 5-minute sessions of the low-WRAM roulette marked 6 blocks; on 20 fresh
+seeds avoiding them cut crashes from 231 to 208 (fewer on 5 seeds, more on 4: once a run
+avoids a crash it plays on differently and can crash elsewhere), while avoiding 6 random
+blocks changed nothing. On Pocky & Rocky, Final Fantasy VI and Goof Troop nothing stood
+out, so the map stays empty and changes nothing. Avoiding rules don't replay exactly once
+the map changes.
 
 **Things worth knowing:**
 

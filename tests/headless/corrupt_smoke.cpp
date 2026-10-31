@@ -137,7 +137,14 @@ int guarded_learning(const Recipe &recipe, int frames, CrashMapKeeper &keeper, b
             {
                 ++*writes;
                 for (auto &p : *probes)
-                    p.hits += p.mask->is_hot(it->write.target, it->write.offset);
+                    if (p.mask->is_hot(it->write.target, it->write.offset))
+                    {
+                        p.hits++;
+                        if (getenv("CORRUPT_LEARN_VERBOSE") && fixed && fixed->empty() && &p == &probes->front())
+                            printf("    frame %llu: plain writes %s %s = %02X, which learned skips\n",
+                                   (unsigned long long)it->frame, target_name(it->write.target),
+                                   hex(it->write.offset).c_str(), it->write.new_value);
+                    }
             }
         auto out = guard.between_frames(engine, access);
         if (out.kind == GuardOutcome::Nothing)
@@ -182,20 +189,23 @@ int run_learning(const Recipe &recipe, int frames, int held, int from)
                                                              first.combined().blocks(t).end());
         if (blocks.empty())
             continue;
-        size_t crashed = 0, hot = 0;
+        size_t crashed = 0, hot = 0, crashes = 0, survivals = 0;
         for (auto &[b, c] : blocks)
         {
             crashed += c.crashes > 0;
-            hot += CrashMap::hot_of(c);
+            hot += first.combined().hot_in(t, c);
+            crashes += c.crashes;
+            survivals += c.survivals;
         }
-        printf("  %-5s %zu blocks seen, %zu in a crash window, %zu hot\n", target_name(t), blocks.size(), crashed, hot);
+        printf("  %-5s %zu blocks seen, %zu in a crash window, %zu hot; overall crash rate %.2f\n", target_name(t),
+               blocks.size(), crashed, hot, double(crashes) / double(std::max<size_t>(1, crashes + survivals)));
         std::sort(blocks.begin(), blocks.end(), [](auto &a, auto &b) {
             return CrashMap::danger_of(a.second) > CrashMap::danger_of(b.second);
         });
         for (size_t i = 0; i < blocks.size() && i < 8 && blocks[i].second.crashes; i++)
             printf("    %s  %u crashes, %u survivals, danger %.2f%s\n", hex(blocks[i].first).c_str(),
                    blocks[i].second.crashes, blocks[i].second.survivals, CrashMap::danger_of(blocks[i].second),
-                   CrashMap::hot_of(blocks[i].second) ? "  HOT" : "");
+                   first.combined().hot_in(t, blocks[i].second) ? "  HOT" : "");
     }
 
     // Fair test: other seeds (so other writes than the ones learned from), each played from
@@ -207,7 +217,7 @@ int run_learning(const Recipe &recipe, int frames, int held, int from)
     std::vector<std::pair<Target, uint32_t>> cool;
     for (auto t : kAllTargets)
         for (auto &[b, c] : first.combined().blocks(t))
-            if (!CrashMap::hot_of(c))
+            if (!first.combined().hot_in(t, c))
                 cool.push_back({ t, b });
     std::sort(cool.begin(), cool.end());
     size_t hot_count = first.hot_blocks();

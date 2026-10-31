@@ -41,6 +41,51 @@ TEST_SUITE("crash map")
         CHECK(m.hot_blocks() == 1);
     }
 
+    TEST_CASE("hot also needs a crash rate 3x the rest of the memory's, so noise doesn't count")
+    {
+        // FE4-like: crashes are rare, so a block where most writes crashed stands out.
+        CrashMap rare;
+        rare.add_crash(Target::WRAM, 0x320, 8);
+        rare.add_survival(Target::WRAM, 0x320, 1);
+        rare.add_crash(Target::WRAM, 0x330, 3);
+        rare.add_survival(Target::WRAM, 0x330, 2);
+        for (uint32_t b = 0x400; b < 0x2000; b += 16)
+            rare.add_survival(Target::WRAM, b, 10);
+        CHECK(rare.hot(Target::WRAM, 0x320));
+        CHECK(rare.hot(Target::WRAM, 0x330));
+        CHECK(rare.hot_blocks() == 2);
+
+        // FF6-like: long crash loops blame almost every block, so the top of the noise
+        // (9 crashes, 9 survivals: danger 0.45) is only ~2.5x the rest and isn't hot.
+        CrashMap noisy;
+        noisy.add_crash(Target::WRAM, 0x15E0, 9);
+        noisy.add_survival(Target::WRAM, 0x15E0, 9);
+        for (uint32_t b = 0x400; b < 0x1000; b += 16)
+        {
+            noisy.add_crash(Target::WRAM, b, 2);
+            noisy.add_survival(Target::WRAM, b, 8);
+        }
+        CHECK(noisy.danger(Target::WRAM, 0x15E0) >= CrashMap::kHotDanger);
+        CHECK_FALSE(noisy.hot(Target::WRAM, 0x15E0));
+        CHECK(noisy.hot_blocks() == 0);
+        CHECK(hot_mask(noisy).empty());
+
+        // The rate is the other blocks', so a block alone, or with only survivors, can be hot.
+        CrashMap alone;
+        alone.add_crash(Target::WRAM, 0x100, 3);
+        CHECK(alone.hot(Target::WRAM, 0x100));
+        // Per memory: crashes in ARAM don't raise the bar in WRAM.
+        alone.add_crash(Target::ARAM, 0x100, 50);
+        CHECK(alone.hot(Target::WRAM, 0x100));
+        // Every write crashed so far: nothing stands out until something survives.
+        CrashMap early;
+        early.add_crash(Target::WRAM, 0x100, 2);
+        early.add_crash(Target::WRAM, 0x200, 1);
+        CHECK_FALSE(early.hot(Target::WRAM, 0x100));
+        early.add_survival(Target::WRAM, 0x200, 5);
+        CHECK(early.hot(Target::WRAM, 0x100));
+    }
+
     TEST_CASE("maps from different people add up")
     {
         CrashMap a, b;
@@ -60,6 +105,7 @@ TEST_SUITE("crash map")
         CrashMap m;
         m.add_crash(Target::WRAM, 0x1F00, 3);
         m.add_crash(Target::WRAM, 0x0800, 1); // one crash: not hot
+        m.add_survival(Target::WRAM, 0x0800, 9);
         m.add_crash(Target::OAM, 0x10, 2);
         HotMask mask = hot_mask(m);
         CHECK(mask.is_hot(Target::WRAM, 0x1F00));

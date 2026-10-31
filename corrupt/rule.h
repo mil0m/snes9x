@@ -41,8 +41,9 @@ struct RuleRuntime
 
 // Runs one rule for one frame. `frame` counts from activation, starting at 1.
 // `scale` multiplies the rule's intensity (the recipe's intensity). With rule.avoid_hot,
-// picked addresses that `hot` marks are dropped (not redrawn), so rules without it, or
-// an empty mask, replay exactly as before.
+// writes to bytes that `hot` marks are skipped, and every other write is the same as without
+// it (values are still drawn for the skipped ones). Rules without it, or an empty mask,
+// replay exactly as before.
 std::vector<WriteEvent> tick_rule(const Rule &rule, RuleRuntime &rt, MemoryAccess &mem,
                                   uint64_t seed, uint32_t rule_index, uint64_t frame,
                                   uint16_t pressed_hotkeys, double scale = 1.0, const HotMask *hot = nullptr);

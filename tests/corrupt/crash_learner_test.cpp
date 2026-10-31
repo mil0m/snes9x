@@ -124,8 +124,11 @@ TEST_SUITE("crash learner")
             r.until(start + 60);
             r.learner.crash(start, start + 30, start, r.map);
             r.rollback_to(start);
-            // Afterwards the bystander gets hit again, and nothing happens.
+            // Afterwards the bystander gets hit again, and nothing happens; nor do writes
+            // all over the rest of memory, as in a real game.
             r.step_write(0x3000);
+            for (uint32_t quiet = 0x4000; quiet < 0x4100; quiet += 16)
+                r.step_write(quiet);
             r.until(r.frame + 1000);
         }
         CHECK(r.map.hot(Target::WRAM, 0x1F80));
