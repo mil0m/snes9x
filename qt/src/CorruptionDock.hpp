@@ -29,6 +29,7 @@ class CorruptionDock : public QDockWidget
 
     void refreshRecipes();
     void refreshBackups();
+    void openGuide(const QString &section); // a "## heading" of the guide, or empty for the top
 
   private:
     void refreshStatus();
@@ -52,7 +53,6 @@ class CorruptionDock : public QDockWidget
     void restoreSelectedBackup();
     void showMessage(const QString &text, bool error = false);
     void openViewer();
-    void openGuide(const QString &section); // a "## heading" of the guide, or empty for the top
     // SNES9X_UI_TOUR=<dir>: screenshots of every corruption window, for UX work (see
     // docs/corruption/README.md, "Developing").
     void tour(const QString &dir);

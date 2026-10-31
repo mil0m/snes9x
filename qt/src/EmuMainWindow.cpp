@@ -285,6 +285,11 @@ void EmuMainWindow::createWidgets()
     auto panel_item = corruption_dock->toggleViewAction();
     panel_item->setText(tr("Show &Panel"));
     corruption_menu->addAction(panel_item);
+    auto guide_item = corruption_menu->addAction(tr("&Guide…"));
+    connect(guide_item, &QAction::triggered, [this] {
+        corruption_dock->setVisible(true);
+        corruption_dock->openGuide({});
+    });
     connect(panel_item, &QAction::toggled, [&](bool visible) { app.config->corruption_panel_visible = visible; });
     menuBar()->addMenu(corruption_menu);
 
