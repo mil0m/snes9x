@@ -44,8 +44,8 @@ class RomBlame : public ByteBlame
     void collect(uint64_t frame); // after every frame, before the guard
     std::vector<uint32_t> take_survivals(); // bytes that turned survivors since the last take
 
-    size_t suspects(uint64_t after, uint64_t through) const override;
-    ByteBlameResult act(uint64_t after, uint64_t through, unsigned attempt) override;
+    size_t suspects(uint64_t after, uint64_t through, bool only_new = false) const override;
+    ByteBlameResult act(uint64_t after, uint64_t through, unsigned attempt, bool only_new = false) override;
 
     size_t watched() const { return offsets.size(); } // changed bytes
     const std::vector<uint32_t> &changed_offsets() const { return offsets; } // in no order
@@ -54,9 +54,9 @@ class RomBlame : public ByteBlame
 
   private:
     void changed(uint32_t offset, bool now_changed);
-    bool in_window(const ByteUse &u, uint64_t after, uint64_t through) const
+    bool in_window(const ByteUse &u, uint64_t after, uint64_t through, bool only_new) const
     {
-        return u.frames_used && u.first_used <= through && u.last_used > after;
+        return u.frames_used && u.first_used <= through && u.last_used > after && (!only_new || u.first_used > after);
     }
 
     RomKeeper &rom;

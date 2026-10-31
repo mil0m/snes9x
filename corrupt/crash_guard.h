@@ -60,10 +60,12 @@ struct ByteBlameResult
 };
 struct ByteBlame
 {
-    // How many suspects frames (after, through] have.
-    virtual size_t suspects(uint64_t after, uint64_t through) const = 0;
+    // How many suspects frames (after, through] have. With only_new, just the bytes first
+    // used inside the window: for a guess like a calm screen, a byte that has been running
+    // fine all along isn't evidence of anything.
+    virtual size_t suspects(uint64_t after, uint64_t through, bool only_new) const = 0;
     // Act on them; `attempt` is the crash's number in a row (1-based).
-    virtual ByteBlameResult act(uint64_t after, uint64_t through, unsigned attempt) = 0;
+    virtual ByteBlameResult act(uint64_t after, uint64_t through, unsigned attempt, bool only_new) = 0;
     virtual ~ByteBlame() = default;
 };
 

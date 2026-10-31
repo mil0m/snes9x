@@ -303,3 +303,21 @@ scratch folder. By default Snes9x writes the `.srm` next to the ROM.
 7. Copy someone else's `codemap.*.bin` into the folder (or rename yours to `codemap.erik.bin` and play a new area), and load the game.
    - [ ] Both maps show together.
 8. Does the game run noticeably slower than before? (It should cost about 5%.)
+
+## 23. Blame by execution
+1. Load FF6 with a library set. Make a recipe with one rule: target **rom**, range `0x0`-`0xFFFF`, random 0-255, **at load**, count 300. Turn it on (the console restarts from the corrupted ROM).
+2. Open the memory viewer on **rom**, **Pixels**, overlay **Changes**.
+   - [ ] 300 orange dots in the first 64 KB; dim ones the game hasn't used, bright ones it has. Hovering says `changed from 0x…, used in N frames` or `not used yet`.
+   - [ ] The panel's ROM line says `300 bytes changed, N used by the game`, and N grows as you play.
+3. Play until it crashes (or let the intro run).
+   - [ ] The message says something like `back 1.0 s, reverted 3 ROM bytes`, not `re-roll sprinkle`, and the game plays on.
+   - [ ] The changed count dropped by only that many; the other orange dots are still there.
+4. Keep going for a few minutes.
+   - [ ] It doesn't give up and switch corruption off the way classic runs used to after a few crashes in a row (it still can, on a stubborn one).
+5. Open the journal (`journal.<you>.jsonl` in the game's library folder).
+   - [ ] Crash lines have `rom_action` and `rom_bytes` with the offsets.
+6. Overlay **Crashes** on the ROM.
+   - [ ] The blocks of the reverted bytes show up.
+7. Add `"rom_policy": "reroll"` to the recipe file and load it again; crash it again.
+   - [ ] The message says `re-rolled N ROM bytes`, and those dots stay orange (a new value) instead of disappearing.
+

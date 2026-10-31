@@ -277,10 +277,19 @@ How the ROM behaves:
 - **The header and interrupt vectors can't be corrupted** (what the CPU sees at
   `$00:FFB0-$FFFF`). Rules skip those bytes.
 - **The crash guard undoes ROM changes too.** Save states don't hold the ROM, so after a
-  rollback the guard also puts back every ROM byte changed since the checkpoint. A classic
-  change is made before the game boots, so a rollback can't undo it: if one keeps crashing
-  the game, the guard gives up and restores the clean ROM. (Finding the one guilty byte
-  and undoing just that is coming: see the ROM plan.)
+  rollback the guard also puts back every ROM byte changed since the checkpoint.
+- **It blames the bytes the game actually used.** A changed ROM byte can only do harm once
+  the game runs it or reads it, and the code map sees exactly that. So when a crash comes,
+  the guard puts back only the changed bytes the game used just before it, and keeps every
+  other change: code the game reached for the first time goes first (the newest half on the
+  first crash, all of it on the second), then everything used before the crash. Classic
+  runs survive this way too, instead of giving up and losing the whole corruption. With
+  `"rom_policy": "reroll"` in the recipe, blamed bytes get a fresh random value instead of
+  the clean one. Blamed bytes count as crashes in the crash map, and changed bytes the game
+  kept using for 15 s count as calm, so **Avoid dangerous bytes** works on the ROM too.
+- The **Changes** overlay shows which ROM bytes differ from the clean ROM, bright orange
+  once the game has used them; hovering one says `changed from 0xE6, used in 340 frames`
+  or `not used yet`. The panel's ROM line counts both.
 - **Export ROM…** saves the ROM as it is now as a `.sfc`, with its checksum fixed, for
   other emulators or a flash cart.
 - The memory viewer shows the `rom` target like any other, in hex, pixels and tiles.
@@ -308,8 +317,9 @@ is saved in the library as `codemap.<name>.bin` (every minute while it grows, an
 game closes), and everyone's maps are combined when a game loads, so playing with Erik's
 library adds his exploration to yours. Watching costs about 4-7% of emulation speed.
 
-This is what the next phases aim with: corrupt operands but not opcodes, swap an
-instruction for one of the same length, flip a branch, and find the exact byte that crashed.
+This is what the crash guard blames with (see above), and what the next phases aim with:
+corrupt operands but not opcodes, swap an instruction for one of the same length, flip a
+branch.
 Not seen yet: code the game runs from WRAM (FF6 T-Edition's title screen waits in WRAM, for
 one), HDMA tables, and the SA-1's own CPU.
 

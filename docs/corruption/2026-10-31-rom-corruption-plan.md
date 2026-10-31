@@ -468,7 +468,9 @@ entries dropped, so a later, deeper rollback can't bring the bad value back.
 
 **The guard** gets the ROM blame as a second source of suspects: a checkpoint with used
 changed bytes after it counts as having something to blame, and when only ROM bytes are to
-blame no rule is punished. Journal lines and the on-screen message say what happened
+blame no rule is punished. For a *guess* (frame interrupt off, frozen or black picture) only
+newly reached bytes count: a changed byte that has run fine all along is no evidence that a
+quiet screen is a crash. Journal lines and the on-screen message say what happened
 ("back 1.0 s, reverted 2 ROM bytes").
 
 **The crash map learns from it**: blamed bytes count as crashes for their 16-byte ROM

@@ -146,7 +146,7 @@ GuardOutcome CrashGuard::handle(const CrashVerdict &verdict, Engine &engine, Cor
     size_t byte_suspects = 0;
     auto blame_after = [&](const Checkpoint &c) {
         suspects = suspects_between(engine, c.frame, through);
-        byte_suspects = bytes ? bytes->suspects(c.frame, through) : 0;
+        byte_suspects = bytes ? bytes->suspects(c.frame, through, verdict.heuristic) : 0;
         return !suspects.empty() || byte_suspects;
     };
     for (auto it = ring.rbegin(); it != ring.rend(); ++it)
@@ -217,7 +217,7 @@ GuardOutcome CrashGuard::handle(const CrashVerdict &verdict, Engine &engine, Cor
     restore(*cp, engine, core);
     if (byte_suspects)
     {
-        auto acted = bytes->act(restored, through, consecutive);
+        auto acted = bytes->act(restored, through, consecutive, verdict.heuristic);
         out.rom_blamed = std::move(acted.offsets);
         out.rom_action = std::move(acted.text);
         e.rom_blamed = out.rom_blamed;

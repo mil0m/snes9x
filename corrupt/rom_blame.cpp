@@ -112,17 +112,17 @@ const ByteUse *RomBlame::use(uint32_t offset) const
     return it == index.end() ? nullptr : &uses[it->second];
 }
 
-size_t RomBlame::suspects(uint64_t after, uint64_t through) const
+size_t RomBlame::suspects(uint64_t after, uint64_t through, bool only_new) const
 {
     if (!flags)
         return 0;
     size_t n = 0;
     for (auto &u : uses)
-        n += in_window(u, after, through);
+        n += in_window(u, after, through, only_new);
     return n;
 }
 
-ByteBlameResult RomBlame::act(uint64_t after, uint64_t through, unsigned attempt)
+ByteBlameResult RomBlame::act(uint64_t after, uint64_t through, unsigned attempt, bool only_new)
 {
     ByteBlameResult out;
     if (!flags)
@@ -131,7 +131,7 @@ ByteBlameResult RomBlame::act(uint64_t after, uint64_t through, unsigned attempt
     // already running, least proven first.
     std::vector<size_t> fresh, running;
     for (size_t i = 0; i < uses.size(); i++)
-        if (in_window(uses[i], after, through))
+        if (in_window(uses[i], after, through, only_new))
             (uses[i].first_used > after ? fresh : running).push_back(i);
     auto by_offset = [&](size_t a, size_t b) { return offsets[a] < offsets[b]; };
     std::sort(fresh.begin(), fresh.end(), [&](size_t a, size_t b) {

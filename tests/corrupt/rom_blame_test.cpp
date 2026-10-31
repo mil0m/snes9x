@@ -135,6 +135,20 @@ TEST_SUITE("rom blame")
         CHECK(f.blame.act(40, 60, 4).offsets.empty());
     }
 
+    TEST_CASE("only_new leaves bytes that were running before the window alone")
+    {
+        Fixture f;
+        f.change(0x10);
+        f.change(0x20);
+        f.run_to(30, { 0x10 });
+        f.run_to(40, { 0x10, 0x20 });
+        CHECK(f.blame.suspects(30, 40, true) == 1);
+        CHECK(f.blame.suspects(30, 40, false) == 2);
+        CHECK(f.blame.act(30, 40, 3, true).offsets == std::vector<uint32_t>{ 0x20 });
+        CHECK(f.blame.suspects(30, 40, true) == 0);
+        CHECK(f.blame.act(30, 40, 3, true).offsets.empty());
+    }
+
     TEST_CASE("with nothing newly reached, the least proven half goes first")
     {
         Fixture f;

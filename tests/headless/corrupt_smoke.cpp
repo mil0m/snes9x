@@ -9,7 +9,8 @@
 // reads back from emulator memory (i.e. CoreMemory writes land).
 //
 // With --guard it instead runs the recipe once under the crash guard, wired like
-// the Qt app, and reports every crash caught and rollback made.
+// the Qt app, and reports every crash caught and rollback made. Changed ROM bytes are
+// blamed by use (the code map tracer runs); `--guard noblame` blames rules only, as before.
 //
 // With --replay it starts the recipe at a frame boundary the way the Qt app does
 // (RunControl), runs it, plays on, then starts again from the saved moment and
@@ -42,6 +43,7 @@
 #include "corrupt/core_access.h"
 #include "corrupt/core_memory.h"
 #include "corrupt/crash_guard.h"
+#include "corrupt/rom_blame.h"
 #include "corrupt/crash_map_keeper.h"
 #include "corrupt/engine.h"
 #include "corrupt/hook.h"
@@ -108,9 +110,21 @@ bool classic(const Recipe &recipe)
     return false;
 }
 
-int run_guarded(const Recipe &recipe, int frames)
+// With `blame` (the default), changed ROM bytes are blamed by use, as in the app: the
+// code map tracer marks what the game runs and reads, and the guard reverts those.
+int run_guarded(const Recipe &recipe, int frames, bool blame_by_use)
 {
+    CodeMap map(Memory.CalculatedSize);
+    RomTracer tracer;
+    RomBlame blame(rom); // before the run starts, so it sees the at_load changes
+    if (blame_by_use && tracer.start(map))
+    {
+        blame.attach(map.data(), map.size());
+        blame.set_policy(recipe.rom_policy.value_or(RomPolicy::Revert), recipe.seed);
+    }
     CrashGuard guard;
+    if (blame.active())
+        guard.set_byte_blame(&blame);
     guard.set_policy(recipe.crash_policy.value_or(PolicyKind::Reroll));
     guard.set_detector_config(recipe.crash_detection.value_or(DetectorConfig{}));
     int journal_lines = 0;
@@ -119,16 +133,31 @@ int run_guarded(const Recipe &recipe, int frames)
     engine.set_recipe(recipe);
     start_run();
     printf("rom      %zu bytes changed at the start%s\n", rom.changed(), classic(recipe) ? ", then a power cycle" : "");
+    printf("blame    %s\n", blame.active() ? "by use (the code map tracer is on)" : "rules only");
+    guard.between_frames(engine, access); // the run's first checkpoint, at its start, as in the app
     S9xCorruptFrameHook = &frame_hook;
-    int caught = 0, gave_up = 0;
+    int caught = 0, gave_up = 0, played = 0;
+    size_t acted = 0, survivors = 0;
+    int moving = 0, nmi_on = 0; // is the game alive: a changing picture, the frame interrupt on
+    uint64_t last_picture = 0;
     for (int i = 0; i < frames; i++)
     {
         headless::run_frames(1);
+        played++;
+        auto signals = access.sample();
+        if (signals.picture_valid && signals.picture_hash != last_picture)
+            moving++;
+        if (signals.picture_valid)
+            last_picture = signals.picture_hash;
+        nmi_on += signals.nmi_enabled;
+        blame.collect(engine.current_frame());
         auto out = guard.between_frames(engine, access);
         rom.after_guard(out);
+        survivors += blame.take_survivals().size();
         if (out.kind == GuardOutcome::Nothing)
             continue;
         caught++;
+        acted += out.rom_blamed.size();
         gave_up += out.kind == GuardOutcome::GaveUp;
         printf("  call %5d  %s\n", i + 1, out.summary.c_str());
         if (out.kind == GuardOutcome::GaveUp)
@@ -137,7 +166,13 @@ int run_guarded(const Recipe &recipe, int frames)
     S9xCorruptFrameHook = nullptr;
     printf("guard    %d crashes caught, %d gave up, engine %s, %d journal lines\n", caught, gave_up,
            engine.active() ? "still active" : "off", journal_lines);
-    printf("rom      %zu bytes changed at the end\n", rom.changed());
+    printf("rom      %zu bytes changed at the end, %zu of them used by the game; %zu blamed and fixed, %zu survived 15 s of use\n",
+           rom.changed(), blame.used(), acted, survivors);
+    printf("played   %d of %d frames before %s; the picture changed in %d, the frame interrupt was on in %d\n", played,
+           frames, gave_up ? "giving up" : "the end", moving, nmi_on);
+    if (tracer.tracing())
+        printf("codemap  %zu code bytes seen\n", map.coverage().code);
+    tracer.stop();
     printf("reboots  %u seen by the reset watch (rolled-back ones included)\n", access.sample().reboots);
     printf("writes   %zu verified in emulator memory, %zu mismatched\n", verified, mismatched);
     return mismatched == 0 ? 0 : 1;
@@ -574,7 +609,7 @@ int main(int argc, char **argv)
 
     headless::run_frames(warmup);
     if (argc > 5 && std::string(argv[5]) == "--guard")
-        return run_guarded(*parsed.recipe, frames);
+        return run_guarded(*parsed.recipe, frames, !(argc > 6 && std::string(argv[6]) == "noblame"));
     if (argc > 5 && std::string(argv[5]) == "--map")
     {
         auto all = snapshot_targets();

@@ -489,20 +489,24 @@ TEST_SUITE("blaming single bytes the game used (ROM)")
     struct FakeBytes : ByteBlame
     {
         uint64_t used_at = 0;
+        bool running_all_along = false; // used before every window too: not new
         struct Act
         {
             uint64_t after, through;
             unsigned attempt;
+            bool only_new;
         };
         std::vector<Act> acts;
 
-        size_t suspects(uint64_t after, uint64_t through) const override
+        size_t suspects(uint64_t after, uint64_t through, bool only_new) const override
         {
+            if (only_new && running_all_along)
+                return 0;
             return used_at && used_at > after && used_at <= through ? 2 : 0;
         }
-        ByteBlameResult act(uint64_t after, uint64_t through, unsigned attempt) override
+        ByteBlameResult act(uint64_t after, uint64_t through, unsigned attempt, bool only_new) override
         {
-            acts.push_back({ after, through, attempt });
+            acts.push_back({ after, through, attempt, only_new });
             return { { 0x10, 0x20 }, "reverted 2 ROM bytes" };
         }
     };
@@ -583,7 +587,23 @@ TEST_SUITE("blaming single bytes the game used (ROM)")
         rig.frames(600);
         REQUIRE_FALSE(rig.outcomes.empty());
         CHECK(rig.outcomes[0].verdict.signal == CrashSignal::FrozenPicture);
-        CHECK(!bytes.acts.empty());
+        REQUIRE(!bytes.acts.empty());
+        CHECK(bytes.acts[0].only_new); // a guess only blames what the game just reached
+    }
+
+    TEST_CASE("a calm screen while only long-running bytes are in use is left alone")
+    {
+        Rig rig(idle_recipe());
+        FakeBytes bytes;
+        bytes.running_all_along = true;
+        rig.guard.set_byte_blame(&bytes);
+        rig.frames(200);
+        bytes.used_at = 190;
+        rig.core.frozen = true;
+        rig.core.pressing = true;
+        rig.frames(600);
+        CHECK(rig.outcomes.empty());
+        CHECK(bytes.acts.empty());
     }
 
     TEST_CASE("giving up doesn't act on the bytes (the clean ROM comes back anyway)")
