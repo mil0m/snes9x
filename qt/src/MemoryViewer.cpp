@@ -15,6 +15,7 @@
 #include <QGroupBox>
 #include <QHBoxLayout>
 #include <QLabel>
+#include <QListView>
 #include <QLineEdit>
 #include <QListWidget>
 #include <QPushButton>
@@ -119,10 +120,20 @@ MemoryViewer::MemoryViewer(MemorySource &source, QWidget *parent)
     goto_edit->setObjectName("goto");
     goto_edit->setPlaceholderText(tr("Go to 0x…"));
     goto_edit->setMaximumWidth(110);
-    auto clear = new QPushButton(tr("Clear Hits"), this);
+    clear_hits_button = new QPushButton(tr("Clear Hits"), this);
+    auto clear = clear_hits_button;
     clear->setObjectName("clear_hits");
-    top->addWidget(mode_combo);
+    clear->setToolTip(tr("Forget what the recipe wrote so far, to see only what it hits from now on"));
+    target_combo->setToolTip(tr("Which memory to look at: wram is the game's working memory (positions, health, "
+                                "timers), vram graphics, cgram colours, oam sprites, aram sound, sram the battery "
+                                "save, rom the game itself"));
+    overlay_combo->setToolTip(tr("What the colours on top of the bytes show; the line under the view explains them"));
+    goto_edit->setToolTip(tr("Type an offset like 0x1A00 and press Enter"));
+    top->addWidget(new QLabel(tr("Memory"), this));
     top->addWidget(target_combo);
+    top->addWidget(new QLabel(tr("Show as"), this));
+    top->addWidget(mode_combo);
+    top->addWidget(new QLabel(tr("Colour by"), this));
     top->addWidget(overlay_combo, 1);
     top->addWidget(goto_edit);
     top->addWidget(clear);
@@ -139,7 +150,7 @@ MemoryViewer::MemoryViewer(MemorySource &source, QWidget *parent)
     options->addWidget(zoom_in_button);
     options->addSpacing(12);
     options->addWidget(row_width);
-    paint_button = new QPushButton(tr("Paint"), view_options);
+    paint_button = new QPushButton(tr("Paint Mode"), view_options);
     paint_button->setObjectName("paint");
     paint_button->setCheckable(true);
     paint_button->setToolTip(tr("Drag to paint bytes with the value, into the game and the recipe (as patches). "
@@ -148,8 +159,8 @@ MemoryViewer::MemoryViewer(MemorySource &source, QWidget *parent)
     paint_value->setObjectName("paint_value");
     paint_value->setRange(0, 255);
     paint_value->setDisplayIntegerBase(16);
-    paint_value->setPrefix("0x");
-    paint_value->setToolTip(tr("The value to paint"));
+    paint_value->setPrefix(tr("Value 0x"));
+    paint_value->setToolTip(tr("The value to paint (Alt-click a byte to pick its value)"));
     brush_spin = new QSpinBox(view_options);
     brush_spin->setObjectName("brush");
     brush_spin->setRange(1, 64);
@@ -179,8 +190,11 @@ MemoryViewer::MemoryViewer(MemorySource &source, QWidget *parent)
     map_list = new QListWidget(this);
     map_list->setObjectName("map");
     map_list->setMinimumWidth(190);
-    map_list->setMaximumWidth(260);
-    map_list->setToolTip(tr("What lives where. Click an area to select it."));
+    map_list->setMaximumWidth(340);
+    map_list->setTextElideMode(Qt::ElideMiddle);
+    map_list->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    map_list->setToolTip(tr("What lives where in this memory. Click an area to select it; italic ones are read "
+                            "from the game right now and can move."));
     stack = new QStackedWidget(this);
     view = new MemoryView(stack);
     view->setObjectName("view");
@@ -191,17 +205,25 @@ MemoryViewer::MemoryViewer(MemorySource &source, QWidget *parent)
     stack->addWidget(view);
     stack->addWidget(pixels);
     stack->addWidget(tiles);
-    middle->addWidget(map_list);
+    auto map_column = new QVBoxLayout;
+    map_column->addWidget(new QLabel(tr("What's where"), this));
+    map_column->addWidget(map_list, 1);
+    middle->addLayout(map_column);
     middle->addWidget(stack, 1);
     layout->addLayout(middle, 1);
+    legend_label = new QLabel(this);
+    legend_label->setObjectName("legend");
+    legend_label->setWordWrap(true);
+    layout->addWidget(legend_label);
 
     auto bottom = new QHBoxLayout;
-    selection_label = new QLabel(tr("Drag across bytes to select a range"), this);
+    selection_label = new QLabel(tr("Drag across bytes to select them (Alt-drag in Pixels: a rectangle)"), this);
     selection_label->setObjectName("selection");
     hover_label = new QLabel(this);
     hover_label->setObjectName("hover");
     hover_label->setFont(QFontDatabase::systemFont(QFontDatabase::FixedFont));
-    new_rule_button = new QPushButton(tr("New Rule from Selection..."), this);
+    new_rule_button = new QPushButton(tr("New Rule from Selection…"), this);
+    new_rule_button->setToolTip(tr("A rule that corrupts the selected bytes, ready to adjust"));
     new_rule_button->setObjectName("new_rule");
     new_rule_button->setEnabled(false);
     bottom->addWidget(selection_label, 1);
@@ -209,7 +231,7 @@ MemoryViewer::MemoryViewer(MemorySource &source, QWidget *parent)
     bottom->addWidget(new_rule_button);
     layout->addLayout(bottom);
 
-    auto copies_box = new QGroupBox(tr("Sprite and palette copies"), this);
+    copies_box = new QGroupBox(tr("Sprite and palette copies in WRAM"), this);
     auto copies_layout = new QVBoxLayout(copies_box);
     auto find = new QPushButton(tr("Find Copies in WRAM"), copies_box);
     find->setObjectName("find_copies");
@@ -226,6 +248,11 @@ MemoryViewer::MemoryViewer(MemorySource &source, QWidget *parent)
     regions_list = new QListWidget(regions_box);
     regions_list->setObjectName("regions");
     regions_list->setMaximumHeight(110);
+    regions_list->setToolTip(tr("Names you gave parts of memory, for rules to aim at (\"enemy stats\"). Select bytes, "
+                                "then Name Selection."));
+    regions_empty = new QLabel(tr("None yet. Select bytes, then Name Selection to give them a name rules can use."),
+                               regions_box);
+    regions_empty->setWordWrap(true);
     auto region_buttons = new QHBoxLayout;
     name_button = new QPushButton(tr("Name Selection..."), regions_box);
     name_button->setObjectName("name_selection");
@@ -236,6 +263,7 @@ MemoryViewer::MemoryViewer(MemorySource &source, QWidget *parent)
     region_buttons->addStretch(1);
     region_buttons->addWidget(rename_button);
     region_buttons->addWidget(delete_button);
+    regions_layout->addWidget(regions_empty);
     regions_layout->addWidget(regions_list);
     regions_layout->addLayout(region_buttons);
 
@@ -292,6 +320,7 @@ MemoryViewer::MemoryViewer(MemorySource &source, QWidget *parent)
         view->setOverlay(overlay);
         pixels->setOverlay(overlay);
         tiles->setOverlay(overlay);
+        showLegend();
     });
     connect(goto_edit, &QLineEdit::returnPressed, this, [this] { goTo(); });
     connect(clear, &QPushButton::clicked, this, [this] { this->source.clearHits(); });
@@ -415,6 +444,8 @@ void MemoryViewer::modeChanged()
                         static_cast<QWidget *>(per_row_spin) })
         w->setVisible(m == "tiles");
     hover_label->clear();
+    if (legend_label)
+        showLegend();
     if (to != from)
     {
         // The other view picks up where this one is: same bytes, same place, same selection.
@@ -529,10 +560,67 @@ void MemoryViewer::hideEvent(QHideEvent *event)
 
 void MemoryViewer::targetChanged()
 {
+    filterOverlays();
     row_width->setValue(row_widths[size_t(target())]); // each memory keeps its own
     if (open)
         source.watch(target());
     refresh();
+}
+
+// Overlays only make sense for some memories: the game's own reads and writes are counted
+// for WRAM, the code map and changes are about the ROM.
+void MemoryViewer::filterOverlays()
+{
+    QString t = target_combo->currentData().toString();
+    auto view = qobject_cast<QListView *>(overlay_combo->view());
+    for (int i = 0; i < overlay_combo->count(); i++)
+    {
+        QString o = overlay_combo->itemData(i).toString();
+        bool fits = (o != "reads" && o != "writes" && o != "code" && o != "data" && o != "dma" && o != "changes") ||
+                    ((o == "reads" || o == "writes") && t == "wram") || (t == "rom" && o != "reads" && o != "writes");
+        if (view)
+            view->setRowHidden(i, !fits);
+        if (!fits && overlay_combo->currentIndex() == i)
+            overlay_combo->setCurrentIndex(overlay_combo->findData(QString("activity")));
+    }
+    copies_box->setVisible(t == "wram" || t == "oam" || t == "cgram");
+    showLegend();
+}
+
+void MemoryViewer::showLegend()
+{
+    QString o = overlay_combo->currentData().toString();
+    auto swatch = [](QColor c) {
+        return QString("<span style='background:%1'>&nbsp;&nbsp;&nbsp;</span> ").arg(c.name());
+    };
+    QString text = o == "activity" ? tr("brighter: the game changes it more often (it fades when it stops)")
+                   : o == "hits"     ? tr("bytes the recipe wrote since you opened this (Clear Hits starts over)")
+                   : o == "danger"   ? tr("how often corrupting here crashed the game; outlined: dangerous, rules set to avoid danger skip it")
+                   : o == "crashes"  ? tr("how many crashes corruption here caused")
+                   : o == "reads"    ? tr("how often the game reads each byte")
+                   : o == "writes"   ? tr("how often the game writes each byte")
+                   : o == "code"     ? tr("code the game ran: instructions strong, their values lighter")
+                   : o == "data"     ? tr("bytes the game read as data: tables, text, stats")
+                   : o == "dma"      ? tr("bytes copied straight to the graphics chip: tiles, maps, colours")
+                   : o == "changes"  ? tr("bytes that differ from the clean ROM, bright once the game used them")
+                                     : tr("no colours: just the bytes");
+    auto overlay = o == "hits"      ? MemoryPane::Overlay::Hits
+                   : o == "danger"  ? MemoryPane::Overlay::Danger
+                   : o == "crashes" ? MemoryPane::Overlay::Crashes
+                   : o == "reads"   ? MemoryPane::Overlay::Reads
+                   : o == "writes"  ? MemoryPane::Overlay::Writes
+                   : o == "code"    ? MemoryPane::Overlay::Code
+                   : o == "data"    ? MemoryPane::Overlay::Data
+                   : o == "dma"     ? MemoryPane::Overlay::Dma
+                   : o == "changes" ? MemoryPane::Overlay::Changes
+                   : o == "none"    ? MemoryPane::Overlay::None
+                                    : MemoryPane::Overlay::Activity;
+    QString base = mode() == "pixels" ? tr(" Under it, each dot's grey is the byte's value.")
+                   : mode() == "tiles" ? tr(" Under it, the bytes drawn as the game's graphics.")
+                                       : QString();
+    legend_label->setText((o == "none" ? QString() : swatch(MemoryPane::overlayColor(overlay))) + text + "." + base +
+                          tr(" Hover a byte to see what it is."));
+    clear_hits_button->setVisible(o == "hits");
 }
 
 void MemoryViewer::refresh()
@@ -565,7 +653,7 @@ void MemoryViewer::selectionChanged()
     name_button->setEnabled(sel.has_value());
     if (!sel)
     {
-        selection_label->setText(tr("Drag across bytes to select a range"));
+        selection_label->setText(tr("Drag across bytes to select them (Alt-drag in Pixels: a rectangle)"));
         return;
     }
     if (auto rect = mode() == "pixels" ? pixels->rectSelection() : std::nullopt)
@@ -707,6 +795,8 @@ void MemoryViewer::refreshRegions()
     }
     rename_button->setEnabled(regions_list->count() > 0);
     delete_button->setEnabled(regions_list->count() > 0);
+    regions_empty->setVisible(regions_list->count() == 0);
+    regions_list->setVisible(regions_list->count() > 0);
 }
 
 QString MemoryViewer::nameSelection(const QString &name, bool overwrite)
@@ -814,8 +904,8 @@ void MemoryViewer::refreshMap()
     shown_map = std::move(map);
     for (auto &area : shown_map)
     {
-        auto item = new QListWidgetItem(QString("%1\n%2..%3").arg(QString::fromStdString(area.name),
-                                                                 hex4(area.range.first), hex4(area.range.last)),
+        auto item = new QListWidgetItem(QString("%1 · %2..%3").arg(QString::fromStdString(area.name),
+                                                                    hex4(area.range.first), hex4(area.range.last)),
                                         map_list);
         item->setToolTip(QString::fromStdString(area.about) +
                          (area.live ? tr("\n(Read from the game right now; it can move.)") : QString()));

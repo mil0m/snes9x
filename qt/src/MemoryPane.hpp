@@ -29,6 +29,21 @@ class MemoryPane
         None,
     };
 
+    // The colour an overlay paints in, for legends too.
+    static QColor overlayColor(Overlay overlay)
+    {
+        return overlay == Overlay::Hits     ? QColor(150, 90, 230)
+               : overlay == Overlay::Danger  ? QColor(225, 40, 40)
+               : overlay == Overlay::Crashes ? QColor(240, 185, 20)
+               : overlay == Overlay::Reads   ? QColor(40, 140, 240)
+               : overlay == Overlay::Writes  ? QColor(40, 200, 80)
+               : overlay == Overlay::Code    ? QColor(20, 200, 190)
+               : overlay == Overlay::Data    ? QColor(235, 70, 160)
+               : overlay == Overlay::Dma     ? QColor(190, 210, 30)
+               : overlay == Overlay::Changes ? QColor(255, 120, 30)
+                                            : QColor(235, 110, 40);
+    }
+
     virtual ~MemoryPane() = default;
 
     // Keeps the selection and scroll position while the target and size stay the same.
@@ -135,19 +150,6 @@ class MemoryPane
         return block < snap.hot_blocks.size() && snap.hot_blocks[block];
     }
 
-    static QColor overlayColor(Overlay overlay)
-    {
-        return overlay == Overlay::Hits     ? QColor(150, 90, 230)
-               : overlay == Overlay::Danger  ? QColor(225, 40, 40)
-               : overlay == Overlay::Crashes ? QColor(240, 185, 20)
-               : overlay == Overlay::Reads   ? QColor(40, 140, 240)
-               : overlay == Overlay::Writes  ? QColor(40, 200, 80)
-               : overlay == Overlay::Code    ? QColor(20, 200, 190)
-               : overlay == Overlay::Data    ? QColor(235, 70, 160)
-               : overlay == Overlay::Dma     ? QColor(190, 210, 30)
-               : overlay == Overlay::Changes ? QColor(255, 120, 30)
-                                            : QColor(235, 110, 40);
-    }
 
     static QColor mix(const QColor &a, const QColor &b, float t)
     {

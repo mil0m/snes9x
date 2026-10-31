@@ -55,10 +55,10 @@ TEST_CASE("the fixed maps name the hardware layout")
     CHECK(cgram[1].range.first == 0x100u);
 
     auto wram = fixed_map(Target::WRAM, 0x20000);
-    auto direct = find(wram, "Direct page");
+    auto direct = find(wram, "Busiest variables (direct page)");
     REQUIRE(direct);
     CHECK(direct->range.last == 0xFFu);
-    auto bank7f = find(wram, "Bank $7F");
+    auto bank7f = find(wram, "Big buffers");
     REQUIRE(bank7f);
     CHECK(bank7f->range.first == 0x10000u);
 

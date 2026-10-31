@@ -89,6 +89,8 @@ class MemoryViewer : public QWidget
     void newRule();
     void refreshRegions();
     void refreshMap();
+    void filterOverlays();
+    void showLegend();
     void askNameSelection();
     void askRename();
     void askDelete();
@@ -123,6 +125,10 @@ class MemoryViewer : public QWidget
     QSpinBox *palette_spin;
     QSpinBox *per_row_spin;
     QLabel *hover_label;
+    QLabel *legend_label = nullptr;
+    QLabel *regions_empty = nullptr;
+    QPushButton *clear_hits_button = nullptr;
+    class QGroupBox *copies_box = nullptr;
     QLabel *selection_label;
     QPushButton *new_rule_button;
     QListWidget *copies_list;

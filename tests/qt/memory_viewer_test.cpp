@@ -9,6 +9,7 @@
 #include <QDir>
 #include <QLabel>
 #include <QLineEdit>
+#include <QListView>
 #include <QListWidget>
 #include <QMouseEvent>
 #include <QScrollBar>
@@ -370,13 +371,41 @@ TEST_SUITE("the memory map")
         v.refresh();
         auto map = child<QListWidget>(v, "map");
         REQUIRE(map->count() == 4); // WRAM: direct page, low RAM, upper bank $7E, bank $7F
-        CHECK(map->item(0)->text().contains("Direct page"));
+        CHECK(map->item(0)->text().contains("direct page"));
         CHECK_FALSE(map->item(0)->toolTip().isEmpty());
         emit map->itemActivated(map->item(3));
         auto sel = child<MemoryView>(v, "view")->selection();
         REQUIRE(sel);
         CHECK(sel->first == 0x10000u);
         CHECK(sel->second == 0x1FFFFu);
+    }
+
+    TEST_CASE("only overlays that mean something for the memory are offered, and a legend explains the colours")
+    {
+        FakeSource src;
+        MemoryViewer v(src);
+        v.show();
+        auto overlay = child<QComboBox>(v, "overlay");
+        auto hidden = [&](const char *o) {
+            return static_cast<QListView *>(overlay->view())->isRowHidden(overlay->findData(QString(o)));
+        };
+        choose(v, "target", "vram");
+        CHECK(hidden("code"));
+        CHECK(hidden("reads"));
+        CHECK(!hidden("activity"));
+        choose(v, "target", "rom");
+        CHECK(!hidden("code"));
+        CHECK(!hidden("changes"));
+        CHECK(hidden("writes"));
+        choose(v, "overlay", "code");
+        CHECK(child<QLabel>(v, "legend")->text().contains("code the game ran"));
+        choose(v, "target", "wram");
+        CHECK(overlay->currentData().toString() == "activity"); // Code means nothing for WRAM
+        CHECK(!hidden("reads"));
+        CHECK(child<QLabel>(v, "legend")->text().contains("Hover"));
+        CHECK(!child<QPushButton>(v, "clear_hits")->isVisible());
+        choose(v, "overlay", "hits");
+        CHECK(child<QPushButton>(v, "clear_hits")->isVisible());
     }
 
     TEST_CASE("switching memory switches the map, and live areas follow the game")

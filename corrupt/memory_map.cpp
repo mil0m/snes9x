@@ -51,13 +51,13 @@ std::vector<MapArea> fixed_map(Target t, size_t size)
     switch (t)
     {
     case Target::WRAM:
-        add(m, size, "Direct page (usually)", t, 0x0000, 0x00FF,
+        add(m, size, "Busiest variables (direct page)", t, 0x0000, 0x00FF,
             "Most games keep their busiest variables here; corruption crashes fast");
-        add(m, size, "Low RAM: stack and system", t, 0x0100, 0x1FFF,
+        add(m, size, "Stack and system (crashes fast)", t, 0x0100, 0x1FFF,
             "Mirrored into every bank; the stack usually sits near the top. Crashes fast");
-        add(m, size, "Bank $7E, upper", t, 0x2000, 0xFFFF,
+        add(m, size, "Game data (bank $7E)", t, 0x2000, 0xFFFF,
             "Game data: objects, buffers, sprite and palette copies");
-        add(m, size, "Bank $7F", t, 0x10000, 0x1FFFF, "Big buffers: decompressed graphics, maps, sound data");
+        add(m, size, "Big buffers (bank $7F)", t, 0x10000, 0x1FFFF, "Big buffers: decompressed graphics, maps, sound data");
         break;
     case Target::SRAM:
         add(m, size, "Save RAM", t, 0, size ? size - 1 : 0, "The battery save; backed up automatically");
