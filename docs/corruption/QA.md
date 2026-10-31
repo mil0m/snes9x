@@ -336,3 +336,20 @@ scratch folder. By default Snes9x writes the `.srm` next to the ROM.
 6. Load a game you've never played (no code map), and a recipe with an aimed rule.
    - [ ] It changes nothing: nothing is known to aim at yet.
 
+## 25. Survivors and pins
+1. Load FF6 (with a code map, see section 24) and the starter **Branch flips**. Turn it on and play for a couple of minutes.
+   - [ ] The panel's ROM line grows `· N survived`.
+2. Click **Survivors…**.
+   - [ ] A list of changes with where (`$C0:5AD7`), what (`D0 → F0`), the instruction before and after (`BNE … → BEQ …`) and how many frames it was used. Data changes say `data`.
+   - [ ] With nothing yet, it says so instead of showing an empty table.
+3. Select one or two, type a note, **Pin Selected**.
+   - [ ] They move to **Pinned in this recipe** with your note; the ROM line says `· 2 pinned`; the recipe shows as edited.
+4. Save the recipe, turn it off, untick its rule, turn it on again.
+   - [ ] The console restarts, and the **Changes** overlay shows just the pinned bytes, orange.
+5. Make the game crash some other way (a ROM rule or *Mark Crash*).
+   - [ ] The pinned bytes are never what gets reverted.
+6. Select a pin, **Unpin Selected**, save.
+   - [ ] It's gone from the list and the recipe file.
+7. Open the recipe file in a text editor.
+   - [ ] `"pins"` lists offset, value, `was` and the note. Change a `was` to a wrong value and load it: the panel says a pin was left out (made on another version).
+

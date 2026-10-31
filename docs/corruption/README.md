@@ -364,6 +364,28 @@ and a third to a half of them stayed in code the game kept running; 300 random b
 crashed 5-12 times and only a handful of them were ever used. Starters: **Branch flips**,
 **Operand nudge** and **Opcode swap**.
 
+### Keeping the gems: survivors and pins
+
+When a corrupted ROM does something great, you want to keep exactly that change. The
+panel's **Survivors…** button (on the ROM line) lists **survivors**: changed ROM bytes the
+game used in 100 frames or more with no crash in the 15 seconds after, newest first, with
+where they are and what changed (`$C0:5AD7  D0 → F0  BNE $5AC0 → BEQ $5AC0, 13,450 frames`).
+
+Select the ones you like, type a note if you want ("doors stay shut"), and **Pin Selected**.
+A pin becomes part of the recipe:
+
+- it applies whenever a run starts, before the rules, so the game boots with it (the
+  console restarts, like a classic run);
+- the crash guard never blames or undoes it;
+- it remembers the clean value, so on another version of the ROM it's skipped and the
+  panel says so, instead of scrambling that game.
+
+Save the recipe to keep its pins (they're in the file as
+`"pins": [{"rom": "0x5AD7", "value": "0xF0", "was": "0xD0", "note": "…"}]`). **Unpin
+Selected** lets one go; the byte stays as it is until the next run starts. The ROM line
+counts both: `· 23 survived · 2 pinned`. A pinned-only recipe is a handmade ROM hack: turn
+off its rules and the pins still play.
+
 Plan and what's next: [`2026-10-31-rom-corruption-plan.md`](./2026-10-31-rom-corruption-plan.md). Beyond it, game-aware corruption (jump tables, state jumps, game profiles mapped with Claude, a search for golden moments): [`2026-10-31-horizons.md`](./2026-10-31-horizons.md).
 
 ## Editing memory like a picture

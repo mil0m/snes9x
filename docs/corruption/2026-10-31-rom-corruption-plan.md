@@ -1,6 +1,6 @@
 # ROM corruption: plan (roadmap #22)
 
-**Status (2026-10-31):** reviewed by Mikael (answers at the end). Phases 1-5 done, pending QA.md sections 20-24; phase 6 (survivors and pins) in progress.
+**Status (2026-10-31):** reviewed by Mikael (answers at the end). All six phases done (2026-10-31), pending QA.md sections 20-25. Beyond: [the horizons](./2026-10-31-horizons.md).
 
 Spec: [`2026-10-30-ram-corruption-design.md`](./2026-10-30-ram-corruption-design.md),
 phase 5 ("a ROM target applied at load time, or live"). Both modes are in (Mikael, 31 Oct).
@@ -621,6 +621,15 @@ Built in three steps, each pushed:
 2. **Session and real core**: survivors and pin/unpin in the session; a real-core test that
    a pinned change survives a crash, a deeper rollback and a fresh run; the smoke's list.
 3. **The Survivors dialog**, tested offscreen, then docs and QA section 25.
+
+Findings while building phase 6:
+
+- **Branch flips make the most survivors**: FF6 with 100 flips kept 23 survivors after five
+  minutes of its intro, most used in 13,450 frames (`BNE $5AC0 → BEQ $5AC0`).
+- **A pinned ROM is a classic run**: pins change the ROM before the game boots, so a start
+  with pins restarts the console, like `at_load` rules and painted ROM bytes do.
+- **Pins live outside the paint**: painted bytes merge into runs, so a pin's `was` and note
+  wouldn't survive there. Clear Paint leaves pins alone.
 
 ## Risks
 
