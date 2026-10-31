@@ -147,6 +147,37 @@ std::vector<Rule> sample_rules()
     r = base();
     r.op = { .type = OpType::Fill, .value = uint8_t(0xEA) };
     rules.push_back(r);
+
+    // Aimed ROM rules and code ops.
+    r = base();
+    r.range = { Target::ROM, 0, 0xFFFF };
+    r.op = { .type = OpType::Add, .min = -1, .max = 1 };
+    r.aim = { .role = Role::Operand, .classes = { OpClass::Arith, OpClass::Compare } };
+    rules.push_back(r);
+
+    r = base();
+    r.range = { Target::ROM, 0, 0xFFFF };
+    r.op = { .type = OpType::OpcodeSwap };
+    r.when = { .type = TriggerType::AtLoad };
+    r.aim = { .except = { OpClass::Stack, OpClass::Width } }; // the editor lists them in class order
+    rules.push_back(r);
+
+    r = base();
+    r.range = { Target::ROM, 0, 0xFFFF };
+    r.op = { .type = OpType::BranchFlip };
+    rules.push_back(r);
+
+    r = base();
+    r.range = { Target::ROM, 0x10000, 0x1FFFF };
+    r.op = { .type = OpType::NopOut };
+    r.aim = { .classes = { OpClass::Jump } };
+    rules.push_back(r);
+
+    r = base();
+    r.range = { Target::ROM, 0, 0xFFFF };
+    r.op = { .type = OpType::Random, .min = 0, .max = 255 };
+    r.aim = { .role = Role::Data };
+    rules.push_back(r);
     return rules;
 }
 
@@ -189,6 +220,50 @@ TEST_CASE("a rule goes through the editor unchanged, for every op and trigger")
         CHECK(e.error().isEmpty());
         CHECK(ok_enabled(e));
     }
+}
+
+TEST_CASE("aiming: only for the ROM, code ops aim at opcodes, and leaving out suggests width and stack")
+{
+    SizedMemory sizes;
+    RuleEditor e(default_rule(), sample_regions(), sizes);
+    auto role = child<QComboBox>(e, "role");
+    auto mode = child<QComboBox>(e, "class_mode");
+    choose(e, "target", "wram");
+    CHECK(!role->isEnabled());
+    CHECK(!mode->isEnabled());
+
+    choose(e, "target", "rom");
+    child<QLineEdit>(e, "first")->setText("0x0");
+    child<QLineEdit>(e, "last")->setText("0xFFFF");
+    CHECK(role->isEnabled());
+    choose(e, "role", "operand");
+    CHECK(e.rule().aim.role == Role::Operand);
+
+    choose(e, "class_mode", "except");
+    CHECK(child<QCheckBox>(e, "class_width")->isChecked()); // suggested, not forced
+    CHECK(child<QCheckBox>(e, "class_stack")->isChecked());
+    CHECK(e.rule().aim.except == std::vector<OpClass>{ OpClass::Stack, OpClass::Width });
+    child<QCheckBox>(e, "class_stack")->setChecked(false);
+    CHECK(e.rule().aim.except == std::vector<OpClass>{ OpClass::Width });
+
+    choose(e, "class_mode", "only");
+    for (auto c : e.findChildren<QCheckBox *>())
+        if (c->objectName().startsWith("class_"))
+            c->setChecked(false);
+    CHECK(!ok_enabled(e)); // "only" with nothing ticked picks nothing
+    child<QCheckBox>(e, "class_branch")->setChecked(true);
+    CHECK(ok_enabled(e));
+    CHECK(e.rule().aim.classes == std::vector<OpClass>{ OpClass::Branch });
+
+    choose(e, "op", "opcode_swap");
+    CHECK(!role->isEnabled()); // code ops always aim at opcodes
+    CHECK(e.rule().aim.role == Role::Any);
+    CHECK(ok_enabled(e));
+    maybe_shot(e, "rule-editor-aim");
+
+    choose(e, "target", "wram");
+    CHECK(!e.rule().aim.active());
+    CHECK(!ok_enabled(e)); // opcode_swap is ROM only
 }
 
 TEST_CASE("a rectangle is drawn from its corner, row width and size; area ops need no count")

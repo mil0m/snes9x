@@ -13,6 +13,8 @@ std::string describe_trigger(const Trigger &t);   // "every 30 frames"
 std::string describe_range(const Rule &rule);     // "wram 0x2000..0x2FFF" or "wram enemy_table"
 std::string describe_rule(const Rule &rule);      // all three: "wram ...: add -2..2 x4, every 30 frames"
 
+std::string describe_aim(const Aim &aim); // "operands of arith, compare"; empty without an aim
+
 // What "Add Rule" starts from: one random byte every 2 s in upper work RAM,
 // clear of the stack and direct page (the same range gentle-wram-noise uses).
 Rule default_rule();

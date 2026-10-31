@@ -1,6 +1,9 @@
 #pragma once
 #include <QDialog>
 
+#include <utility>
+#include <vector>
+
 #include "corrupt/recipe_json.h"
 #include "corrupt/rule.h"
 
@@ -94,6 +97,11 @@ class RuleEditor : public QDialog
     QDoubleSpinBox *intensity_spin;
     QCheckBox *enabled_check;
     QCheckBox *avoid_check;
+
+    QWidget *aim_box;
+    QComboBox *role_combo;
+    QComboBox *class_mode;
+    std::vector<std::pair<corrupt::OpClass, QCheckBox *>> class_checks;
 
     QLabel *summary_label;
     QLabel *error_label;

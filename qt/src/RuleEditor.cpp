@@ -6,6 +6,7 @@
 #include <QDialogButtonBox>
 #include <QDoubleSpinBox>
 #include <QFormLayout>
+#include <QGridLayout>
 #include <QGroupBox>
 #include <QHBoxLayout>
 #include <QLabel>
@@ -25,7 +26,8 @@ namespace
 
 constexpr OpType kOps[] = { OpType::Random, OpType::Add,   OpType::Bitflip, OpType::Swap,   OpType::Copy,
                             OpType::Freeze, OpType::Shuffle, OpType::Shift,  OpType::Flip,   OpType::Levels,
-                            OpType::Filter, OpType::Stamp,   OpType::Fill };
+                            OpType::Filter, OpType::Stamp,   OpType::Fill,    OpType::OpcodeSwap,
+                            OpType::BranchFlip, OpType::NopOut };
 constexpr TriggerType kTriggers[] = { TriggerType::EveryFrames, TriggerType::ChancePerFrame,
                                       TriggerType::OnceAtFrame, TriggerType::Hotkey, TriggerType::AtLoad };
 
@@ -61,6 +63,9 @@ QString op_label(OpType t)
     case OpType::Filter: return QObject::tr("Filter (blur, sharpen…)");
     case OpType::Stamp: return QObject::tr("Stamp another area onto it");
     case OpType::Fill: return QObject::tr("Fill with a value");
+    case OpType::OpcodeSwap: return QObject::tr("Swap opcodes (same length, ROM)");
+    case OpType::BranchFlip: return QObject::tr("Flip branches (ROM)");
+    case OpType::NopOut: return QObject::tr("NOP out instructions (ROM)");
     }
     return {};
 }
@@ -358,7 +363,65 @@ void RuleEditor::buildForm()
     auto fill_page = page(f);
     fill_value = line(fill_page, "fill_value", "0x00");
     f->addRow(tr("Value"), fill_value);
+
+    for (auto text : { tr("Each picked instruction becomes another of the same length and addressing mode: "
+                          "ADC becomes SBC or AND, BNE becomes BEQ, INC becomes DEC."),
+                       tr("Each picked conditional branch goes the other way: BEQ becomes BNE, BCC becomes BCS."),
+                       tr("Each picked instruction becomes NOPs: a call, a store or a check that no longer "
+                          "happens.") })
+    {
+        auto code_page = page(f);
+        auto hint = new QLabel(text, code_page);
+        hint->setWordWrap(true);
+        f->addRow(hint);
+    }
     layout->addWidget(what_box);
+
+    // Aim (ROM only): which bytes, by what the code map knows about them.
+    auto aim_group = new QGroupBox(tr("Aim (ROM, from the code map)"), this);
+    aim_box = aim_group;
+    auto aim = new QFormLayout(aim_group);
+    role_combo = combo(aim_group, "role");
+    role_combo->addItem(tr("Any byte in the range"), QString(role_name(Role::Any)));
+    role_combo->addItem(tr("Opcodes: which instruction"), QString(role_name(Role::Opcode)));
+    role_combo->addItem(tr("Operands: the values and addresses they use"), QString(role_name(Role::Operand)));
+    role_combo->addItem(tr("Code: opcodes and operands"), QString(role_name(Role::Code)));
+    role_combo->addItem(tr("Data the game reads"), QString(role_name(Role::Data)));
+    role_combo->addItem(tr("Graphics it copies by DMA"), QString(role_name(Role::Dma)));
+    role_combo->addItem(tr("Anything the game used"), QString(role_name(Role::Used)));
+    aim->addRow(tr("Bytes"), role_combo);
+    class_mode = combo(aim_group, "class_mode");
+    class_mode->addItem(tr("Any instruction"), QString("all"));
+    class_mode->addItem(tr("Only these instructions"), QString("only"));
+    class_mode->addItem(tr("All but these instructions"), QString("except"));
+    aim->addRow(tr("Instructions"), class_mode);
+    auto grid = new QGridLayout;
+    for (int i = 0; i < kOpClassCount; i++)
+    {
+        auto c = OpClass(i);
+        auto check = new QCheckBox(class_name(c), aim_group);
+        check->setObjectName(QString("class_") + class_name(c));
+        grid->addWidget(check, i / 5, i % 5);
+        class_checks.push_back({ c, check });
+    }
+    aim->addRow(grid);
+    auto aim_hint = new QLabel(tr("Only bytes the code map knows: play first, and the map grows. Width (REP, SEP, "
+                                  "XCE) and stack instructions almost always crash at once."),
+                               aim_group);
+    aim_hint->setWordWrap(true);
+    aim_hint->setEnabled(false);
+    aim->addRow(aim_hint);
+    layout->addWidget(aim_group);
+    // Leaving instructions out starts from the ones that almost always crash.
+    connect(class_mode, &QComboBox::currentIndexChanged, this, [this] {
+        if (class_mode->currentData() != "except")
+            return;
+        for (auto [c, check] : class_checks)
+            if (check->isChecked())
+                return;
+        for (auto [c, check] : class_checks)
+            check->setChecked(c == OpClass::Width || c == OpClass::Stack);
+    });
 
     // When
     auto when_box = new QGroupBox(tr("When"), this);
@@ -581,6 +644,17 @@ void RuleEditor::load(const Rule &r)
     window_start->setValue(t.window ? int(std::min<uint64_t>(t.window->start, INT_MAX)) : 0);
     window_end->setValue(t.window ? int(std::min<uint64_t>(t.window->end, INT_MAX)) : 3600);
 
+    select(role_combo, role_name(r.aim.role));
+    {
+        QSignalBlocker quiet(class_mode); // no suggestion while loading
+        select(class_mode, !r.aim.classes.empty() ? "only" : !r.aim.except.empty() ? "except" : "all");
+    }
+    for (auto [c, check] : class_checks)
+    {
+        auto &list = !r.aim.classes.empty() ? r.aim.classes : r.aim.except;
+        check->setChecked(std::find(list.begin(), list.end(), c) != list.end());
+    }
+
     count_spin->setValue(int(std::min<uint32_t>(r.count, 1000000)));
     select(pick_combo, r.pick == Pick::Sticky ? "sticky" : "fresh");
     intensity_spin->setValue(r.intensity);
@@ -730,6 +804,26 @@ RuleEditor::Built RuleEditor::build() const
     r.enabled = enabled_check->isChecked();
     r.avoid_hot = avoid_check->isChecked();
 
+    // The aim, for ROM rules only; code ops always aim at opcodes.
+    r.aim = {};
+    if (r.range.target == Target::ROM)
+    {
+        if (!is_code_op(op.type))
+            r.aim.role = parse_role(role_combo->currentData().toString().toStdString()).value_or(Role::Any);
+        std::vector<OpClass> ticked;
+        for (auto [c, check] : class_checks)
+            if (check->isChecked())
+                ticked.push_back(c);
+        if (class_mode->currentData() == "only")
+        {
+            r.aim.classes = ticked;
+            if (ticked.empty() && err.isEmpty())
+                err = tr("instructions: tick at least one, or choose Any instruction");
+        }
+        else if (class_mode->currentData() == "except")
+            r.aim.except = ticked;
+    }
+
     if (err.isEmpty())
         if (auto problem = validate_rule(r, sizes))
             err = qs(*problem);
@@ -765,6 +859,12 @@ void RuleEditor::refresh()
     auto area_op = is_area_op(parse_op(op_combo->currentData().toString().toStdString()).value_or(OpType::Random));
     count_spin->setEnabled(!area_op); // area ops act on the whole area
     pick_combo->setEnabled(!area_op);
+    bool rom = target_of(target_combo) == Target::ROM;
+    bool code_op = is_code_op(parse_op(op_combo->currentData().toString().toStdString()).value_or(OpType::Random));
+    aim_box->setEnabled(rom && !area_op);
+    role_combo->setEnabled(!code_op);
+    for (auto [c, check] : class_checks)
+        check->setEnabled(class_mode->currentData() != "all");
     bool at_load = when_combo->currentData() == QString(trigger_name(TriggerType::AtLoad));
     window_enabled->setEnabled(!at_load); // the run's start isn't a frame
     window_start->setEnabled(window_enabled->isChecked());

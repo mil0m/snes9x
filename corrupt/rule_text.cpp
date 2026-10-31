@@ -77,6 +77,9 @@ std::string describe_op(const Rule &rule)
         return "stamp from " + hex4(op.source);
     case OpType::Fill:
         return "fill " + hex2(op.value.value_or(0));
+    case OpType::OpcodeSwap: text = "swap opcodes"; break;
+    case OpType::BranchFlip: text = "flip branches"; break;
+    case OpType::NopOut: text = "NOP out"; break;
     }
     return text + " x" + std::to_string(rule.count);
 }
@@ -114,10 +117,38 @@ std::string describe_range(const Rule &rule)
     return where + " " + hex4(rule.range.first) + ".." + hex4(rule.range.last);
 }
 
+std::string describe_aim(const Aim &aim)
+{
+    auto names = [](const std::vector<OpClass> &list) {
+        std::string out;
+        for (auto c : list)
+            out += (out.empty() ? "" : ", ") + std::string(class_name(c));
+        return out;
+    };
+    std::string role;
+    switch (aim.role)
+    {
+    case Role::Any: break;
+    case Role::Opcode: role = "opcodes"; break;
+    case Role::Operand: role = "operands"; break;
+    case Role::Code: role = "code"; break;
+    case Role::Data: role = "data"; break;
+    case Role::Dma: role = "DMA bytes"; break;
+    case Role::Used: role = "used bytes"; break;
+    }
+    std::string text = role;
+    if (!aim.classes.empty())
+        text = role.empty() ? "only " + names(aim.classes) : role + " of " + names(aim.classes);
+    if (!aim.except.empty())
+        text = (text.empty() ? std::string("code") : text) + " except " + names(aim.except);
+    return text;
+}
+
 std::string describe_rule(const Rule &rule)
 {
+    std::string aim = describe_aim(rule.aim);
     return describe_range(rule) + ": " + describe_op(rule) + ", " + describe_trigger(rule.when) +
-           (rule.avoid_hot ? ", avoiding danger" : "");
+           (aim.empty() ? "" : ", " + aim) + (rule.avoid_hot ? ", avoiding danger" : "");
 }
 
 Rule default_rule()

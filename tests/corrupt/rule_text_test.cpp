@@ -44,6 +44,26 @@ TEST_CASE("each op has a short description")
     CHECK(describe_op(with_op({ .type = OpType::Filter, .kernel = Kernel::Median })) == "median filter");
     CHECK(describe_op(with_op({ .type = OpType::Stamp, .source = 0x800 })) == "stamp from 0x0800");
     CHECK(describe_op(with_op({ .type = OpType::Fill, .value = uint8_t(0xEA) })) == "fill 0xEA");
+    CHECK(describe_op(with_op({ .type = OpType::OpcodeSwap }, 3)) == "swap opcodes x3");
+    CHECK(describe_op(with_op({ .type = OpType::BranchFlip }, 2)) == "flip branches x2");
+    CHECK(describe_op(with_op({ .type = OpType::NopOut })) == "NOP out x1");
+}
+
+TEST_CASE("an aimed rule says what it aims at")
+{
+    Rule r = with_op({ .type = OpType::Random, .min = 0, .max = 255 });
+    r.range = { Target::ROM, 0, 0xFFFF };
+    r.when = { .type = TriggerType::AtLoad };
+    r.aim = { .role = Role::Operand, .classes = { OpClass::Arith, OpClass::Compare } };
+    CHECK(describe_rule(r) == "rom 0x0000..0xFFFF: random 0..255 x1, once at load, operands of arith, compare");
+    r.aim = { .role = Role::Code, .except = { OpClass::Width, OpClass::Stack } };
+    CHECK(describe_rule(r) == "rom 0x0000..0xFFFF: random 0..255 x1, once at load, code except width, stack");
+    r.op = { .type = OpType::NopOut };
+    r.aim = { .classes = { OpClass::Jump } };
+    CHECK(describe_rule(r) == "rom 0x0000..0xFFFF: NOP out x1, once at load, only jump");
+    r.aim = { .role = Role::Data };
+    r.op = { .type = OpType::Add, .min = -1, .max = 1 };
+    CHECK(describe_rule(r) == "rom 0x0000..0xFFFF: add -1..1 x1, once at load, data");
 }
 
 TEST_CASE("a rectangle reads as its corner and size")
