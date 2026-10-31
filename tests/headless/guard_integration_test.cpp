@@ -527,6 +527,71 @@ TEST_SUITE("ROM corruption in the real core")
         tracer.stop();
     }
 
+    // Learns a code map from the clean game, then runs `rule` as a classic run aimed with it.
+    struct Aimed
+    {
+        CodeMap map{ Memory.CalculatedSize };
+        RomTracer tracer;
+        Harness h;
+        Aimed(Rule rule) : h(testrom::Crash::None, one(rule), PolicyKind::Skip)
+        {
+            map = CodeMap(Memory.CalculatedSize);
+            REQUIRE(tracer.start(map));
+            h.engine.hold_starts(true);
+            h.engine.set_active(false);
+            h.run(30);
+            h.engine.set_code_flags([this] { return std::span<const uint8_t>(map.flags()); });
+            h.engine.set_active(true);
+            h.run(1);
+        }
+        ~Aimed() { tracer.stop(); }
+    };
+
+    Rule aimed_rule(OpType type, Aim aim)
+    {
+        Rule r = poke_rom(0, 0, { .type = TriggerType::AtLoad });
+        r.range = { Target::ROM, 0, 0x7FFF };
+        r.op = { .type = type, .min = 0, .max = 255 };
+        r.aim = aim;
+        return r;
+    }
+
+    TEST_CASE("code ops in the real core: a NOP-out of the only arith instruction stops the frame counter")
+    {
+        Aimed a(aimed_rule(OpType::NopOut, { .classes = { OpClass::Arith } }));
+        CHECK(a.h.engine.aimed_count(0) == 1); // INC $11 in the NMI handler
+        CHECK(a.h.memory.read(Target::ROM, kNmiInc) == 0xEA);
+        CHECK(a.h.memory.read(Target::ROM, kNmiInc + 1) == 0xEA);
+        CHECK(a.h.memory.read(Target::ROM, kNmiInc + 2) == 0x40); // the RTI after it stays
+        a.h.run(5); // booted: the reset code cleared the counter
+        uint8_t before = a.h.wram(testrom::kFrameCounterAddr);
+        a.h.run(20);
+        CHECK(a.h.wram(testrom::kFrameCounterAddr) == before);
+        CHECK(!(CPU.Flags & HALTED_FLAG));
+        CHECK(a.h.outcomes.empty());
+    }
+
+    TEST_CASE("code ops in the real core: a branch flip, and operands that keep the code aligned")
+    {
+        {
+            Aimed flip(aimed_rule(OpType::BranchFlip, {}));
+            CHECK(flip.h.engine.aimed_count(0) == 1); // the main loop's BNE
+            CHECK(flip.h.memory.read(Target::ROM, 0x0016) == 0xF0);
+            CHECK(alive(flip.h)); // BEQ falls through to BRA main: still a loop
+        }
+
+        Rule operands = aimed_rule(OpType::Random, { .role = Role::Operand });
+        operands.count = 3;
+        Aimed op(operands);
+        REQUIRE(op.h.engine.event_log().size() >= 1);
+        for (auto &e : op.h.engine.event_log())
+        {
+            CAPTURE(e.write.offset);
+            CHECK((op.map.at(e.write.offset) & codeflag::Operand));
+            CHECK(!(op.map.at(e.write.offset) & codeflag::Opcode));
+        }
+    }
+
     TEST_CASE("live: a ROM edit that crashes the game is rolled back and undone")
     {
         Harness h(testrom::Crash::None, one(poke_rom(kMainWai, 0xDB, { .type = TriggerType::OnceAtFrame, .frame = 150 })),
