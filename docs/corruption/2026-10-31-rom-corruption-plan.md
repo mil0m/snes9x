@@ -1,6 +1,6 @@
 # ROM corruption: plan (roadmap #22)
 
-**Status (2026-10-31):** reviewed by Mikael (answers at the end). Phases 1-5 done, pending QA.md sections 20-24; phase 6 (survivors and pins) next.
+**Status (2026-10-31):** reviewed by Mikael (answers at the end). Phases 1-5 done, pending QA.md sections 20-24; phase 6 (survivors and pins) in progress.
 
 Spec: [`2026-10-30-ram-corruption-design.md`](./2026-10-30-ram-corruption-design.md),
 phase 5 ("a ROM target applied at load time, or live"). Both modes are in (Mikael, 31 Oct).
@@ -591,6 +591,36 @@ of the intro, guarded with blame by use, 5 minutes headless, seeds 11-13):
 - **Alive isn't the same as moving**: several runs kept the frame interrupt on with a still
   picture for minutes (a waiting loop the corruption made). Headless there's nobody pressing
   buttons, so the frozen-picture check (which needs input) can't fire; in the app it would.
+
+## Phase 6 in detail
+
+**Survivors and pins: keep the changes that work.** The ROM blame already knows, per
+changed byte, how often the game used it and whether a crash followed. Phase 6 turns that
+into a list you can keep from.
+
+- **Survivors**: changed ROM bytes the game used in at least 100 frames, with no crash in
+  the 15 s after it first did. Newest first, each with its CPU address, its role in the code
+  map, the value before and after, and the instruction before and after when it's code
+  (`$C2:1A3F  BNE $1A4D → BEQ $1A4D`, used in 4,120 frames).
+- **Pins**: a survivor (or several) becomes part of the recipe, as
+  `"pins": [{"rom": "0x21A3F", "value": "0xF0", "was": "0xD0", "note": "doors stay shut"}]`.
+  Pins apply when a run starts, before the rules (so a pinned ROM boots with them, like
+  paint). The crash guard never blames or reverts a pinned byte. `was` is the clean value:
+  a pin whose `was` doesn't match this ROM is skipped and the panel says so, so a recipe
+  can't scramble a different version of the game. Pinning mid-run also settles the byte,
+  so no rollback undoes it.
+- **In the app**: a **Survivors…** button by the panel's ROM line opens a list of survivors
+  and pins. Pin the selected ones (with an optional note), or unpin. Pins mark the recipe
+  edited, so Save keeps them. `corrupt-smoke --guard` prints the top survivors.
+
+Built in three steps, each pushed:
+
+1. **Core** (no emulator): `Pin` in recipes and JSON (with `was` checking), the survivors
+   list from the ROM blame and the code map (`corrupt/survivors`), the blame ignoring
+   pinned bytes, pins applied at run start. Unit tests.
+2. **Session and real core**: survivors and pin/unpin in the session; a real-core test that
+   a pinned change survives a crash, a deeper rollback and a fresh run; the smoke's list.
+3. **The Survivors dialog**, tested offscreen, then docs and QA section 25.
 
 ## Risks
 
