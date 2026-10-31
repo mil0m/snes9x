@@ -1,6 +1,6 @@
 # ROM corruption: plan (roadmap #22)
 
-**Status (2026-10-31):** plan for Mikael's review. Nothing built yet.
+**Status (2026-10-31):** reviewed by Mikael (answers at the end); phase 1 next.
 
 Spec: [`2026-10-30-ram-corruption-design.md`](./2026-10-30-ram-corruption-design.md),
 phase 5 ("a ROM target applied at load time, or live"). Both modes are in (Mikael, 31 Oct).
@@ -26,6 +26,9 @@ and surviving it**:
 4. **Keep the gems**: a change that ran thousands of times without a crash is a
    *survivor*. List them, and let a player pin one into the recipe so it's always applied,
    while the rest of the recipe keeps re-rolling.
+5. **Edit memory like an image**, the way Mikael and Erik worked before: the ROM as a
+   greyscale picture at a byte-exact row width, regions picked by eye, then shifted,
+   flipped, filtered or painted over. See *Image-style editing*.
 
 ## How it differs from RAM
 
@@ -55,9 +58,13 @@ away on ROM, and its job changes from "avoid" to "find the one byte to undo".
   gives undo, "what changed" diffs, exporting a clean or corrupted `.sfc`, and the game's
   identity: the library folder and every map are keyed by the clean ROM, so corrupting
   the header can't move the game to another folder.
-- **The header and vectors are protected by default** (`$FFB0-$FFFF` of bank 0's view:
-  title, mapping, interrupt vectors). Mapping is decided at load from the clean header
-  anyway; corrupting the vectors just bricks the boot. A rule can opt in.
+- **The header and vectors are always protected** (`$FFB0-$FFFF` of bank 0's view:
+  title, mapping, interrupt vectors; required, Mikael 31 Oct). Mapping is decided at load
+  from the clean header anyway, and corrupting the vectors just bricks the boot. Writes
+  there are dropped like `avoid_hot` drops hot ones, and the viewer shows the area locked.
+- **FF6 is the control game** (Mikael, 31 Oct): the T-Edition 2016 ROM on disk, ExHiROM,
+  no coprocessor. Every phase is proven on it first, with `corrupt-smoke`, before the
+  others.
 - **A ROM edit log** (offset, old, new, frame, rule) per session. On rollback the guard
   restores the checkpoint *and* reverts every ROM edit made after it, so live ROM rules
   roll back like RAM ones. Classic edits made at load are never reverted by a plain
@@ -133,6 +140,45 @@ New ops for `rom` rules, each picking only bytes of the right role from the code
 All of these are plain byte writes in the end, so the edit log, rollback, blame and
 replays work the same as for any rule.
 
+## Image-style editing (the Photoshop way)
+
+How Mikael and Erik corrupted ROMs before this project (31 Oct): Vinesauce was too random,
+so they opened ROMs in Photoshop as greyscale images, one pixel per byte (sometimes less,
+for NES games), with the row length set so the data lined up. Then: select a region by
+eye, and offset it, flip it, **shift all of it by X** (the favourite), run filters on it,
+or paint over it with exact grey values, and load the ROM again. It worked because you
+can *see* where an operation should go.
+
+The pixel view already is that canvas (one dot per byte, a chosen row width, zoom). What
+it needs is the tools, working on any target, ROM or RAM, and saved as replayable rules
+instead of a one-way edit:
+
+- **Rectangle selections**: drag a box in the pixel view. It's stored as start offset,
+  row width, width and height, so it means the same region whatever the window size.
+  Today's selections are linear ranges; both kinds work.
+- **Area operations** act on a whole region at once, not on picked addresses:
+  - **shift** by (dx, dy) in the current row width, wrapping or not: every byte moves X to
+    the right and Y rows down. Mikael's favourite, and a plain byte offset when dy = 0.
+  - **flip** horizontally (each row reversed) or vertically (row order reversed);
+    **rotate 180°**.
+  - **levels**: remap values through a curve: invert, posterize, threshold, gamma,
+    contrast. 256-entry table, so anything a curves dialog can draw.
+  - **filters**: blur, sharpen, median, emboss, as 3×3 kernels over the 2D layout. These
+    smear neighbouring bytes into each other in a way that keeps local structure.
+  - **noise** and **offset** (add) over the region, which the per-address ops already do.
+  - **stamp**: copy a region to another place, as a clone stamp (the 2D version of Copy).
+- **Paint**: pick a value (with an eyedropper from the image), a brush size, and paint
+  in the pixel view. Strokes become patches in the recipe, undoable.
+- **Round trip to a real image editor**: export a region (or the whole ROM) as an 8-bit
+  greyscale PNG at the row width; import an edited PNG back, and the differences become
+  patches. So Photoshop still works, and what comes back is a recipe.
+- **Less than a byte per pixel** (NES-style, and SNES bitplanes): a pixel view mode with
+  1, 2 or 4 bits per dot, with the area operations working on those values. After the
+  rest, if wanted.
+- Area operations take the same triggers: `at_load` gives the classic edited ROM, live
+  triggers keep re-applying them (a region that keeps sliding is its own kind of fun on
+  WRAM or VRAM too).
+
 ## Surviving it
 
 - **Policies for ROM suspects**, added to the existing set (re-roll, skip, dampen,
@@ -171,25 +217,30 @@ instruction it's part of, disassembled (`$C2:1A3F  D0 0C  BNE $1A4D`), and how o
 ## Phases
 
 Each phase is test-first, ends in a pushed, playable build, and gets its QA.md section.
+Phase 2 comes before the code map because it's the workflow Mikael and Erik already know
+works, and it needs nothing from the tracer.
 
 1. **ROM target, both modes.** `rom` in `MemoryAccess` (write `Memory.ROM`, size, the pristine
    copy), the `at_load` trigger and the boot-from-corrupted-ROM path, header and vector
    protection, the ROM edit log and revert-on-rollback, `rom` in the viewer (hex, pixels,
    tiles), Export ROM. `corrupt-smoke` with a `rom` recipe on real games. *From here on, classic
    and live ROM corruption work with plain ops, and crashes roll back properly.*
-2. **The code map.** The opcode-table tracer (opcode/operand/width per byte), CPU data
+2. **Image-style editing.** Rectangle selections, the area operations (shift, flip, rotate,
+   levels, filters, stamp) as rules, painting into patches, PNG export and import. On every
+   target, proven on FF6's ROM.
+3. **The code map.** The opcode-table tracer (opcode/operand/width per byte), CPU data
    reads and DMA from ROM in the access hooks, the instruction class table, a small
    disassembler for hover, the code map file in the library, Code/Data/DMA overlays,
    `corrupt-smoke --codemap` printing coverage on real games. Speed measured with and
    without tracing.
-3. **Blame by execution and ROM policies.** The changed-byte bitmap and last-used stamps,
+4. **Blame by execution and ROM policies.** The changed-byte bitmap and last-used stamps,
    suspects = changed bytes used in the window, revert and re-roll byte policies, bisect, the
    ROM crash map (per byte for code). The headless test ROM gets a corruptible code path to
    prove it.
-4. **Code-aware ops.** `operand`, `opcode_swap` (with the swap-group table), `branch_flip`,
+5. **Code-aware ops.** `operand`, `opcode_swap` (with the swap-group table), `branch_flip`,
    `nop_out`, `nudge`, class filters, rule editor support. Real-game runs comparing crash
    rates and how long runs last: random bytes vs operand-only vs opcode swaps.
-5. **Survivors and pins.** The survivors list, pinning into `patches`, the panel UI, and a
+6. **Survivors and pins.** The survivors list, pinning into `patches`, the panel UI, and a
    starter recipe or two built from what works on the test games.
 
 ## Risks
@@ -206,11 +257,10 @@ Each phase is test-first, ends in a pushed, playable build, and gets its QA.md s
 - **Opcodes run at two widths** (one routine called with both M settings) get both flags;
   operand ops skip them by default.
 
-## Open questions for Mikael
+## Answered questions (2026-10-31)
 
-1. **What did you and Erik use for ROM corruption before** (Vinesauce ROM Corruptor, the
-   Real-Time Corruptor and its "stockpile", hex editors, your own scripts)? Anything it did
-   that this should keep, like a stockpile of good corruptions, which is what pins are.
-2. **The first games to aim at**, ideally a couple without coprocessor chips, so phases 1–3
-   can be proven on them (FE4, FF6, Pocky & Rocky and Goof Troop are what's on disk).
-3. **Header and vector protection on by default**: fine?
+1. **Earlier tools:** Vinesauce ROM Corruptor first, but it was too random and
+   uncontrolled. Then Photoshop: ROMs as greyscale images with byte-exact rows, region
+   shifts, flips, filters and painting. That became *Image-style editing* and phase 2.
+2. **First game:** FF6 is the control game.
+3. **Header and vector protection:** required, so always on.
