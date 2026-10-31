@@ -553,3 +553,17 @@ on.
 The panel widget tests (`tests/qt/`, built when Qt 6 is found) run on Qt's offscreen
 platform, so they need no screen. They also write PNGs of the rule editor to
 `build/tests/shots/`, which shows the layout on a machine without a display.
+
+**The UI tour** screenshots every corruption window of the real app with a game running:
+the main window, the panel without and with a recipe, the rule editor, the memory viewer
+(WRAM hex and pixels, the ROM with the Code overlay, VRAM tiles) and the survivors dialog.
+
+```sh
+SNES9X_UI_TOUR=/tmp/tour XDG_CONFIG_HOME=<scratch config> QT_QPA_PLATFORM=offscreen \
+  timeout -s KILL 30 build/qt/snes9x-qt <copy of a ROM>
+```
+
+Use a scratch config (`snes9x/snes9x-qt.conf` with `Mute=true`,
+`PauseEmulationWhenUnfocused=false`, `PanelVisible=true` and `LibraryRoot` pointed at a
+scratch folder) and a copy of the ROM, so nothing real is written. The pictures land in the
+folder with a `done` file at the end.

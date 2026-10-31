@@ -8,6 +8,7 @@
 #include "RuleEditor.hpp"
 #include "corrupt/rule_text.h"
 
+#include <QApplication>
 #include <QCheckBox>
 #include <QComboBox>
 #include <QDateTime>
@@ -30,6 +31,9 @@
 #include <QTableWidget>
 #include <QUrl>
 #include <QVBoxLayout>
+
+#include <functional>
+#include <memory>
 
 using namespace corrupt;
 
@@ -295,16 +299,9 @@ CorruptionDock::CorruptionDock(EmuApplication &app, QWidget *parent)
     viewer_button->setToolTip(tr("See what the game changes and what the recipe hits, find its sprite and "
                                  "palette copies, and make rules from a selected range."));
     layout->addWidget(viewer_button);
-    connect(viewer_button, &QPushButton::clicked, [this] {
-        if (!memory_viewer)
-        {
-            memory_source = std::make_unique<SessionMemorySource>();
-            memory_viewer = new MemoryViewer(*memory_source, this);
-        }
-        memory_viewer->show();
-        memory_viewer->raise();
-        memory_viewer->activateWindow();
-    });
+    connect(viewer_button, &QPushButton::clicked, this, &CorruptionDock::openViewer);
+    if (auto dir = qgetenv("SNES9X_UI_TOUR"); !dir.isEmpty())
+        QTimer::singleShot(4000, this, [this, dir] { tour(QString::fromLocal8Bit(dir)); });
     connect(rules_table, &QTableWidget::itemChanged, [this](QTableWidgetItem *item) {
         if (item->column() == 0)
             CorruptionSession::get().setRuleEnabled(size_t(item->row()), item->checkState() == Qt::Checked);
@@ -340,6 +337,101 @@ CorruptionDock::CorruptionDock(EmuApplication &app, QWidget *parent)
     connect(&timer, &QTimer::timeout, this, &CorruptionDock::refreshStatus);
     timer.start(250);
     refreshStatus();
+}
+
+void CorruptionDock::openViewer()
+{
+    if (!memory_viewer)
+    {
+        memory_source = std::make_unique<SessionMemorySource>();
+        memory_viewer = new MemoryViewer(*memory_source, this);
+    }
+    memory_viewer->show();
+    memory_viewer->raise();
+    memory_viewer->activateWindow();
+}
+
+void CorruptionDock::tour(const QString &dir)
+{
+    QDir().mkpath(dir);
+    auto shot = [dir](QWidget *w, const QString &name) {
+        QApplication::processEvents();
+        w->grab().save(QString("%1/%2.png").arg(dir, name));
+    };
+    auto choose = [](QWidget *root, const char *name, const QString &data) {
+        if (auto c = root->findChild<QComboBox *>(name))
+            if (int i = c->findData(data); i >= 0)
+                c->setCurrentIndex(i);
+    };
+    // Each step waits for the game to run a little, so the pictures show live data.
+    auto steps = std::make_shared<std::vector<std::function<void()>>>();
+    auto next = std::make_shared<std::function<void()>>();
+    *next = [steps, next] {
+        if (steps->empty())
+            return;
+        auto step = steps->front();
+        steps->erase(steps->begin());
+        step();
+        QTimer::singleShot(1500, *next);
+    };
+    steps->push_back([=, this] {
+        setVisible(true);
+        shot(window(), "01-window");
+        shot(this, "02-panel-no-recipe");
+    });
+    steps->push_back([=, this] {
+        QFile file(":/corruption-examples/low-wram-roulette.json");
+        if (file.open(QIODevice::ReadOnly))
+            if (auto parsed = parse_recipe(file.readAll().toStdString(), {}); parsed.recipe)
+            {
+                CorruptionSession::get().loadRecipe(*parsed.recipe);
+                CorruptionSession::get().setActive(true);
+            }
+    });
+    steps->push_back([=, this] {
+        refreshStatus();
+        shot(this, "03-panel-running");
+        auto status = CorruptionSession::get().status();
+        if (!status.rules.empty())
+        {
+            SizedMemory sizes;
+            RuleEditor editor(status.rules[0], CorruptionSession::get().regions(), sizes, this);
+            editor.show();
+            editor.adjustSize();
+            shot(&editor, "04-rule-editor");
+        }
+        openViewer();
+    });
+    steps->push_back([=, this] { shot(memory_viewer, "05-viewer-wram-hex"); });
+    steps->push_back([=, this] {
+        choose(memory_viewer, "mode", "pixels");
+        choose(memory_viewer, "overlay", "activity");
+    });
+    steps->push_back([=, this] { shot(memory_viewer, "06-viewer-wram-pixels"); });
+    steps->push_back([=, this] {
+        choose(memory_viewer, "target", "rom");
+        choose(memory_viewer, "overlay", "code");
+    });
+    steps->push_back([=, this] { shot(memory_viewer, "07-viewer-rom-code"); });
+    steps->push_back([=, this] {
+        choose(memory_viewer, "target", "vram");
+        choose(memory_viewer, "mode", "tiles");
+    });
+    steps->push_back([=, this] {
+        shot(memory_viewer, "08-viewer-vram-tiles");
+        memory_viewer->close();
+        survivors_button->click();
+    });
+    steps->push_back([=, this] {
+        if (survivors_dialog)
+        {
+            shot(survivors_dialog, "09-survivors");
+            survivors_dialog->close();
+        }
+        QFile done(dir + "/done");
+        done.open(QIODevice::WriteOnly);
+    });
+    (*next)();
 }
 
 void CorruptionDock::exportRom()

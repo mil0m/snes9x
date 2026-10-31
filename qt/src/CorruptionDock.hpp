@@ -49,6 +49,10 @@ class CorruptionDock : public QDockWidget
     void addExample();
     void restoreSelectedBackup();
     void showMessage(const QString &text, bool error = false);
+    void openViewer();
+    // SNES9X_UI_TOUR=<dir>: screenshots of every corruption window, for UX work (see
+    // docs/corruption/README.md, "Developing").
+    void tour(const QString &dir);
 
     EmuApplication &app;
     QTimer timer;
