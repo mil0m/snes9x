@@ -52,7 +52,7 @@ endif()
 # Qt widget tests for the corruption panel, run offscreen (needs Qt 6).
 find_package(Qt6 QUIET COMPONENTS Widgets)
 if(Qt6_FOUND)
-    add_executable(corrupt-qt-tests qt/main.cpp qt/rule_editor_test.cpp qt/intensity_slider_test.cpp qt/memory_view_test.cpp qt/memory_viewer_test.cpp qt/pixel_view_test.cpp qt/tile_view_test.cpp ../qt/src/RuleEditor.cpp ../qt/src/IntensitySlider.cpp ../qt/src/MemoryView.cpp ../qt/src/MemoryViewer.cpp ../qt/src/PixelView.cpp ../qt/src/TileView.cpp ${ENGINE_SOURCES})
+    add_executable(corrupt-qt-tests qt/main.cpp qt/rule_editor_test.cpp qt/intensity_slider_test.cpp qt/memory_view_test.cpp qt/memory_viewer_test.cpp qt/pixel_view_test.cpp qt/tile_view_test.cpp qt/quit_signals_test.cpp ../qt/src/RuleEditor.cpp ../qt/src/IntensitySlider.cpp ../qt/src/MemoryView.cpp ../qt/src/MemoryViewer.cpp ../qt/src/PixelView.cpp ../qt/src/TileView.cpp ../qt/src/QuitSignals.cpp ${ENGINE_SOURCES})
     set_target_properties(corrupt-qt-tests PROPERTIES AUTOMOC ON)
     target_include_directories(corrupt-qt-tests PRIVATE .. ../external ../qt/src)
     target_link_libraries(corrupt-qt-tests PRIVATE Qt6::Widgets)

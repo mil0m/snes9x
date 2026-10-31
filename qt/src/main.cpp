@@ -2,6 +2,7 @@
 #include "EmuConfig.hpp"
 #include "EmuMainWindow.hpp"
 #include "SDLInputManager.hpp"
+#include "QuitSignals.hpp"
 
 #include <clocale>
 #include <qnamespace.h>
@@ -79,9 +80,7 @@ int main(int argc, char *argv[])
     }
 
 #ifndef _WIN32
-    auto quit_handler = [](int) { QApplication::quit(); };
-    for (auto s : { SIGQUIT, SIGINT, SIGTERM, SIGHUP })
-        signal(s, quit_handler);
+    installQuitSignals({ SIGQUIT, SIGINT, SIGTERM, SIGHUP });
 #endif
 
     emu.startThread();

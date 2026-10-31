@@ -162,6 +162,7 @@ list(APPEND QT_GUI_SOURCES
     src/MemoryViewer.cpp
     src/PixelView.cpp
     src/TileView.cpp
+    src/QuitSignals.cpp
     src/SoftwareScalers.cpp
     src/EmuCanvasQt.cpp
     src/EmuCanvasOpenGL.cpp
