@@ -9,6 +9,7 @@
 #include "corrupt/rom_keeper.h"
 #include "corrupt/rom_blame.h"
 #include "corrupt/survivors.h"
+#include "corrupt/share.h"
 #include "corrupt/run_control.h"
 #include "corrupt/save_backup.h"
 
@@ -62,6 +63,7 @@ class CorruptionSession
         size_t hot_blocks = 0; // crash map: 16-byte blocks rules with avoid_hot stay out of
 
         bool can_go_back = false; // a run started (its moment is there to go back to), or the ROM changed
+        bool back_to_normal = false; // Back to normal was the last thing done (nothing has run since)
         size_t rom_changed = 0; // ROM bytes that differ from the clean ROM
         size_t rom_used = 0;    // ...of which the game has run or read since they changed
         size_t survivors = 0;   // ...of which proved themselves (see survivors())
@@ -95,6 +97,10 @@ class CorruptionSession
     double stepIntensity(double delta);   // returns the new value
     corrupt::SaveResult saveRecipeAs(const std::string &name, const std::string &notes);
     corrupt::SaveResult save(); // over the file the recipe came from
+    // Sharing: one .s9xrecipe file with the recipe, its pins and its start moment. Importing
+    // saves it in this game's recipes (under a free name) and loads it. Error or empty.
+    std::string shareRecipe(const std::filesystem::path &path);
+    std::string importRecipe(const std::filesystem::path &path, std::string &name);
 
     // Live rule edits; the run goes on. Each returns an error, or empty when applied.
     std::string replaceRule(size_t index, const corrupt::Rule &rule);
@@ -193,6 +199,7 @@ class CorruptionSession
     std::filesystem::path code_map_root;    // the library the map came from (and is saved to)
     bool code_map_reload = false;           // the library changed: reload between frames
     bool back_to_normal = false;            // asked for; done between frames
+    bool at_normal = false;                 // done, and no run since
     uint64_t code_frames = 0;
     std::vector<corrupt::MapArea> live_map; // VRAM or ARAM layout, re-read between frames while watched
     bool saved_moments = true;

@@ -109,6 +109,7 @@ void CorruptionSession::betweenFrames()
         rom.restore_clean();
         bool moment = control.has_anchor() && access.load_state(control.anchor());
         guard.reset();
+        at_normal = true;
         note(moment ? "Back to normal: the clean game, at the moment the run started"
                     : "Back to normal: the clean ROM (no run to go back to)");
         S9xSetInfoString("Corruption: back to normal");
@@ -116,6 +117,7 @@ void CorruptionSession::betweenFrames()
     auto started = control.between_frames(engine, access, &rom);
     if (started != RunControl::Started::Nothing)
     {
+        at_normal = false;
         moment_on_disk = started == RunControl::Started::FromAnchor;
         pinChanged();
         if (auto skipped = control.last_pins().mismatched)
@@ -703,6 +705,74 @@ double CorruptionSession::stepIntensity(double delta)
     return engine.recipe().intensity;
 }
 
+std::string CorruptionSession::shareRecipe(const fs::path &path)
+{
+    std::string text;
+    {
+        std::lock_guard lock(mutex);
+        if (!has_recipe)
+            return "no recipe loaded";
+        // The moment this run started from (the saved one, if it started there).
+        std::optional<std::vector<uint8_t>> moment;
+        if (control.has_anchor())
+            moment = control.anchor();
+        else if (!engine.recipe().anchor_state.empty() && !recipe_path.empty())
+        {
+            std::string error;
+            moment = load_anchor(recipe_path.parent_path() / engine.recipe().anchor_state, error);
+        }
+        Recipe recipe = engine.recipe();
+        recipe.game = game;
+        text = write_shared(recipe, moment ? &*moment : nullptr);
+    }
+    std::ofstream out(path, std::ios::binary);
+    out << text;
+    return out ? std::string() : "couldn't write " + path.string();
+}
+
+std::string CorruptionSession::importRecipe(const fs::path &path, std::string &name)
+{
+    std::ifstream in(path, std::ios::binary);
+    if (!in)
+        return "couldn't read " + path.string();
+    std::string text((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+    std::string error;
+    auto shared = read_shared(text, error);
+    if (!shared)
+        return error;
+    fs::path saved;
+    {
+        std::lock_guard lock(mutex);
+        if (!game_loaded)
+            return "load a game first";
+        if (library_root.empty())
+            return "choose a library folder first";
+        Library library(library_root);
+        Recipe recipe = shared->recipe;
+        // A free name, so an import never replaces a recipe of yours.
+        auto dir = library.game_dir(game) / "recipes";
+        std::string base = recipe.name.empty() ? "Shared" : recipe.name;
+        recipe.name = base;
+        for (int n = 2; fs::exists(dir / (recipe_file_stem(recipe.name) + ".json")); n++)
+            recipe.name = base + " " + std::to_string(n);
+        if (shared->moment)
+        {
+            auto moment = anchor_path(dir / (recipe_file_stem(recipe.name) + ".json"));
+            fs::create_directories(dir);
+            if (save_anchor(moment, *shared->moment).empty())
+                recipe.anchor_state = moment.filename().string();
+        }
+        auto result = library.save_recipe(game, recipe);
+        if (!result.error.empty())
+            return result.error;
+        saved = result.path;
+        name = recipe.name;
+        shared->recipe = recipe;
+    }
+    auto problems = loadRecipe(shared->recipe, saved);
+    return problems.empty() ? std::string() : "imported, but it doesn't fit this game: " + problems[0];
+}
+
 SaveResult CorruptionSession::saveRecipeAs(const std::string &name, const std::string &notes)
 {
     std::lock_guard lock(mutex);
@@ -845,6 +915,7 @@ CorruptionSession::Status CorruptionSession::status()
             s.sizes[size_t(t)] = memory.size(t);
         s.rom_changed = rom.changed();
         s.can_go_back = control.has_anchor() || rom.changed() > 0;
+        s.back_to_normal = at_normal && !engine.active();
         s.rom_used = rom_blame.used();
         s.survivors = rom_blame.survivor_count(kSurvivorFrames);
         s.pins = engine.recipe().pins.size();

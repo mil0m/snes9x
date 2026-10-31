@@ -184,6 +184,10 @@ CorruptionDock::CorruptionDock(EmuApplication &app, QWidget *parent)
     more->setPopupMode(QToolButton::InstantPopup);
     auto menu = new QMenu(more);
     auto save_as = menu->addAction(tr("Save As…"));
+    auto share = menu->addAction(tr("Share…"));
+    share->setToolTip(tr("One file with the recipe, its pins and its start moment, to send to a friend"));
+    auto import = menu->addAction(tr("Import a Shared Recipe…"));
+    menu->setToolTipsVisible(true);
     menu->addSeparator();
     auto open_folder = menu->addAction(tr("Open This Game's Recipe Folder"));
     auto rescan = menu->addAction(tr("Look for New Recipe Files"));
@@ -223,6 +227,33 @@ CorruptionDock::CorruptionDock(EmuApplication &app, QWidget *parent)
     connect(new_recipe, &QPushButton::clicked, this, &CorruptionDock::newRecipe);
     connect(save_button, &QPushButton::clicked, this, &CorruptionDock::save);
     connect(save_as, &QAction::triggered, this, &CorruptionDock::saveAs);
+    connect(share, &QAction::triggered, [this] {
+        auto status = CorruptionSession::get().status();
+        if (!status.has_recipe)
+            return showMessage(tr("Load a recipe first"), true);
+        QString name = qs(status.engine.recipe_name).trimmed().replace(QRegularExpression("[^A-Za-z0-9 _-]"), "_");
+        auto path = QFileDialog::getSaveFileName(this, tr("Share recipe"), QDir::home().filePath(name + ".s9xrecipe"),
+                                                 tr("Shared recipe (*.s9xrecipe)"));
+        if (path.isEmpty())
+            return;
+        auto err = CorruptionSession::get().shareRecipe(path.toStdString());
+        showMessage(err.empty() ? tr("Saved %1. Send it to a friend: they choose More > Import.").arg(path) : qs(err),
+                    !err.empty());
+    });
+    connect(import, &QAction::triggered, [this] {
+        if (!confirmDiscard(tr("Import recipe")))
+            return;
+        auto path = QFileDialog::getOpenFileName(this, tr("Import a shared recipe"), QDir::homePath(),
+                                                 tr("Shared recipe (*.s9xrecipe)"));
+        if (path.isEmpty())
+            return;
+        std::string name;
+        auto err = CorruptionSession::get().importRecipe(path.toStdString(), name);
+        refreshRecipes();
+        showMessage(err.empty() ? tr("Imported %1 into this game's recipes. Press Corrupt to try it.").arg(qs(name))
+                                : tr("Couldn't import: %1").arg(qs(err)),
+                    !err.empty());
+    });
     connect(rescan, &QAction::triggered, this, &CorruptionDock::refreshRecipes);
     connect(choose_library, &QAction::triggered, this, &CorruptionDock::chooseLibrary);
     connect(open_folder, &QAction::triggered, [this] {
@@ -538,7 +569,25 @@ void CorruptionDock::tour(const QString &dir)
         }
         openViewer();
     });
-    steps->push_back([=, this] { shot(memory_viewer, "05-viewer-wram-hex"); });
+    steps->push_back([=, this] {
+        // Share and import, end to end, and Back to normal.
+        QFile log(dir + "/flows.txt");
+        log.open(QIODevice::WriteOnly | QIODevice::Text);
+        auto share = CorruptionSession::get().shareRecipe((dir + "/tour.s9xrecipe").toStdString());
+        std::string name;
+        auto import = CorruptionSession::get().importRecipe((dir + "/tour.s9xrecipe").toStdString(), name);
+        log.write(QString("share: %1\nimport: %2 as %3\n")
+                      .arg(qs(share.empty() ? "ok" : share), qs(import.empty() ? "ok" : import), qs(name))
+                      .toUtf8());
+        refreshRecipes();
+        CorruptionSession::get().setActive(true);
+        shot(memory_viewer, "05-viewer-wram-hex");
+    });
+    steps->push_back([=, this] { CorruptionSession::get().backToNormal(); });
+    steps->push_back([=, this] {
+        refreshStatus();
+        shot(this, "05b-panel-back-to-normal");
+    });
     steps->push_back([=, this] {
         choose(memory_viewer, "mode", "pixels");
         choose(memory_viewer, "overlay", "activity");
@@ -661,6 +710,8 @@ void CorruptionDock::refreshStatus()
         else if (status.has_moment)
             run += tr(" · started from its saved moment");
     }
+    else if (status.back_to_normal)
+        run = tr("Off. The game is back to normal.");
     else if (status.can_go_back)
         run = tr("Off. What it changed stays until you press Back to normal.");
     else
