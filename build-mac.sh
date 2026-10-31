@@ -44,6 +44,18 @@ build_qt() {
   echo "Qt: $(pwd)/build/qt/snes9x-qt"
 }
 
+# Runs a test binary and shows only the lines matching $1, plus a line if it failed or
+# died (a crash prints nothing the filter would keep).
+run_filtered() {
+  local pattern=$1; shift
+  local out rc
+  rc=0; out=$("$@" 2>&1) || rc=$?
+  echo "$out" | grep -vE "^qt\\.qpa|propagateSizeHints" | grep -E "$pattern" || true
+  if [ $rc -ne 0 ]; then echo "$(basename "$1") exited with status $rc" >&2; tests_failed=1; fi
+  return 0
+}
+tests_failed=0
+
 build_test() {
   local qt_prefix=""
   if command -v brew >/dev/null && brew --prefix qt >/dev/null 2>&1; then qt_prefix="$(brew --prefix qt)"; fi
@@ -52,12 +64,13 @@ build_test() {
   build/tests/corrupt-tests "$@"
   if [ -x build/tests/corrupt-headless-tests ] && [ $# -eq 0 ]; then
     # The core prints ROM info on every load; keep just the test results.
-    build/tests/corrupt-headless-tests | grep -E "ERROR|FATAL|values|test cases|Status"
+    run_filtered "ERROR|FATAL|values|test cases|Status" build/tests/corrupt-headless-tests
   fi
   if [ -x build/tests/corrupt-qt-tests ] && [ $# -eq 0 ]; then
     # Offscreen; PNGs of the dialogs land in build/tests/shots.
-    CORRUPT_SHOTS_DIR=build/tests/shots build/tests/corrupt-qt-tests 2>&1 | grep -vE "^qt\\.qpa|propagateSizeHints" | grep -E "ERROR|FATAL|CHECK|values|test cases|Status|error"
+    CORRUPT_SHOTS_DIR=build/tests/shots run_filtered "ERROR|FATAL|CHECK|values|test cases|Status|error" build/tests/corrupt-qt-tests
   fi
+  return $tests_failed
 }
 
 build_asan() {
@@ -66,10 +79,10 @@ build_asan() {
   cmake -S tests -B build/tests-asan -G Ninja -DCMAKE_BUILD_TYPE=Debug -DCMAKE_PREFIX_PATH="$qt_prefix" \
     -DCMAKE_CXX_FLAGS="-fsanitize=address -fno-omit-frame-pointer" -DCMAKE_EXE_LINKER_FLAGS="-fsanitize=address" >/dev/null
   if ! out=$(cmake --build build/tests-asan 2>&1); then echo "$out" | grep -v '^\[' >&2; exit 1; fi
-  build/tests-asan/corrupt-tests | grep -E "AddressSanitizer|test cases|Status"
-  [ -x build/tests-asan/corrupt-headless-tests ] && build/tests-asan/corrupt-headless-tests | grep -E "AddressSanitizer|test cases|Status"
-  [ -x build/tests-asan/corrupt-qt-tests ] && QT_QPA_PLATFORM=offscreen build/tests-asan/corrupt-qt-tests 2>&1 | grep -E "AddressSanitizer|test cases|Status"
-  return 0
+  run_filtered "AddressSanitizer|test cases|Status" build/tests-asan/corrupt-tests
+  [ -x build/tests-asan/corrupt-headless-tests ] && run_filtered "AddressSanitizer|test cases|Status" build/tests-asan/corrupt-headless-tests
+  [ -x build/tests-asan/corrupt-qt-tests ] && QT_QPA_PLATFORM=offscreen run_filtered "AddressSanitizer|test cases|Status" build/tests-asan/corrupt-qt-tests
+  return $tests_failed
 }
 
 build_libretro() {
