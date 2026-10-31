@@ -39,6 +39,11 @@ enum class OpType
     Filter, // a 3x3 `kernel` over the 2D layout
     Stamp,  // copy the same-sized region at `source` onto it
     Fill,   // set every byte to `value`
+
+    // Code ops: ROM only, on opcodes the code map knows (code_aim.h).
+    OpcodeSwap, // another opcode of the same length and addressing mode
+    BranchFlip, // a conditional branch becomes its opposite
+    NopOut,     // the whole instruction becomes NOPs
 };
 
 enum class Axis
