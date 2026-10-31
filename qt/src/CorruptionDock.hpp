@@ -5,6 +5,7 @@
 #include <memory>
 
 #include "MemoryViewer.hpp"
+#include "SurvivorsDialog.hpp"
 #include "corrupt/library.h"
 
 class EmuApplication;
@@ -66,6 +67,9 @@ class CorruptionDock : public QDockWidget
     QCheckBox *moments_check;
     MemoryViewer *memory_viewer = nullptr;
     std::unique_ptr<MemorySource> memory_source;
+    std::unique_ptr<SurvivorSource> survivor_source;
+    SurvivorsDialog *survivors_dialog = nullptr;
+    QPushButton *survivors_button = nullptr;
     QCheckBox *active_check;
     QLineEdit *seed_edit;
     QTableWidget *rules_table;

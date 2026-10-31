@@ -1,4 +1,5 @@
 #include "CorruptionDock.hpp"
+#include "SurvivorsDialog.hpp"
 #include "CorruptionSession.hpp"
 #include "EmuApplication.hpp"
 #include "EmuConfig.hpp"
@@ -66,6 +67,15 @@ struct SessionMemorySource : MemorySource
     std::string renameRegion(const std::string &from, const std::string &to) override { return s.renameRegion(from, to); }
     std::string deleteRegion(const std::string &name) override { return s.deleteRegion(name); }
     std::vector<std::string> regionUsers(const std::string &name) override { return s.regionUsers(name); }
+};
+
+struct SessionSurvivors : SurvivorSource
+{
+    CorruptionSession &s = CorruptionSession::get();
+    std::vector<Survivor> survivors() override { return s.survivors(); }
+    std::vector<Pin> pins() override { return s.pins(); }
+    std::string pin(const std::vector<uint32_t> &offsets, const std::string &note) override { return s.pin(offsets, note); }
+    void unpin(const std::vector<uint32_t> &offsets) override { s.unpin(offsets); }
 };
 
 QPushButton *button(const QString &text, QWidget *parent)
@@ -187,7 +197,12 @@ CorruptionDock::CorruptionDock(EmuApplication &app, QWidget *parent)
     clear_paint_button = button(tr("Clear Paint"), run_box);
     clear_paint_button->setObjectName("clear_paint");
     clear_paint_button->setToolTip(tr("Forget the painted bytes in this recipe. They stay in memory until the next run starts."));
+    survivors_button = button(tr("Survivors…"), run_box);
+    survivors_button->setObjectName("survivors");
+    survivors_button->setToolTip(tr("ROM changes the game keeps using without crashing. Pin the ones you like to "
+                                    "keep them in the recipe."));
     rom_row->addWidget(rom_label, 1);
+    rom_row->addWidget(survivors_button);
     rom_row->addWidget(clear_paint_button);
     rom_row->addWidget(restore_rom_button);
     rom_row->addWidget(export_rom);
@@ -195,6 +210,17 @@ CorruptionDock::CorruptionDock(EmuApplication &app, QWidget *parent)
     layout->addWidget(run_box);
     connect(restore_rom_button, &QPushButton::clicked, [] { CorruptionSession::get().restoreCleanRom(); });
     connect(clear_paint_button, &QPushButton::clicked, [] { CorruptionSession::get().clearPatches(); });
+    connect(survivors_button, &QPushButton::clicked, [this] {
+        if (!survivors_dialog)
+        {
+            survivor_source = std::make_unique<SessionSurvivors>();
+            survivors_dialog = new SurvivorsDialog(*survivor_source, this);
+        }
+        survivors_dialog->refresh();
+        survivors_dialog->show();
+        survivors_dialog->raise();
+        survivors_dialog->activateWindow();
+    });
     connect(export_rom, &QPushButton::clicked, this, &CorruptionDock::exportRom);
 
     connect(active_check, &QCheckBox::clicked, [](bool on) { CorruptionSession::get().setActive(on); });
@@ -378,6 +404,10 @@ void CorruptionDock::refreshStatus()
         rom_text += tr(", %1 used by the game").arg(QLocale().toString(qulonglong(status.rom_used)));
     if (status.patched)
         rom_text += tr(" · %n byte(s) painted", "", int(status.patched));
+    if (status.survivors)
+        rom_text += tr(" · %1 survived").arg(status.survivors);
+    if (status.pins)
+        rom_text += tr(" · %1 pinned").arg(status.pins);
     if (status.game_loaded && status.code.seen)
         rom_text += tr(" · code map: %1 code, %2 data, %3 DMA bytes")
                         .arg(QLocale().toString(qulonglong(status.code.code)),
