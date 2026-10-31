@@ -68,7 +68,8 @@ TEST_CASE("the survivors dialog lists what proved itself, pins it with a note, a
     QApplication::processEvents();
     auto table = child<QTableWidget>(d, "survivors");
     REQUIRE(table->rowCount() == 2);
-    CHECK(table->item(0, 0)->text() == "$C2:1A3F");
+    CHECK(table->item(0, 0)->text() == "0x21A3F");
+    CHECK(table->item(0, 0)->toolTip() == "CPU address $C2:1A3F");
     CHECK(table->item(0, 1)->text() == "D0 → F0");
     CHECK(table->item(0, 2)->text() == "BNE $1A4D → BEQ $1A4D");
     CHECK(table->item(0, 3)->text().contains("4"));

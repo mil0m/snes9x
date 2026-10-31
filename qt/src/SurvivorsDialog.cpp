@@ -21,14 +21,19 @@ QString hex2(uint8_t v)
     return QString("%1").arg(v, 2, 16, QChar('0')).toUpper();
 }
 
-QString where(uint32_t offset, std::optional<uint32_t> address)
+// Offsets into the ROM, like the memory viewer shows them; the CPU's address in the tooltip.
+QString where(uint32_t offset)
 {
-    if (address)
-        return QString("$%1:%2")
-            .arg(*address >> 16, 2, 16, QChar('0'))
-            .arg(*address & 0xFFFF, 4, 16, QChar('0'))
-            .toUpper();
     return "0x" + QString::number(offset, 16).toUpper();
+}
+
+QString cpu(std::optional<uint32_t> address)
+{
+    if (!address)
+        return {};
+    auto bank = QString("%1").arg(*address >> 16, 2, 16, QChar('0')).toUpper();
+    auto at = QString("%1").arg(*address & 0xFFFF, 4, 16, QChar('0')).toUpper();
+    return QObject::tr("CPU address $%1:%2").arg(bank, at);
 }
 
 QTableWidget *make_table(QWidget *parent, const char *name, const QStringList &headers)
@@ -96,7 +101,7 @@ SurvivorsDialog::SurvivorsDialog(SurvivorSource &source, QWidget *parent) : QDia
     layout->addWidget(message);
 
     layout->addWidget(new QLabel(tr("<b>Pinned</b> in this recipe"), this));
-    pins_table = make_table(this, "pins", { tr("ROM offset"), tr("Clean → kept"), tr("Note") });
+    pins_table = make_table(this, "pins", { tr("Where"), tr("Change"), tr("Note") });
     layout->addWidget(pins_table, 1);
 
     auto bottom = new QHBoxLayout;
@@ -135,10 +140,14 @@ void SurvivorsDialog::refresh()
         table->insertRow(row);
         QString instruction = s.before.empty() ? (s.flags & codeflag::Dma ? tr("graphics") : tr("data"))
                                                : QString::fromStdString(s.before) + " → " + QString::fromStdString(s.after);
-        QStringList cells = { where(s.offset, s.address), hex2(s.was) + " → " + hex2(s.now), instruction,
+        QStringList cells = { where(s.offset), hex2(s.was) + " → " + hex2(s.now), instruction,
                               tr("%1 frames").arg(QLocale().toString(qulonglong(s.frames_used))) };
         for (int c = 0; c < cells.size(); c++)
-            table->setItem(row, c, new QTableWidgetItem(cells[c]));
+        {
+            auto item = new QTableWidgetItem(cells[c]);
+            item->setToolTip(cpu(s.address));
+            table->setItem(row, c, item);
+        }
     }
     table->resizeColumnsToContents();
     table->setVisible(!shown.empty());
@@ -149,7 +158,7 @@ void SurvivorsDialog::refresh()
     {
         int row = pins_table->rowCount();
         pins_table->insertRow(row);
-        QStringList cells = { where(p.offset, std::nullopt), hex2(p.was) + " → " + hex2(p.value),
+        QStringList cells = { where(p.offset), hex2(p.was) + " → " + hex2(p.value),
                               QString::fromStdString(p.note) };
         for (int c = 0; c < cells.size(); c++)
             pins_table->setItem(row, c, new QTableWidgetItem(cells[c]));

@@ -7,6 +7,30 @@ like. The engine, recipe format, library and backup logic have unit tests, and
 Use **a copy** of a ROM with battery save RAM (Final Fantasy VI, Fire Emblem, Zelda) in a
 scratch folder. By default Snes9x writes the `.srm` next to the ROM.
 
+## 0. The first ten minutes (start here)
+Use a game you have never set up (a fresh library folder, so no recipes exist for it).
+1. Follow **Start here** in the guide: open the game (**File > Open**), then **Corruption > Show Panel**.
+   - [ ] While no recipe is loaded, the panel shows the **Start here** card.
+2. In the **Recipe** list, pick **Starter: Gentle WRAM noise**.
+   - [ ] It loads (no Load button), and the **Start here** card goes away.
+3. Press **Corrupt (F7)** and play.
+   - [ ] The button reads *Corrupting… (F7 to stop)*, and things start going slightly wrong.
+4. Press **Re-roll (F8)**.
+   - [ ] The seed changes, and the glitches are different.
+5. Press **Back to Normal (Shift+F7)**.
+   - [ ] The game goes back to the moment you pressed Corrupt, with the ROM clean.
+   - [ ] The status says *Off. The game is back to normal.*
+6. Click **? Guide** at the top of the panel.
+   - [ ] The guide opens.
+7. Hover each button in the panel.
+   - [ ] Every button shows a tooltip, and the ones with a hotkey name it (Corrupt: F7, Back to Normal: Shift+F7, Re-roll: F8).
+8. **More > Share…**, and save the `.s9xrecipe` file.
+   - [ ] One `.s9xrecipe` file is written.
+9. **More > Choose the Library Folder…** and pick a different, empty folder. Open the same game, then **More > Import a Shared Recipe…** and pick the file.
+   - [ ] The recipe lands in the Recipe list and loads, named like the original, or with a ` 2` after it if that name is taken.
+10. Open the **Recipe** list and look at the starters.
+   - [ ] All 13 are there: *Starter: Gentle WRAM noise*, *Low WRAM roulette*, *Music mangler*, *Palette drift*, *Sprite jitter*, *Stat swap on hotkey*, *Tile rot*, *Classic ROM sprinkle*, *Live ROM drip*, *ROM region shift*, *Branch flips*, *Operand nudge*, *Opcode swap*.
+
 ## 1. Panel and library
 1. `build/qt/snes9x-qt <copy>.sfc`, then **Corruption > Show Panel**.
 2. **Choose…** a library folder (an empty folder, or your clone of the shared library repo).

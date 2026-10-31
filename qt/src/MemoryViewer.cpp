@@ -490,7 +490,7 @@ void MemoryViewer::hovered(std::optional<uint32_t> offset)
             QString bytes;
             for (int i = 0; i < in->length && in->start + i < snap.bytes.size(); i++)
                 bytes += QString("%1 ").arg(snap.bytes[in->start + i], 2, 16, QChar('0')).toUpper();
-            QString where = in->address ? QString("$%1:%2")
+            QString where = in->address ? QString("CPU $%1:%2")
                                               .arg(*in->address >> 16, 2, 16, QChar('0'))
                                               .arg(*in->address & 0xFFFF, 4, 16, QChar('0'))
                                               .toUpper()
