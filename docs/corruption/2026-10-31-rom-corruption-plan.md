@@ -1,6 +1,6 @@
 # ROM corruption: plan (roadmap #22)
 
-**Status (2026-10-31):** reviewed by Mikael (answers at the end). Phases 1 and 2 done, pending QA.md sections 20 and 21; phase 3 (the code map) in progress.
+**Status (2026-10-31):** reviewed by Mikael (answers at the end). Phases 1-3 done, pending QA.md sections 20-22; phase 4 (blame by execution) next.
 
 Spec: [`2026-10-30-ram-corruption-design.md`](./2026-10-30-ram-corruption-design.md),
 phase 5 ("a ROM target applied at load time, or live"). Both modes are in (Mikael, 31 Oct).
@@ -401,12 +401,34 @@ Built in four steps, each pushed:
    allows; otherwise only while the viewer shows the ROM) into this person's map. The
    snapshot carries the combined map's flags and each 4 KB ROM chunk's CPU address (the
    mapping's canonical bank: `$C0-$FF` for HiROM, `$80-$FF` for LoROM). Overlays **Code**
-   (opcodes strong, operands lighter, both widths in a warning tint), **Data** and **DMA**.
+   (opcodes strong, operands lighter), **Data** and **DMA**; code run at both widths says so
+   on hover.
    Hovering a ROM byte in the pixel view adds `$C2:1A3F  D0 0C  BNE $1A4D (branch)` or
    `data`/`dma`. The panel's status line shows the coverage.
 
 Not traced in v1: HDMA tables (read through their own pointers), code run from WRAM or
 SRAM (not ROM), and the SA-1's own CPU.
+
+Findings while building phase 3:
+
+- **Tracing is cheap**: 4.3% on FF6 (5 minutes of its intro), 4.7% FE4, 6.4% Pocky & Rocky,
+  7.0% Goof Troop, against the 15% budget. So the session records whenever a game is loaded,
+  not only while the viewer shows the ROM, and the map grows as people simply play.
+- **FF6 T-Edition's title screen runs from WRAM** (a wait loop at `$7E:7195`): 1.7 million
+  instructions in two seconds, none of them ROM. The tracer was right; a WRAM trace would
+  show such code later if wanted.
+- **Coverage after 5 minutes of FF6's intro**: 24,886 code bytes (11,283 opcodes), 156,903 data
+  bytes and 115,008 DMA bytes of 6 MB; the map file is 40 KB. Bank `$C0` holds 22,000 of the
+  code bytes. No code byte ran at both widths in any of the four games so far.
+- **FE4 and Goof Troop DMA almost nothing from ROM**: they unpack graphics into WRAM and DMA
+  from there, so for them the DMA overlay is nearly empty and the graphics are found as
+  data reads.
+- **The core's `pint` is signed**: the first data hook compared a negative offset (a WRAM
+  pointer below the ROM) against the ROM size and wrote out of bounds. Offsets are unsigned
+  now; the real-core test caught it on the first run.
+- **A launch check without a scratch library writes to the real one**: the first app run
+  (to generate the scratch config) saved a code map into `~/Documents/Snes9x Corruptions`.
+  Removed; generate the config with `LibraryRoot` pointed at scratch next time.
 
 ## Risks
 

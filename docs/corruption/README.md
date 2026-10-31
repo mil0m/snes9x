@@ -287,6 +287,32 @@ How the ROM behaves:
 - Not handled yet: games with a Super FX or SA-1 chip may not see live ROM changes to their
   coprocessor's code right away.
 
+### The code map
+
+While a game is loaded, the emulator watches what the game does with its ROM and remembers,
+per byte, what it is:
+
+- **code**: an instruction the CPU ran, split into the **opcode** (which instruction) and its
+  **operands** (the value or address it uses), at the width it ran at (8 or 16 bits);
+- **data**: bytes the CPU read as data: tables, stats, text, scripts, pointers;
+- **DMA**: bytes copied straight to the graphics chip: tiles, maps, palettes.
+
+The memory viewer shows it on the `rom` target as three overlays: **Code** (opcodes bright
+teal, operands lighter), **Data** (pink) and **DMA** (yellow-green). Hover a code byte for
+the instruction it belongs to, as the CPU sees it: `$C0:0053  22 06 00 C3 JSL $C30006 (jump)`.
+The panel's ROM line shows how much is known so far.
+
+It only knows what has run or been read, so it grows as you play: five minutes of FF6's
+intro find about 25,000 code bytes, 157 KB of data and 115 KB of graphics. Each person's map
+is saved in the library as `codemap.<name>.bin` (every minute while it grows, and when the
+game closes), and everyone's maps are combined when a game loads, so playing with Erik's
+library adds his exploration to yours. Watching costs about 4-7% of emulation speed.
+
+This is what the next phases aim with: corrupt operands but not opcodes, swap an
+instruction for one of the same length, flip a branch, and find the exact byte that crashed.
+Not seen yet: code the game runs from WRAM (FF6 T-Edition's title screen waits in WRAM, for
+one), HDMA tables, and the SA-1's own CPU.
+
 Plan and what's next: [`2026-10-31-rom-corruption-plan.md`](./2026-10-31-rom-corruption-plan.md).
 
 ## Editing memory like a picture
@@ -437,10 +463,15 @@ second run ends with identical memory and picture. With `--copies` it lists wher
 holds copies of the sprite table and palette after the warmup, `--map` prints the
 VRAM and ARAM map with how much of each area holds data, `--learn [held=3]` learns a crash map
 over five seeds and then plays `held` other seeds plain, avoiding it, and avoiding as many
-random blocks (a control: if random does as well, the map learned nothing), and
+random blocks (a control: if random does as well, the map learned nothing),
+`--codemap [file]` records the code map for `frames` frames (twice, alternating with
+plain runs) and prints the tracing cost, coverage, the banks with the most code and a few
+disassembled instructions, writing the map to `file` if given, and
 `--dump <dir>` writes every
 memory's raw bytes to `<dir>/<target>.bin`. Point `CORRUPT_DUMP_DIR` at such a folder when
-running the widget tests and they draw it through the pixel and tile views into the shots folder.
+running the widget tests and they draw it through the pixel and tile views into the shots folder. With
+a `rom.codemap.bin` there too (from `--codemap`), they also draw the ROM with the Code, Data
+and DMA overlays.
 
 The real-core tests (`tests/headless/guard_integration_test.cpp`) boot tiny generated ROMs
 that crash on cue (`STP`, NMI off) and check that the guard catches, rolls back and plays

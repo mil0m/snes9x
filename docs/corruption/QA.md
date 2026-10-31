@@ -288,3 +288,18 @@ scratch folder. By default Snes9x writes the `.srm` next to the ROM.
 7. Select a rectangle, **Export PNG…**, open it in an image editor, draw on it, save it (same size, greyscale), and **Import PNG…**.
    - [ ] The drawing appears in the viewer and counts as painted bytes.
 
+## 22. The code map
+1. Load FF6 and let the intro play for a minute (or play a bit). Open the memory viewer on **rom** in **Pixels**, row width 256.
+2. Choose the **Code** overlay.
+   - [ ] Within a second, teal shows where the game's code is (FF6: the first 48 KB, bank `$C0`), opcodes brighter than operands. Everything else is dark grey.
+3. Hover a teal dot.
+   - [ ] The line below shows its CPU address, bytes, instruction and kind, e.g. `$C0:0053  22 06 00 C3 JSL $C30006 (jump)`. A dark dot shows only address and value.
+4. Choose **Data**, then **DMA**.
+   - [ ] Pink lines where the game reads tables; yellow-green where it copies graphics. Hover says `read as data` / `copied by DMA`.
+5. Play on for a while; watch the panel's ROM line.
+   - [ ] `code map: N code, N data, N DMA bytes` grows as you reach new places.
+6. Close the game (or quit), then load it again.
+   - [ ] The library's game folder has `codemap.<your name>.bin`, and the overlays show what you saw last time straight away.
+7. Copy someone else's `codemap.*.bin` into the folder (or rename yours to `codemap.erik.bin` and play a new area), and load the game.
+   - [ ] Both maps show together.
+8. Does the game run noticeably slower than before? (It should cost about 5%.)
