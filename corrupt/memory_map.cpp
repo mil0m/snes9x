@@ -79,6 +79,10 @@ std::vector<MapArea> fixed_map(Target t, size_t size)
         add(m, size, "Driver, music and samples", t, 0x0200, 0xFFBF, "Code, song data, instruments and the echo buffer");
         add(m, size, "Boot ROM area", t, 0xFFC0, 0xFFFF, "Hidden behind the boot ROM while it's enabled");
         break;
+    case Target::ROM:
+        add(m, size, "The game", t, 0, size ? size - 1 : 0,
+            "Code, data, graphics and music, as in a clean .sfc. Changes last until the run restarts");
+        break;
     }
     sort(m);
     return m;

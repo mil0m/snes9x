@@ -691,3 +691,118 @@ TEST_CASE("renaming a region in the running recipe keeps the run going")
     CHECK(e.recipe().rules[1].region.empty());
     CHECK(e.recipe().rules[1].range.target == Target::CGRAM);
 }
+
+TEST_SUITE("at_load rules")
+{
+    Recipe classic()
+    {
+        Recipe r;
+        r.name = "classic";
+        r.seed = 9;
+        Rule rom;
+        rom.name = "rom";
+        rom.range = { Target::ROM, 0x100, 0x1FF };
+        rom.op = { .type = OpType::Random, .min = 1, .max = 255 };
+        rom.when = { .type = TriggerType::AtLoad };
+        rom.count = 8;
+        Rule ram = rom;
+        ram.name = "ram";
+        ram.range = { Target::WRAM, 0x100, 0x1FF };
+        Rule live = rom;
+        live.name = "live";
+        live.when = { .type = TriggerType::EveryFrames, .every = 1 };
+        live.range = { Target::WRAM, 0x400, 0x4FF };
+        r.rules = { rom, ram, live };
+        return r;
+    }
+
+    TEST_CASE("they fire once at the start of a run, at frame 0, and never in a frame")
+    {
+        FakeMemory mem;
+        Engine e;
+        e.set_recipe(classic());
+        e.set_active(true);
+        CHECK(e.fire_at_load(mem) == 16); // both at_load rules, 8 bytes each
+        REQUIRE(e.event_log().size() == 16);
+        for (auto &ev : e.event_log())
+        {
+            CHECK(ev.frame == 0);
+            CHECK(ev.rule_index < 2);
+        }
+        auto before = mem.of(Target::ROM);
+        for (int i = 0; i < 30; i++)
+            e.on_frame(mem);
+        CHECK(mem.of(Target::ROM) == before); // only the live WRAM rule fires in frames
+        CHECK(e.status().firings == 30 + 2);
+    }
+
+    TEST_CASE("a filter picks which targets fire, and the same seed gives the same bytes")
+    {
+        FakeMemory a, b;
+        Engine e;
+        e.set_recipe(classic());
+        e.set_active(true);
+        CHECK(e.fire_at_load(a, [](Target t) { return t == Target::ROM; }) == 8);
+        CHECK(e.fire_at_load(a, [](Target t) { return t != Target::ROM; }) == 8);
+        CHECK(a.of(Target::WRAM) != FakeMemory().of(Target::WRAM));
+
+        e.set_active(false);
+        e.set_active(true); // a new run
+        e.fire_at_load(b);
+        CHECK(a.of(Target::ROM) == b.of(Target::ROM));
+        CHECK(a.of(Target::WRAM) == b.of(Target::WRAM));
+
+        e.reroll(10);
+        FakeMemory c;
+        e.fire_at_load(c);
+        CHECK(c.of(Target::ROM) != a.of(Target::ROM));
+    }
+
+    TEST_CASE("an inactive engine or a disabled rule fires nothing")
+    {
+        FakeMemory mem;
+        Engine e;
+        e.set_recipe(classic());
+        CHECK(e.fire_at_load(mem) == 0);
+        e.set_active(true);
+        e.set_rule_enabled(0, false);
+        CHECK(e.fire_at_load(mem) == 8);
+    }
+}
+
+TEST_CASE("locked bytes are skipped by every rule, avoiding or not, and never logged")
+{
+    FakeMemory mem;
+    Recipe r;
+    r.seed = 3;
+    Rule all;
+    all.range = { Target::ROM, 0x100, 0x11F };
+    all.op = { .type = OpType::Random, .min = 1, .max = 255 };
+    all.when = { .type = TriggerType::EveryFrames, .every = 1 };
+    all.count = 32;
+    Rule avoiding = all;
+    avoiding.avoid_hot = true;
+    avoiding.range = { Target::ROM, 0x200, 0x21F };
+    r.rules = { all, avoiding };
+
+    HotMask locked;
+    locked.add_block(Target::ROM, 0x100);
+    locked.add_block(Target::ROM, 0x210);
+    HotMask hot;
+    hot.add_block(Target::ROM, 0x200);
+
+    Engine e;
+    e.set_recipe(r);
+    e.set_locked(locked);
+    e.set_hot_mask(hot);
+    e.set_active(true);
+    for (int i = 0; i < 20; i++)
+        e.on_frame(mem);
+    for (uint32_t a = 0x100; a < 0x110; a++)
+        CHECK(mem.of(Target::ROM)[a] == 0);
+    for (uint32_t a = 0x200; a < 0x220; a++) // hot (avoided) and locked
+        CHECK(mem.of(Target::ROM)[a] == 0);
+    CHECK(mem.of(Target::ROM)[0x115] != 0);
+    for (auto &ev : e.event_log())
+        CHECK_FALSE(locked.is_hot(Target::ROM, ev.write.offset));
+}

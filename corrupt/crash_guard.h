@@ -19,6 +19,8 @@ struct CoreAccess
     virtual std::vector<uint8_t> save_state() = 0;
     virtual bool load_state(const std::vector<uint8_t> &state) = 0;
     virtual FrameSignals sample() = 0;
+    // A power cycle, so the game boots again (from a corrupted ROM, for classic runs).
+    virtual void reset_console() {}
     virtual ~CoreAccess() = default;
 };
 

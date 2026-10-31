@@ -63,6 +63,17 @@ TEST_CASE("window applies to hotkeys too")
     CHECK(firing_frames(t, 300, hotkey_bit(1)).empty()); // pressed on frame 10
 }
 
+TEST_CASE("at_load fires only at frame 0, before the run's first frame")
+{
+    Trigger t{ .type = TriggerType::AtLoad };
+    CHECK(firing_frames(t, 300).empty());
+    Rng rng = Rng::for_firing(1, 0, 0);
+    CHECK(should_fire(t, 0, rng, 0));
+    CHECK_FALSE(validate_trigger(t));
+    CHECK(parse_trigger("at_load") == TriggerType::AtLoad);
+    CHECK(std::string(trigger_name(TriggerType::AtLoad)) == "at_load");
+}
+
 TEST_CASE("trigger validation")
 {
     CHECK_FALSE(validate_trigger({ .type = TriggerType::EveryFrames, .every = 30 }));

@@ -120,7 +120,8 @@ TEST_CASE("every field survives a round trip")
         {"target":"oam","range":["0","0x21F"],"op":{"type":"freeze","value":"0x63"},"when":{"once_at_frame":9}},
         {"target":"aram","range":["0","0xFFFF"],"op":{"type":"bitflip","mask":"0x81"},"when":{"every_frames":2}},
         {"target":"wram","range":["0","0xFF"],"op":{"type":"add","min":-5,"max":5,"mode":"clamp"},"when":{"every_frames":2}},
-        {"target":"wram","range":["0","0xFF"],"op":{"type":"shuffle","window":4},"when":{"every_frames":2}}]})", {});
+        {"target":"wram","range":["0","0xFF"],"op":{"type":"shuffle","window":4},"when":{"every_frames":2}},
+        {"target":"rom","range":["0x8000","0xFFFF"],"op":{"type":"random"},"when":{"at_load":true}}]})", {});
     REQUIRE_MESSAGE(r.recipe, first_error(r));
     CHECK(r.recipe->seed == 18446744073709551615ULL);
     auto &c = r.recipe->rules[0];
@@ -134,6 +135,8 @@ TEST_CASE("every field survives a round trip")
     CHECK(r.recipe->rules[2].op.mask == uint8_t(0x81));
     CHECK(r.recipe->rules[3].op.clamp);
     CHECK(r.recipe->rules[4].op.window == 4);
+    CHECK(r.recipe->rules[5].range.target == Target::ROM);
+    CHECK(r.recipe->rules[5].when.type == TriggerType::AtLoad);
 
     auto again = parse_recipe(write_recipe(*r.recipe), {});
     REQUIRE_MESSAGE(again.recipe, first_error(again));
@@ -246,13 +249,15 @@ TEST_SUITE("errors")
     {
         auto none = parse_recipe(R"({"format":1,"rules":[{"target":"wram","range":["0","9"],"op":{"type":"random","max":1},"when":{}}]})", {});
         auto two = parse_recipe(R"({"format":1,"rules":[{"target":"wram","range":["0","9"],"op":{"type":"random","max":1},"when":{"hotkey":1,"every_frames":3}}]})", {});
+        auto off = parse_recipe(R"({"format":1,"rules":[{"target":"rom","range":["0","9"],"op":{"type":"random"},"when":{"at_load":false}}]})", {});
         CHECK_FALSE(none.recipe);
         CHECK_FALSE(two.recipe);
+        CHECK_FALSE(off.recipe); // at_load is only ever true
     }
 
     TEST_CASE("bad target and op names")
     {
-        CHECK_FALSE(parse_recipe(R"({"format":1,"rules":[{"target":"rom","range":["0","9"],"op":{"type":"random"},"when":{"hotkey":1}}]})", {}).recipe);
+        CHECK_FALSE(parse_recipe(R"({"format":1,"rules":[{"target":"dsp","range":["0","9"],"op":{"type":"random"},"when":{"hotkey":1}}]})", {}).recipe);
         CHECK_FALSE(parse_recipe(R"({"format":1,"rules":[{"target":"wram","range":["0","9"],"op":{"type":"explode"},"when":{"hotkey":1}}]})", {}).recipe);
     }
 
@@ -273,7 +278,7 @@ TEST_SUITE("errors")
     TEST_CASE("all errors are reported, not just the first")
     {
         auto r = parse_recipe(R"({"format":1,"rules":[
-            {"target":"rom","op":{"type":"random"},"when":{"hotkey":1}},
+            {"target":"dsp","op":{"type":"random"},"when":{"hotkey":1}},
             {"target":"wram","range":["0","9"],"op":{"type":"explode"},"when":{"hotkey":1}}]})", {});
         CHECK(r.errors.size() == 2);
     }
@@ -314,7 +319,7 @@ TEST_SUITE("regions")
 
     TEST_CASE("bad region entries are reported and skipped")
     {
-        auto r = parse_regions(R"({"format":1,"regions":{"ok":{"target":"wram","range":["0","1"]},"bad":{"target":"rom","range":["0","1"]}}})");
+        auto r = parse_regions(R"({"format":1,"regions":{"ok":{"target":"wram","range":["0","1"]},"bad":{"target":"dsp","range":["0","1"]}}})");
         CHECK(r.errors.size() == 1);
         CHECK(r.regions.count("ok") == 1);
     }

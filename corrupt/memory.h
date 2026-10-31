@@ -19,16 +19,17 @@ enum class Target
     OAM,   // 544 B sprite table
     CGRAM, // 512 B palette, little-endian 15-bit colours
     ARAM,  // 64 KB sound CPU RAM
+    ROM,   // the game itself, as a clean .sfc (no copier header), up to 6 MB
 };
 
-constexpr size_t kTargetCount = 6;
+constexpr size_t kTargetCount = 7;
 constexpr std::array<Target, kTargetCount> kAllTargets = {
-    Target::WRAM, Target::SRAM, Target::VRAM, Target::OAM, Target::CGRAM, Target::ARAM
+    Target::WRAM, Target::SRAM, Target::VRAM, Target::OAM, Target::CGRAM, Target::ARAM, Target::ROM
 };
 
 const char *target_name(Target t);
 std::optional<Target> parse_target(std::string_view name);
-size_t nominal_size(Target t); // SRAM: the common 8 KB
+size_t nominal_size(Target t); // SRAM: the common 8 KB; ROM: 1 MB
 
 // The engine never touches the emulator directly; everything goes through this.
 // The emulator's implementation owns cache invalidation (tiles, sprites, colours).
@@ -37,6 +38,8 @@ struct MemoryAccess
     virtual size_t size(Target t) const = 0;
     virtual uint8_t read(Target t, uint32_t offset) const = 0;
     virtual void write(Target t, uint32_t offset, uint8_t value) = 0;
+    // The target's bytes in one piece, when they are (for reading a whole ROM quickly).
+    virtual const uint8_t *data(Target) const { return nullptr; }
     virtual ~MemoryAccess() = default;
 };
 

@@ -5,6 +5,8 @@ namespace corrupt
 
 bool should_fire(const Trigger &t, uint64_t frame, Rng &rng, uint16_t pressed_hotkeys)
 {
+    if (t.type == TriggerType::AtLoad)
+        return frame == 0; // the run's start; windows don't apply
     if (t.window && (frame < t.window->start || frame > t.window->end))
         return false;
 
@@ -14,6 +16,7 @@ bool should_fire(const Trigger &t, uint64_t frame, Rng &rng, uint16_t pressed_ho
     case TriggerType::EveryFrames: return t.every > 0 && frame % t.every == 0;
     case TriggerType::ChancePerFrame: return rng.chance(t.chance);
     case TriggerType::Hotkey: return (pressed_hotkeys & hotkey_bit(t.hotkey)) != 0;
+    case TriggerType::AtLoad: return false;
     }
     return false;
 }
@@ -38,6 +41,7 @@ std::optional<std::string> validate_trigger(const Trigger &t)
         if (t.hotkey < 1 || t.hotkey > 9)
             return "hotkey must be 1..9";
         break;
+    case TriggerType::AtLoad: break;
     }
     if (t.window && t.window->start > t.window->end)
         return "window start is after its end";
@@ -52,6 +56,7 @@ const char *trigger_name(TriggerType t)
     case TriggerType::EveryFrames: return "every_frames";
     case TriggerType::ChancePerFrame: return "chance_per_frame";
     case TriggerType::Hotkey: return "hotkey";
+    case TriggerType::AtLoad: return "at_load";
     }
     return "?";
 }
@@ -59,7 +64,7 @@ const char *trigger_name(TriggerType t)
 std::optional<TriggerType> parse_trigger(std::string_view name)
 {
     for (auto t : { TriggerType::OnceAtFrame, TriggerType::EveryFrames,
-                    TriggerType::ChancePerFrame, TriggerType::Hotkey })
+                    TriggerType::ChancePerFrame, TriggerType::Hotkey, TriggerType::AtLoad })
         if (name == trigger_name(t))
             return t;
     return std::nullopt;

@@ -13,6 +13,7 @@ class CoreMemory : public MemoryAccess
     size_t size(Target t) const override;
     uint8_t read(Target t, uint32_t offset) const override;
     void write(Target t, uint32_t offset, uint8_t value) override;
+    const uint8_t *data(Target t) const override;
 };
 
 } // namespace corrupt

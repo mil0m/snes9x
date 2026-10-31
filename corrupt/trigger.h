@@ -17,6 +17,7 @@ enum class TriggerType
     EveryFrames,    // fire on every multiple of `every`
     ChancePerFrame, // fire with probability `chance` each frame
     Hotkey,         // fire on the frame hotkey `hotkey` (1-9) is pressed
+    AtLoad,         // fire once when the run starts, before frame 1 (frame 0): classic ROM corruption
 };
 
 struct FrameWindow

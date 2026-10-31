@@ -8,6 +8,7 @@
 #include "corrupt/core_memory.h"
 #include "corrupt/crash_guard.h"
 #include "corrupt/hook.h"
+#include "corrupt/rom_keeper.h"
 #include "corrupt/run_control.h"
 #include "corrupt/memory_watch.h"
 
@@ -27,6 +28,7 @@ struct Harness
 
     Engine engine;
     CoreMemory memory;
+    RomKeeper rom{ memory };
     SnesCoreAccess access;
     CrashGuard guard;
     RunControl control;
@@ -38,12 +40,15 @@ struct Harness
         REQUIRE(headless::init());
         REQUIRE(headless::load_rom_memory(testrom::build(crash)));
         SnesCoreAccess::watch_resets();
+        rom.set_clock([this] { return engine.current_frame(); });
+        rom.game_loaded(SnesCoreAccess::locked_rom());
+        engine.set_locked(rom.locked_mask());
         engine.set_recipe(std::move(recipe));
         engine.set_active(true);
         guard.set_policy(policy);
         current = this;
         S9xCorruptFrameHook = [] {
-            current->engine.on_frame(current->memory);
+            current->engine.on_frame(current->rom);
             current->access.note_frame_start();
         };
     }
@@ -59,9 +64,10 @@ struct Harness
         for (int i = 0; i < frames; i++)
         {
             headless::run_frames(1);
-            if (auto s = control.between_frames(engine, access); s != RunControl::Started::Nothing)
+            if (auto s = control.between_frames(engine, access, &rom); s != RunControl::Started::Nothing)
                 starts.push_back(s);
             auto out = guard.between_frames(engine, access);
+            rom.after_guard(out);
             if (out.kind != GuardOutcome::Nothing)
                 outcomes.push_back(out);
         }
@@ -369,4 +375,87 @@ TEST_CASE("the access counter feeds the memory watch per frame")
     }
     CHECK(S9xWramReads == nullptr); // stopped when it went away
     CHECK(S9xWramWrites == nullptr);
+}
+
+TEST_SUITE("ROM corruption in the real core")
+{
+    // The test ROM is 32 KB of LoROM at $00:8000, so ROM offset = address - 0x8000.
+    constexpr uint32_t kNmiInc = 0x0030; // INC $11 (E6 11): the frame counter
+    constexpr uint32_t kMainWai = 0x0011; // WAI (CB), once a frame in the main loop
+
+    Rule poke_rom(uint32_t offset, uint8_t value, Trigger when)
+    {
+        Rule r;
+        r.name = "poke rom";
+        r.range = { Target::ROM, offset, offset };
+        r.op = { .type = OpType::Random, .min = value, .max = value };
+        r.when = when;
+        return r;
+    }
+
+    Recipe one(Rule r)
+    {
+        Recipe recipe;
+        recipe.name = "rom";
+        recipe.seed = 1;
+        recipe.rules = { r };
+        return recipe;
+    }
+
+    TEST_CASE("the header and vectors are locked, wherever the mapping puts them")
+    {
+        Harness h(testrom::Crash::None, one(poke_rom(0x7FFC, 0x00, { .type = TriggerType::OnceAtFrame, .frame = 5 })),
+                  PolicyKind::Skip);
+        auto locked = SnesCoreAccess::locked_rom();
+        REQUIRE(locked.size() == 1);
+        CHECK(locked[0].first == 0x7FB0); // LoROM: $00:FFB0 is ROM 0x7FB0
+        CHECK(locked[0].last == 0x7FFF);
+        h.run(20);
+        CHECK(h.memory.read(Target::ROM, 0x7FFC) == 0x00); // the reset vector's low byte: $8000
+        CHECK(h.memory.read(Target::ROM, 0x7FFD) == 0x80);
+        CHECK(h.rom.changed() == 0);
+        CHECK(alive(h));
+    }
+
+    TEST_CASE("classic: an at_load patch boots with the game (INC becomes DEC, the counter runs backwards)")
+    {
+        Harness h(testrom::Crash::None, one(poke_rom(kNmiInc, 0xC6, { .type = TriggerType::AtLoad })), PolicyKind::Skip);
+        h.engine.hold_starts(true);
+        h.engine.set_active(false);
+        h.run(30); // the clean game counts up
+        uint8_t a = h.wram(testrom::kFrameCounterAddr);
+        h.run(10);
+        CHECK(uint8_t(h.wram(testrom::kFrameCounterAddr) - a) == 10);
+
+        h.engine.set_active(true);
+        h.run(1); // the start: patch, power cycle, anchor
+        REQUIRE(h.starts.size() == 1);
+        CHECK(h.memory.read(Target::ROM, kNmiInc) == 0xC6);
+        CHECK(h.wram(testrom::kFrameCounterAddr) == 0x55); // freshly booted: RAM is 0x55
+        h.run(20);
+        uint8_t b = h.wram(testrom::kFrameCounterAddr);
+        h.run(10);
+        CHECK(uint8_t(b - h.wram(testrom::kFrameCounterAddr)) == 10); // down now
+
+        h.engine.set_active(false);
+        h.engine.set_recipe({}); // another recipe starts from the clean ROM
+        h.engine.set_active(true);
+        h.run(1);
+        CHECK(h.memory.read(Target::ROM, kNmiInc) == 0xE6);
+    }
+
+    TEST_CASE("live: a ROM edit that crashes the game is rolled back and undone")
+    {
+        Harness h(testrom::Crash::None, one(poke_rom(kMainWai, 0xDB, { .type = TriggerType::OnceAtFrame, .frame = 150 })),
+                  PolicyKind::Skip);
+        h.engine.hold_starts(true);
+        h.engine.set_active(false);
+        h.engine.set_active(true);
+        h.run(400);
+        REQUIRE_FALSE(h.outcomes.empty()); // STP: caught
+        CHECK(h.outcomes[0].kind == GuardOutcome::RolledBack);
+        CHECK(h.outcomes.size() == 1); // without the undo the STP would stay and crash again
+        CHECK(h.memory.read(Target::ROM, kMainWai) == 0xCB); // the WAI is back
+        CHECK(alive(h));
+    }
 }

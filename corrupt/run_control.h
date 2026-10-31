@@ -1,6 +1,7 @@
 #pragma once
 #include "crash_guard.h"
 #include "engine.h"
+#include "rom_keeper.h"
 
 #include <cstdint>
 #include <optional>
@@ -14,6 +15,12 @@ namespace corrupt
 // snapshots the state there, or loads a saved one, and then lets frame 1 run.
 // That snapshot is the run's anchor: loading it and starting the same recipe
 // replays the same corruption. Call it between frames, before the crash guard.
+//
+// With a RomKeeper, a start also sets up the ROM: back to the clean ROM, then the
+// recipe's at_load ROM rules, then (when there were any, and no saved moment is
+// loaded) a power cycle so the game boots from that ROM. The anchor is taken after
+// that, and the at_load rules on other targets fire last, so a replay from the anchor
+// gets the same ROM and the same RAM.
 class RunControl
 {
   public:
@@ -38,7 +45,7 @@ class RunControl
         from_saved = false;
     }
 
-    Started between_frames(Engine &engine, CoreAccess &core);
+    Started between_frames(Engine &engine, CoreAccess &core, RomKeeper *rom = nullptr);
 
     bool has_anchor() const { return !current.empty(); }
     const std::vector<uint8_t> &anchor() const { return current; }

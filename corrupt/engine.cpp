@@ -118,6 +118,49 @@ void Engine::restart()
     released = false;
 }
 
+size_t Engine::fire_at_load(MemoryAccess &mem, const std::function<bool(Target)> &which)
+{
+    if (!is_active)
+        return 0;
+    size_t written = 0;
+    for (uint32_t i = 0; i < current.rules.size(); i++)
+    {
+        auto &rule = current.rules[i];
+        if (rule.when.type != TriggerType::AtLoad || runtimes[i].firings > 0)
+            continue;
+        if (which && !which(rule.range.target))
+            continue;
+        auto events = tick_rule(rule, runtimes[i], mem, Rng::rule_seed(current.seed, rule.salt), i, 0, 0,
+                                current.intensity, &hot_and_locked, &locked);
+        for (auto &e : events)
+            log.push_back({ 0, i, e });
+        written += events.size();
+    }
+    return written;
+}
+
+void Engine::set_hot_mask(HotMask mask)
+{
+    hot = std::move(mask);
+    hot_and_locked = hot;
+    hot_and_locked.merge(locked);
+}
+
+void Engine::set_locked(HotMask mask)
+{
+    locked = std::move(mask);
+    hot_and_locked = hot;
+    hot_and_locked.merge(locked);
+}
+
+bool Engine::has_at_load(Target t) const
+{
+    for (auto &rule : current.rules)
+        if (rule.enabled && rule.when.type == TriggerType::AtLoad && rule.range.target == t)
+            return true;
+    return false;
+}
+
 void Engine::on_frame(MemoryAccess &mem)
 {
     if (!is_active || waiting())
@@ -133,7 +176,7 @@ void Engine::on_frame(MemoryAccess &mem)
             continue;
         auto &rule = current.rules[i];
         auto events = tick_rule(rule, runtimes[i], mem, Rng::rule_seed(current.seed, rule.salt), i, frame, hotkeys,
-                                current.intensity, &hot);
+                                current.intensity, &hot_and_locked, &locked);
         for (auto &e : events)
             log.push_back({ frame, i, e });
     }

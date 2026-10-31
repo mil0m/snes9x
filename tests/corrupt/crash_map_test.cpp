@@ -160,7 +160,7 @@ TEST_SUITE("crash map")
     {
         CHECK_FALSE(parse_crash_map("not json").errors.empty());
         CHECK_FALSE(parse_crash_map(R"({"version":1,"block":32})").errors.empty());
-        CHECK_FALSE(parse_crash_map(R"({"version":1,"block":16,"rom":{"0x10":[1,0]}})").errors.empty());
+        CHECK_FALSE(parse_crash_map(R"({"version":1,"block":16,"dsp":{"0x10":[1,0]}})").errors.empty());
         CHECK_FALSE(parse_crash_map(R"({"version":1,"block":16,"wram":{"zz":[1,0]}})").errors.empty());
         CHECK_FALSE(parse_crash_map(R"({"version":1,"block":16,"wram":{"0x10":[-1,0]}})").errors.empty());
         CHECK_FALSE(parse_crash_map(R"({"version":1,"block":16,"wram":{"0x10":[1]}})").errors.empty());

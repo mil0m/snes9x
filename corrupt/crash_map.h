@@ -66,6 +66,7 @@ struct HotMask
     }
     bool empty() const;
     void add_block(Target t, uint32_t offset); // the whole 16-byte block holding offset
+    void merge(const HotMask &other);          // hot where either is
 };
 HotMask hot_mask(const CrashMap &map);
 

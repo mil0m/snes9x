@@ -13,6 +13,11 @@ class SnesCoreAccess : public CoreAccess
     std::vector<uint8_t> save_state() override;
     bool load_state(const std::vector<uint8_t> &state) override;
     FrameSignals sample() override;
+    void reset_console() override; // S9xReset, then re-arms the reset watch (the ROM may have changed)
+
+    // The ROM bytes the CPU sees at $00:FFB0-$FFFF (the header and the interrupt vectors),
+    // wherever this game's mapping puts them. Nothing may corrupt them.
+    static std::vector<AddressRange> locked_rom();
 
     // Call from the frame hook: remembers whether this frame is being drawn
     // (with frameskip it isn't, and the screen buffer keeps the last picture).

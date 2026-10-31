@@ -109,6 +109,20 @@ void HotMask::add_block(Target t, uint32_t offset)
         v[block + i] = true;
 }
 
+void HotMask::merge(const HotMask &other)
+{
+    for (size_t t = 0; t < kTargetCount; t++)
+    {
+        auto &mine = hot[t];
+        auto &theirs = other.hot[t];
+        if (mine.size() < theirs.size())
+            mine.resize(theirs.size(), false);
+        for (size_t i = 0; i < theirs.size(); i++)
+            if (theirs[i])
+                mine[i] = true;
+    }
+}
+
 HotMask hot_mask(const CrashMap &map)
 {
     HotMask mask;

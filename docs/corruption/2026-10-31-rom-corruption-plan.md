@@ -243,6 +243,46 @@ works, and it needs nothing from the tracer.
 6. **Survivors and pins.** The survivors list, pinning into `patches`, the panel UI, and a
    starter recipe or two built from what works on the test games.
 
+## Phase 1 in detail
+
+**The model: during a run, the ROM is the clean ROM plus that run's edits.**
+
+- **Starting a run** (on, re-roll, another recipe, the saved moment) restores the clean ROM,
+  then applies the rules with the `at_load` trigger. If any of them targets the ROM, and the
+  run isn't starting from a saved moment, the console is **power-cycled** so the game boots
+  from the corrupted ROM (classic). Then the run's anchor is taken, and then the `at_load`
+  rules on other targets fire. From a saved moment it's the same order with "load the moment"
+  in place of the power cycle, so a replay gets the same ROM and the same RAM.
+- **A rollback** reverts the ROM edits made after the checkpoint it went back to (save
+  states don't hold the ROM). `at_load` edits are frame 0, so a rollback never undoes them.
+- **Giving up** (the guard's last resort) restores the clean ROM too: a byte that keeps
+  crashing would otherwise crash the game forever.
+- **Turning a recipe off** keeps the damage, like RAM. The panel has **Restore Clean ROM**.
+
+Tasks:
+
+1. `Target::ROM` (`rom`): `CoreMemory` over `Memory.ROM` and `CalculatedSize`, plus a raw `data()`
+   pointer for the viewer's fast path. Every switch over targets.
+2. The `at_load` trigger: JSON, the rule text, the editor. `Engine::fire_at_load(mem, filter)`
+   runs only `at_load` rules, at frame 0, and logs their writes.
+3. `RomKeeper`, a `MemoryAccess` over the emulator's: the clean copy, the locked bytes,
+   a journal of ROM edits with their frame, `restore_clean`, `revert_after(frame)`,
+   `after_guard(outcome)`, a count of changed bytes. The engine also gets the locked bytes as
+   a mask that every rule skips (not only `avoid_hot` ones), so locked writes never reach
+   the log.
+4. `RunControl` runs the start order above; `CoreAccess::reset_console()` (`S9xReset`, then
+   re-arm the reboot watch, whose wrapped opcode may have changed).
+5. `SnesCoreAccess::locked_rom()`: the ROM bytes behind `$00:FFB0-$FFFF`, whatever the mapping.
+6. Session, headless harness and `corrupt-smoke`: the keeper wraps `CoreMemory`; guard outcomes
+   go through `after_guard`; **Export ROM…** and **Restore Clean ROM** in the panel.
+7. The viewer on a 4-6 MB target: `MemoryWatch` skips the activity heat for the ROM (only
+   rules change it) and copies bytes only when they changed; the crash map's per-byte
+   danger stays empty while it knows nothing about a target.
+8. Tests on the test ROM: a classic patch boots (`INC $11` becomes `DEC $11`, the frame
+   counter runs backwards), a live patch that crashes (`WAI` becomes `STP`) is rolled back
+   *and reverted*, locked bytes stay put. Then FF6 with `corrupt-smoke`, classic and live.
+9. Docs: README, QA.md section 20, a classic and a live starter recipe.
+
 ## Risks
 
 - **Tracer speed.** An extra indirect call on every instruction. Installed only while

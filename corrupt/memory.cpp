@@ -16,6 +16,7 @@ const char *target_name(Target t)
     case Target::OAM: return "oam";
     case Target::CGRAM: return "cgram";
     case Target::ARAM: return "aram";
+    case Target::ROM: return "rom";
     }
     return "?";
 }
@@ -42,6 +43,7 @@ size_t nominal_size(Target t)
     case Target::OAM: return 512 + 32;
     case Target::CGRAM: return 512;
     case Target::ARAM: return 0x10000;
+    case Target::ROM: return 0x100000;
     }
     return 0;
 }

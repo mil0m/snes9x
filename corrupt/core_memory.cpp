@@ -64,8 +64,19 @@ size_t CoreMemory::size(Target t) const
     case Target::OAM: return sizeof(PPU.OAMData);
     case Target::CGRAM: return sizeof(PPU.CGDATA);
     case Target::ARAM: return S9xAPUGetRAM() ? 0x10000 : 0;
+    case Target::ROM: return Memory.ROM ? Memory.CalculatedSize : 0;
     }
     return 0;
+}
+
+const uint8_t *CoreMemory::data(Target t) const
+{
+    switch (t)
+    {
+    case Target::WRAM: return Memory.RAM;
+    case Target::ROM: return Memory.ROM;
+    default: return nullptr;
+    }
 }
 
 uint8_t CoreMemory::read(Target t, uint32_t offset) const
@@ -84,6 +95,7 @@ uint8_t CoreMemory::read(Target t, uint32_t offset) const
         return (offset & 1) ? uint8_t(colour >> 8) : uint8_t(colour & 0xFF);
     }
     case Target::ARAM: return S9xAPUGetRAM()[offset];
+    case Target::ROM: return Memory.ROM[offset];
     }
     return 0;
 }
@@ -113,6 +125,11 @@ void CoreMemory::write(Target t, uint32_t offset, uint8_t value)
         break;
     case Target::ARAM:
         S9xAPUGetRAM()[offset] = value;
+        break;
+    case Target::ROM:
+        // The CPU reads the ROM through direct pointers and keeps no decoded copy, so the
+        // next fetch sees the new byte. (Super FX and SA-1 caches aren't handled yet.)
+        Memory.ROM[offset] = value;
         break;
     }
 }

@@ -78,6 +78,7 @@ std::string describe_trigger(const Trigger &t)
         break;
     }
     case TriggerType::Hotkey: text = "hotkey " + std::to_string(t.hotkey); break;
+    case TriggerType::AtLoad: text = "once at load"; break;
     }
     if (t.window)
         text += ", frames " + std::to_string(t.window->start) + "-" + std::to_string(t.window->end);

@@ -2,6 +2,7 @@
 #include "recipe.h"
 
 #include <deque>
+#include <functional>
 #include <string>
 #include <vector>
 
@@ -56,9 +57,16 @@ class Engine
     void set_intensity(double intensity);               // the whole recipe, 0..1, live
     void set_anchor_state(std::string file);            // the saved moment's file name; no restart
     void rename_region(const std::string &from, const std::string &to); // empty `to`: unnamed; no restart
-    void set_hot_mask(HotMask mask) { hot = std::move(mask); } // for rules with avoid_hot; no restart
+    void set_hot_mask(HotMask mask); // for rules with avoid_hot; no restart
+    void set_locked(HotMask mask);   // bytes no rule may write (the ROM header and vectors); no restart
 
     void on_frame(MemoryAccess &mem);
+
+    // The run's start, before frame 1: fires the at_load rules (those `which` accepts the
+    // target of; all by default), each once per run, logged at frame 0. Returns the
+    // number of bytes written.
+    size_t fire_at_load(MemoryAccess &mem, const std::function<bool(Target)> &which = {});
+    bool has_at_load(Target t) const; // an enabled at_load rule on that target
 
     // Held starts: with hold_starts(true), every (re)start waits at frame 0 until
     // release(), so the front end can snapshot the state (or load a saved one) at a
@@ -97,7 +105,8 @@ class Engine
     uint64_t next_id = 1;
     std::vector<uint64_t> mutes; // per rule: quiet through this frame
     std::deque<LoggedEvent> log;
-    HotMask hot;
+    HotMask hot, locked;
+    HotMask hot_and_locked; // what avoiding rules skip
     bool is_active = false;
     uint64_t frame = 0;
     uint16_t pending_hotkeys = 0;

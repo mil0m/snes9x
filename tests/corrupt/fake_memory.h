@@ -25,4 +25,5 @@ struct FakeMemory : corrupt::MemoryAccess
         bytes[size_t(t)].at(offset) = value;
         writes++;
     }
+    const uint8_t *data(corrupt::Target t) const override { return bytes[size_t(t)].data(); }
 };

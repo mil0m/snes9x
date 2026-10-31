@@ -43,10 +43,12 @@ struct RuleRuntime
 // `scale` multiplies the rule's intensity (the recipe's intensity). With rule.avoid_hot,
 // writes to bytes that `hot` marks are skipped, and every other write is the same as without
 // it (values are still drawn for the skipped ones). Rules without it, or an empty mask,
-// replay exactly as before.
+// replay exactly as before. Every rule skips the bytes `locked` marks (pass them inside `hot`
+// too, for avoiding rules).
 std::vector<WriteEvent> tick_rule(const Rule &rule, RuleRuntime &rt, MemoryAccess &mem,
                                   uint64_t seed, uint32_t rule_index, uint64_t frame,
-                                  uint16_t pressed_hotkeys, double scale = 1.0, const HotMask *hot = nullptr);
+                                  uint16_t pressed_hotkeys, double scale = 1.0, const HotMask *hot = nullptr,
+                                  const HotMask *locked = nullptr);
 
 std::optional<std::string> validate_rule(const Rule &rule, const MemoryAccess &mem);
 

@@ -16,7 +16,7 @@ TEST_CASE("every target name round-trips")
 
 TEST_CASE("unknown target names are rejected")
 {
-    CHECK_FALSE(parse_target("rom").has_value());
+    CHECK_FALSE(parse_target("dsp").has_value());
     CHECK_FALSE(parse_target("").has_value());
 }
 

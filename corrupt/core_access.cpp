@@ -111,6 +111,32 @@ void install()
 
 } // namespace
 
+void SnesCoreAccess::reset_console()
+{
+    S9xReset();
+    if (reset_watch::installed)
+        reset_watch::install(); // the reset code's first opcode may be a different one now
+}
+
+std::vector<AddressRange> SnesCoreAccess::locked_rom()
+{
+    std::vector<AddressRange> out;
+    if (!Memory.ROM)
+        return out;
+    for (uint32 a = 0x00FFB0; a <= 0x00FFFF; a++)
+    {
+        const uint8 *p = reset_watch::byte_at(a);
+        if (!p || p < Memory.ROM || p >= Memory.ROM + Memory.CalculatedSize)
+            continue;
+        auto offset = uint32_t(p - Memory.ROM);
+        if (!out.empty() && out.back().last + 1 == offset)
+            out.back().last = offset;
+        else
+            out.push_back({ Target::ROM, offset, offset });
+    }
+    return out;
+}
+
 VideoLayout SnesCoreAccess::video_layout()
 {
     VideoLayout v;

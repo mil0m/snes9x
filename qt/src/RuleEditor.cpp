@@ -25,7 +25,7 @@ namespace
 constexpr OpType kOps[] = { OpType::Random, OpType::Add, OpType::Bitflip, OpType::Swap,
                             OpType::Copy, OpType::Freeze, OpType::Shuffle };
 constexpr TriggerType kTriggers[] = { TriggerType::EveryFrames, TriggerType::ChancePerFrame,
-                                      TriggerType::OnceAtFrame, TriggerType::Hotkey };
+                                      TriggerType::OnceAtFrame, TriggerType::Hotkey, TriggerType::AtLoad };
 
 QString qs(const std::string &s)
 {
@@ -65,6 +65,7 @@ QString trigger_label(TriggerType t)
     case TriggerType::ChancePerFrame: return QObject::tr("Chance per frame");
     case TriggerType::OnceAtFrame: return QObject::tr("Once, at a frame");
     case TriggerType::Hotkey: return QObject::tr("Hotkey");
+    case TriggerType::AtLoad: return QObject::tr("Once, when the run starts (classic ROM)");
     }
     return {};
 }
@@ -104,6 +105,7 @@ QString targetLabel(Target t)
     case Target::OAM: return QObject::tr("oam (sprites)");
     case Target::CGRAM: return QObject::tr("cgram (palette)");
     case Target::ARAM: return QObject::tr("aram (sound)");
+    case Target::ROM: return QObject::tr("rom (the game)");
     }
     return {};
 }
@@ -316,6 +318,11 @@ void RuleEditor::buildForm()
     when_page(tr("At frame"), once_frame);
     hotkey = spin(when_box, "hotkey", 1, 9);
     when_page(tr("Hotkey"), hotkey);
+    auto at_load_note = new QLabel(tr("Fires once as the run starts. On the ROM, the console then restarts, "
+                                      "so the game boots from the corrupted ROM."),
+                                   when_box);
+    at_load_note->setWordWrap(true);
+    when_page({}, at_load_note);
 
     auto window_row = new QHBoxLayout;
     window_enabled = new QCheckBox(tr("Only between frames"), when_box);
@@ -574,8 +581,9 @@ RuleEditor::Built RuleEditor::build() const
     case TriggerType::ChancePerFrame: t.chance = chance->value() / 100.0; break;
     case TriggerType::OnceAtFrame: t.frame = uint64_t(once_frame->value()); break;
     case TriggerType::Hotkey: t.hotkey = hotkey->value(); break;
+    case TriggerType::AtLoad: break;
     }
-    if (window_enabled->isChecked())
+    if (window_enabled->isChecked() && t.type != TriggerType::AtLoad)
         t.window = FrameWindow{ uint64_t(window_start->value()), uint64_t(window_end->value()) };
     r.when = t;
 
@@ -610,6 +618,8 @@ void RuleEditor::refresh()
     swap_a->setEnabled(swap_mode->currentData() == "fixed");
     swap_b->setEnabled(swap_mode->currentData() == "fixed");
     freeze_value->setEnabled(freeze_mode->currentData() == "value");
+    bool at_load = when_combo->currentData() == QString(trigger_name(TriggerType::AtLoad));
+    window_enabled->setEnabled(!at_load); // the run's start isn't a frame
     window_start->setEnabled(window_enabled->isChecked());
     window_end->setEnabled(window_enabled->isChecked());
 

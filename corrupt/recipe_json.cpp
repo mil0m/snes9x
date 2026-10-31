@@ -233,18 +233,24 @@ void parse_when(Ctx &ctx, const json &w, const std::string &path, Trigger &t)
 {
     if (!require_object(ctx, w, path))
         return;
-    check_keys(ctx, w, path, { "once_at_frame", "every_frames", "chance_per_frame", "hotkey", "window" });
+    check_keys(ctx, w, path, { "once_at_frame", "every_frames", "chance_per_frame", "hotkey", "at_load", "window" });
 
     int kinds = 0;
-    for (auto key : { "once_at_frame", "every_frames", "chance_per_frame", "hotkey" })
+    for (auto key : { "once_at_frame", "every_frames", "chance_per_frame", "hotkey", "at_load" })
         kinds += w.contains(key);
     if (kinds != 1)
     {
-        ctx.fail(path, "needs exactly one of once_at_frame, every_frames, chance_per_frame, hotkey");
+        ctx.fail(path, "needs exactly one of once_at_frame, every_frames, chance_per_frame, hotkey, at_load");
         return;
     }
 
-    if (w.contains("once_at_frame"))
+    if (w.contains("at_load"))
+    {
+        t.type = TriggerType::AtLoad;
+        if (!w["at_load"].is_boolean() || !w["at_load"].get<bool>())
+            ctx.fail(path + ".at_load", "expected true");
+    }
+    else if (w.contains("once_at_frame"))
     {
         t.type = TriggerType::OnceAtFrame;
         if (auto n = get_int_in(ctx, w["once_at_frame"], path + ".once_at_frame", 0, INT64_MAX))
@@ -446,6 +452,7 @@ ojson when_json(const Trigger &t)
     case TriggerType::EveryFrames: w["every_frames"] = t.every; break;
     case TriggerType::ChancePerFrame: w["chance_per_frame"] = t.chance; break;
     case TriggerType::Hotkey: w["hotkey"] = t.hotkey; break;
+    case TriggerType::AtLoad: w["at_load"] = true; break;
     }
     if (t.window)
         w["window"] = ojson::array({ t.window->start, t.window->end });
