@@ -114,6 +114,12 @@ size_t RomBlame::used() const
     return size_t(std::count_if(uses.begin(), uses.end(), [](const ByteUse &u) { return u.frames_used > 0; }));
 }
 
+size_t RomBlame::survivor_count(uint32_t min_frames) const
+{
+    return size_t(std::count_if(uses.begin(), uses.end(),
+                                [&](const ByteUse &u) { return u.survived && u.frames_used >= min_frames; }));
+}
+
 const ByteUse *RomBlame::use(uint32_t offset) const
 {
     auto it = index.find(offset);

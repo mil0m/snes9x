@@ -11,6 +11,7 @@
 #include "corrupt/hook.h"
 #include "corrupt/rom_keeper.h"
 #include "corrupt/rom_blame.h"
+#include "corrupt/survivors.h"
 #include "corrupt/run_control.h"
 #include "corrupt/memory_watch.h"
 
@@ -590,6 +591,54 @@ TEST_SUITE("ROM corruption in the real core")
             CHECK((op.map.at(e.write.offset) & codeflag::Operand));
             CHECK(!(op.map.at(e.write.offset) & codeflag::Opcode));
         }
+    }
+
+    TEST_CASE("survivors and pins: a change that proved itself is kept, through crashes and new runs")
+    {
+        namespace rare = testrom::rare;
+        Recipe recipe = one(poke_rom(kNmiInc, 0xC6, { .type = TriggerType::AtLoad })); // INC -> DEC: harmless
+        Harness h(testrom::build_rare(), recipe, PolicyKind::Skip);
+        CodeMap map(Memory.CalculatedSize);
+        RomTracer tracer;
+        REQUIRE(tracer.start(map));
+        RomBlame blame(h.rom);
+        blame.attach(map.data(), map.size());
+        h.guard.set_byte_blame(&blame);
+        h.blame = &blame;
+        h.engine.hold_starts(true);
+        h.engine.set_active(false);
+        h.engine.set_active(true);
+        h.run(1000); // 15 s and more of use, no crash
+
+        std::span<const uint8_t> now(h.memory.data(Target::ROM), h.memory.size(Target::ROM));
+        auto list = find_survivors(blame, h.rom.clean(), now, map.flags(), SnesCoreAccess::rom_addresses());
+        REQUIRE(list.size() == 1);
+        CHECK(list[0].offset == kNmiInc);
+        CHECK(list[0].before == "INC $11");
+        CHECK(list[0].after == "DEC $11");
+        CHECK(list[0].address == 0x808030);
+
+        // Pin it, then drop the rule that made it: the pin alone keeps it, from the next run on.
+        h.engine.add_pins({ { kNmiInc, 0xC6, 0xE6, "count down" } });
+        h.engine.remove_rule(0);
+        h.engine.set_active(false);
+        h.engine.set_active(true);
+        h.run(1);
+        blame.set_pinned({ kNmiInc });
+        CHECK(h.control.last_pins().written == 1);
+        CHECK(h.memory.read(Target::ROM, kNmiInc) == 0xC6);
+        CHECK(h.wram(testrom::kFrameCounterAddr) == 0x55); // a pinned ROM boots fresh, like any classic run
+
+        // A crash with the pinned byte in use: something else is blamed, the pin stays.
+        h.engine.add_rule(poke_rom(rare::kRoutine, 0xDB, { .type = TriggerType::OnceAtFrame, .frame = 300 }));
+        h.run(400);
+        h.memory.write(Target::WRAM, testrom::kTriggerAddr, testrom::kTriggerValue);
+        h.run(60);
+        REQUIRE(!h.outcomes.empty());
+        CHECK(h.memory.read(Target::ROM, kNmiInc) == 0xC6);
+        CHECK(h.memory.read(Target::ROM, rare::kRoutine) == 0xE6);
+        CHECK(alive(h));
+        tracer.stop();
     }
 
     TEST_CASE("live: a ROM edit that crashes the game is rolled back and undone")

@@ -104,7 +104,13 @@ void CorruptionSession::betweenFrames()
         return;
     auto started = control.between_frames(engine, access, &rom);
     if (started != RunControl::Started::Nothing)
+    {
         moment_on_disk = started == RunControl::Started::FromAnchor;
+        pinChanged();
+        if (auto skipped = control.last_pins().mismatched)
+            note(std::to_string(skipped) + (skipped == 1 ? " pin was" : " pins were") +
+                 " made on another version of this ROM and left out");
+    }
     switch (started)
     {
     case RunControl::Started::FromAnchor:
@@ -828,6 +834,8 @@ CorruptionSession::Status CorruptionSession::status()
             s.sizes[size_t(t)] = memory.size(t);
         s.rom_changed = rom.changed();
         s.rom_used = rom_blame.used();
+        s.survivors = rom_blame.survivor_count(kSurvivorFrames);
+        s.pins = engine.recipe().pins.size();
         s.patched = patched_bytes(engine.recipe().patches);
     }
     s.policy = guard.get_policy();
@@ -877,6 +885,64 @@ std::string CorruptionSession::setBytes(Target t, const std::vector<std::pair<ui
     for (auto &[o, v] : bytes)
         rom.write_at_start(t, o, v); // a rollback mustn't undo paint
     return {};
+}
+
+void CorruptionSession::pinChanged()
+{
+    std::vector<uint32_t> offsets;
+    for (auto &p : engine.recipe().pins)
+        offsets.push_back(p.offset);
+    rom_blame.set_pinned(offsets);
+}
+
+std::vector<Survivor> CorruptionSession::survivors()
+{
+    std::lock_guard lock(mutex);
+    if (!game_loaded || !memory.data(Target::ROM))
+        return {};
+    std::span<const uint8_t> now(memory.data(Target::ROM), memory.size(Target::ROM));
+    auto flags = code_map.combined();
+    return find_survivors(rom_blame, rom.clean(), now, flags.flags(), rom_where);
+}
+
+std::vector<Pin> CorruptionSession::pins()
+{
+    std::lock_guard lock(mutex);
+    return engine.recipe().pins;
+}
+
+std::string CorruptionSession::pin(const std::vector<uint32_t> &offsets, const std::string &note_text)
+{
+    std::lock_guard lock(mutex);
+    if (!game_loaded)
+        return "No game loaded";
+    if (!has_recipe)
+        newRecipeLocked("Pinned");
+    std::vector<Pin> pins;
+    std::vector<std::pair<uint32_t, uint8_t>> keep;
+    for (auto o : offsets)
+    {
+        if (o >= rom.clean().size() || rom.locked_mask().is_hot(Target::ROM, o))
+            continue;
+        uint8_t now = memory.read(Target::ROM, o);
+        if (now == rom.clean()[o])
+            continue; // nothing changed there to keep
+        pins.push_back({ o, now, rom.clean()[o], note_text });
+        keep.push_back({ o, now });
+    }
+    if (pins.empty())
+        return "Nothing to pin: those bytes are clean";
+    engine.add_pins(pins);
+    rom.settle(keep); // no rollback undoes it now
+    pinChanged();
+    return {};
+}
+
+void CorruptionSession::unpin(const std::vector<uint32_t> &offsets)
+{
+    std::lock_guard lock(mutex);
+    engine.remove_pins(offsets);
+    pinChanged(); // the bytes stay as they are until the next run, watched again from their next change
 }
 
 void CorruptionSession::clearPatches()

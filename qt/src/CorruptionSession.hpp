@@ -8,6 +8,7 @@
 #include "corrupt/memory_watch.h"
 #include "corrupt/rom_keeper.h"
 #include "corrupt/rom_blame.h"
+#include "corrupt/survivors.h"
 #include "corrupt/run_control.h"
 #include "corrupt/save_backup.h"
 
@@ -62,6 +63,8 @@ class CorruptionSession
 
         size_t rom_changed = 0; // ROM bytes that differ from the clean ROM
         size_t rom_used = 0;    // ...of which the game has run or read since they changed
+        size_t survivors = 0;   // ...of which proved themselves (see survivors())
+        size_t pins = 0;        // ROM changes the recipe keeps
         size_t patched = 0;     // painted bytes kept in the recipe
         corrupt::CodeCoverage code; // the code map (everyone's), updated every few seconds
     };
@@ -130,6 +133,14 @@ class CorruptionSession
     std::string setBytes(corrupt::Target t, const std::vector<std::pair<uint32_t, uint8_t>> &bytes); // the same, a value each
     void clearPatches(); // forgets them; the bytes stay until the next run starts
 
+    // Survivors: changed ROM bytes the game used often with no crash after. Pinning keeps a
+    // byte at its value now, in the recipe: applied as every run starts, never undone by
+    // the crash guard. Error or empty.
+    std::vector<corrupt::Survivor> survivors();
+    std::vector<corrupt::Pin> pins();
+    std::string pin(const std::vector<uint32_t> &offsets, const std::string &note);
+    void unpin(const std::vector<uint32_t> &offsets);
+
     // Save backups.
     std::filesystem::path backupDir();
     std::vector<corrupt::BackupInfo> backups();
@@ -147,6 +158,7 @@ class CorruptionSession
     void note(const std::string &message);
     std::filesystem::path backupDirLocked() const;
     void configureGuard();
+    void pinChanged(); // the blame leaves the recipe's pins alone
     std::string recipeJson(corrupt::Recipe recipe) const;
     std::string changeRegion(const std::string &from, const std::string &to);
     std::string writeMoment(corrupt::Recipe &recipe, const std::filesystem::path &recipe_path); // error or empty

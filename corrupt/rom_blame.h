@@ -56,6 +56,7 @@ class RomBlame : public ByteBlame
     size_t watched() const { return offsets.size(); } // changed bytes
     const std::vector<uint32_t> &changed_offsets() const { return offsets; } // in no order
     size_t used() const;                               // changed bytes the game has used
+    size_t survivor_count(uint32_t min_frames) const;  // ...used in that many frames, with no crash after
     const ByteUse *use(uint32_t offset) const;
 
   private:

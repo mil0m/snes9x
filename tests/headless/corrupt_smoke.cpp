@@ -44,6 +44,7 @@
 #include "corrupt/core_memory.h"
 #include "corrupt/crash_guard.h"
 #include "corrupt/rom_blame.h"
+#include "corrupt/survivors.h"
 #include "corrupt/crash_map_keeper.h"
 #include "corrupt/engine.h"
 #include "corrupt/hook.h"
@@ -191,6 +192,18 @@ int run_guarded(const Recipe &recipe, int frames, bool blame_by_use)
            frames, gave_up ? "giving up" : "the end", moving, nmi_on);
     if (tracer.tracing())
         printf("codemap  %zu code bytes seen\n", map.coverage().code);
+    if (const uint8_t *now = memory.data(Target::ROM))
+    {
+        auto list = find_survivors(blame, rom.clean(), { now, memory.size(Target::ROM) }, map.flags(),
+                                   SnesCoreAccess::rom_addresses());
+        printf("survive  %zu changed bytes used in %u+ frames with no crash after\n", list.size(), kSurvivorFrames);
+        for (size_t i = 0; i < list.size() && i < 8; i++)
+        {
+            auto &v = list[i];
+            printf("  %06X  %02X -> %02X  %6u frames  %s%s%s\n", v.address.value_or(v.offset), v.was, v.now,
+                   v.frames_used, v.before.c_str(), v.before.empty() ? "data" : " -> ", v.after.c_str());
+        }
+    }
     tracer.stop();
     engine.set_code_flags({});
     printf("reboots  %u seen by the reset watch (rolled-back ones included)\n", access.sample().reboots);
