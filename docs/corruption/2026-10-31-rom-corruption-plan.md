@@ -1,6 +1,6 @@
 # ROM corruption: plan (roadmap #22)
 
-**Status (2026-10-31):** reviewed by Mikael (answers at the end). Phases 1-4 done, pending QA.md sections 20-23; phase 5 (code-aware ops) in progress.
+**Status (2026-10-31):** reviewed by Mikael (answers at the end). Phases 1-5 done, pending QA.md sections 20-24; phase 6 (survivors and pins) next.
 
 Spec: [`2026-10-30-ram-corruption-design.md`](./2026-10-30-ram-corruption-design.md),
 phase 5 ("a ROM target applied at load time, or live"). Both modes are in (Mikael, 31 Oct).
@@ -569,6 +569,28 @@ Built in four steps, each pushed:
    operand-only, opcode swaps and branch flips: crashes, survivors, and how long runs last.
    Starter recipes from what works.
 4. **The rule editor**: a role choice, class checkboxes, the new ops; an offscreen Qt test.
+
+Findings while building phase 5 (FF6, classic in bank `$C0`, aimed with a 5-minute code map
+of the intro, guarded with blame by use, 5 minutes headless, seeds 11-13):
+
+| op | changes | crashes | changes kept | of them used by the game | frame interrupt on |
+|---|---|---|---|---|---|
+| random bytes (phase 4) | 300 | 5-12 | 41-261 | 4-14 | 72-85% |
+| `operand`, random | 300 | 0-12 | 43-295 | 5-29 | 66-99% |
+| `opcode_swap` | ~235 | 0-9 | 90-235 | 3-61 | 27-73% |
+| `branch_flip` | 100 | 0-2 | 62-100 | **24-53** | **93-99%** |
+| `nop_out` | 100 instructions | 2-4 | 131-147 bytes | 5-6 | 32-89% |
+
+- **Branch flips are the gentlest code op**: hardly any crashes, the frame interrupt stays on,
+  and a third to a half of the flips stay in code the game keeps running. They became the
+  first starter.
+- **Aiming puts changes where the game is**: random bytes in the same bank were almost never
+  used (4-14 of 300).
+- **About a fifth of opcode swaps write nothing**: `JSR`, `RTS`, `PHA`, `REP` and friends are
+  alone in their group, so a swap picks them and leaves them be (235 of 300 changed).
+- **Alive isn't the same as moving**: several runs kept the frame interrupt on with a still
+  picture for minutes (a waiting loop the corruption made). Headless there's nobody pressing
+  buttons, so the frozen-picture check (which needs input) can't fire; in the app it would.
 
 ## Risks
 

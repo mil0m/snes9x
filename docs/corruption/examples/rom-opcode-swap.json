@@ -1,0 +1,17 @@
+{
+  "format": 1,
+  "name": "Opcode swap",
+  "notes": "Classic: 10 instructions the game runs become others of the same length and addressing mode (ADC becomes SBC or AND, INC becomes DEC, STA becomes STZ), leaving out width and stack instructions, which almost always crash at once. Needs a code map: play the game a while first. Widen the range for bigger games.",
+  "seed": 3003,
+  "rules": [
+    {
+      "name": "swaps",
+      "target": "rom",
+      "range": [ "0x0", "0x7FFFF" ],
+      "op": { "type": "opcode_swap" },
+      "when": { "at_load": true },
+      "count": 10,
+      "except": [ "stack", "width" ]
+    }
+  ]
+}

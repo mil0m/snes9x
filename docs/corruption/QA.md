@@ -321,3 +321,18 @@ scratch folder. By default Snes9x writes the `.srm` next to the ROM.
 7. Add `"rom_policy": "reroll"` to the recipe file and load it again; crash it again.
    - [ ] The message says `re-rolled N ROM bytes`, and those dots stay orange (a new value) instead of disappearing.
 
+## 24. Code-aware corruption
+1. Load FF6 and play (or let the intro run) for a few minutes, so the code map knows some code. Open the memory viewer on **rom** with the **Code** overlay to see it.
+2. Load the starter **Branch flips** and turn it on (the console restarts).
+   - [ ] The **Changes** overlay shows about 20 orange dots, all on teal (code) bytes. Hovering one shows a `BEQ`/`BNE`-style branch.
+   - [ ] The game plays on, and something behaves oddly sooner or later.
+3. Load **Opcode swap**. Open its rule in the editor.
+   - [ ] **What** says *Swap opcodes*, **Aim** has *All but these instructions* with `stack` and `width` ticked, and **Bytes** is greyed out (code ops always aim at opcodes).
+4. Make a rule on **rom**, range `0x0`-`0xFFFF`, **Add** -2..2, every 600 frames, count 2, **Bytes: Operands**, **Only these instructions**: `arith`, `compare`.
+   - [ ] The summary line ends `operands of arith, compare`. OK is greyed out if you tick nothing under *Only*.
+   - [ ] While it runs, every new orange dot is on a lighter-teal (operand) byte, never on a bright opcode.
+5. Switch the rule's memory to **wram**.
+   - [ ] **Aim** greys out (it's for the ROM only).
+6. Load a game you've never played (no code map), and a recipe with an aimed rule.
+   - [ ] It changes nothing: nothing is known to aim at yet.
+

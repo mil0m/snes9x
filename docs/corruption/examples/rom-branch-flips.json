@@ -1,0 +1,16 @@
+{
+  "format": 1,
+  "name": "Branch flips",
+  "notes": "Classic: 20 conditional branches the game is known to run go the other way (BEQ becomes BNE, BCC becomes BCS), and the console restarts from that ROM. Doors that never open, enemies that never die, menus that skip ahead. On FF6 this crashed least of all the code ops while the most changes stayed in play. Needs a code map: play the game a while first. Widen the range for bigger games.",
+  "seed": 3001,
+  "rules": [
+    {
+      "name": "flips",
+      "target": "rom",
+      "range": [ "0x0", "0x7FFFF" ],
+      "op": { "type": "branch_flip" },
+      "when": { "at_load": true },
+      "count": 20
+    }
+  ]
+}

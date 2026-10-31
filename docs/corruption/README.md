@@ -320,11 +320,49 @@ is saved in the library as `codemap.<name>.bin` (every minute while it grows, an
 game closes), and everyone's maps are combined when a game loads, so playing with Erik's
 library adds his exploration to yours. Watching costs about 4-7% of emulation speed.
 
-This is what the crash guard blames with (see above), and what the next phases aim with:
-corrupt operands but not opcodes, swap an instruction for one of the same length, flip a
-branch.
+This is what the crash guard blames with (see above), and what code-aware corruption aims
+with (below).
 Not seen yet: code the game runs from WRAM (FF6 T-Edition's title screen waits in WRAM, for
 one), HDMA tables, and the SA-1's own CPU.
+
+### Code-aware corruption
+
+ROM rules can aim at bytes by what the code map knows about them, and three ops change
+instructions as instructions. In the rule editor, **Aim** picks the bytes:
+
+- **Bytes**: any byte in the range (the old way), **opcodes** (which instruction),
+  **operands** (the value or address an instruction uses: `LDA #$05` becomes `LDA #$63`,
+  and the code never goes out of step), **code** (either), **data** the game reads,
+  **graphics** it copies by DMA, or **anything the game used**.
+- **Instructions**: any, only some classes, or all but some (`arith`, `logic`, `shift`,
+  `compare`, `load`, `store`, `transfer`, `branch`, `jump`, `return`, `stack`, `flags`,
+  `width`, `block`, `misc`). Choosing "all but" starts with `width` and `stack` ticked:
+  `REP`/`SEP`/`XCE` and pushes and pulls almost always crash at once.
+- Code the game ran at both 8 and 16 bits is never picked: changing it is the classic
+  instant crash.
+
+The ops, in **What**:
+
+- **Swap opcodes**: an instruction becomes another of the same length and addressing mode
+  (`ADC` ↔ `SBC` ↔ `AND` ↔ `ORA` ↔ `EOR` ↔ `CMP` ↔ `LDA` ↔ `BIT`, `ASL` ↔ `LSR` ↔ `ROL` ↔ `ROR` ↔
+  `INC` ↔ `DEC`, `STA` ↔ `STZ`, the branches, the flags, `INX` ↔ `DEX`…).
+- **Flip branches**: `BEQ` ↔ `BNE`, `BCC` ↔ `BCS`, `BPL` ↔ `BMI`, `BVC` ↔ `BVS`.
+- **NOP out**: the whole instruction becomes `NOP`s: a call, a store or a check that no
+  longer happens.
+
+A "nudge" is just **Add** −2..2 on operands or data. In a recipe file these are
+`"role": "operand"`, `"classes": ["arith", "compare"]`, `"except": ["width"]`, and
+`"op": {"type": "branch_flip"}` (also `opcode_swap`, `nop_out`).
+
+An aimed rule picks only from bytes the map already knows, so **play the game a while
+first**; with nothing known it fires on nothing. What a rule aims at is worked out once
+per run, when it first fires, so a recipe and seed replay exactly from a saved moment,
+and the next run aims at everything explored since.
+
+On FF6 (classic, its main code bank, five minutes): 100 branch flips crashed 0-2 times,
+and a third to a half of them stayed in code the game kept running; 300 random bytes
+crashed 5-12 times and only a handful of them were ever used. Starters: **Branch flips**,
+**Operand nudge** and **Opcode swap**.
 
 Plan and what's next: [`2026-10-31-rom-corruption-plan.md`](./2026-10-31-rom-corruption-plan.md). Beyond it, game-aware corruption (jump tables, state jumps, game profiles mapped with Claude, a search for golden moments): [`2026-10-31-horizons.md`](./2026-10-31-horizons.md).
 

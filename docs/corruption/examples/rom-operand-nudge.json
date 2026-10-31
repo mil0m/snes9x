@@ -1,0 +1,18 @@
+{
+  "format": 1,
+  "name": "Operand nudge",
+  "notes": "Live: every ten seconds, two operands of arithmetic, compare and load instructions the game runs move by a little. LDA #$05 becomes LDA #$06, CMP #$40 becomes CMP #$3F: almost-right speeds, timers and limits, and the code never goes out of step. Needs a code map: play the game a while first. Widen the range for bigger games.",
+  "seed": 3002,
+  "rules": [
+    {
+      "name": "nudge",
+      "target": "rom",
+      "range": [ "0x0", "0x7FFFF" ],
+      "op": { "type": "add", "min": -2, "max": 2 },
+      "when": { "every_frames": 600 },
+      "count": 2,
+      "role": "operand",
+      "classes": [ "arith", "compare", "load" ]
+    }
+  ]
+}
