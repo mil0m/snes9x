@@ -10,6 +10,8 @@
 #include "corrupt/rule_text.h"
 
 #include <QApplication>
+
+#include <algorithm>
 #include <QCheckBox>
 #include <QComboBox>
 #include <QDateTime>
@@ -220,6 +222,9 @@ CorruptionDock::CorruptionDock(EmuApplication &app, QWidget *parent)
         if (auto parsed = parse_recipe(f.readAll().toStdString(), {}); parsed.recipe)
             starters.push_back({ ":/corruption-examples/" + file, *parsed.recipe });
     }
+    // The gentlest first, so the obvious pick is a mild one.
+    std::stable_partition(starters.begin(), starters.end(),
+                          [](const Starter &s) { return s.resource.endsWith("gentle-wram-noise.json"); });
 
     connect(moments_check, &QCheckBox::toggled, [this](bool on) {
         this->app.config->corruption_saved_moments = on;
@@ -727,7 +732,7 @@ void CorruptionDock::refreshStatus()
         if (status.crashes)
             run += " · " + plural(status.crashes, tr("1 crash caught"), tr("%1 crashes caught"));
         if (status.new_moment)
-            run += tr(" · start moment not saved yet");
+            run += tr(" · Save to replay this run from its start");
         else if (status.has_moment)
             run += tr(" · started from its saved moment");
     }
@@ -770,6 +775,8 @@ void CorruptionDock::refreshStatus()
     restore_rom_button->setEnabled(status.rom_changed > 0);
     clear_paint_button->setEnabled(status.patched > 0);
 
+    policy_combo->setItemText(0, tr("As the recipe says: %1")
+                                     .arg(status.policy_overridden ? tr("its own choice") : policyText(status.policy)));
     QString learned = status.hot_blocks == 0
                           ? QString()
                           : "\n" + plural(status.hot_blocks, tr("It has learned 1 dangerous spot (rules can avoid it)."),

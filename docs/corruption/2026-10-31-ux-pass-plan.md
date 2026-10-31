@@ -1,6 +1,6 @@
 # UX pass: plan (roadmap #49)
 
-**Status (2026-10-31):** decisions agreed by Mikael ("Sounds right!"); in progress. After it: a visual **UI pass** with the best design guidance for Qt Widgets (to be researched). Mikael: "Everything
+**Status (2026-10-31):** decisions agreed by Mikael ("Sounds right!"); steps 1-7 done, the rest is visual (below). After it: a visual **UI pass** with the best design guidance for Qt Widgets (to be researched). Mikael: "Everything
 needs to be clear how to use even if one hasn't implemented it. I've already forgotten many
 things."
 
@@ -106,3 +106,28 @@ Each step is test-first where there's logic, checked with a fresh UI tour, and p
    plan docs. QA.md gets a short "first ten minutes" section at the top.
 7. **Check with fresh eyes again**: a new tour and the same six tasks by a reviewer who hasn't
    seen the first round.
+
+## Done (2026-10-31)
+
+Steps 1-7 are in (b0416581..). The second fresh-eyes review could do all six tasks; its word
+and flow findings are fixed: the gentle starter comes first, "As the recipe says: <what it
+says>", "Save to replay this run from its start", "Only from frame … to …", a tooltip per
+instruction class, the guide reordered (keeping a glitch right after getting back to
+normal, survivors as their own section, what Save keeps during a run, Export ROM, other ROM
+versions, bpp, regions, a "when nothing seems to happen" section, fewer hardware words).
+
+Left for the visual UI pass, from that review:
+
+- the rules table needs a horizontal scroll at the panel's width (Strength clipped, Crashes
+  off screen);
+- "What's where" cuts names in the middle while the list has room;
+- the rule editor's first size hides How Much below the fold;
+- the Tiles view leaves a white half beside a black picture;
+- the survivors tables are narrow with empty space beside them;
+- the pressed Corrupt button reads as disabled;
+- "It Crashed: Go Back Now" weighs as much as Corrupt;
+- the "More" button's arrow overlaps its text;
+- the library path is a long raw path;
+- hint text in grey is hard to read;
+- address padding differs between lists and the gutter.
+

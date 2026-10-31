@@ -199,6 +199,7 @@ void SurvivorsDialog::unpinSelected()
     if (offsets.empty())
         return;
     source.unpin(offsets);
-    message->setText(tr("Unpinned. The bytes stay as they are until the next run starts."));
+    message->setText(tr("Unpinned. The ROM keeps that change until the run restarts or you go back to normal; "
+                        "then it's gone."));
     refresh();
 }

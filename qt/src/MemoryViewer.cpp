@@ -240,6 +240,8 @@ MemoryViewer::MemoryViewer(MemorySource &source, QWidget *parent)
     copies_list = new QListWidget(copies_box);
     copies_list->setObjectName("copies");
     copies_list->setMaximumHeight(110);
+    copies_list->setToolTip(tr("After Find Copies: where in WRAM the game keeps its sprite table and palette. Click one "
+                               "to select it."));
     copies_layout->addWidget(find);
     copies_layout->addWidget(copies_list);
 

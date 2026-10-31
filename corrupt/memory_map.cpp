@@ -55,9 +55,9 @@ std::vector<MapArea> fixed_map(Target t, size_t size)
             "Most games keep their busiest variables here; corruption crashes fast");
         add(m, size, "Stack and system (crashes fast)", t, 0x0100, 0x1FFF,
             "Mirrored into every bank; the stack usually sits near the top. Crashes fast");
-        add(m, size, "Game data (bank $7E)", t, 0x2000, 0xFFFF,
+        add(m, size, "Game data", t, 0x2000, 0xFFFF,
             "Game data: objects, buffers, sprite and palette copies");
-        add(m, size, "Big buffers (bank $7F)", t, 0x10000, 0x1FFFF, "Big buffers: decompressed graphics, maps, sound data");
+        add(m, size, "Big buffers", t, 0x10000, 0x1FFFF, "Big buffers: decompressed graphics, maps, sound data");
         break;
     case Target::SRAM:
         add(m, size, "Save RAM", t, 0, size ? size - 1 : 0, "The battery save; backed up automatically");

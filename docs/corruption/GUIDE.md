@@ -4,9 +4,10 @@ Snes9x can corrupt the game you're playing: change bits of its memory, or of the
 itself, while it runs, for glitches you'd never see otherwise. This guide is also in the
 app: **? Guide** at the top of the Corruption panel.
 
-**Contents:** Start here · Getting back to normal · The words · Hotkeys · Recipes and rules ·
-When the game crashes · Keeping a good one · Sharing with a friend · The memory viewer ·
-Corrupting the ROM · Editing memory like a picture · Tips
+**Contents:** Start here · Getting back to normal · Keeping a good one · The words · Hotkeys ·
+Recipes and rules · When the game crashes · Sharing with a friend · The memory viewer ·
+Corrupting the ROM · Survivors and pins · Editing memory like a picture · Tips · When nothing
+seems to happen
 
 ## Start here
 
@@ -22,7 +23,7 @@ That's all you need. The rest of this guide is for when you want more.
 
 ## Getting back to normal
 
-There are four buttons that sound alike. Only one of them undoes everything.
+There are four ways to undo something. Only one of them undoes everything.
 
 | Button | What it does |
 |---|---|
@@ -30,6 +31,16 @@ There are four buttons that sound alike. Only one of them undoes everything.
 | **Back to Normal** | Stops, puts the game's ROM back to clean, and takes the game back to the moment you pressed Corrupt. Everything it did is gone (and so is your play since then). |
 | **Restore Clean ROM** | Puts only the ROM back. What corruption did to RAM stays. |
 | **Restore This Save…** (Game Save Backups) | Has nothing to do with corruption: it restores your **in-game save** (the cartridge's battery save) from a copy and restarts the game. |
+
+## Keeping a good one
+
+| You want to keep… | Do this |
+|---|---|
+| A glitch you just saw | **Save**, right away, while it's still on. The recipe is saved with this run's dice (the seed) and the moment the run started, so loading it plays the same run again, as long as you press the same buttons. The status line says *Save to replay this run from its start* until you do. |
+| The recipe, to play again | **Save**. With *Remember where each run starts*, it comes back to the same spot with the same dice. |
+| One exact ROM change you liked | **Survivors…** then **Pin Selected**, then **Save**. See *Survivors and pins*. |
+| Bytes you set by hand | They're kept in the recipe already (*paint*); **Save**. |
+| The corrupted game, to play anywhere | **Export ROM…**: a .sfc file of the ROM as it is right now (pins, paint and whatever the rules changed), for other emulators or a flash cart. |
 
 ## The words
 
@@ -41,7 +52,7 @@ There are four buttons that sound alike. Only one of them undoes everything.
 | **Seed** | The dice. The same recipe with the same seed, from the same start, does exactly the same thing. **Re-roll** picks a new seed. |
 | **Chaos** | How hard the whole recipe hits. **Strength** is the same for one rule. They multiply. |
 | **Memory** | Which part of the console a rule changes (see below). |
-| **Start moment** | A save state taken when a run starts. **Back to Normal** goes back to it; a saved recipe can carry it, so it replays from the same spot. |
+| **Start moment** | A save state taken when a run starts. **Back to Normal** goes back to it, and **Save** stores it with the recipe (with *Remember where each run starts* on), so loading the recipe replays from the same spot. |
 | **Crash guard** | Notices when the game crashes, goes back a few seconds and changes what caused it. |
 | **Code map** | What the app has learned about the ROM while you played: which bytes are code, which are data, which are graphics. |
 | **Survivor** | A ROM change the game kept using for a long time without crashing. |
@@ -113,7 +124,7 @@ red line says why.
 ## When the game crashes
 
 With **Catch crashes and go back a few seconds** ticked, the app keeps a save point every
-second. When the game stops, freezes, goes black, loses its frame interrupt for 5 seconds
+second. When the game stops, freezes, goes black, stops drawing new frames for 5 seconds
 or reboots itself, it goes back to before the corruption that caused it, changes what
 caused it, and plays on. You lose a second or two. A still screen nobody is touching (a
 menu, a text box) is never a crash: frozen and black screens only count while you press
@@ -121,7 +132,8 @@ buttons.
 
 **Then** decides what happens to the rule that caused it: re-roll its dice (the default),
 skip its last changes, halve its strength, turn it off, or re-roll twice then halve then
-turn off. Changed ROM bytes the game ran into are put back either way.
+turn off. **As the recipe says** shows what the loaded recipe asks for (it's set in the
+recipe file, `crash_policy`); picking another overrides it for now. Changed ROM bytes the game ran into are put back either way.
 
 If the same crash keeps coming back, each time it goes 5 seconds further back. After five
 crashes in a row that fixed nothing, it gives up: corruption goes off and the ROM goes
@@ -134,21 +146,14 @@ It also learns, per game, which bytes crash it (**the crash map**): rules with *
 dangerous bytes* skip those, and the memory viewer shows them in red. What it learned is
 kept in your library, and adds up with your friend's.
 
-## Keeping a good one
-
-| You want to keep… | Do this |
-|---|---|
-| The recipe, to play again | **Save**. With *Remember where each run starts*, it comes back to the same spot with the same dice. |
-| One exact ROM change you liked | **Survivors…** then **Pin Selected**, then **Save**. See *Survivors and pins*. |
-| Bytes you set by hand | They're kept in the recipe already (*paint*); **Save**. |
-| The corrupted game, to play anywhere | **Export ROM…**: a .sfc file for other emulators or a flash cart. |
-
 ## Sharing with a friend
 
 **More > Share…** writes one `.s9xrecipe` file: the recipe, its pins and its start moment.
 Send it any way you like. Your friend opens the same game and chooses **More > Import a
 Shared Recipe…**; it lands in their recipes and loads. (Named areas travel as plain
-ranges.)
+ranges.) If their copy of the game is a different version, the recipe still loads but may
+hit different things, the start moment is skipped (it starts where they are), and pins
+made for the other version are left out.
 
 You can also share a whole library folder, for example as a git repository: each game has
 a folder with its recipes, named areas, code map and crash map, and the maps of everyone
@@ -168,7 +173,8 @@ who plays add up. **More > Choose the Library Folder…** picks it.
   - **Danger** and **Crashes**: where corruption crashed the game.
   - **Reads** and **Writes** (wram): how often the game itself uses each byte. A byte it reads
     all the time but rarely writes is where corruption sticks.
-  - **Code**, **Data**, **DMA** and **Changes** (rom): see *Corrupting the ROM*.
+  - **Code**, **Data**, **DMA** (graphics copied to the screen) and **Changes** (rom): see
+    *Corrupting the ROM* below.
 - **What's where** lists the parts of the memory (the sprite table, each background's
   tiles…); click one to select it. Italic ones are read from the game right now and can
   move.
@@ -179,9 +185,13 @@ who plays add up. **More > Choose the Library Folder…** picks it.
   any rule of that game.
 - **Find Copies in WRAM** (wram, oam, cgram) shows where the game keeps its own copies of
   the sprite table and palette (see Tips).
+- **Region** in the rule editor lists these names; with none yet, it only offers *Custom
+  range*.
 - In **Pixels**, **Row** sets how many bytes make one row of dots: step it until the
   picture snaps into columns, and a row of dots is a row of the game's data. In **Tiles**,
-  pick the format, palette and tiles per row, or just click a tile area in *What's where*.
+  pick the format (*bpp*, bits per pixel: how many colours a tile can have, 2 bpp = 4
+colours, 4 bpp = 16, 8 bpp = 256), palette and tiles per row, or just click a tile area in
+*What's where*.
 
 ## Corrupting the ROM
 
@@ -192,8 +202,8 @@ The ROM is the game itself. Two ways to corrupt it:
   Starter: **Classic ROM sprinkle**.
 - **Live**: any other *When* changes the ROM while you play. Starter: **Live ROM drip**.
 
-A run always starts from the clean ROM. The header and the interrupt vectors are never
-changed.
+A run always starts from the clean ROM. The ROM's header and the few bytes that tell the
+console where the game starts are never changed.
 
 **The code map.** While you play, the app notes what the game does with every ROM byte:
 runs it as code, reads it as data, or copies it to the screen as graphics. The panel's
@@ -224,7 +234,9 @@ actually ran or read just before, and puts back only those, keeping the rest. Th
 lets a classic run with hundreds of changes keep playing. The **Changes** overlay shows
 changed bytes in orange, bright once the game has used them; hovering one says so.
 
-**Survivors and pins.** **Survivors…** (in the ROM section) lists changes the game used in
+## Survivors and pins
+
+**Survivors…** (in the ROM section) lists changes the game used in
 at least 100 frames with no crash afterwards, newest first: where, what changed, and the
 instruction before and after (`BNE → BEQ`). Select the ones you like and **Pin Selected**,
 with a note if you want. A pin is part of the recipe: it's applied every time a run
@@ -249,6 +261,18 @@ The old Photoshop way, built in. In the memory viewer's **Pixels** view:
   flashes. Corrupt the copy instead: **Find Copies in WRAM** shows where it is.
 - **Low work RAM crashes fast.** `0x0000-0x1FFF` holds the game's busiest variables and its
   stack.
-- **Gentle first.** Start a recipe at low Chaos and turn it up.
+- **Gentle first.** *Gentle WRAM noise* is the mild starter; for the wilder ones, turn
+  **Chaos** down before pressing Corrupt and up from there.
 - **Same seed, same chaos.** If something great happens, Save right away: with the start
   moment it plays out the same way again (as long as you press the same buttons).
+
+## When nothing seems to happen
+
+- **Is it on?** The Corrupt button reads *Corrupting…* and the status line counts changes.
+- **Some memories bounce back.** Sprites and colours are often repainted every frame; see
+  Tips.
+- **Gentle recipes are gentle.** Turn **Chaos** up, or a rule's **Strength**.
+- **An aimed ROM rule needs a code map.** If the ROM section says nothing is known about
+  its code yet, play the game a while first.
+- **The game must be running.** A start waits for the next frame, so nothing happens while
+  the game is paused.

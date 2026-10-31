@@ -450,6 +450,14 @@ void RuleEditor::buildForm()
         auto c = OpClass(i);
         auto check = new QCheckBox(class_name(c), aim_group);
         check->setObjectName(QString("class_") + class_name(c));
+        static const char *about[] = { "ADC SBC INC DEC: arithmetic", "AND ORA EOR BIT: logic", "ASL LSR ROL ROR: shifts",
+                                       "CMP CPX CPY: comparisons (the ifs' questions)", "LDA LDX LDY: loads",
+                                       "STA STX STY STZ: stores", "TAX TXA…: moving values between registers",
+                                       "BNE BEQ… BRA: branches (the ifs)", "JMP JSR JSL: jumps and calls",
+                                       "RTS RTL RTI: returns", "PHA PLA…: the stack (crashes fast)",
+                                       "CLC SEC…: flags", "REP SEP XCE: switch 8/16-bit width (crashes at once)",
+                                       "MVN MVP: block moves", "NOP BRK WAI STP and others" };
+        check->setToolTip(about[i]);
         grid->addWidget(check, i / 5, i % 5);
         class_checks.push_back({ c, check });
     }
@@ -513,13 +521,13 @@ void RuleEditor::buildForm()
     when_page({}, at_load_note);
 
     auto window_row = new QHBoxLayout;
-    window_enabled = new QCheckBox(tr("Only between frames"), when_box);
+    window_enabled = new QCheckBox(tr("Only from frame"), when_box);
     window_enabled->setObjectName("window_enabled");
     window_start = spin(when_box, "window_start", 0, INT_MAX);
     window_end = spin(when_box, "window_end", 0, INT_MAX);
     window_row->addWidget(window_enabled);
     window_row->addWidget(window_start, 1);
-    window_row->addWidget(new QLabel(tr("and"), when_box));
+    window_row->addWidget(new QLabel(tr("to"), when_box));
     window_row->addWidget(window_end, 1);
     when->addLayout(window_row);
     auto frames_hint = hint_label(tr("Frames count from turning the recipe on; 60 is about a second."), when_box);
