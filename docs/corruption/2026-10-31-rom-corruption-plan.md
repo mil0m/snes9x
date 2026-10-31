@@ -1,6 +1,6 @@
 # ROM corruption: plan (roadmap #22)
 
-**Status (2026-10-31):** reviewed by Mikael (answers at the end). Phases 1-3 done, pending QA.md sections 20-22; phase 4 (blame by execution) next.
+**Status (2026-10-31):** reviewed by Mikael (answers at the end). Phases 1-3 done, pending QA.md sections 20-22; phase 4 (blame by execution) in progress.
 
 Spec: [`2026-10-30-ram-corruption-design.md`](./2026-10-30-ram-corruption-design.md),
 phase 5 ("a ROM target applied at load time, or live"). Both modes are in (Mikael, 31 Oct).
@@ -429,6 +429,70 @@ Findings while building phase 3:
 - **A launch check without a scratch library writes to the real one**: the first app run
   (to generate the scratch config) saved a code map into `~/Documents/Snes9x Corruptions`.
   Removed; generate the config with `LibraryRoot` pointed at scratch next time.
+
+## Phase 4 in detail
+
+**Blame by execution: only changed bytes the game actually ran or read can be guilty.**
+Today the guard blames *rules* whose writes fall in the crash window. That fails for ROM:
+a classic run writes everything at frame 0, long before any window, so the guard blames
+every rule, re-rolls them (which changes nothing already written), crashes again, and
+gives up, throwing the whole corruption away. A changed ROM byte can only do harm when the
+CPU runs it or reads it, and the tracer already sees exactly that.
+
+**How a use is noticed, for free.** The code map gets a seventh bit, `touched` (0x80):
+set alongside the others on every opcode, operand, data read and DMA read, never saved.
+Between frames, the blame looks only at the *changed* bytes (the RomKeeper tells it when a
+byte starts or stops differing from the clean ROM): touched means used this frame, so it
+stamps the byte and clears the bit. No extra work for the CPU, and the per-frame cost is
+one check per changed byte.
+
+Per changed byte: when it changed, first and last frame it was used, and in how many frames.
+
+**Suspects** are the changed bytes used in the guard's blame window, ranked:
+
+1. *Newly reached*: first used inside the window (code the game just got to). Newest first.
+2. *Already running*: used before the window too. Least-proven first (fewest frames used).
+
+**ROM policies** (recipe `rom_policy`, separate from the rule policy):
+
+- `revert` (default): put suspects back to the clean value.
+- `reroll`: give suspects a fresh random value instead. (Keeping a byte's role, operand
+  stays operand, needs phase 5's ops.)
+
+Escalating, so as much corruption as possible survives: the first crash in a row acts on
+the newest half of the newly reached suspects (all suspects if none are new), the second
+on all newly reached ones, the third and later on every suspect in the (by then wider)
+window. Acted-on bytes drop out of the suspects, so repeat crashes narrow down like a
+bisection. The fix is *settled*: written outside the journal and with the byte's journal
+entries dropped, so a later, deeper rollback can't bring the bad value back.
+
+**The guard** gets the ROM blame as a second source of suspects: a checkpoint with used
+changed bytes after it counts as having something to blame, and when only ROM bytes are to
+blame no rule is punished. Journal lines and the on-screen message say what happened
+("back 1.0 s, reverted 2 ROM bytes").
+
+**The crash map learns from it**: blamed bytes count as crashes for their 16-byte ROM
+block, and a changed byte that kept being used for 15 s without a crash counts as a
+survival, so `avoid_hot` works for ROM rules too. The per-frame learner stops counting ROM
+writes once use-based blame is on (it would blame the write, not the use). Per-byte
+counts for code are left for phase 5, if blocks turn out too coarse.
+
+Built in four steps, each pushed:
+
+1. **The touched bit**: the flag, never saved (the file and the fingerprint mask it), set by
+   the tracer and the core's data and DMA marks.
+2. **`RomBlame`** (`corrupt/rom_blame`, no emulator): watched bytes from the RomKeeper's
+   change notices, `collect(frame)`, ranked suspects, the two policies with escalation,
+   settling through the RomKeeper, survivals. Unit tests with a fake ROM and flags.
+3. **Guard and real core**: the guard's second suspect source, `rom_policy` in recipes,
+   journal and summary. A test ROM with a rarely run routine: a classic run corrupts it to
+   `STP`, flips the NMI's `INC` to `DEC` and changes bytes nothing reads; the game reaches
+   the routine, crashes, and only the `STP` is reverted.
+4. **Session, viewer, smoke**: wired in the session (collect after each frame, before the
+   guard). A **Changes** overlay on the ROM (changed bytes, brighter when they ran), hover
+   says "changed from $E6, ran in 340 frames". The panel's ROM line says how many changed
+   bytes have run. `corrupt-smoke --guard` on FF6 with a classic ROM recipe, blame on and
+   off: crashes, give-ups, and how many changed bytes survive.
 
 ## Risks
 
