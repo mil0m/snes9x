@@ -6,6 +6,10 @@
 # Uses a scratch config (muted, never the real library) and a copy of the ROM, because the
 # game's .srm is written next to it. --dark forces the Fusion dark palette (offscreen has no
 # colour scheme to follow). --scale sets QT_SCALE_FACTOR. Pictures land in <out dir>.
+#
+# Offscreen draws Fusion (what Linux and Windows get). For the real Mac look:
+#   TOUR_PLATFORM=cocoa SNES9X_COLOR_SCHEME=light|dark tests/qt/ui_tour.sh <out dir>
+# which shows the windows on screen for about 30 seconds (muted).
 set -u
 here="$(cd "$(dirname "$0")/../.." && pwd)"
 out=""; rom=""; dark=""; scale=1
@@ -42,7 +46,15 @@ copy="$scratch/rom/$(basename "$rom")"
 
 rm -f "$out/done"
 SNES9X_UI_TOUR="$out" XDG_CONFIG_HOME="$scratch/config" QT_QPA_PLATFORM="${TOUR_PLATFORM:-offscreen}" \
-    QT_SCALE_FACTOR="$scale" timeout -k 3 -s KILL 60 "$app" $dark "$copy" > "$scratch/log.txt" 2>&1
+    QT_SCALE_FACTOR="$scale" "$app" $dark "$copy" > "$scratch/log.txt" 2>&1 &
+pid=$!
+for _ in $(seq 120); do
+    [ -f "$out/done" ] && break
+    kill -0 $pid 2>/dev/null || break
+    sleep 0.5
+done
+kill -KILL $pid 2>/dev/null
+wait $pid 2>/dev/null
 if [ -f "$out/done" ]; then
     echo "tour: $(ls "$out"/*.png | wc -l | tr -d ' ') pictures in $out"
     rm -rf "$scratch"

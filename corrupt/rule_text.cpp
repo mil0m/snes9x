@@ -8,13 +8,6 @@ namespace corrupt
 namespace
 {
 
-std::string hex4(uint32_t v)
-{
-    char buf[16];
-    snprintf(buf, sizeof(buf), "0x%04X", v);
-    return buf;
-}
-
 std::string hex2(uint8_t v)
 {
     char buf[8];
@@ -46,7 +39,7 @@ std::string describe_op(const Rule &rule)
         break;
     case OpType::Swap:
         if (op.a && op.b) // a fixed pair: count doesn't apply
-            return "swap " + hex4(*op.a) + " <-> " + hex4(*op.b) + (op.width == 2 ? ", 16-bit" : "");
+            return "swap " + hex_address(*op.a, rule.range.target) + " <-> " + hex_address(*op.b, rule.range.target) + (op.width == 2 ? ", 16-bit" : "");
         text = "swap with random";
         break;
     case OpType::Copy:
@@ -74,7 +67,7 @@ std::string describe_op(const Rule &rule)
     case OpType::Filter:
         return std::string(kernel_name(op.kernel)) + " filter";
     case OpType::Stamp:
-        return "stamp from " + hex4(op.source);
+        return "stamp from " + hex_address(op.source, rule.range.target);
     case OpType::Fill:
         return "fill " + hex2(op.value.value_or(0));
     case OpType::OpcodeSwap: text = "swap opcodes"; break;
@@ -111,10 +104,11 @@ std::string describe_range(const Rule &rule)
     std::string where = target_name(rule.range.target);
     if (rule.rect)
         return where + " " + std::to_string(rule.rect->width) + "x" + std::to_string(rule.rect->height) + " at " +
-               hex4(rule.range.first) + " (rows of " + std::to_string(rule.rect->row) + ")";
+               hex_address(rule.range.first, rule.range.target) + " (rows of " + std::to_string(rule.rect->row) + ")";
     if (!rule.region.empty())
         return where + " " + rule.region;
-    return where + " " + hex4(rule.range.first) + ".." + hex4(rule.range.last);
+    return where + " " + hex_address(rule.range.first, rule.range.target) + ".." +
+           hex_address(rule.range.last, rule.range.target);
 }
 
 std::string describe_aim(const Aim &aim)

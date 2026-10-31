@@ -39,6 +39,10 @@ int main(int argc, char *argv[])
 
     QGuiApplication::setDesktopFileName("snes9x-qt");
 
+    // For screenshots of both looks (tests/qt/ui_tour.sh): light or dark whatever the system says.
+    if (auto scheme = qgetenv("SNES9X_COLOR_SCHEME"); !scheme.isEmpty())
+        QApplication::styleHints()->setColorScheme(scheme == "dark" ? Qt::ColorScheme::Dark : Qt::ColorScheme::Light);
+
     if (QApplication::platformName() == "windows" || parser.isSet("dark"))
     {
         if (QApplication::styleHints()->colorScheme() == Qt::ColorScheme::Dark || parser.isSet("dark"))

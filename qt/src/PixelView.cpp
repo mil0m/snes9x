@@ -53,7 +53,7 @@ PixelView::PixelView(QWidget *parent)
 
 int PixelView::addressWidth() const
 {
-    return fontMetrics().horizontalAdvance("0x00000") + 10;
+    return fontMetrics().horizontalAdvance("0x" + QString(corrupt::address_digits(snap.target), QChar('0'))) + 10;
 }
 
 int PixelView::imageLeft() const
@@ -541,7 +541,7 @@ void PixelView::paintEvent(QPaintEvent *)
             continue;
         int y = r * zoom_;
         size_t start = size_t(first_row + r) * size_t(columns_);
-        p.drawText(4, y + ascent, QString("0x%1").arg(start, 5, 16, QChar('0')).toUpper().replace("0X", "0x"));
+        p.drawText(4, y + ascent, QString::fromStdString(corrupt::hex_address(uint32_t(start), snap.target)));
         p.drawLine(addressWidth() - 9, y, addressWidth() - 7, y);
     }
 }

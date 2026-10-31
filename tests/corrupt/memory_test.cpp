@@ -55,3 +55,18 @@ TEST_CASE("an empty sram is reported as such")
     REQUIRE(err.has_value());
     CHECK(err->find("no sram") != std::string::npos);
 }
+
+TEST_CASE("addresses are padded the same everywhere: as many digits as the memory can need")
+{
+    CHECK(address_digits(Target::WRAM) == 5);  // 0x1FFFF
+    CHECK(address_digits(Target::ROM) == 6);   // up to 0x7FFFFF
+    CHECK(address_digits(Target::SRAM) == 5);  // up to 128 KB
+    CHECK(address_digits(Target::VRAM) == 4);
+    CHECK(address_digits(Target::ARAM) == 4);
+    CHECK(address_digits(Target::OAM) == 4);
+    CHECK(address_digits(Target::CGRAM) == 4);
+    CHECK(hex_address(0x1FF, Target::WRAM) == "0x001FF");
+    CHECK(hex_address(0xC0FFEE, Target::ROM) == "0xC0FFEE");
+    CHECK(hex_address(0x12, Target::OAM) == "0x0012");
+    CHECK(hex_address(0x123456, Target::VRAM) == "0x123456"); // never cut short
+}

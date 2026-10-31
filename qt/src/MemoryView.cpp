@@ -36,7 +36,7 @@ int MemoryView::visibleRows() const
 
 int MemoryView::addressWidth() const
 {
-    return fontMetrics().horizontalAdvance("0x00000") + 12;
+    return fontMetrics().horizontalAdvance("0x" + QString(corrupt::address_digits(snap.target), QChar('0'))) + 12;
 }
 
 QSize MemoryView::minimumSizeHint() const
@@ -263,7 +263,7 @@ void MemoryView::paintEvent(QPaintEvent *)
             break;
         int y = r * row_height;
         p.setPen(dim);
-        p.drawText(4, y + ascent, QString("0x%1").arg(start, 5, 16, QChar('0')).toUpper().replace("0X", "0x"));
+        p.drawText(4, y + ascent, QString::fromStdString(corrupt::hex_address(uint32_t(start), snap.target)));
         for (int c = 0; c < kColumns && start + size_t(c) < snap.bytes.size(); c++)
         {
             uint32_t offset = uint32_t(start) + uint32_t(c);

@@ -40,9 +40,10 @@ QString qs(const std::string &s)
     return QString::fromStdString(s);
 }
 
-QString hex4(uint32_t v)
+// Addresses as everywhere else: as many digits as the memory can need.
+QString hexa(uint32_t v, Target t)
 {
-    return QString("0x%1").arg(v, 4, 16, QChar('0')).toUpper().replace("0X", "0x");
+    return QString::fromStdString(hex_address(v, t));
 }
 
 QString hex2(uint8_t v)
@@ -603,8 +604,8 @@ void RuleEditor::load(const Rule &r)
 {
     name_edit->setText(qs(r.name));
     select(target_combo, target_name(r.range.target));
-    first_edit->setText(hex4(r.range.first));
-    last_edit->setText(hex4(r.range.last));
+    first_edit->setText(hexa(r.range.first, r.range.target));
+    last_edit->setText(hexa(r.range.last, r.range.target));
     select(shape_combo, r.rect ? "rect" : "range");
     rect_row->setValue(r.rect ? int(r.rect->row) : 64);
     rect_width->setValue(r.rect ? int(r.rect->width) : 16);
@@ -617,11 +618,11 @@ void RuleEditor::load(const Rule &r)
     add_max->setValue(2);
     bitflip_bits->setValue(1);
     bitflip_mask->setText("0xFF");
-    swap_a->setText(hex4(r.range.first));
-    swap_b->setText(hex4(r.range.first + 1));
+    swap_a->setText(hexa(r.range.first, r.range.target));
+    swap_b->setText(hexa(r.range.first + 1, r.range.target));
     select(copy_target, target_name(r.range.target));
-    copy_first->setText(hex4(r.range.first));
-    copy_last->setText(hex4(r.range.last));
+    copy_first->setText(hexa(r.range.first, r.range.target));
+    copy_last->setText(hexa(r.range.last, r.range.target));
     copy_length->setValue(1);
     freeze_value->setText("0x00");
     shuffle_window->setValue(8);
@@ -630,7 +631,7 @@ void RuleEditor::load(const Rule &r)
     shift_wrap->setChecked(true);
     shift_fill->setText("0x00");
     levels_amount->setValue(4);
-    stamp_from->setText(hex4(r.range.first));
+    stamp_from->setText(hexa(r.range.first, r.range.target));
     fill_value->setText("0x00");
 
     const Op &op = r.op;
@@ -655,17 +656,17 @@ void RuleEditor::load(const Rule &r)
     case OpType::Swap:
         select(swap_mode, op.a ? "fixed" : "random");
         if (op.a)
-            swap_a->setText(hex4(*op.a));
+            swap_a->setText(hexa(*op.a, r.range.target));
         if (op.b)
-            swap_b->setText(hex4(*op.b));
+            swap_b->setText(hexa(*op.b, r.range.target));
         select(swap_width, QString::number(op.width));
         break;
     case OpType::Copy:
         if (op.from)
         {
             select(copy_target, target_name(op.from->target));
-            copy_first->setText(hex4(op.from->first));
-            copy_last->setText(hex4(op.from->last));
+            copy_first->setText(hexa(op.from->first, op.from->target));
+            copy_last->setText(hexa(op.from->last, op.from->target));
         }
         copy_length->setValue(int(op.length));
         break;
@@ -694,7 +695,7 @@ void RuleEditor::load(const Rule &r)
         select(filter_kernel, kernel_name(op.kernel));
         break;
     case OpType::Stamp:
-        stamp_from->setText(hex4(op.source));
+        stamp_from->setText(hexa(op.source, r.range.target));
         break;
     case OpType::Fill:
         fill_value->setText(hex2(op.value.value_or(0)));
@@ -744,8 +745,8 @@ void RuleEditor::regionChosen()
     if (custom)
         return;
     select(target_combo, target_name(it->second.target));
-    first_edit->setText(hex4(it->second.first));
-    last_edit->setText(hex4(it->second.last));
+    first_edit->setText(hexa(it->second.first, it->second.target));
+    last_edit->setText(hexa(it->second.last, it->second.target));
 }
 
 RuleEditor::Built RuleEditor::build() const
@@ -968,7 +969,7 @@ void RuleEditor::refresh()
     if (custom_range && rect)
     {
         QSignalBlocker quiet(last_edit);
-        last_edit->setText(hex4(b.rule.range.last)); // the rectangle's bottom-right byte
+        last_edit->setText(hexa(b.rule.range.last, b.rule.range.target)); // the rectangle's bottom-right byte
     }
     summary_label->setText(qs(describe_rule(b.rule)));
     error_label->setText(b.error);

@@ -53,10 +53,6 @@ int sectionGap(const QWidget *widget);
 // A form: labels on the left, right-aligned, fields that grow, rows that don't wrap.
 QFormLayout *form(QWidget *parent = nullptr);
 
-// Hex digits for an address into memory of this size: at least 4.
-int addressDigits(size_t memory_size);
-QString address(uint32_t offset, size_t memory_size);
-
 // One line of status: an icon, a colour and the words together, never colour alone.
 class StatusLine : public QWidget
 {

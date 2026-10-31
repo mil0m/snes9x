@@ -380,7 +380,7 @@ TEST_CASE("a named region fills the range and is kept for saving")
     CHECK(r.range.first == 0x300u);
     CHECK(r.range.last == 0x4FFu);
     CHECK_FALSE(child<QLineEdit>(e, "first")->isEnabled());
-    CHECK(child<QLineEdit>(e, "first")->text() == "0x0300");
+    CHECK(child<QLineEdit>(e, "first")->text() == "0x00300");
 
     choose(e, "region", "");
     CHECK(e.rule().region.empty());

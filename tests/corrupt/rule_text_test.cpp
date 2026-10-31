@@ -25,7 +25,7 @@ TEST_CASE("each op has a short description")
     CHECK(describe_op(with_op({ .type = OpType::Bitflip, .bits = 3 }, 2)) == "flip 3 bits x2");
     CHECK(describe_op(with_op({ .type = OpType::Bitflip, .mask = uint8_t(0x81) })) == "xor 0x81 x1");
     CHECK(describe_op(with_op({ .type = OpType::Swap, .width = 2, .a = 0x0F00u, .b = 0x0F02u })) ==
-          "swap 0x0F00 <-> 0x0F02, 16-bit");
+          "swap 0x00F00 <-> 0x00F02, 16-bit");
     CHECK(describe_op(with_op({ .type = OpType::Swap }, 3)) == "swap with random x3");
     CHECK(describe_op(with_op({ .type = OpType::Copy, .from = AddressRange{ Target::VRAM, 0, 0xFFF }, .length = 16 })) ==
           "copy 16 bytes from vram x1");
@@ -42,7 +42,7 @@ TEST_CASE("each op has a short description")
     CHECK(describe_op(with_op({ .type = OpType::Levels, .curve = Curve::Posterize, .amount = 4 })) == "posterize 4");
     CHECK(describe_op(with_op({ .type = OpType::Levels, .curve = Curve::Gamma, .amount = 1.5 })) == "gamma 1.5");
     CHECK(describe_op(with_op({ .type = OpType::Filter, .kernel = Kernel::Median })) == "median filter");
-    CHECK(describe_op(with_op({ .type = OpType::Stamp, .source = 0x800 })) == "stamp from 0x0800");
+    CHECK(describe_op(with_op({ .type = OpType::Stamp, .source = 0x800 })) == "stamp from 0x00800");
     CHECK(describe_op(with_op({ .type = OpType::Fill, .value = uint8_t(0xEA) })) == "fill 0xEA");
     CHECK(describe_op(with_op({ .type = OpType::OpcodeSwap }, 3)) == "swap opcodes x3");
     CHECK(describe_op(with_op({ .type = OpType::BranchFlip }, 2)) == "flip branches x2");
@@ -55,22 +55,22 @@ TEST_CASE("an aimed rule says what it aims at")
     r.range = { Target::ROM, 0, 0xFFFF };
     r.when = { .type = TriggerType::AtLoad };
     r.aim = { .role = Role::Operand, .classes = { OpClass::Arith, OpClass::Compare } };
-    CHECK(describe_rule(r) == "rom 0x0000..0xFFFF: random 0..255 x1, once at load, operands of arith, compare");
+    CHECK(describe_rule(r) == "rom 0x000000..0x00FFFF: random 0..255 x1, once at load, operands of arith, compare");
     r.aim = { .role = Role::Code, .except = { OpClass::Width, OpClass::Stack } };
-    CHECK(describe_rule(r) == "rom 0x0000..0xFFFF: random 0..255 x1, once at load, code except width, stack");
+    CHECK(describe_rule(r) == "rom 0x000000..0x00FFFF: random 0..255 x1, once at load, code except width, stack");
     r.op = { .type = OpType::NopOut };
     r.aim = { .classes = { OpClass::Jump } };
-    CHECK(describe_rule(r) == "rom 0x0000..0xFFFF: NOP out x1, once at load, only jump");
+    CHECK(describe_rule(r) == "rom 0x000000..0x00FFFF: NOP out x1, once at load, only jump");
     r.aim = { .role = Role::Data };
     r.op = { .type = OpType::Add, .min = -1, .max = 1 };
-    CHECK(describe_rule(r) == "rom 0x0000..0xFFFF: add -1..1 x1, once at load, data");
+    CHECK(describe_rule(r) == "rom 0x000000..0x00FFFF: add -1..1 x1, once at load, data");
 }
 
 TEST_CASE("a rectangle reads as its corner and size")
 {
     Rule r;
     set_rect(r, Target::ROM, 0x1000, Rect{ 64, 16, 32 });
-    CHECK(describe_range(r) == "rom 16x32 at 0x1000 (rows of 64)");
+    CHECK(describe_range(r) == "rom 16x32 at 0x001000 (rows of 64)");
 }
 
 TEST_CASE("each trigger has a short description")
@@ -90,7 +90,7 @@ TEST_CASE("a rule's summary names where, what and when")
 {
     Rule r = with_op({ .type = OpType::Random, .min = 0, .max = 255 }, 2);
     r.when = { .type = TriggerType::EveryFrames, .every = 120 };
-    CHECK(describe_range(r) == "wram 0x2000..0x2FFF");
+    CHECK(describe_range(r) == "wram 0x02000..0x02FFF");
     r.region = "enemy_table";
     CHECK(describe_range(r) == "wram enemy_table");
     CHECK(describe_rule(r) == "wram enemy_table: random 0..255 x2, every 120 frames");

@@ -142,17 +142,6 @@ TEST_CASE("a heading is bold and named for tests and screen readers")
     CHECK(h->accessibleName() == "Rules");
 }
 
-TEST_CASE("addresses are padded to the size of their memory, everywhere the same")
-{
-    CHECK(ui::addressDigits(0x20000) == 5);    // wram: 0x00000..0x1FFFF
-    CHECK(ui::addressDigits(0x10000) == 4);    // vram
-    CHECK(ui::addressDigits(0x220) == 4);      // oam: never fewer than 4
-    CHECK(ui::addressDigits(0x400000) == 6);   // a 4 MB rom
-    CHECK(ui::addressDigits(0) == 4);
-    CHECK(ui::address(0x1FF, 0x20000) == "0x001FF");
-    CHECK(ui::address(0xABCD, 0x10000) == "0xABCD");
-}
-
 TEST_CASE("the section gap is wider than the gap between controls")
 {
     QWidget w;

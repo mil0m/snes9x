@@ -35,7 +35,7 @@ TileView::TileView(QWidget *parent)
 
 int TileView::addressWidth() const
 {
-    return fontMetrics().horizontalAdvance("0x00000") + 10;
+    return fontMetrics().horizontalAdvance("0x" + QString(corrupt::address_digits(snap.target), QChar('0'))) + 10;
 }
 
 int TileView::imageLeft() const
@@ -431,6 +431,6 @@ void TileView::paintEvent(QPaintEvent *)
         if ((first_row + r) % every)
             continue;
         size_t start = size_t(first_row + r) * size_t(per_row) * span;
-        p.drawText(4, r * cell() + ascent, QString("0x%1").arg(start, 5, 16, QChar('0')).toUpper().replace("0X", "0x"));
+        p.drawText(4, r * cell() + ascent, QString::fromStdString(corrupt::hex_address(uint32_t(start), snap.target)));
     }
 }

@@ -31,6 +31,11 @@ const char *target_name(Target t);
 std::optional<Target> parse_target(std::string_view name);
 size_t nominal_size(Target t); // SRAM: the common 8 KB; ROM: 1 MB
 
+// Addresses are written with as many hex digits as the memory can ever need (at least 4),
+// so lists, rules and the viewer's gutter line up: wram 0x01A00, rom 0x0C8000, vram 0x1A00.
+int address_digits(Target t);
+std::string hex_address(uint32_t offset, Target t); // "0x01A00"
+
 // The engine never touches the emulator directly; everything goes through this.
 // The emulator's implementation owns cache invalidation (tiles, sprites, colours).
 struct MemoryAccess

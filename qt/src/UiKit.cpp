@@ -264,19 +264,6 @@ QFormLayout *form(QWidget *parent)
     return f;
 }
 
-int addressDigits(size_t memory_size)
-{
-    int digits = 1;
-    for (size_t last = memory_size ? memory_size - 1 : 0; last >= 16; last >>= 4)
-        digits++;
-    return std::max(digits, 4);
-}
-
-QString address(uint32_t offset, size_t memory_size)
-{
-    return "0x" + QString("%1").arg(offset, addressDigits(memory_size), 16, QChar('0')).toUpper();
-}
-
 StatusLine::StatusLine(QWidget *parent)
     : QWidget(parent)
 {

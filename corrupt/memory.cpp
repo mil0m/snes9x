@@ -69,4 +69,22 @@ std::optional<std::string> validate_range(const AddressRange &range, const Memor
     return std::nullopt;
 }
 
+int address_digits(Target t)
+{
+    switch (t)
+    {
+    case Target::WRAM: return 5;
+    case Target::SRAM: return 5;
+    case Target::ROM: return 6;
+    default: return 4;
+    }
+}
+
+std::string hex_address(uint32_t offset, Target t)
+{
+    char buf[16];
+    snprintf(buf, sizeof(buf), "0x%0*X", address_digits(t), offset);
+    return buf;
+}
+
 } // namespace corrupt

@@ -42,9 +42,10 @@ QString rateText(float per_frame)
     return "0";
 }
 
-QString hex4(uint32_t v)
+// Addresses as everywhere else: as many digits as the memory can need.
+QString hexa(uint32_t v, Target t)
 {
-    return QString("0x%1").arg(v, 4, 16, QChar('0')).toUpper().replace("0X", "0x");
+    return QString::fromStdString(hex_address(v, t));
 }
 
 } // namespace
@@ -480,7 +481,7 @@ void MemoryViewer::hovered(std::optional<uint32_t> offset)
     auto &snap = pixels->snapshot();
     if (!offset || *offset >= snap.bytes.size())
         return hover_label->clear();
-    auto text = QString("%1 = 0x%2").arg(hex4(*offset)).arg(snap.bytes[*offset], 2, 16, QChar('0')).toUpper().replace("0X", "0x");
+    auto text = QString("%1 = 0x%2").arg(hexa(*offset, snap.target)).arg(snap.bytes[*offset], 2, 16, QChar('0')).toUpper().replace("0X", "0x");
     // How often the game reads and writes it (WRAM only), whatever the overlay.
     if (*offset < snap.reads.size() && *offset < snap.writes.size())
         text += tr(" · read %1, written %2 a frame").arg(rateText(snap.reads[*offset]), rateText(snap.writes[*offset]));
@@ -496,7 +497,7 @@ void MemoryViewer::hovered(std::optional<uint32_t> offset)
                                               .arg(*in->address >> 16, 2, 16, QChar('0'))
                                               .arg(*in->address & 0xFFFF, 4, 16, QChar('0'))
                                               .toUpper()
-                                        : hex4(in->start);
+                                        : hexa(in->start, snap.target);
             text += tr(" · %1  %2 %3 (%4)").arg(where, bytes, QString::fromStdString(in->text), class_name(in->cls));
             if (in->both_widths)
                 text += tr(", runs 8- and 16-bit");
@@ -522,7 +523,7 @@ void MemoryViewer::hovered(std::optional<uint32_t> offset)
         if (c.crashes || c.survivals)
         {
             text += tr(" · block %1: %2 crashes, %3 calm, danger %4")
-                        .arg(hex4(uint32_t(block * CrashMap::kBlock)))
+                        .arg(hexa(uint32_t(block * CrashMap::kBlock), snap.target))
                         .arg(c.crashes)
                         .arg(c.survivals)
                         .arg(CrashMap::danger_of(c), 0, 'f', 2);
@@ -539,7 +540,7 @@ void MemoryViewer::tileHovered(std::optional<uint32_t> tile)
         return hover_label->clear();
     hover_label->setText(tr("tile 0x%1 at %2")
                              .arg(QString::number(*tile, 16).toUpper().rightJustified(3, QChar('0')))
-                             .arg(hex4(*tile * tiles->tileSpan())));
+                             .arg(hexa(*tile * tiles->tileSpan(), pane()->snapshot().target)));
 }
 
 void MemoryViewer::showEvent(QShowEvent *event)
@@ -664,13 +665,13 @@ void MemoryViewer::selectionChanged()
                                      .arg(target_name(pane()->snapshot().target))
                                      .arg(rect->width)
                                      .arg(rect->height)
-                                     .arg(hex4(rect->start))
+                                     .arg(hexa(rect->start, pane()->snapshot().target))
                                      .arg(rect->row)
                                      .arg(rect->width * rect->height));
         return;
     }
     selection_label->setText(QString("%1 %2..%3 (%4 bytes)")
-                                 .arg(target_name(pane()->snapshot().target), hex4(sel->first), hex4(sel->second))
+                                 .arg(target_name(pane()->snapshot().target), hexa(sel->first, pane()->snapshot().target), hexa(sel->second, pane()->snapshot().target))
                                  .arg(sel->second - sel->first + 1));
 }
 
@@ -681,12 +682,12 @@ Rule MemoryViewer::ruleFromSelection() const
     {
         set_rect(r, pane()->snapshot().target, rect->start, Rect{ rect->row, rect->width, rect->height });
         r.name = std::string(target_name(r.range.target)) + " " + std::to_string(rect->width) + "x" +
-                 std::to_string(rect->height) + " at " + hex4(rect->start).toStdString();
+                 std::to_string(rect->height) + " at " + hexa(rect->start, pane()->snapshot().target).toStdString();
     }
     else if (auto sel = pane()->selection())
     {
         r.range = { pane()->snapshot().target, sel->first, sel->second };
-        r.name = std::string(target_name(r.range.target)) + " " + hex4(sel->first).toStdString();
+        r.name = std::string(target_name(r.range.target)) + " " + hexa(sel->first, pane()->snapshot().target).toStdString();
     }
     return r;
 }
@@ -769,11 +770,11 @@ void MemoryViewer::findCopies()
     for (auto of : { Target::OAM, Target::CGRAM })
         for (auto &run : source.findCopies(of))
         {
-            auto text = QString("%1 → wram %2 (%3 bytes)").arg(target_name(of), hex4(run.haystack_offset)).arg(run.length);
+            auto text = QString("%1 → wram %2 (%3 bytes)").arg(target_name(of), hexa(run.haystack_offset, Target::WRAM)).arg(run.length);
             auto item = new QListWidgetItem(text, copies_list);
             item->setToolTip(QString("%1 %2..%3 is copied at wram %4..%5")
-                                 .arg(target_name(of), hex4(run.needle_offset), hex4(run.needle_offset + run.length - 1),
-                                      hex4(run.haystack_offset), hex4(run.haystack_offset + run.length - 1)));
+                                 .arg(target_name(of), hexa(run.needle_offset, of), hexa(run.needle_offset + run.length - 1, of),
+                                      hexa(run.haystack_offset, Target::WRAM), hexa(run.haystack_offset + run.length - 1, Target::WRAM)));
             item->setData(Qt::UserRole, run.haystack_offset);
             item->setData(Qt::UserRole + 1, run.haystack_offset + run.length - 1);
         }
@@ -789,7 +790,7 @@ void MemoryViewer::refreshRegions()
     {
         auto item = new QListWidgetItem(QString("%1 · %2 %3..%4")
                                             .arg(QString::fromStdString(name), target_name(range.target),
-                                                 hex4(range.first), hex4(range.last)),
+                                                 hexa(range.first, range.target), hexa(range.last, range.target)),
                                         regions_list);
         item->setData(Qt::UserRole, QString::fromStdString(name));
         if (item->data(Qt::UserRole).toString() == current)
@@ -907,7 +908,7 @@ void MemoryViewer::refreshMap()
     for (auto &area : shown_map)
     {
         auto item = new QListWidgetItem(QString("%1 · %2..%3").arg(QString::fromStdString(area.name),
-                                                                    hex4(area.range.first), hex4(area.range.last)),
+                                                                    hexa(area.range.first, area.range.target), hexa(area.range.last, area.range.target)),
                                         map_list);
         item->setToolTip(QString::fromStdString(area.about) +
                          (area.live ? tr("\n(Read from the game right now; it can move.)") : QString()));

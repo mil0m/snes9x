@@ -211,7 +211,7 @@ TEST_CASE("go to an address, and the selection becomes a ready-made rule")
     CHECK_FALSE(child<QPushButton>(v, "new_rule")->isEnabled());
     view->select(0x1C00, 0x1E1F);
     CHECK(child<QPushButton>(v, "new_rule")->isEnabled());
-    CHECK(child<QLabel>(v, "selection")->text().contains("0x1C00"));
+    CHECK(child<QLabel>(v, "selection")->text().contains("0x01C00"));
     Rule r = v.ruleFromSelection();
     CHECK(r.range.target == Target::WRAM);
     CHECK(r.range.first == 0x1C00u);
@@ -231,7 +231,7 @@ TEST_CASE("found copies are listed, and a click selects the copy in WRAM")
     auto list = child<QListWidget>(v, "copies");
     REQUIRE(list->count() == 3);
     CHECK(list->item(0)->text().contains("oam"));
-    CHECK(list->item(0)->text().contains("0x1C00"));
+    CHECK(list->item(0)->text().contains("0x01C00"));
 
     list->setCurrentRow(1);
     emit list->itemActivated(list->item(1));
@@ -269,7 +269,7 @@ TEST_CASE("the ROM is a target like any other, in every view")
     CHECK(pixels->snapshot().heat.empty()); // the fake gives none for the ROM either
     choose(v, "mode", "pixels");
     pixels->onHover(0x12345);
-    CHECK(child<QLabel>(v, "hover")->text().contains("0x12345"));
+    CHECK(child<QLabel>(v, "hover")->text().contains("0x012345"));
 }
 
 TEST_CASE("overlay choice and clearing hits")
@@ -308,7 +308,7 @@ TEST_SUITE("named regions in the viewer")
         auto list = child<QListWidget>(v, "regions");
         REQUIRE(list->count() == 1);
         CHECK(list->item(0)->text().contains("stats"));
-        CHECK(list->item(0)->text().contains("0x0F00"));
+        CHECK(list->item(0)->text().contains("0x00F00"));
     }
 
     TEST_CASE("a bad name or a taken one is refused with a reason")
@@ -461,7 +461,7 @@ TEST_SUITE("the pixel view in the viewer")
         CHECK(pixels->selection() == std::pair{ 0x4010u, 0x404Fu });
         CHECK(pixels->firstVisibleOffset() <= 0x4000u);
         CHECK_FALSE(pixels->pixelRect(0x4010).isEmpty());
-        CHECK(child<QLabel>(v, "selection")->text().contains("0x4010"));
+        CHECK(child<QLabel>(v, "selection")->text().contains("0x04010"));
 
         pixels->select(0x8000, 0x80FF);
         choose(v, "mode", "hex");
@@ -572,7 +572,7 @@ TEST_SUITE("the pixel view in the viewer")
         CHECK(r.rect->width == 16);
         CHECK(r.rect->height == 8);
         CHECK(r.range.last == 0x1000u + 7 * 64 + 15);
-        CHECK(r.name == "wram 16x8 at 0x1000");
+        CHECK(r.name == "wram 16x8 at 0x01000");
         CHECK(child<QLabel>(v, "selection")->text().contains("16")); // says it's a rectangle
         CHECK(child<QLabel>(v, "selection")->text().contains("rows of 64"));
     }
@@ -648,7 +648,7 @@ TEST_SUITE("the pixel view in the viewer")
                          Qt::NoButton, Qt::NoModifier);
         QApplication::sendEvent(pixels->viewport(), &move);
         auto hover = child<QLabel>(v, "hover")->text();
-        CHECK(hover.contains("0x0041"));
+        CHECK(hover.contains("0x00041"));
         CHECK(hover.contains("0x11"));
         CHECK_FALSE(hover.contains("crash")); // the map knows nothing there
     }
@@ -716,8 +716,8 @@ TEST_SUITE("the pixel view in the viewer")
         QApplication::processEvents();
         pixels->onHover(0x1F35);
         auto hover = child<QLabel>(v, "hover")->text();
-        CHECK(hover.contains("0x1F35"));
-        CHECK(hover.contains("block 0x1F30"));
+        CHECK(hover.contains("0x01F35"));
+        CHECK(hover.contains("block 0x01F30"));
         CHECK(hover.contains("5 crashes"));
         CHECK(hover.contains("12 calm"));
         CHECK(hover.contains("0.26"));
