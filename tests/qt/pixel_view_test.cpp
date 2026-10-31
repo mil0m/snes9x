@@ -725,3 +725,13 @@ TEST_CASE("pictures of real memory, from corrupt-smoke --dump")
             }
     }
 }
+
+TEST_CASE("beside a narrow picture is the window's colour, not a white page")
+{
+    Shown s(1);
+    s.view.setRowWidth(16);
+    QApplication::processEvents();
+    QImage img = s.view.viewport()->grab().toImage();
+    QColor beside = img.pixelColor(img.width() - 20, img.height() / 2);
+    CHECK(beside == s.view.palette().color(QPalette::Window));
+}

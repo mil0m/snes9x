@@ -418,7 +418,9 @@ bool PixelView::viewportEvent(QEvent *event)
 void PixelView::paintEvent(QPaintEvent *)
 {
     QPainter p(viewport());
-    QColor background = palette().color(QPalette::Base);
+    // Around the picture is the window, not a page: a narrow picture doesn't sit beside a
+    // white half (light) and the picture's own edge is the framed rectangle.
+    QColor background = palette().color(QPalette::Window);
     p.fillRect(viewport()->rect(), background);
     if (snap.bytes.empty())
         return;

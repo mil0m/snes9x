@@ -107,8 +107,8 @@ class MemoryViewer : public QWidget
     QLineEdit *goto_edit;
     QComboBox *mode_combo;
     QWidget *view_options;
-    QPushButton *zoom_out_button;
-    QPushButton *zoom_in_button;
+    class QToolButton *zoom_out_button;
+    class QToolButton *zoom_in_button;
     QLabel *zoom_label;
     QSpinBox *row_width;
     QPushButton *paint_button;
@@ -128,7 +128,7 @@ class MemoryViewer : public QWidget
     QLabel *legend_label = nullptr;
     QLabel *regions_empty = nullptr;
     QPushButton *clear_hits_button = nullptr;
-    class QGroupBox *copies_box = nullptr;
+    QWidget *copies_box = nullptr;
     QLabel *selection_label;
     QPushButton *new_rule_button;
     QListWidget *copies_list;

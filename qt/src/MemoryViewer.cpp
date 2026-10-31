@@ -1,4 +1,5 @@
 #include "MemoryViewer.hpp"
+#include "UiKit.hpp"
 #include "AreaImage.hpp"
 #include "MemoryView.hpp"
 #include "PixelView.hpp"
@@ -12,7 +13,7 @@
 #include <QFontDatabase>
 #include <QInputDialog>
 #include <QMessageBox>
-#include <QGroupBox>
+#include <QToolButton>
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QListView>
@@ -64,12 +65,18 @@ MemoryViewer::MemoryViewer(MemorySource &source, QWidget *parent)
     mode_combo->addItem(tr("Tiles"), QString("tiles"));
     mode_combo->setToolTip(tr("Pixels: every byte is one dot coloured by its value, so a whole memory fits on screen.\n"
                               "Tiles: the bytes decoded as SNES graphics, in the game's own colours."));
-    zoom_out_button = new QPushButton(QStringLiteral("−"), this);
+    zoom_out_button = new QToolButton(this);
     zoom_out_button->setObjectName("zoom_out");
+    zoom_out_button->setIcon(ui::icon("zoom-out"));
     zoom_out_button->setToolTip(tr("Zoom out (Ctrl+wheel)"));
-    zoom_in_button = new QPushButton(QStringLiteral("+"), this);
+    zoom_out_button->setAccessibleName(tr("Zoom out"));
+    zoom_in_button = new QToolButton(this);
     zoom_in_button->setObjectName("zoom_in");
+    zoom_in_button->setIcon(ui::icon("zoom-in"));
     zoom_in_button->setToolTip(tr("Zoom in (Ctrl+wheel)"));
+    zoom_in_button->setAccessibleName(tr("Zoom in"));
+    zoom_out_button->setAutoRaise(true); // flat, like a toolbar: the Mac draws a raised one as a bevel
+    zoom_in_button->setAutoRaise(true);
     zoom_label = new QLabel(this);
     zoom_label->setObjectName("zoom");
     row_width = new QSpinBox(this);
@@ -98,8 +105,6 @@ MemoryViewer::MemoryViewer(MemorySource &source, QWidget *parent)
     per_row_spin->setValue(16);
     per_row_spin->setSuffix(tr(" per row"));
     per_row_spin->setToolTip(tr("Tiles per row. Big sprites and fonts often line up at 16 or 32."));
-    for (auto b : { zoom_out_button, zoom_in_button })
-        b->setFixedWidth(b->fontMetrics().horizontalAdvance("+") + 24);
     target_combo = new QComboBox(this);
     target_combo->setObjectName("target");
     for (auto t : kAllTargets)
@@ -120,8 +125,13 @@ MemoryViewer::MemoryViewer(MemorySource &source, QWidget *parent)
     goto_edit = new QLineEdit(this);
     goto_edit->setObjectName("goto");
     goto_edit->setPlaceholderText(tr("Go to 0x…"));
-    goto_edit->setMaximumWidth(110);
-    clear_hits_button = new QPushButton(tr("Clear Hits"), this);
+    goto_edit->setAccessibleName(tr("Go to address"));
+    goto_edit->setFont(QFontDatabase::systemFont(QFontDatabase::FixedFont));
+    // Wide enough for its hint and a ROM address, in either font.
+    goto_edit->setMinimumWidth(std::max(goto_edit->fontMetrics().horizontalAdvance("0x000000"),
+                                        fontMetrics().horizontalAdvance(goto_edit->placeholderText())) + 24);
+    goto_edit->setMaximumWidth(goto_edit->minimumWidth() + 40);
+    clear_hits_button = new QPushButton(ui::icon("eraser"), tr("Clear Hits"), this);
     auto clear = clear_hits_button;
     clear->setObjectName("clear_hits");
     clear->setToolTip(tr("Forget what the recipe wrote so far, to see only what it hits from now on"));
@@ -192,8 +202,11 @@ MemoryViewer::MemoryViewer(MemorySource &source, QWidget *parent)
     map_list->setObjectName("map");
     map_list->setMinimumWidth(190);
     map_list->setMaximumWidth(340);
-    map_list->setTextElideMode(Qt::ElideMiddle);
+    // Whole names, wrapped: cutting them in the middle hid the useful part.
+    map_list->setWordWrap(true);
+    map_list->setTextElideMode(Qt::ElideNone);
     map_list->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    map_list->setAccessibleName(tr("What's where"));
     map_list->setToolTip(tr("What lives where in this memory. Click an area to select it; italic ones are read "
                             "from the game right now and can move."));
     stack = new QStackedWidget(this);
@@ -207,7 +220,7 @@ MemoryViewer::MemoryViewer(MemorySource &source, QWidget *parent)
     stack->addWidget(pixels);
     stack->addWidget(tiles);
     auto map_column = new QVBoxLayout;
-    map_column->addWidget(new QLabel(tr("What's where"), this));
+    map_column->addWidget(ui::heading(tr("What's where"), this));
     map_column->addWidget(map_list, 1);
     middle->addLayout(map_column);
     middle->addWidget(stack, 1);
@@ -215,6 +228,7 @@ MemoryViewer::MemoryViewer(MemorySource &source, QWidget *parent)
     legend_label = new QLabel(this);
     legend_label->setObjectName("legend");
     legend_label->setWordWrap(true);
+    ui::setTone(legend_label, ui::Tone::Secondary);
     layout->addWidget(legend_label);
 
     auto bottom = new QHBoxLayout;
@@ -223,7 +237,7 @@ MemoryViewer::MemoryViewer(MemorySource &source, QWidget *parent)
     hover_label = new QLabel(this);
     hover_label->setObjectName("hover");
     hover_label->setFont(QFontDatabase::systemFont(QFontDatabase::FixedFont));
-    new_rule_button = new QPushButton(tr("New Rule from Selection…"), this);
+    new_rule_button = new QPushButton(ui::icon("plus"), tr("New Rule from Selection…"), this);
     new_rule_button->setToolTip(tr("A rule that corrupts the selected bytes, ready to adjust"));
     new_rule_button->setObjectName("new_rule");
     new_rule_button->setEnabled(false);
@@ -232,9 +246,17 @@ MemoryViewer::MemoryViewer(MemorySource &source, QWidget *parent)
     bottom->addWidget(new_rule_button);
     layout->addLayout(bottom);
 
-    copies_box = new QGroupBox(tr("Sprite and palette copies in WRAM"), this);
-    auto copies_layout = new QVBoxLayout(copies_box);
-    auto find = new QPushButton(tr("Find Copies in WRAM"), copies_box);
+    // Two headed sections side by side, set apart by space rather than boxes.
+    auto section = [this](const QString &title) {
+        auto box = new QWidget(this);
+        auto v = new QVBoxLayout(box);
+        v->setContentsMargins(0, 0, 0, 0);
+        v->addWidget(ui::heading(title, box));
+        return std::pair{ box, v };
+    };
+    auto [copies_widget, copies_layout] = section(tr("Sprite and palette copies in WRAM"));
+    copies_box = copies_widget;
+    auto find = new QPushButton(ui::icon("search"), tr("Find Copies in WRAM"), copies_box);
     find->setObjectName("find_copies");
     find->setToolTip(tr("Most games rebuild sprites and colours from a copy in WRAM every frame, so corrupting "
                         "the copy sticks where corrupting oam or cgram only flashes."));
@@ -246,8 +268,7 @@ MemoryViewer::MemoryViewer(MemorySource &source, QWidget *parent)
     copies_layout->addWidget(find);
     copies_layout->addWidget(copies_list);
 
-    auto regions_box = new QGroupBox(tr("Named areas"), this);
-    auto regions_layout = new QVBoxLayout(regions_box);
+    auto [regions_box, regions_layout] = section(tr("Named areas"));
     regions_list = new QListWidget(regions_box);
     regions_list->setObjectName("regions");
     regions_list->setMaximumHeight(110);
@@ -256,21 +277,25 @@ MemoryViewer::MemoryViewer(MemorySource &source, QWidget *parent)
     regions_empty = new QLabel(tr("None yet. Select bytes, then Name Selection to give them a name rules can use."),
                                regions_box);
     regions_empty->setWordWrap(true);
+    ui::setTone(regions_empty, ui::Tone::Secondary);
     auto region_buttons = new QHBoxLayout;
-    name_button = new QPushButton(tr("Name Selection..."), regions_box);
+    name_button = new QPushButton(ui::icon("tag"), tr("Name Selection…"), regions_box);
     name_button->setObjectName("name_selection");
     name_button->setEnabled(false);
-    rename_button = new QPushButton(tr("Rename..."), regions_box);
-    delete_button = new QPushButton(tr("Delete..."), regions_box);
+    rename_button = new QPushButton(ui::icon("pencil"), tr("Rename…"), regions_box);
+    delete_button = new QPushButton(ui::icon("trash"), tr("Delete…"), regions_box);
     region_buttons->addWidget(name_button);
     region_buttons->addStretch(1);
     region_buttons->addWidget(rename_button);
     region_buttons->addWidget(delete_button);
     regions_layout->addWidget(regions_empty);
     regions_layout->addWidget(regions_list);
+    regions_layout->addStretch(1); // the heading stays at the top, the buttons at the bottom
     regions_layout->addLayout(region_buttons);
 
     auto lists = new QHBoxLayout;
+    lists->setSpacing(ui::sectionGap(this));
+    layout->addSpacing(ui::sectionGap(this) / 2);
     lists->addWidget(copies_box, 1);
     lists->addWidget(regions_box, 1);
     layout->addLayout(lists);

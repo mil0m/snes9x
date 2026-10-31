@@ -2,7 +2,7 @@
 
 Snes9x can corrupt the game you're playing: change bits of its memory, or of the game
 itself, while it runs, for glitches you'd never see otherwise. This guide is also in the
-app: **? Guide** at the top of the Corruption panel.
+app: **Guide** at the top of the Corruption panel.
 
 **Contents:** Start here · Getting back to normal · Keeping a good one · The words · Hotkeys ·
 Recipes and rules · When the game crashes · Sharing with a friend · The memory viewer ·
@@ -97,8 +97,9 @@ save recipes without touching where the game is.
 
 **Rules** are listed under the run controls. Tick **On** to switch one off for a while,
 drag **Strength** to tone it down, double-click to edit, and see how often the crash guard
-blamed it under **Crashes**. **Add Rule**, **Edit**, **Duplicate** and **Remove** do what
-they say; edits apply on the next frame, to that rule only.
+blamed it under **Crashes**. **Add Rule…** adds one; the small pencil, copy and bin buttons
+beside it edit, duplicate and remove the selected rule. Edits apply on the next frame, to
+that rule only.
 
 **The rule editor**, top to bottom:
 
@@ -139,7 +140,7 @@ If the same crash keeps coming back, each time it goes 5 seconds further back. A
 crashes in a row that fixed nothing, it gives up: corruption goes off and the ROM goes
 back to clean.
 
-**It Crashed: Go Back Now** is for a crash it missed (the game is stuck but the picture
+**It Crashed: Go Back** is for a crash it missed (the game is stuck but the picture
 still moves): it goes back about two seconds and blames what changed.
 
 It also learns, per game, which bytes crash it (**the crash map**): rules with *Avoid
@@ -268,7 +269,7 @@ The old Photoshop way, built in. In the memory viewer's **Pixels** view:
 
 ## When nothing seems to happen
 
-- **Is it on?** The Corrupt button reads *Corrupting…* and the status line counts changes.
+- **Is it on?** The Corrupt button reads *Stop* and the status line counts changes.
 - **Some memories bounce back.** Sprites and colours are often repainted every frame; see
   Tips.
 - **Gentle recipes are gentle.** Turn **Chaos** up, or a rule's **Strength**.

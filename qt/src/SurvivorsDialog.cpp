@@ -1,4 +1,7 @@
 #include "SurvivorsDialog.hpp"
+#include "UiKit.hpp"
+
+#include <QFontDatabase>
 
 #include <QHBoxLayout>
 #include <QHeaderView>
@@ -24,7 +27,7 @@ QString hex2(uint8_t v)
 // Offsets into the ROM, like the memory viewer shows them; the CPU's address in the tooltip.
 QString where(uint32_t offset)
 {
-    return "0x" + QString::number(offset, 16).toUpper();
+    return QString::fromStdString(hex_address(offset, Target::ROM));
 }
 
 QString cpu(std::optional<uint32_t> address)
@@ -46,6 +49,7 @@ QTableWidget *make_table(QWidget *parent, const char *name, const QStringList &h
     t->setEditTriggers(QAbstractItemView::NoEditTriggers);
     t->verticalHeader()->hide();
     t->horizontalHeader()->setStretchLastSection(true);
+    t->setAccessibleName(name);
     return t;
 }
 
@@ -65,12 +69,14 @@ SurvivorsDialog::SurvivorsDialog(SurvivorSource &source, QWidget *parent) : QDia
     resize(640, 520);
     auto layout = new QVBoxLayout(this);
 
+    layout->addWidget(ui::heading(tr("Survivors"), this));
     auto about = new QLabel(tr("<b>Survivors</b> are ROM changes the game has used in 100 frames or more, with no "
                                "crash in the 15 seconds after. <b>Pin</b> the ones you like to keep them in the "
                                "recipe: pins apply whenever a run starts, before the rules, and the crash guard "
                                "never undoes them. Save the recipe to keep its pins."),
                             this);
     about->setWordWrap(true);
+    ui::setTone(about, ui::Tone::Secondary);
     layout->addWidget(about);
 
     empty_label = new QLabel(tr("No survivors yet. Turn on a recipe that changes the ROM and play: changes the "
@@ -78,37 +84,51 @@ SurvivorsDialog::SurvivorsDialog(SurvivorSource &source, QWidget *parent) : QDia
                              this);
     empty_label->setObjectName("empty");
     empty_label->setWordWrap(true);
-    empty_label->setEnabled(false);
     layout->addWidget(empty_label);
 
     table = make_table(this, "survivors", { tr("Where"), tr("Change"), tr("Instruction"), tr("Used") });
+    // The instruction takes the room; the rest fit their contents.
+    table->horizontalHeader()->setStretchLastSection(false);
+    table->horizontalHeader()->setSectionResizeMode(QHeaderView::ResizeToContents);
+    table->horizontalHeader()->setSectionResizeMode(2, QHeaderView::Stretch);
     layout->addWidget(table, 2);
 
-    auto pin_row = new QHBoxLayout;
+    pin_row = new QWidget(this);
+    auto pin_layout = new QHBoxLayout(pin_row);
+    pin_layout->setContentsMargins(0, 0, 0, 0);
     note_edit = new QLineEdit(this);
     note_edit->setObjectName("note");
     note_edit->setPlaceholderText(tr("A note for the pin, like \"doors stay shut\" (optional)"));
-    pin_button = new QPushButton(tr("Pin Selected"), this);
+    note_edit->setAccessibleName(tr("Note for the pin"));
+    pin_button = new QPushButton(ui::icon("pin"), tr("Pin Selected"), this);
     pin_button->setObjectName("pin");
     pin_button->setAutoDefault(false);
-    pin_row->addWidget(note_edit, 1);
-    pin_row->addWidget(pin_button);
-    layout->addLayout(pin_row);
+    pin_layout->addWidget(note_edit, 1);
+    pin_layout->addWidget(pin_button);
+    layout->addWidget(pin_row);
 
-    message = new QLabel(this);
+    message = new ui::StatusLine(this);
     message->setObjectName("message");
-    message->setWordWrap(true);
     layout->addWidget(message);
 
-    layout->addWidget(new QLabel(tr("<b>Pinned</b> in this recipe"), this));
+    layout->addSpacing(ui::sectionGap(this) / 2);
+    layout->addWidget(ui::heading(tr("Pinned in this recipe"), this));
+    pins_empty = new QLabel(tr("Nothing pinned yet. Select survivors above, then Pin Selected."), this);
+    pins_empty->setObjectName("pins_empty");
+    pins_empty->setWordWrap(true);
+    ui::setTone(pins_empty, ui::Tone::Secondary);
+    layout->addWidget(pins_empty);
     pins_table = make_table(this, "pins", { tr("Where"), tr("Change"), tr("Note") });
+    pins_table->horizontalHeader()->setSectionResizeMode(QHeaderView::ResizeToContents);
+    pins_table->horizontalHeader()->setSectionResizeMode(2, QHeaderView::Stretch);
     layout->addWidget(pins_table, 1);
+    layout->addStretch(0); // takes the slack only when both tables are hidden
 
     auto bottom = new QHBoxLayout;
-    unpin_button = new QPushButton(tr("Unpin Selected"), this);
+    unpin_button = new QPushButton(ui::icon("pinned-off"), tr("Unpin Selected"), this);
     unpin_button->setObjectName("unpin");
     unpin_button->setAutoDefault(false);
-    auto refresh_button = new QPushButton(tr("Refresh"), this);
+    auto refresh_button = new QPushButton(ui::icon("refresh"), tr("Refresh"), this);
     refresh_button->setObjectName("refresh");
     refresh_button->setAutoDefault(false);
     auto close_button = new QPushButton(tr("Close"), this);
@@ -146,11 +166,13 @@ void SurvivorsDialog::refresh()
         {
             auto item = new QTableWidgetItem(cells[c]);
             item->setToolTip(cpu(s.address));
+            if (c < 2) // addresses and bytes in the viewer's fixed-width font
+                item->setFont(QFontDatabase::systemFont(QFontDatabase::FixedFont));
             table->setItem(row, c, item);
         }
     }
-    table->resizeColumnsToContents();
     table->setVisible(!shown.empty());
+    pin_row->setVisible(!shown.empty());
     empty_label->setVisible(shown.empty());
 
     pins_table->setRowCount(0);
@@ -161,9 +183,16 @@ void SurvivorsDialog::refresh()
         QStringList cells = { where(p.offset), hex2(p.was) + " → " + hex2(p.value),
                               QString::fromStdString(p.note) };
         for (int c = 0; c < cells.size(); c++)
-            pins_table->setItem(row, c, new QTableWidgetItem(cells[c]));
+        {
+            auto item = new QTableWidgetItem(cells[c]);
+            if (c < 2)
+                item->setFont(QFontDatabase::systemFont(QFontDatabase::FixedFont));
+            pins_table->setItem(row, c, item);
+        }
     }
-    pins_table->resizeColumnsToContents();
+    pins_table->setVisible(!shown_pins.empty());
+    unpin_button->setVisible(!shown_pins.empty());
+    pins_empty->setVisible(shown_pins.empty());
     selectionChanged();
 }
 
@@ -182,9 +211,10 @@ void SurvivorsDialog::pinSelected()
     if (offsets.empty())
         return;
     auto err = source.pin(offsets, note_edit->text().trimmed().toStdString());
-    message->setText(!err.empty()            ? QString::fromStdString(err)
-                     : offsets.size() == 1 ? tr("Pinned 1 byte. Save the recipe to keep it.")
-                                           : tr("Pinned %1 bytes. Save the recipe to keep them.").arg(offsets.size()));
+    message->setMessage(!err.empty()            ? tr("Couldn't pin: %1").arg(QString::fromStdString(err))
+                        : offsets.size() == 1 ? tr("Pinned 1 byte. Save the recipe to keep it.")
+                                              : tr("Pinned %1 bytes. Save the recipe to keep them.").arg(offsets.size()),
+                        err.empty() ? ui::Tone::Ok : ui::Tone::Error);
     if (err.empty())
         note_edit->clear();
     refresh();
@@ -199,7 +229,7 @@ void SurvivorsDialog::unpinSelected()
     if (offsets.empty())
         return;
     source.unpin(offsets);
-    message->setText(tr("Unpinned. The ROM keeps that change until the run restarts or you go back to normal; "
+    message->setMessage(tr("Unpinned. The ROM keeps that change until the run restarts or you go back to normal; "
                         "then it's gone."));
     refresh();
 }

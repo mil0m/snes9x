@@ -8,6 +8,10 @@ class QLabel;
 class QLineEdit;
 class QPushButton;
 class QTableWidget;
+namespace ui
+{
+class StatusLine;
+}
 
 // What the dialog needs from the running game.
 struct SurvivorSource
@@ -36,7 +40,9 @@ class SurvivorsDialog : public QDialog
     std::vector<corrupt::Survivor> shown;
     std::vector<corrupt::Pin> shown_pins;
     QLabel *empty_label;
-    QLabel *message;
+    ui::StatusLine *message;
+    QLabel *pins_empty;
+    QWidget *pin_row;
     QTableWidget *table;
     QLineEdit *note_edit;
     QPushButton *pin_button;

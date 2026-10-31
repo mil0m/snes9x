@@ -68,12 +68,12 @@ TEST_CASE("the survivors dialog lists what proved itself, pins it with a note, a
     QApplication::processEvents();
     auto table = child<QTableWidget>(d, "survivors");
     REQUIRE(table->rowCount() == 2);
-    CHECK(table->item(0, 0)->text() == "0x21A3F");
+    CHECK(table->item(0, 0)->text() == "0x021A3F");
     CHECK(table->item(0, 0)->toolTip() == "CPU address $C2:1A3F");
     CHECK(table->item(0, 1)->text() == "D0 → F0");
     CHECK(table->item(0, 2)->text() == "BNE $1A4D → BEQ $1A4D");
     CHECK(table->item(0, 3)->text().contains("4"));
-    CHECK(table->item(1, 0)->text() == "0x30000");
+    CHECK(table->item(1, 0)->text() == "0x030000");
     CHECK(table->item(1, 2)->text() == "data");
 
     auto pin = child<QPushButton>(d, "pin");
@@ -87,7 +87,7 @@ TEST_CASE("the survivors dialog lists what proved itself, pins it with a note, a
 
     auto pins = child<QTableWidget>(d, "pins");
     REQUIRE(pins->rowCount() == 1);
-    CHECK(pins->item(0, 0)->text() == "0x500");
+    CHECK(pins->item(0, 0)->text() == "0x000500");
     CHECK(pins->item(0, 1)->text() == "20 → EA");
     CHECK(pins->item(0, 2)->text() == "no sound");
     pins->selectRow(0);
@@ -105,4 +105,12 @@ TEST_CASE("the survivors dialog lists what proved itself, pins it with a note, a
     d.refresh();
     CHECK(table->rowCount() == 0);
     CHECK(child<QLabel>(d, "empty")->isVisible());
+    // The empty state reads as help, not as something switched off, and nothing to act on shows.
+    CHECK(child<QLabel>(d, "empty")->isEnabled());
+    CHECK_FALSE(table->isVisible());
+    CHECK_FALSE(child<QLineEdit>(d, "note")->isVisible());
+    CHECK_FALSE(child<QTableWidget>(d, "pins")->isVisible());
+    CHECK(child<QLabel>(d, "pins_empty")->isVisible());
+    if (auto dir = getenv("CORRUPT_SHOTS_DIR"))
+        d.grab().save(QString("%1/survivors-dialog-empty.png").arg(dir));
 }

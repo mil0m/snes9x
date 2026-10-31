@@ -4,7 +4,7 @@ This fork of Snes9x corrupts games while you play them: their working memory, gr
 sound or the ROM itself, from **recipes** you can save, replay and share, with a **crash
 guard** that rolls back and plays on when the game falls over.
 
-**How to use it: [the guide](./GUIDE.md).** It's also in the app, under **? Guide** in the
+**How to use it: [the guide](./GUIDE.md).** It's also in the app, under **Guide** in the
 Corruption panel. Start with its first section; it takes a minute.
 
 ## Build and run

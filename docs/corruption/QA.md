@@ -14,13 +14,13 @@ Use a game you have never set up (a fresh library folder, so no recipes exist fo
 2. In the **Recipe** list, pick **Starter: Gentle WRAM noise**.
    - [ ] It loads (no Load button), and the **Start here** card goes away.
 3. Press **Corrupt (F7)** and play.
-   - [ ] The button reads *Corrupting… (F7 to stop)*, and things start going slightly wrong.
+   - [ ] The button reads *Stop (F7)*, and things start going slightly wrong.
 4. Press **Re-roll (F8)**.
    - [ ] The seed changes, and the glitches are different.
 5. Press **Back to Normal (Shift+F7)**.
    - [ ] The game goes back to the moment you pressed Corrupt, with the ROM clean.
    - [ ] The status says *Off. The game is back to normal.*
-6. Click **? Guide** at the top of the panel.
+6. Click **Guide** at the top of the panel.
    - [ ] The guide opens.
 7. Hover each button in the panel.
    - [ ] Every button shows a tooltip, and the ones with a hotkey name it (Corrupt: F7, Back to Normal: Shift+F7, Re-roll: F8).
@@ -42,7 +42,7 @@ Use a game you have never set up (a fresh library folder, so no recipes exist fo
 
 ## 2. Corruption runs
 1. Choose the recipe in the **Recipe** list (it loads), then press **Corrupt (F7)**.
-   - [ ] The button reads *Corrupting… (F7 to stop)*. The status reads *On for N s · N changes made*; the rule table shows `drift`, `cgram`, `add -2..2 x4`, `every 30 frames` (columns *Memory*, *What*, *Strength*).
+   - [ ] The button reads *Stop (F7)*. The status reads *On for N s · N changes made*; the rule table shows `drift` and *cgram 0x0000..0x01FF: add -2..2 x4, every 30 frames* (columns *Rule*, *What it does*, *Strength*), with no sideways scroll bar.
    - [ ] Colours visibly change. A game that refreshes its palette every frame shows short flashes.
 2. Repeat with **Starter: Tile rot**.
    - [ ] Graphics decay within a few seconds.
@@ -99,7 +99,7 @@ Use a game you have never set up (a fresh library folder, so no recipes exist fo
    - [ ] Each one does what its name says on the next crash.
 4. Open a text box or menu and leave it alone for 10+ s with a rule active.
    - [ ] No rollback.
-5. Press **It Crashed: Go Back Now**.
+5. Press **It Crashed: Go Back**.
    - [ ] It rolls back about 2 s.
 6. Untick **Catch crashes and go back a few seconds**.
    - [ ] Crashes are no longer caught.
@@ -108,7 +108,7 @@ Use a game you have never set up (a fresh library folder, so no recipes exist fo
 
 ## 8. Rule editor
 1. Choose any recipe, press **Corrupt (F7)**, and select a rule.
-   - [ ] **Edit**, **Duplicate** and **Remove** become clickable; double-clicking the rule opens the editor too.
+   - [ ] The pencil, copy and bin buttons (edit, duplicate, remove) become clickable; double-clicking the rule opens the editor too.
 2. **Add Rule**, then **OK** with the defaults.
    - [ ] A `new rule` row appears and is selected; the status line says *· the recipe has unsaved changes*, and *On for N s* keeps counting (no restart).
 3. Edit that rule: set **Memory** to `cgram (palette)`, **From** `0` **to** `0x1FF`, *What* `Add / subtract` −8..8, *When* every 10 frames.
@@ -116,7 +116,7 @@ Use a game you have never set up (a fresh library folder, so no recipes exist fo
    - [ ] Colours start changing within a second; any other rule carries on as before.
 4. In the editor, set **to** to `0x300`.
    - [ ] **OK** greys out and a red line says cgram is only `0x200` bytes. Set it back.
-5. **Duplicate** the rule, then **Remove** the copy.
+5. Duplicate the rule (copy button), then remove the copy (bin button).
    - [ ] Remove asks first; the table is back to how it was.
 6. **Save**.
    - [ ] *· the recipe has unsaved changes* goes away, and the recipe's JSON file has the new rule.
@@ -385,7 +385,7 @@ Use a game you have never set up (a fresh library folder, so no recipes exist fo
    - [ ] They move to **Pinned in this recipe** with your note; the ROM section says *2 pinned*; the status says *· the recipe has unsaved changes*.
 4. **Save** the recipe, press **Corrupt (F7)** to turn it off, untick the rule's **On** box, and press Corrupt again.
    - [ ] The console restarts, and **Colour by: Changes** shows just the pinned bytes, orange.
-5. Make the game crash some other way (a ROM rule or **It Crashed: Go Back Now**).
+5. Make the game crash some other way (a ROM rule or **It Crashed: Go Back**).
    - [ ] The pinned bytes are never what gets reverted.
 6. Select a pin, **Unpin Selected**, save.
    - [ ] It's gone from the list and the recipe file.

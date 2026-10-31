@@ -449,14 +449,14 @@ TEST_SUITE("the pixel view in the viewer")
         auto pixels = child<PixelView>(v, "pixels");
         CHECK(hex->isVisible());
         CHECK_FALSE(pixels->isVisible());
-        CHECK_FALSE(child<QPushButton>(v, "zoom_in")->isVisible());
+        CHECK_FALSE(child<QAbstractButton>(v, "zoom_in")->isVisible());
 
         hex->scrollTo(0x4000);
         hex->select(0x4010, 0x404F);
         choose(v, "mode", "pixels");
         CHECK(pixels->isVisible());
         CHECK_FALSE(hex->isVisible());
-        CHECK(child<QPushButton>(v, "zoom_in")->isVisible());
+        CHECK(child<QAbstractButton>(v, "zoom_in")->isVisible());
         CHECK(pixels->snapshot().bytes.size() == 0x20000);
         CHECK(pixels->selection() == std::pair{ 0x4010u, 0x404Fu });
         CHECK(pixels->firstVisibleOffset() <= 0x4000u);
@@ -624,14 +624,14 @@ TEST_SUITE("the pixel view in the viewer")
         choose(v, "mode", "pixels");
         auto pixels = child<PixelView>(v, "pixels");
         int before = pixels->zoom();
-        child<QPushButton>(v, "zoom_in")->click();
+        child<QAbstractButton>(v, "zoom_in")->click();
         CHECK(pixels->zoom() > before);
         CHECK(child<QLabel>(v, "zoom")->text().contains(QString::number(pixels->zoom())));
         for (int i = 0; i < 10; i++)
-            child<QPushButton>(v, "zoom_out")->click();
+            child<QAbstractButton>(v, "zoom_out")->click();
         CHECK(pixels->zoom() == 1);
-        CHECK_FALSE(child<QPushButton>(v, "zoom_out")->isEnabled());
-        CHECK(child<QPushButton>(v, "zoom_in")->isEnabled());
+        CHECK_FALSE(child<QAbstractButton>(v, "zoom_out")->isEnabled());
+        CHECK(child<QAbstractButton>(v, "zoom_in")->isEnabled());
     }
 
     TEST_CASE("hovering a pixel shows its address and value")
@@ -798,7 +798,7 @@ TEST_SUITE("the tile view in the viewer")
         CHECK(format->isVisible());
         CHECK(palette->isVisible());
         CHECK(per_row->isVisible());
-        CHECK(child<QPushButton>(v, "zoom_in")->isVisible());
+        CHECK(child<QAbstractButton>(v, "zoom_in")->isVisible());
         CHECK_FALSE(child<QSpinBox>(v, "row_width")->isVisible());
         CHECK(tiles->snapshot().target == Target::VRAM);
         CHECK(tiles->selection() == std::pair{ 0x2000u, 0x201Fu }); // widened to its 4 bpp tile
@@ -819,7 +819,7 @@ TEST_SUITE("the tile view in the viewer")
         CHECK(tiles->tilesPerRow() == 32);
 
         int before = tiles->zoom();
-        child<QPushButton>(v, "zoom_in")->click();
+        child<QAbstractButton>(v, "zoom_in")->click();
         CHECK(tiles->zoom() == before + 1);
         CHECK(child<QLabel>(v, "zoom")->text().contains(QString::number(tiles->zoom())));
     }

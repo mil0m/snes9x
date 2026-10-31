@@ -304,3 +304,13 @@ TEST_CASE("pictures of the tile view")
             shot(v, QString("real-tiles-%1-p%2").arg(at, 4, 16, QChar('0')).arg(row));
         }
 }
+
+TEST_CASE("beside a narrow picture is the window's colour, not a white page")
+{
+    Shown s(1);
+    s.view.setTilesPerRow(4); // 32 pixels wide in a 500 pixel view
+    QApplication::processEvents();
+    QImage img = s.view.viewport()->grab().toImage();
+    QColor beside = img.pixelColor(img.width() - 20, img.height() / 2);
+    CHECK(beside == s.view.palette().color(QPalette::Window));
+}
