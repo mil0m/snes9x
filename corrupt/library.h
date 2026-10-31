@@ -1,4 +1,5 @@
 #pragma once
+#include "code_map.h"
 #include "crash_map.h"
 #include "recipe.h"
 #include "recipe_json.h"
@@ -71,6 +72,12 @@ class Library
     std::filesystem::path crash_map_path(const GameId &game, const std::string &user) const;
     CrashMaps load_crash_maps(const GameId &game, const std::string &user) const;
     std::string save_crash_map(const GameId &game, const std::string &user, const CrashMap &map) const; // error or empty
+
+    // Code maps: codemap.<user>.bin, one per person. Files for another ROM size are skipped
+    // (with an error); the maps come back that size, empty where nobody has played.
+    std::filesystem::path code_map_path(const GameId &game, const std::string &user) const;
+    CodeMaps load_code_maps(const GameId &game, const std::string &user, size_t rom_size) const;
+    std::string save_code_map(const GameId &game, const std::string &user, const CodeMap &map) const; // error or empty
 
     Regions load_regions(const GameId &game, std::vector<std::string> &errors) const;
     std::string save_regions(const GameId &game, const Regions &regions) const; // error or empty

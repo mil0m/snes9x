@@ -151,6 +151,47 @@ std::string Library::save_crash_map(const GameId &game, const std::string &user,
     return write_file_atomic(crash_map_path(game, user), crash_map_json(map));
 }
 
+fs::path Library::code_map_path(const GameId &game, const std::string &user) const
+{
+    return game_dir(game) / ("codemap." + recipe_file_stem(user) + ".bin");
+}
+
+CodeMaps Library::load_code_maps(const GameId &game, const std::string &user, size_t rom_size) const
+{
+    CodeMaps out;
+    out.mine = CodeMap(rom_size);
+    out.others = CodeMap(rom_size);
+    std::error_code ec;
+    auto mine = code_map_path(game, user).filename().string();
+    for (auto &entry : fs::directory_iterator(game_dir(game), ec))
+    {
+        auto name = entry.path().filename().string();
+        if (name.rfind("codemap.", 0) != 0 || entry.path().extension() != ".bin")
+            continue;
+        auto text = read_file(entry.path());
+        std::string error;
+        auto map = text ? decode_code_map(*text, error) : std::nullopt;
+        if (!text)
+            error = "couldn't read it";
+        else if (map && map->size() != rom_size)
+            error = "made for a ROM of " + std::to_string(map->size()) + " bytes";
+        if (!error.empty())
+        {
+            out.errors.push_back(name + ": " + error);
+            continue;
+        }
+        (name == mine ? out.mine : out.others).merge(*map);
+    }
+    return out;
+}
+
+std::string Library::save_code_map(const GameId &game, const std::string &user, const CodeMap &map) const
+{
+    if (auto err = ensure_game_dir(game); !err.empty())
+        return err;
+    return write_file_atomic(code_map_path(game, user), encode_code_map(map));
+}
+
 std::vector<RecipeEntry> Library::list_recipes(const GameId &game) const
 {
     std::vector<RecipeEntry> entries;
