@@ -30,6 +30,7 @@ struct Recipe
     std::string anchor_state; // phase 3: save state the recipe starts from
     std::vector<Rule> rules;
     std::vector<Patch> patches; // painted or imported bytes, applied as a run starts
+    std::vector<Pin> pins;      // kept ROM changes (survivors), applied as a run starts, before the rules
 
     // Unset means "use the session's choice" (default policy, default detection).
     std::optional<PolicyKind> crash_policy;

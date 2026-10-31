@@ -12,10 +12,11 @@ RunControl::Started RunControl::between_frames(Engine &engine, CoreAccess &core,
     if (rom)
     {
         rom->restore_clean();
+        pins = engine.apply_pins(*rom); // before the rules, onto the clean ROM
         auto is_rom = [](Target t) { return t == Target::ROM; };
         engine.fire_at_load(*rom, is_rom);
         engine.apply_patches(*rom, is_rom);
-        classic = engine.has_at_load(Target::ROM) || engine.has_patches(Target::ROM);
+        classic = engine.has_at_load(Target::ROM) || engine.has_patches(Target::ROM) || pins.written > 0;
     }
 
     Started result = Started::Fresh;

@@ -50,11 +50,13 @@ class RunControl
     bool has_anchor() const { return !current.empty(); }
     const std::vector<uint8_t> &anchor() const { return current; }
     bool anchor_is_from_saved() const { return from_saved; } // the run began from a requested state
+    Engine::PinsApplied last_pins() const { return pins; }     // what the last start did with the pins
 
   private:
     std::optional<std::vector<uint8_t>> pending;
     std::vector<uint8_t> current;
     bool from_saved = false;
+    Engine::PinsApplied pins;
 };
 
 } // namespace corrupt

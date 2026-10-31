@@ -80,6 +80,19 @@ class Engine
     // skipping locked bytes and never logged as rule writes. Returns the bytes written.
     size_t apply_patches(MemoryAccess &mem, const std::function<bool(Target)> &which = {});
     bool has_patches(Target t) const;
+
+    // The recipe's pins: applied as the run starts, through `mem`, before the rules, never
+    // logged as rule writes. A pin whose `was` isn't the byte's value now (another version
+    // of the ROM) is skipped. Call it right after the ROM is back to clean.
+    struct PinsApplied
+    {
+        size_t written = 0;
+        size_t mismatched = 0;
+    };
+    PinsApplied apply_pins(MemoryAccess &mem);
+    bool has_pins() const { return !current.pins.empty(); }
+    void add_pins(const std::vector<Pin> &pins);       // a pin on the same byte is replaced; no restart
+    void remove_pins(const std::vector<uint32_t> &offsets); // no restart
     void add_patches(Target t, const std::vector<std::pair<uint32_t, uint8_t>> &bytes); // no restart
     void clear_patches(Target t);                                                          // no restart
 

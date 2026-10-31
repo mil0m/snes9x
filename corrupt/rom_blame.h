@@ -5,6 +5,7 @@
 #include <optional>
 #include <string_view>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 namespace corrupt
@@ -41,6 +42,9 @@ class RomBlame : public ByteBlame
     void set_policy(RomPolicy p, uint64_t seed);
     RomPolicy policy() const { return pol; }
 
+    // Bytes kept on purpose (the recipe's pins): never watched, so never blamed.
+    void set_pinned(const std::vector<uint32_t> &offsets);
+
     void collect(uint64_t frame); // after every frame, before the guard
     std::vector<uint32_t> take_survivals(); // bytes that turned survivors since the last take
 
@@ -72,6 +76,7 @@ class RomBlame : public ByteBlame
     std::vector<ByteUse> uses;
     std::unordered_map<uint32_t, size_t> index;
     std::vector<uint32_t> survivals;
+    std::unordered_set<uint32_t> pinned;
 };
 
 } // namespace corrupt

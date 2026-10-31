@@ -46,7 +46,7 @@ void RomBlame::changed(uint32_t offset, bool now_changed)
     auto it = index.find(offset);
     if (now_changed)
     {
-        if (it != index.end())
+        if (it != index.end() || pinned.count(offset))
             return;
         index.emplace(offset, offsets.size());
         offsets.push_back(offset);
@@ -69,6 +69,14 @@ void RomBlame::changed(uint32_t offset, bool now_changed)
     offsets.pop_back();
     uses.pop_back();
     index.erase(it);
+}
+
+void RomBlame::set_pinned(const std::vector<uint32_t> &offsets)
+{
+    pinned = { offsets.begin(), offsets.end() };
+    for (auto o : offsets)
+        if (index.count(o))
+            changed(o, false); // stop watching it
 }
 
 void RomBlame::collect(uint64_t now)

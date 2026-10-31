@@ -177,6 +177,49 @@ size_t Engine::apply_patches(MemoryAccess &mem, const std::function<bool(Target)
     return written;
 }
 
+Engine::PinsApplied Engine::apply_pins(MemoryAccess &mem)
+{
+    PinsApplied out;
+    size_t size = mem.size(Target::ROM);
+    for (auto &pin : current.pins)
+    {
+        if (pin.offset >= size || locked.is_hot(Target::ROM, pin.offset))
+            continue;
+        uint8_t now = mem.read(Target::ROM, pin.offset);
+        if (now != pin.was)
+        {
+            out.mismatched++;
+            continue;
+        }
+        if (now == pin.value)
+            continue;
+        mem.write_at_start(Target::ROM, pin.offset, pin.value);
+        out.written++;
+    }
+    return out;
+}
+
+void Engine::add_pins(const std::vector<Pin> &pins)
+{
+    for (auto &pin : pins)
+    {
+        auto it = std::find_if(current.pins.begin(), current.pins.end(),
+                               [&](const Pin &p) { return p.offset == pin.offset; });
+        if (it != current.pins.end())
+            *it = pin;
+        else
+            current.pins.push_back(pin);
+    }
+    std::sort(current.pins.begin(), current.pins.end(), [](const Pin &a, const Pin &b) { return a.offset < b.offset; });
+}
+
+void Engine::remove_pins(const std::vector<uint32_t> &offsets)
+{
+    std::erase_if(current.pins, [&](const Pin &p) {
+        return std::find(offsets.begin(), offsets.end(), p.offset) != offsets.end();
+    });
+}
+
 bool Engine::has_patches(Target t) const
 {
     for (auto &p : current.patches)

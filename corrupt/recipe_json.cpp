@@ -713,7 +713,7 @@ ParseResult parse_recipe(std::string_view json_text, const Regions &regions)
         return result;
     }
     check_keys(ctx, doc, "recipe", { "format", "name", "notes", "game", "seed", "intensity", "anchor_state", "rules",
-                                     "patches", "crash_policy", "rom_policy", "crash_detection" });
+                                     "patches", "pins", "crash_policy", "rom_policy", "crash_detection" });
 
     if (!doc.contains("format") || !doc["format"].is_number_integer() || doc["format"].get<int>() != Recipe::kFormat)
     {
@@ -814,6 +814,36 @@ ParseResult parse_recipe(std::string_view json_text, const Regions &regions)
         }
     }
 
+    if (doc.contains("pins"))
+    {
+        const json &ps = doc["pins"];
+        if (!ps.is_array())
+            ctx.fail("recipe.pins", "expected a list");
+        else
+            for (size_t i = 0; i < ps.size(); i++)
+            {
+                std::string path = "pins[" + std::to_string(i) + "]";
+                const json &p = ps[i];
+                if (!require_object(ctx, p, path))
+                    continue;
+                check_keys(ctx, p, path, { "rom", "value", "was", "note" });
+                if (!p.contains("rom") || !p.contains("value") || !p.contains("was"))
+                {
+                    ctx.fail(path, "needs rom (the offset), value and was (the clean value)");
+                    continue;
+                }
+                auto offset = get_int_in(ctx, p["rom"], path + ".rom", 0, 0xFFFFFF);
+                auto value = get_int_in(ctx, p["value"], path + ".value", 0, 255);
+                auto was = get_int_in(ctx, p["was"], path + ".was", 0, 255);
+                if (!offset || !value || !was)
+                    continue;
+                Pin pin{ uint32_t(*offset), uint8_t(*value), uint8_t(*was), {} };
+                if (p.contains("note") && p["note"].is_string())
+                    pin.note = p["note"].get<std::string>();
+                recipe.pins.push_back(pin);
+            }
+    }
+
     if (doc.contains("crash_policy"))
     {
         const json &p = doc["crash_policy"];
@@ -880,6 +910,21 @@ std::string write_recipe(const Recipe &recipe)
             ps.push_back({ { "target", target_name(p.target) }, { "at", hex_addr(p.at) }, { "bytes", hexs } });
         }
         doc["patches"] = ps;
+    }
+    if (!recipe.pins.empty())
+    {
+        ojson ps = ojson::array();
+        for (auto &pin : recipe.pins)
+        {
+            char value[8], was[8];
+            snprintf(value, sizeof value, "0x%02X", pin.value);
+            snprintf(was, sizeof was, "0x%02X", pin.was);
+            ojson j = { { "rom", hex_addr(pin.offset) }, { "value", value }, { "was", was } };
+            if (!pin.note.empty())
+                j["note"] = pin.note;
+            ps.push_back(j);
+        }
+        doc["pins"] = ps;
     }
     if (recipe.crash_policy)
         doc["crash_policy"] = policy_name(*recipe.crash_policy);
