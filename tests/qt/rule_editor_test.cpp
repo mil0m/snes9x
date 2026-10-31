@@ -9,6 +9,9 @@
 #include <QDialogButtonBox>
 #include <QDir>
 #include <QDoubleSpinBox>
+#include <QFormLayout>
+#include <QGroupBox>
+#include <QScrollArea>
 #include <QLabel>
 #include <QLineEdit>
 #include <QPushButton>
@@ -472,4 +475,28 @@ TEST_CASE("avoid dangerous bytes is a checkbox, kept both ways")
     child<QCheckBox>(again, "avoid_hot")->setChecked(false);
     CHECK_FALSE(again.rule().avoid_hot);
     maybe_shot(again, "rule-editor-avoid");
+}
+
+TEST_CASE("the editor's look: headed sections, not boxes; forms whose fields grow; sized from the start")
+{
+    SizedMemory sizes;
+    RuleEditor e(default_rule(), sample_regions(), sizes);
+    CHECK(e.findChildren<QGroupBox *>().isEmpty());
+    QStringList headings;
+    for (auto h : e.findChildren<QLabel *>("heading"))
+        headings << h->text();
+    CHECK(headings.contains("Where"));
+    CHECK(headings.contains("What"));
+    CHECK(headings.contains("When"));
+    CHECK(headings.contains("How Much"));
+    for (auto form : e.findChildren<QFormLayout *>())
+        CHECK(form->fieldGrowthPolicy() == QFormLayout::AllNonFixedFieldsGrow);
+    // Before any event loop runs, the dialog already asks for the sections' height (or most
+    // of the screen), so it never first opens too short.
+    auto scroll = e.findChild<QScrollArea *>("sections");
+    REQUIRE(scroll);
+    CHECK(scroll->minimumHeight() >= std::min(scroll->widget()->sizeHint().height(), 400));
+    // Errors read as errors in both looks: the error tone, not a fixed red.
+    auto error = child<QLabel>(e, "error");
+    CHECK(error->palette().color(QPalette::WindowText) != e.palette().color(QPalette::WindowText));
 }

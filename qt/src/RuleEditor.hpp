@@ -32,6 +32,10 @@ class RuleEditor : public QDialog
     corrupt::Rule rule() const; // the rule as the form stands
     QString error() const;      // why it isn't valid; empty when it is
 
+  protected:
+    // Fits again once the style has polished everything: the Mac's controls are taller.
+    void showEvent(QShowEvent *event) override;
+
   private:
     struct Built
     {

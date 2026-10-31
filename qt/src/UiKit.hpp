@@ -50,7 +50,7 @@ QLabel *heading(const QString &text, QWidget *parent);
 // Space between sections, from the style.
 int sectionGap(const QWidget *widget);
 
-// A form: labels on the left, right-aligned, fields that grow, rows that don't wrap.
+// A form: labels on the left (left-aligned), fields that grow, rows that don't wrap.
 QFormLayout *form(QWidget *parent = nullptr);
 
 // A home folder path written with ~.

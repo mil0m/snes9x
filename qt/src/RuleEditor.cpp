@@ -1,13 +1,14 @@
 #include "RuleEditor.hpp"
+#include "UiKit.hpp"
 #include "corrupt/rule_text.h"
 
 #include <QCheckBox>
 #include <QComboBox>
 #include <QDialogButtonBox>
 #include <QDoubleSpinBox>
+#include <QFontDatabase>
 #include <QFormLayout>
 #include <QGridLayout>
-#include <QGroupBox>
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QLineEdit>
@@ -153,10 +154,18 @@ QLabel *hint_label(const QString &text, QWidget *parent)
 {
     auto label = new QLabel(text, parent);
     label->setWordWrap(true);
-    auto pal = label->palette();
-    pal.setColor(QPalette::WindowText, pal.color(QPalette::PlaceholderText));
-    label->setPalette(pal);
+    ui::setTone(label, ui::Tone::Secondary);
     return label;
+}
+
+// A checkbox on a form row of its own, in a layout: as a bare form row, the Mac style
+// gives it less height than its text and cuts off the descenders.
+QLayout *own_row(QWidget *w)
+{
+    auto row = new QHBoxLayout;
+    row->setContentsMargins(0, 0, 0, 0);
+    row->addWidget(w);
+    return row;
 }
 
 void select(QComboBox *c, const QString &data)
@@ -199,6 +208,7 @@ RuleEditor::RuleEditor(const Rule &rule, const Regions &regions, const MemoryAcc
     buildForm();
     load(rule);
     refresh();
+    fitToContents(); // now, so it never first opens too short
 }
 
 void RuleEditor::buildForm()
@@ -214,18 +224,29 @@ void RuleEditor::buildForm()
     sections = new QWidget(scroll);
     auto layout = new QVBoxLayout(sections);
     layout->setContentsMargins(0, 0, 0, 0);
+    layout->setSpacing(ui::sectionGap(this));
+    // A section: a bold heading over its controls, set apart by space rather than a box.
+    auto section = [this](const QString &title) {
+        auto box = new QWidget(this);
+        auto v = new QVBoxLayout(box);
+        v->setContentsMargins(0, 0, 0, 0);
+        v->addWidget(ui::heading(title, box));
+        return box;
+    };
+    auto column = [](QWidget *box) { return static_cast<QVBoxLayout *>(box->layout()); };
     scroll->setWidget(sections);
     outer->addWidget(scroll, 1);
 
-    auto top = new QFormLayout;
+    auto top = ui::form();
     name_edit = line(this, "name");
     name_edit->setToolTip(tr("What the rule is called in the panel's list"));
     top->addRow(tr("Name"), name_edit);
     layout->addLayout(top);
 
     // Where
-    auto where_box = new QGroupBox(tr("Where"), this);
-    auto where = new QFormLayout(where_box);
+    auto where_box = section(tr("Where"));
+    auto where = ui::form();
+    column(where_box)->addLayout(where);
     target_combo = combo(where_box, "target");
     fill_targets(target_combo);
     target_combo->setToolTip(tr("Which of the console's memories to change: wram is the game's working memory "
@@ -274,8 +295,8 @@ void RuleEditor::buildForm()
     layout->addWidget(where_box);
 
     // What
-    auto what_box = new QGroupBox(tr("What"), this);
-    auto what = new QVBoxLayout(what_box);
+    auto what_box = section(tr("What"));
+    auto what = column(what_box);
     op_combo = combo(what_box, "op");
     for (auto t : kOps)
         op_combo->addItem(op_label(t), QString(op_name(t)));
@@ -286,7 +307,7 @@ void RuleEditor::buildForm()
     what->addWidget(op_pages);
     auto page = [this](QFormLayout *&form) {
         auto w = new QWidget(op_pages);
-        form = new QFormLayout(w);
+        form = ui::form(w);
         form->setContentsMargins(0, 0, 0, 0);
         op_pages->addWidget(w);
         return w;
@@ -310,7 +331,7 @@ void RuleEditor::buildForm()
     add_max->setToolTip(add_min->toolTip());
     f->addRow(tr("Smallest change"), add_min);
     f->addRow(tr("Largest change"), add_max);
-    f->addRow(add_clamp);
+    f->addRow(own_row(add_clamp));
 
     auto bitflip_page = page(f);
     bitflip_mode = combo(bitflip_page, "bitflip_mode");
@@ -376,7 +397,7 @@ void RuleEditor::buildForm()
     shift_fill = line(shift_page, "shift_fill", "0x00");
     f->addRow(tr("Right by (bytes)"), shift_dx);
     f->addRow(tr("Down by (rows)"), shift_dy);
-    f->addRow(shift_wrap);
+    f->addRow(own_row(shift_wrap));
     f->addRow(tr("Fill with"), shift_fill);
 
     auto flip_page = page(f);
@@ -421,16 +442,15 @@ void RuleEditor::buildForm()
                           "happens.") })
     {
         auto code_page = page(f);
-        auto hint = new QLabel(text, code_page);
-        hint->setWordWrap(true);
-        f->addRow(hint);
+        f->addRow(hint_label(text, code_page));
     }
     layout->addWidget(what_box);
 
     // Aim (ROM only): which bytes, by what the code map knows about them.
-    auto aim_group = new QGroupBox(tr("Aim (ROM, from the code map)"), this);
+    auto aim_group = section(tr("Aim (ROM, from the code map)"));
     aim_box = aim_group;
-    auto aim = new QFormLayout(aim_group);
+    auto aim = ui::form();
+    column(aim_group)->addLayout(aim);
     role_combo = combo(aim_group, "role");
     role_combo->addItem(tr("Any byte in the range"), QString(role_name(Role::Any)));
     role_combo->addItem(tr("Opcodes: which instruction"), QString(role_name(Role::Opcode)));
@@ -463,14 +483,9 @@ void RuleEditor::buildForm()
         class_checks.push_back({ c, check });
     }
     aim->addRow(grid);
-    auto aim_hint = new QLabel(tr("Only bytes the code map knows: play first, and the map grows. Width (REP, SEP, "
-                                  "XCE) and stack instructions almost always crash at once."),
-                               aim_group);
-    aim_hint->setWordWrap(true);
-    auto pal = aim_hint->palette();
-    pal.setColor(QPalette::WindowText, pal.color(QPalette::PlaceholderText));
-    aim_hint->setPalette(pal);
-    aim->addRow(aim_hint);
+    aim->addRow(hint_label(tr("Only bytes the code map knows: play first, and the map grows. Width (REP, SEP, "
+                              "XCE) and stack instructions almost always crash at once."),
+                           aim_group));
     layout->addWidget(aim_group);
     // Leaving instructions out starts from the ones that almost always crash.
     connect(class_mode, &QComboBox::currentIndexChanged, this, [this] {
@@ -484,8 +499,8 @@ void RuleEditor::buildForm()
     });
 
     // When
-    auto when_box = new QGroupBox(tr("When"), this);
-    auto when = new QVBoxLayout(when_box);
+    auto when_box = section(tr("When"));
+    auto when = column(when_box);
     when_combo = combo(when_box, "when");
     for (auto t : kTriggers)
         when_combo->addItem(trigger_label(t), QString(trigger_name(t)));
@@ -495,7 +510,7 @@ void RuleEditor::buildForm()
     when->addWidget(when_pages);
     auto when_page = [this](const QString &label, QWidget *field) {
         auto w = new QWidget(when_pages);
-        auto form = new QFormLayout(w);
+        auto form = ui::form(w);
         form->setContentsMargins(0, 0, 0, 0);
         field->setParent(w);
         form->addRow(label, field);
@@ -515,10 +530,9 @@ void RuleEditor::buildForm()
     hotkey = spin(when_box, "hotkey", 1, 9);
     hotkey->setToolTip(tr("Fires when you press corruption hotkey 1-9 (set them in Options > Shortcuts; 1 is F9)"));
     when_page(tr("Hotkey"), hotkey);
-    auto at_load_note = new QLabel(tr("Fires once as the run starts. On the ROM, the console then restarts, "
+    auto at_load_note = hint_label(tr("Fires once as the run starts. On the ROM, the console then restarts, "
                                       "so the game boots from the corrupted ROM."),
                                    when_box);
-    at_load_note->setWordWrap(true);
     when_page({}, at_load_note);
 
     auto window_row = new QHBoxLayout;
@@ -537,8 +551,9 @@ void RuleEditor::buildForm()
     layout->addWidget(when_box);
 
     // How much
-    auto how_box = new QGroupBox(tr("How Much"), this);
-    auto how = new QFormLayout(how_box);
+    auto how_box = section(tr("How Much"));
+    auto how = ui::form();
+    column(how_box)->addLayout(how);
     count_spin = spin(how_box, "count", 1, 1000000);
     count_spin->setToolTip(tr("How many bytes it changes each time it fires"));
     how->addRow(tr("Bytes each time"), count_spin);
@@ -559,12 +574,12 @@ void RuleEditor::buildForm()
     enabled_check = new QCheckBox(tr("Enabled"), how_box);
     enabled_check->setObjectName("enabled");
     enabled_check->setToolTip(tr("Off: the rule stays in the recipe but does nothing"));
-    how->addRow(enabled_check);
+    how->addRow(own_row(enabled_check));
     avoid_check = new QCheckBox(tr("Avoid dangerous bytes"), how_box);
     avoid_check->setObjectName("avoid_hot");
     avoid_check->setToolTip(tr("Skip bytes the crash map has learned crash this game (the memory viewer's "
                                "Danger overlay). Fewer crashes, longer runs; the map grows as you play."));
-    how->addRow(avoid_check);
+    how->addRow(own_row(avoid_check));
     layout->addWidget(how_box);
 
     layout->addStretch(1);
@@ -575,7 +590,7 @@ void RuleEditor::buildForm()
     error_label = new QLabel(this);
     error_label->setObjectName("error");
     error_label->setWordWrap(true);
-    error_label->setStyleSheet("color: #d33;");
+    ui::setTone(error_label, ui::Tone::Error);
     outer->addWidget(error_label);
 
     buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, this);
@@ -583,6 +598,12 @@ void RuleEditor::buildForm()
     outer->addWidget(buttons);
     connect(buttons, &QDialogButtonBox::accepted, this, &QDialog::accept);
     connect(buttons, &QDialogButtonBox::rejected, this, &QDialog::reject);
+
+    // Addresses and byte values in the same fixed-width font as the memory viewer.
+    QFont fixed = QFontDatabase::systemFont(QFontDatabase::FixedFont);
+    for (auto e : { first_edit, last_edit, swap_a, swap_b, copy_first, copy_last, stamp_from, fill_value,
+                    freeze_value, shift_fill, bitflip_mask })
+        e->setFont(fixed);
 
     // Every change re-validates.
     auto changed = [this] { refresh(); };
@@ -902,10 +923,22 @@ void RuleEditor::fitToContents()
 {
     // As tall as the sections need, up to most of the screen; the rest scrolls.
     auto want = sections->sizeHint();
-    int room = screen() ? screen()->availableGeometry().height() * 3 / 4 : 800;
+    // Room: the screen, less the summary and buttons below and the title bar above.
+    auto m = layout()->contentsMargins();
+    int chrome = summary_label->sizeHint().height() + error_label->sizeHint().height() +
+                 buttons->sizeHint().height() + m.top() + m.bottom() + 3 * std::max(layout()->spacing(), 6);
+    int room = (screen() ? screen()->availableGeometry().height() : 900) - chrome - 64;
     scroll->setMinimumWidth(want.width() + scroll->verticalScrollBar()->sizeHint().width());
     scroll->setMinimumHeight(std::min(want.height(), room));
     adjustSize();
+}
+
+void RuleEditor::showEvent(QShowEvent *event)
+{
+    QDialog::showEvent(event);
+    fitToContents();
+    QTimer::singleShot(0, this, [this] { fitToContents(); }); // after the first layout pass
+
 }
 
 Rule RuleEditor::rule() const

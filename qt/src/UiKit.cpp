@@ -259,7 +259,8 @@ QFormLayout *form(QWidget *parent)
     auto f = new QFormLayout(parent);
     f->setFieldGrowthPolicy(QFormLayout::AllNonFixedFieldsGrow);
     f->setFormAlignment(Qt::AlignLeft | Qt::AlignTop);
-    f->setLabelAlignment(Qt::AlignRight | Qt::AlignVCenter);
+    // Left, like the headings above them: right-aligned labels leave a ragged edge.
+    f->setLabelAlignment(Qt::AlignLeft | Qt::AlignVCenter);
     f->setRowWrapPolicy(QFormLayout::DontWrapRows);
     return f;
 }
