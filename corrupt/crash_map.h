@@ -58,6 +58,7 @@ struct HotMask
         return offset < v.size() && v[offset];
     }
     bool empty() const;
+    void add_block(Target t, uint32_t offset); // the whole 16-byte block holding offset
 };
 HotMask hot_mask(const CrashMap &map);
 

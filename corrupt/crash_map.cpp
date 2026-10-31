@@ -79,20 +79,23 @@ bool HotMask::empty() const
     return true;
 }
 
+void HotMask::add_block(Target t, uint32_t offset)
+{
+    uint32_t block = block_of(offset);
+    auto &v = hot[size_t(t)];
+    if (v.size() < block + CrashMap::kBlock)
+        v.resize(block + CrashMap::kBlock, false);
+    for (uint32_t i = 0; i < CrashMap::kBlock; i++)
+        v[block + i] = true;
+}
+
 HotMask hot_mask(const CrashMap &map)
 {
     HotMask mask;
     for (auto t : kAllTargets)
         for (auto &[block, c] : map.blocks(t))
-        {
-            if (!CrashMap::hot_of(c))
-                continue;
-            auto &v = mask.hot[size_t(t)];
-            if (v.size() < block + CrashMap::kBlock)
-                v.resize(block + CrashMap::kBlock, false);
-            for (uint32_t i = 0; i < CrashMap::kBlock; i++)
-                v[block + i] = true;
-        }
+            if (CrashMap::hot_of(c))
+                mask.add_block(t, block);
     return mask;
 }
 

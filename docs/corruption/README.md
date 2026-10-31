@@ -347,8 +347,9 @@ the engine logged really landed in emulator memory. With `--replay` instead, it 
 recipe the way the app does, plays on, starts again from the saved moment, and checks the
 second run ends with identical memory and picture. With `--copies` it lists where WRAM
 holds copies of the sprite table and palette after the warmup, `--map` prints the
-VRAM and ARAM map with how much of each area holds data, `--learn` learns a crash map
-over five seeds and then compares three other seeds with and without avoiding it, and
+VRAM and ARAM map with how much of each area holds data, `--learn [held=3]` learns a crash map
+over five seeds and then plays `held` other seeds plain, avoiding it, and avoiding as many
+random blocks (a control: if random does as well, the map learned nothing), and
 `--dump <dir>` writes every
 memory's raw bytes to `<dir>/<target>.bin`. Point `CORRUPT_DUMP_DIR` at such a folder when
 running the widget tests and they draw it through the pixel and tile views into the shots folder.

@@ -1,7 +1,7 @@
 // End-to-end check of the corruption engine inside the real emulator, no window
 // needed:
 //
-//   corrupt-smoke <rom> <recipe.json> [frames=600] [warmup=600] [--guard | --learn | --replay | --copies | --map | --dump <dir>]
+//   corrupt-smoke <rom> <recipe.json> [frames=600] [warmup=600] [--guard | --learn [held=3] [from=0] | --replay | --copies | --map | --dump <dir>]
 //
 // Boots the ROM, runs `warmup` frames, saves a state, then runs `frames` twice
 // from that state: once clean, once with the recipe. Reports what the recipe
@@ -19,6 +19,11 @@
 // after the warmup (the recipe is only read, not run), as the memory viewer finds them.
 // With --map it prints the memory viewer's map of VRAM and ARAM after the warmup, with
 // how many bytes in each area are nonzero (graphics and sound data actually there).
+//
+// With --learn [held] it plays the recipe guarded for five seeds while learning a crash
+// map, then plays `held` other seeds three ways: plain, avoiding the learned hot blocks,
+// and avoiding as many random blocks the rules wrote (the control). `from` skips that many
+// held-out seeds, to split a long comparison over several processes.
 #include "headless_core.h"
 
 #include "corrupt/core_access.h"
@@ -35,8 +40,10 @@
 #include "snes9x.h"
 #include "memmap.h"
 
+#include <algorithm>
 #include <cstdio>
 #include <fstream>
+#include <random>
 #include <sstream>
 
 using namespace corrupt;
@@ -99,14 +106,16 @@ int run_guarded(const Recipe &recipe, int frames)
 
 std::vector<std::vector<uint8_t>> snapshot_targets();
 
-// One guarded run that also learns a crash map. Returns crashes caught.
-int guarded_learning(const Recipe &recipe, int frames, CrashMapKeeper &keeper, bool &gave_up)
+// One guarded run that also learns a crash map. Returns crashes caught. With a fixed mask,
+// the rules avoid that instead of what the keeper learns.
+int guarded_learning(const Recipe &recipe, int frames, CrashMapKeeper &keeper, bool &gave_up,
+                     const HotMask *fixed = nullptr)
 {
     CrashGuard guard;
     guard.set_policy(recipe.crash_policy.value_or(PolicyKind::Reroll));
     guard.set_detector_config(recipe.crash_detection.value_or(DetectorConfig{}));
     engine.set_recipe(recipe);
-    engine.set_hot_mask(keeper.hot_mask());
+    engine.set_hot_mask(fixed ? *fixed : keeper.hot_mask());
     engine.set_active(true);
     S9xCorruptFrameHook = &frame_hook;
     int caught = 0;
@@ -120,7 +129,7 @@ int guarded_learning(const Recipe &recipe, int frames, CrashMapKeeper &keeper, b
             continue;
         caught++;
         gave_up = out.kind == GuardOutcome::GaveUp;
-        if (keeper.crashed(out))
+        if (keeper.crashed(out) && !fixed)
             engine.set_hot_mask(keeper.hot_mask());
     }
     S9xCorruptFrameHook = nullptr;
@@ -131,7 +140,7 @@ int guarded_learning(const Recipe &recipe, int frames, CrashMapKeeper &keeper, b
 // --learn: play the recipe guarded for five sessions (seeds) while learning a crash map,
 // then, as a fair test, three other seeds from the same start with and without every
 // rule avoiding what was learned.
-int run_learning(const Recipe &recipe, int frames)
+int run_learning(const Recipe &recipe, int frames, int held, int from)
 {
     auto start = headless::save_state();
     CrashMapKeeper first;
@@ -171,31 +180,54 @@ int run_learning(const Recipe &recipe, int frames)
                    CrashMap::hot_of(blocks[i].second) ? "  HOT" : "");
     }
 
-    // Fair test: other seeds (so other writes than the ones learned from), each played
-    // from the same start with and without avoiding what was learned.
-    int plain_total = 0, avoid_total = 0;
-    for (uint64_t seed : { 11ull, 22ull, 33ull })
+    // Fair test: other seeds (so other writes than the ones learned from), each played from
+    // the same start three ways: plain, avoiding the learned hot blocks, and, as a control,
+    // avoiding as many blocks picked at random from the ones the rules wrote. Both masks stay
+    // fixed during the test, so it measures what was learned. If random does as well as
+    // learned, the map learned nothing.
+    HotMask learned = first.hot_mask();
+    std::vector<std::pair<Target, uint32_t>> cool;
+    for (auto t : kAllTargets)
+        for (auto &[b, c] : first.combined().blocks(t))
+            if (!CrashMap::hot_of(c))
+                cool.push_back({ t, b });
+    std::sort(cool.begin(), cool.end());
+    size_t hot_count = first.hot_blocks();
+
+    int totals[3] = {}, learned_better = 0, learned_worse = 0;
+    for (int i = from; i < from + held; i++)
     {
-        Recipe other = recipe;
-        other.seed = seed;
-        Recipe avoiding = other;
+        uint64_t seed = 11ull * (i + 1);
+        std::mt19937_64 pick(seed);
+        auto shuffled = cool;
+        std::shuffle(shuffled.begin(), shuffled.end(), pick);
+        HotMask random;
+        for (size_t k = 0; k < hot_count && k < shuffled.size(); k++)
+            random.add_block(shuffled[k].first, shuffled[k].second);
+
+        Recipe plain = recipe;
+        plain.seed = seed;
+        Recipe avoiding = plain;
         for (auto &r : avoiding.rules)
             r.avoid_hot = true;
-        int plain = 0, avoided = 0;
-        for (auto *run : { &other, &avoiding })
+        int crashes[3];
+        const HotMask *masks[3] = { nullptr, &learned, &random };
+        for (int arm = 0; arm < 3; arm++)
         {
             headless::load_state(start);
             CrashMapKeeper keeper;
-            CrashMaps learned;
-            learned.mine = first.mine();
-            keeper.reset(learned);
-            (run == &other ? plain : avoided) = guarded_learning(*run, frames, keeper, gave_up);
+            HotMask none;
+            crashes[arm] = guarded_learning(arm ? avoiding : plain, frames, keeper, gave_up, arm ? masks[arm] : &none);
+            totals[arm] += crashes[arm];
         }
-        printf("seed %-3llu %d crashes plain, %d avoiding\n", (unsigned long long)seed, plain, avoided);
-        plain_total += plain;
-        avoid_total += avoided;
+        printf("seed %-3llu %2d crashes plain, %2d avoiding learned, %2d avoiding random\n",
+               (unsigned long long)seed, crashes[0], crashes[1], crashes[2]);
+        learned_better += crashes[1] < crashes[0];
+        learned_worse += crashes[1] > crashes[0];
     }
-    printf("total    %d crashes plain, %d avoiding the %zu hot blocks\n", plain_total, avoid_total, first.hot_blocks());
+    printf("total    %d crashes plain, %d avoiding the %zu learned blocks, %d avoiding %zu random ones\n",
+           totals[0], totals[1], hot_count, totals[2], hot_count);
+    printf("         learned beat plain on %d of %d seeds, lost on %d\n", learned_better, held, learned_worse);
     return 0;
 }
 
@@ -352,7 +384,7 @@ int main(int argc, char **argv)
         return 0;
     }
     if (argc > 5 && std::string(argv[5]) == "--learn")
-        return run_learning(*parsed.recipe, frames);
+        return run_learning(*parsed.recipe, frames, argc > 6 ? atoi(argv[6]) : 3, argc > 7 ? atoi(argv[7]) : 0);
     if (argc > 5 && std::string(argv[5]) == "--replay")
         return run_replay(*parsed.recipe, frames);
 

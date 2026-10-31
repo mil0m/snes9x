@@ -74,6 +74,17 @@ TEST_SUITE("crash map")
         CHECK_FALSE(mask.empty());
     }
 
+    TEST_CASE("a block can be added to a mask by hand, by any of its bytes")
+    {
+        HotMask mask;
+        mask.add_block(Target::WRAM, 0x0325); // the block 0x0320-0x032F
+        CHECK(mask.is_hot(Target::WRAM, 0x0320));
+        CHECK(mask.is_hot(Target::WRAM, 0x032F));
+        CHECK_FALSE(mask.is_hot(Target::WRAM, 0x031F));
+        CHECK_FALSE(mask.is_hot(Target::WRAM, 0x0330));
+        CHECK_FALSE(mask.is_hot(Target::WRAM, 0x3200));
+    }
+
     TEST_CASE("JSON: readable, sorted, and round-trips")
     {
         CrashMap m;
