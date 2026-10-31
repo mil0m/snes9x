@@ -3,6 +3,7 @@
 #include "corrupt/rule_text.h"
 #include "RuleEditor.hpp"
 
+#include <QApplication>
 #include <QCheckBox>
 #include <QComboBox>
 #include <QDialogButtonBox>
@@ -200,6 +201,7 @@ void maybe_shot(RuleEditor &e, const char *name)
     if (auto dir = getenv("CORRUPT_SHOTS_DIR"))
     {
         QDir().mkpath(dir);
+        QApplication::processEvents(); // the dialog fits itself after a change
         e.adjustSize();
         e.grab().save(QString("%1/%2.png").arg(dir, name));
     }

@@ -14,7 +14,11 @@
 #include <QPushButton>
 #include <QSignalBlocker>
 #include <QSpinBox>
+#include <QScreen>
+#include <QScrollArea>
+#include <QScrollBar>
 #include <QStackedWidget>
+#include <QTimer>
 #include <QVBoxLayout>
 
 #include <climits>
@@ -143,6 +147,17 @@ class CompactSpinBox : public QDoubleSpinBox
     }
 };
 
+// Helper text: quieter than the controls, but not greyed out like something disabled.
+QLabel *hint_label(const QString &text, QWidget *parent)
+{
+    auto label = new QLabel(text, parent);
+    label->setWordWrap(true);
+    auto pal = label->palette();
+    pal.setColor(QPalette::WindowText, pal.color(QPalette::PlaceholderText));
+    label->setPalette(pal);
+    return label;
+}
+
 void select(QComboBox *c, const QString &data)
 {
     int i = c->findData(data);
@@ -187,10 +202,23 @@ RuleEditor::RuleEditor(const Rule &rule, const Regions &regions, const MemoryAcc
 
 void RuleEditor::buildForm()
 {
-    auto layout = new QVBoxLayout(this);
+    // The sections scroll when the screen is short, instead of squeezing; the summary and
+    // the buttons stay put below them.
+    auto outer = new QVBoxLayout(this);
+    scroll = new QScrollArea(this);
+    scroll->setObjectName("sections");
+    scroll->setWidgetResizable(true);
+    scroll->setFrameShape(QFrame::NoFrame);
+    scroll->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    sections = new QWidget(scroll);
+    auto layout = new QVBoxLayout(sections);
+    layout->setContentsMargins(0, 0, 0, 0);
+    scroll->setWidget(sections);
+    outer->addWidget(scroll, 1);
 
     auto top = new QFormLayout;
     name_edit = line(this, "name");
+    name_edit->setToolTip(tr("What the rule is called in the panel's list"));
     top->addRow(tr("Name"), name_edit);
     layout->addLayout(top);
 
@@ -199,7 +227,11 @@ void RuleEditor::buildForm()
     auto where = new QFormLayout(where_box);
     target_combo = combo(where_box, "target");
     fill_targets(target_combo);
+    target_combo->setToolTip(tr("Which of the console's memories to change: wram is the game's working memory "
+                                "(positions, health, timers), vram graphics, cgram colours, oam sprites, aram "
+                                "sound, sram the battery save, rom the game itself"));
     where->addRow(tr("Memory"), target_combo);
+    where_form = where;
     region_combo = combo(where_box, "region");
     region_combo->addItem(tr("Custom range"), QString());
     for (auto &[name, range] : regions)
@@ -213,10 +245,13 @@ void RuleEditor::buildForm()
     range_row->addWidget(first_edit);
     range_row->addWidget(new QLabel(tr("to"), where_box));
     range_row->addWidget(last_edit);
+    first_edit->setToolTip(tr("The first byte, as an offset into the memory (0x1A00, or a plain number)"));
+    last_edit->setToolTip(tr("The last byte (included)"));
     where->addRow(tr("From"), range_row);
     shape_combo = combo(where_box, "shape");
     shape_combo->addItem(tr("A range of bytes"), QString("range"));
     shape_combo->addItem(tr("A rectangle (as drawn in the pixel view)"), QString("rect"));
+    shape_combo->setToolTip(tr("A rectangle comes from selecting with Alt-drag in the memory viewer's pixel view"));
     where->addRow(tr("Shape"), shape_combo);
     rect_fields = new QWidget(where_box);
     auto rect_layout = new QHBoxLayout(rect_fields);
@@ -232,6 +267,9 @@ void RuleEditor::buildForm()
     rect_fields->setToolTip(tr("Width and height in bytes and rows, from the From byte as its top-left corner. "
                                "Rows of: the pixel view's row width it was drawn in."));
     where->addRow(tr("Rectangle"), rect_fields);
+    no_aim_hint = hint_label(tr("To pick bytes by what they are (code, data, graphics), choose rom (the game)."), where_box);
+    no_aim_hint->setObjectName("no_aim_hint");
+    where->addRow(no_aim_hint);
     layout->addWidget(where_box);
 
     // What
@@ -240,6 +278,7 @@ void RuleEditor::buildForm()
     op_combo = combo(what_box, "op");
     for (auto t : kOps)
         op_combo->addItem(op_label(t), QString(op_name(t)));
+    op_combo->setToolTip(tr("What to do to each picked byte"));
     what->addWidget(op_combo);
     op_pages = new QStackedWidget(what_box);
     op_pages->setObjectName("op_pages");
@@ -256,6 +295,8 @@ void RuleEditor::buildForm()
     auto random_page = page(f);
     random_min = spin(random_page, "random_min", 0, 255);
     random_max = spin(random_page, "random_max", 0, 255);
+    random_min->setToolTip(tr("Each byte becomes a random value from Lowest to Highest (0-255)"));
+    random_max->setToolTip(random_min->toolTip());
     f->addRow(tr("Lowest"), random_min);
     f->addRow(tr("Highest"), random_max);
 
@@ -264,6 +305,8 @@ void RuleEditor::buildForm()
     add_max = spin(add_page, "add_max", -255, 255);
     add_clamp = new QCheckBox(tr("Clamp at 0 and 255 instead of wrapping"), add_page);
     add_clamp->setObjectName("add_clamp");
+    add_min->setToolTip(tr("Each byte goes up or down by a random amount in this range: -2 to 2 is a nudge"));
+    add_max->setToolTip(add_min->toolTip());
     f->addRow(tr("Smallest change"), add_min);
     f->addRow(tr("Largest change"), add_max);
     f->addRow(add_clamp);
@@ -274,6 +317,8 @@ void RuleEditor::buildForm()
     bitflip_mode->addItem(tr("XOR with a mask"), QString("mask"));
     bitflip_bits = spin(bitflip_page, "bitflip_bits", 1, 8);
     bitflip_mask = line(bitflip_page, "bitflip_mask", "0x81");
+    bitflip_bits->setToolTip(tr("How many of the byte's 8 bits to flip, picked at random"));
+    bitflip_mask->setToolTip(tr("Flip exactly these bits (0x81 flips the top and bottom one)"));
     f->addRow(tr("Mode"), bitflip_mode);
     f->addRow(tr("Bits to flip"), bitflip_bits);
     f->addRow(tr("Mask"), bitflip_mask);
@@ -287,6 +332,7 @@ void RuleEditor::buildForm()
     swap_width = combo(swap_page, "swap_width");
     swap_width->addItem(tr("8-bit"), QString("1"));
     swap_width->addItem(tr("16-bit"), QString("2"));
+    swap_mode->setToolTip(tr("Trade each picked byte with another one in the range, or always the same two"));
     f->addRow(tr("Mode"), swap_mode);
     f->addRow(tr("Address A"), swap_a);
     f->addRow(tr("Address B"), swap_b);
@@ -302,6 +348,7 @@ void RuleEditor::buildForm()
     copy_row->addWidget(new QLabel(tr("to"), copy_page));
     copy_row->addWidget(copy_last);
     copy_length = spin(copy_page, "copy_length", 1, 65536);
+    copy_target->setToolTip(tr("Copies a block from somewhere (another memory too) over each picked byte"));
     f->addRow(tr("Copy from"), copy_target);
     f->addRow(tr("Source range"), copy_row);
     f->addRow(tr("Bytes per hit"), copy_length);
@@ -311,11 +358,13 @@ void RuleEditor::buildForm()
     freeze_mode->addItem(tr("Hold whatever it becomes when hit"), QString("hit"));
     freeze_mode->addItem(tr("Hold a value"), QString("value"));
     freeze_value = line(freeze_page, "freeze_value", "0x00");
+    freeze_mode->setToolTip(tr("Keep the byte from changing: infinite health, a stuck timer"));
     f->addRow(tr("Mode"), freeze_mode);
     f->addRow(tr("Value"), freeze_value);
 
     auto shuffle_page = page(f);
     shuffle_window = spin(shuffle_page, "shuffle_window", 2, 256);
+    shuffle_window->setToolTip(tr("Mixes up the order of this many bytes from each picked one on"));
     f->addRow(tr("Window (bytes)"), shuffle_window);
 
     auto shift_page = page(f);
@@ -409,7 +458,9 @@ void RuleEditor::buildForm()
                                   "XCE) and stack instructions almost always crash at once."),
                                aim_group);
     aim_hint->setWordWrap(true);
-    aim_hint->setEnabled(false);
+    auto pal = aim_hint->palette();
+    pal.setColor(QPalette::WindowText, pal.color(QPalette::PlaceholderText));
+    aim_hint->setPalette(pal);
     aim->addRow(aim_hint);
     layout->addWidget(aim_group);
     // Leaving instructions out starts from the ones that almost always crash.
@@ -429,6 +480,7 @@ void RuleEditor::buildForm()
     when_combo = combo(when_box, "when");
     for (auto t : kTriggers)
         when_combo->addItem(trigger_label(t), QString(trigger_name(t)));
+    when_combo->setToolTip(tr("When the rule fires. 60 frames are about a second"));
     when->addWidget(when_combo);
     when_pages = new QStackedWidget(when_box);
     when->addWidget(when_pages);
@@ -452,6 +504,7 @@ void RuleEditor::buildForm()
     once_frame = spin(when_box, "once_frame", 1, INT_MAX);
     when_page(tr("At frame"), once_frame);
     hotkey = spin(when_box, "hotkey", 1, 9);
+    hotkey->setToolTip(tr("Fires when you press corruption hotkey 1-9 (set them in Options > Shortcuts; 1 is F9)"));
     when_page(tr("Hotkey"), hotkey);
     auto at_load_note = new QLabel(tr("Fires once as the run starts. On the ROM, the console then restarts, "
                                       "so the game boots from the corrupted ROM."),
@@ -469,9 +522,8 @@ void RuleEditor::buildForm()
     window_row->addWidget(new QLabel(tr("and"), when_box));
     window_row->addWidget(window_end, 1);
     when->addLayout(window_row);
-    auto frames_hint = new QLabel(tr("Frames count from turning the recipe on; 60 is about a second."), when_box);
-    frames_hint->setWordWrap(true);
-    frames_hint->setEnabled(false);
+    auto frames_hint = hint_label(tr("Frames count from turning the recipe on; 60 is about a second."), when_box);
+    window_enabled->setToolTip(tr("Only fire between these two frames of the run"));
     when->addWidget(frames_hint);
     layout->addWidget(when_box);
 
@@ -479,19 +531,25 @@ void RuleEditor::buildForm()
     auto how_box = new QGroupBox(tr("How Much"), this);
     auto how = new QFormLayout(how_box);
     count_spin = spin(how_box, "count", 1, 1000000);
-    how->addRow(tr("Addresses per firing"), count_spin);
+    count_spin->setToolTip(tr("How many bytes it changes each time it fires"));
+    how->addRow(tr("Bytes each time"), count_spin);
     pick_combo = combo(how_box, "pick");
-    pick_combo->addItem(tr("New addresses every time"), QString("fresh"));
-    pick_combo->addItem(tr("Pick once, keep hitting them"), QString("sticky"));
-    how->addRow(tr("Pick"), pick_combo);
+    pick_combo->addItem(tr("Different ones each time"), QString("fresh"));
+    pick_combo->addItem(tr("The same ones every time"), QString("sticky"));
+    pick_combo->setToolTip(tr("Pick new bytes on every firing, or pick once and keep hitting those"));
+    how->addRow(tr("Which bytes"), pick_combo);
     intensity_spin = new CompactSpinBox(how_box);
     intensity_spin->setObjectName("intensity");
-    intensity_spin->setRange(0.0, 1.0);
-    intensity_spin->setDecimals(4);
-    intensity_spin->setSingleStep(0.05);
-    how->addRow(tr("Intensity"), intensity_spin);
+    intensity_spin->setRange(0.0, 100.0);
+    intensity_spin->setDecimals(2);
+    intensity_spin->setSingleStep(5);
+    intensity_spin->setSuffix(" %");
+    intensity_spin->setToolTip(tr("How hard this rule hits, on top of the recipe's Chaos. Below one byte each "
+                                  "time, it fires less often instead"));
+    how->addRow(tr("Strength"), intensity_spin);
     enabled_check = new QCheckBox(tr("Enabled"), how_box);
     enabled_check->setObjectName("enabled");
+    enabled_check->setToolTip(tr("Off: the rule stays in the recipe but does nothing"));
     how->addRow(enabled_check);
     avoid_check = new QCheckBox(tr("Avoid dangerous bytes"), how_box);
     avoid_check->setObjectName("avoid_hot");
@@ -500,19 +558,20 @@ void RuleEditor::buildForm()
     how->addRow(avoid_check);
     layout->addWidget(how_box);
 
+    layout->addStretch(1);
     summary_label = new QLabel(this);
     summary_label->setObjectName("summary");
     summary_label->setWordWrap(true);
-    layout->addWidget(summary_label);
+    outer->addWidget(summary_label);
     error_label = new QLabel(this);
     error_label->setObjectName("error");
     error_label->setWordWrap(true);
     error_label->setStyleSheet("color: #d33;");
-    layout->addWidget(error_label);
+    outer->addWidget(error_label);
 
     buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, this);
     buttons->setObjectName("buttons");
-    layout->addWidget(buttons);
+    outer->addWidget(buttons);
     connect(buttons, &QDialogButtonBox::accepted, this, &QDialog::accept);
     connect(buttons, &QDialogButtonBox::rejected, this, &QDialog::reject);
 
@@ -657,7 +716,7 @@ void RuleEditor::load(const Rule &r)
 
     count_spin->setValue(int(std::min<uint32_t>(r.count, 1000000)));
     select(pick_combo, r.pick == Pick::Sticky ? "sticky" : "fresh");
-    intensity_spin->setValue(r.intensity);
+    intensity_spin->setValue(r.intensity * 100.0);
     enabled_check->setChecked(r.enabled);
     avoid_check->setChecked(r.avoid_hot);
 
@@ -800,7 +859,7 @@ RuleEditor::Built RuleEditor::build() const
 
     r.count = uint32_t(count_spin->value());
     r.pick = pick_combo->currentData() == "sticky" ? Pick::Sticky : Pick::Fresh;
-    r.intensity = intensity_spin->value();
+    r.intensity = intensity_spin->value() / 100.0;
     r.enabled = enabled_check->isChecked();
     r.avoid_hot = avoid_check->isChecked();
 
@@ -828,6 +887,16 @@ RuleEditor::Built RuleEditor::build() const
         if (auto problem = validate_rule(r, sizes))
             err = qs(*problem);
     return b;
+}
+
+void RuleEditor::fitToContents()
+{
+    // As tall as the sections need, up to most of the screen; the rest scrolls.
+    auto want = sections->sizeHint();
+    int room = screen() ? screen()->availableGeometry().height() * 3 / 4 : 800;
+    scroll->setMinimumWidth(want.width() + scroll->verticalScrollBar()->sizeHint().width());
+    scroll->setMinimumHeight(std::min(want.height(), room));
+    adjustSize();
 }
 
 Rule RuleEditor::rule() const
@@ -863,6 +932,23 @@ void RuleEditor::refresh()
     bool code_op = is_code_op(parse_op(op_combo->currentData().toString().toStdString()).value_or(OpType::Random));
     aim_box->setEnabled(rom && !area_op);
     role_combo->setEnabled(!code_op);
+    // Sections that don't apply are hidden, and the pages take only the room they need;
+    // the dialog fits itself again when that changes.
+    bool show_aim = rom && !area_op, show_rect = custom_range && rect;
+    bool layout_changed = aim_box->isVisibleTo(this) != show_aim || no_aim_hint->isVisibleTo(this) == rom ||
+                          shown_page != op_pages->currentIndex() || shown_when_page != when_pages->currentIndex() ||
+                          rect_fields->isVisibleTo(this) != show_rect;
+    aim_box->setVisible(show_aim);
+    no_aim_hint->setVisible(!rom);
+    where_form->setRowVisible(rect_fields, show_rect);
+    for (auto *pages : { op_pages, when_pages })
+        for (int i = 0; i < pages->count(); i++)
+            pages->widget(i)->setSizePolicy(QSizePolicy::Preferred, i == pages->currentIndex() ? QSizePolicy::Preferred
+                                                                                                : QSizePolicy::Ignored);
+    shown_page = op_pages->currentIndex();
+    shown_when_page = when_pages->currentIndex();
+    if (layout_changed)
+        QTimer::singleShot(0, this, [this] { fitToContents(); });
     for (auto [c, check] : class_checks)
         check->setEnabled(class_mode->currentData() != "all");
     bool at_load = when_combo->currentData() == QString(trigger_name(TriggerType::AtLoad));

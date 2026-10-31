@@ -44,6 +44,7 @@ class RuleEditor : public QDialog
     Built build() const;
     void refresh();
     void regionChosen();
+    void fitToContents();
 
     corrupt::Rule original; // keeps what the form doesn't show (salt)
     corrupt::Regions regions;
@@ -98,7 +99,12 @@ class RuleEditor : public QDialog
     QCheckBox *enabled_check;
     QCheckBox *avoid_check;
 
+    class QScrollArea *scroll;
+    QWidget *sections;
     QWidget *aim_box;
+    class QFormLayout *where_form;
+    QLabel *no_aim_hint;
+    int shown_page = -1, shown_when_page = -1;
     QComboBox *role_combo;
     QComboBox *class_mode;
     std::vector<std::pair<corrupt::OpClass, QCheckBox *>> class_checks;
