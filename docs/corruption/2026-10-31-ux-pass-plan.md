@@ -1,6 +1,6 @@
 # UX pass: plan (roadmap #49)
 
-**Status (2026-10-31):** planned, after ROM corruption (#22) was finished. Mikael: "Everything
+**Status (2026-10-31):** decisions agreed by Mikael ("Sounds right!"); in progress. After it: a visual **UI pass** with the best design guidance for Qt Widgets (to be researched). Mikael: "Everything
 needs to be clear how to use even if one hasn't implemented it. I've already forgotten many
 things."
 
