@@ -25,6 +25,7 @@ class MemoryPane
         Code,    // the code map: what the CPU runs (ROM), opcodes strong, operands lighter
         Data,    // what the CPU reads as data (ROM)
         Dma,     // what DMA copies (ROM)
+        Changes, // bytes that differ from the clean ROM, stronger once the game used them
         None,
     };
 
@@ -100,6 +101,10 @@ class MemoryPane
             return offset < snap.code.size() && (snap.code[offset] & corrupt::codeflag::Data) ? 1.0f : 0.0f;
         case Overlay::Dma:
             return offset < snap.code.size() && (snap.code[offset] & corrupt::codeflag::Dma) ? 1.0f : 0.0f;
+        case Overlay::Changes: {
+            auto *c = snap.rom_change(uint32_t(offset));
+            return !c ? 0.0f : c->frames_used ? 1.0f : 0.45f;
+        }
         case Overlay::None:
             return 0.0f;
         }
@@ -140,6 +145,7 @@ class MemoryPane
                : overlay == Overlay::Code    ? QColor(20, 200, 190)
                : overlay == Overlay::Data    ? QColor(235, 70, 160)
                : overlay == Overlay::Dma     ? QColor(190, 210, 30)
+               : overlay == Overlay::Changes ? QColor(255, 120, 30)
                                             : QColor(235, 110, 40);
     }
 

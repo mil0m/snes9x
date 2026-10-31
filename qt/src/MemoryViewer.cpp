@@ -113,6 +113,7 @@ MemoryViewer::MemoryViewer(MemorySource &source, QWidget *parent)
     overlay_combo->addItem(tr("Code: what the CPU runs (ROM)"), QString("code"));
     overlay_combo->addItem(tr("Data: what the CPU reads as data (ROM)"), QString("data"));
     overlay_combo->addItem(tr("DMA: what DMA copies to the PPU (ROM)"), QString("dma"));
+    overlay_combo->addItem(tr("Changes: what differs from the clean ROM, bright once used"), QString("changes"));
     overlay_combo->addItem(tr("Plain"), QString("none"));
     goto_edit = new QLineEdit(this);
     goto_edit->setObjectName("goto");
@@ -285,6 +286,7 @@ MemoryViewer::MemoryViewer(MemorySource &source, QWidget *parent)
                        : o == "code"    ? MemoryPane::Overlay::Code
                        : o == "data"    ? MemoryPane::Overlay::Data
                        : o == "dma"     ? MemoryPane::Overlay::Dma
+                       : o == "changes" ? MemoryPane::Overlay::Changes
                        : o == "none"   ? MemoryPane::Overlay::None
                                        : MemoryPane::Overlay::Activity;
         view->setOverlay(overlay);
@@ -470,6 +472,14 @@ void MemoryViewer::hovered(std::optional<uint32_t> offset)
             text += tr(" · read as data");
         if (f & codeflag::Dma)
             text += tr(" · copied by DMA");
+    }
+    // Whether corruption changed it (ROM only), and whether the game has used it since.
+    if (auto *c = snap.rom_change(*offset))
+    {
+        QString was = QString("%1").arg(c->was, 2, 16, QChar('0')).toUpper();
+        text += !c->frames_used     ? tr(" · changed from 0x%1, not used yet").arg(was)
+                : c->frames_used == 1 ? tr(" · changed from 0x%1, used in 1 frame").arg(was)
+                                      : tr(" · changed from 0x%1, used in %2 frames").arg(was).arg(c->frames_used);
     }
     // What the crash map knows about the byte's block, whatever the overlay.
     size_t block = *offset / CrashMap::kBlock;

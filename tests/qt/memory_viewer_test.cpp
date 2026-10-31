@@ -68,6 +68,7 @@ struct FakeSource : MemorySource
             s.code[0x3000] = codeflag::Dma;
             s.rom_where.chunks.assign(size / RomAddresses::kChunk, RomAddresses::kNone);
             s.rom_where.chunks[1] = 0xC01000;
+            s.rom_changes = { { 0x1001, 0x07, 340 }, { 0x4000, 0x00, 0 } };
         }
         if (s.crash_blocks.size() > 0x1F3)
         {
@@ -665,11 +666,14 @@ TEST_SUITE("the pixel view in the viewer")
         CHECK(code.contains("jump"));
         CHECK(hover(0x2000).contains("data"));
         CHECK(hover(0x3000).contains("DMA"));
-        auto plain = hover(0x4000);
+        auto plain = hover(0x4800);
         CHECK_FALSE(plain.contains("data"));
         CHECK_FALSE(plain.contains("JSL"));
-        for (auto o : { "code", "data", "dma" })
+        for (auto o : { "code", "data", "dma", "changes" })
             CHECK(child<QComboBox>(v, "overlay")->findData(QString(o)) >= 0);
+        CHECK(hover(0x1001).contains("changed from 0x07, used in 340 frames"));
+        CHECK(hover(0x4000).contains("changed from 0x00, not used yet"));
+        CHECK_FALSE(hover(0x1002).contains("changed"));
     }
 
     TEST_CASE("hovering a byte the crash map knows shows its block's counts")

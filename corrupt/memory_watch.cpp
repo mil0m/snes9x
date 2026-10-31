@@ -193,4 +193,11 @@ std::vector<CopyRun> find_copies(const std::vector<uint8_t> &haystack, const std
     return kept;
 }
 
+const RomChange *MemorySnapshot::rom_change(uint32_t offset) const
+{
+    auto it = std::lower_bound(rom_changes.begin(), rom_changes.end(), offset,
+                               [](const RomChange &c, uint32_t o) { return c.offset < o; });
+    return it != rom_changes.end() && it->offset == offset ? &*it : nullptr;
+}
+
 } // namespace corrupt

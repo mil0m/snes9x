@@ -11,6 +11,14 @@
 namespace corrupt
 {
 
+// A ROM byte that differs from the clean ROM, and how often the game used it since.
+struct RomChange
+{
+    uint32_t offset = 0;
+    uint8_t was = 0;          // the clean value
+    uint32_t frames_used = 0; // frames the game ran or read it in (0 without a code map)
+};
+
 struct MemorySnapshot
 {
     Target target = Target::WRAM;
@@ -29,6 +37,9 @@ struct MemorySnapshot
     // shows up for the CPU, for disassembly. Empty for other targets.
     std::vector<uint8_t> code;
     RomAddresses rom_where;
+    std::vector<RomChange> rom_changes; // in offset order
+
+    const RomChange *rom_change(uint32_t offset) const; // null when the byte is clean
 };
 
 // Watches one memory target for the memory viewer, once per frame between frames:

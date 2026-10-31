@@ -7,6 +7,7 @@
 #include "corrupt/library.h"
 #include "corrupt/memory_watch.h"
 #include "corrupt/rom_keeper.h"
+#include "corrupt/rom_blame.h"
 #include "corrupt/run_control.h"
 #include "corrupt/save_backup.h"
 
@@ -60,6 +61,7 @@ class CorruptionSession
         size_t hot_blocks = 0; // crash map: 16-byte blocks rules with avoid_hot stay out of
 
         size_t rom_changed = 0; // ROM bytes that differ from the clean ROM
+        size_t rom_used = 0;    // ...of which the game has run or read since they changed
         size_t patched = 0;     // painted bytes kept in the recipe
         corrupt::CodeCoverage code; // the code map (everyone's), updated every few seconds
     };
@@ -159,6 +161,7 @@ class CorruptionSession
     corrupt::Engine engine;
     corrupt::CoreMemory memory;
     corrupt::RomKeeper rom{ memory }; // what the engine writes through: journals ROM edits, guards the header
+    corrupt::RomBlame rom_blame{ rom }; // which changed ROM bytes the game used, for the guard
     corrupt::SnesCoreAccess access;
     corrupt::CrashGuard guard;
     corrupt::RunControl control;

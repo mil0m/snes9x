@@ -48,6 +48,7 @@ class RomBlame : public ByteBlame
     ByteBlameResult act(uint64_t after, uint64_t through, unsigned attempt) override;
 
     size_t watched() const { return offsets.size(); } // changed bytes
+    const std::vector<uint32_t> &changed_offsets() const { return offsets; } // in no order
     size_t used() const;                               // changed bytes the game has used
     const ByteUse *use(uint32_t offset) const;
 

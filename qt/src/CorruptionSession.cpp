@@ -82,6 +82,8 @@ void CorruptionSession::configureGuard()
     cfg.enabled = cfg.enabled && detection_enabled;
     guard.set_detector_config(cfg);
     guard.on_journal = [this](const JournalEntry &e) { writeJournal(e); };
+    guard.set_byte_blame(&rom_blame);
+    rom_blame.set_policy(recipe.rom_policy.value_or(RomPolicy::Revert), recipe.seed);
 }
 
 void CorruptionSession::writeJournal(const JournalEntry &entry)
@@ -116,10 +118,14 @@ void CorruptionSession::betweenFrames()
     default:
         break;
     }
+    // Which changed ROM bytes the game used this frame, for the guard to blame.
+    rom_blame.collect(engine.current_frame());
     // The crash map collects this frame's writes before the guard can roll them back.
     crash_map.observe(engine.event_log(), engine.current_frame());
     auto out = guard.between_frames(engine, access);
     rom.after_guard(out); // save states don't hold the ROM: undo its edits after the checkpoint
+    if (auto survivors = rom_blame.take_survivals(); !survivors.empty())
+        crash_map.rom_survived(survivors);
     if (crash_map.crashed(out))
         engine.set_hot_mask(crash_map.hot_mask());
     if (crash_map.save_due())
@@ -217,6 +223,7 @@ void CorruptionSession::gameLoaded()
 
 void CorruptionSession::loadCodeMap()
 {
+    rom_blame.attach(nullptr, 0); // the map it reads is about to be replaced
     tracer.stop();
     code_map_reload = false;
     code_map_root = library_root;
@@ -231,6 +238,10 @@ void CorruptionSession::loadCodeMap()
     code_shown = {};
     if (!tracer.start(code_map.mine()))
         note("The code map isn't recording (no ROM?)");
+    else
+        rom_blame.attach(code_map.mine().data(), code_map.mine().size());
+    // With uses to go by, ROM crashes are learned from them, not from the writes.
+    crash_map.learn_rom_by_use(rom_blame.active());
 }
 
 void CorruptionSession::saveCodeMap()
@@ -276,6 +287,7 @@ void CorruptionSession::gameClosing()
     wram_access.stop();
     if (code_map.unsaved())
         saveCodeMap();
+    rom_blame.attach(nullptr, 0);
     tracer.stop(); // before the reset watch goes
     rom.game_closed();
     SnesCoreAccess::unwatch_resets();
@@ -385,6 +397,14 @@ MemorySnapshot CorruptionSession::memorySnapshot()
     {
         snap.code = code_shown;
         snap.rom_where = rom_where;
+        if (game_loaded)
+            for (uint32_t o : rom_blame.changed_offsets())
+            {
+                auto *use = rom_blame.use(o);
+                snap.rom_changes.push_back({ o, rom.clean()[o], use ? use->frames_used : 0 });
+            }
+        std::sort(snap.rom_changes.begin(), snap.rom_changes.end(),
+                  [](const RomChange &a, const RomChange &b) { return a.offset < b.offset; });
     }
     return snap;
 }
@@ -800,6 +820,7 @@ CorruptionSession::Status CorruptionSession::status()
         for (auto t : kAllTargets)
             s.sizes[size_t(t)] = memory.size(t);
         s.rom_changed = rom.changed();
+        s.rom_used = rom_blame.used();
         s.patched = patched_bytes(engine.recipe().patches);
     }
     s.policy = guard.get_policy();

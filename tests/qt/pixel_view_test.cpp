@@ -544,6 +544,25 @@ TEST_CASE("the code, data and DMA overlays: what the code map knows about each R
     CHECK(at(0x30).red() == at(0x30).blue());
 }
 
+TEST_CASE("the changes overlay: changed ROM bytes, brighter once the game used them")
+{
+    Shown s(8);
+    auto snap = sample();
+    snap.target = Target::ROM;
+    snap.rom_changes = { { 0x20, 0x00, 0 }, { 0x21, 0x11, 30 } };
+    s.view.setSnapshot(snap);
+    s.view.setOverlay(MemoryPane::Overlay::Changes);
+    auto at = [&](uint32_t offset) {
+        return s.view.viewport()->grab().toImage().pixelColor(s.view.pixelRect(offset).center());
+    };
+    auto orange = [](QColor c) { return c.red() - c.blue(); };
+    QColor unused = at(0x20), used = at(0x21), clean = at(0x22);
+    CHECK(orange(unused) > 30);
+    CHECK(orange(used) > orange(unused) + 30);
+    CHECK(orange(clean) == 0);
+    shot(s.view, "pixel-view-changes");
+}
+
 TEST_CASE("hot blocks: a tick beside their rows, and an outline when zoomed in")
 {
     auto snap = sample();

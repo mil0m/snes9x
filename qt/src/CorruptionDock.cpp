@@ -374,6 +374,8 @@ void CorruptionDock::refreshStatus()
     QString rom_text = !status.game_loaded         ? QString()
                        : status.rom_changed == 0 ? tr("clean")
                                                  : tr("%n byte(s) changed", "", int(status.rom_changed));
+    if (status.game_loaded && status.rom_changed)
+        rom_text += tr(", %1 used by the game").arg(QLocale().toString(qulonglong(status.rom_used)));
     if (status.patched)
         rom_text += tr(" · %n byte(s) painted", "", int(status.patched));
     if (status.game_loaded && status.code.seen)
