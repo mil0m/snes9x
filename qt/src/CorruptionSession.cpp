@@ -157,6 +157,12 @@ void CorruptionSession::betweenFrames()
     }
     else
         wram_access.stop();
+    // The Live overlay: what the game used this frame. After the blame has collected, since
+    // both read the touched bits; the blame passes on the changed bytes it cleared.
+    if (watch.watching() && watch.target() == Target::ROM)
+        rom_heat.observe(code_map.mine().data(), code_map.mine().size(), rom_blame.used_this_frame());
+    else
+        rom_heat.pause();
     if (code_map_reload)
     {
         if (code_map.unsaved())
@@ -272,6 +278,7 @@ void CorruptionSession::loadCodeMap()
     for (auto &e : maps.errors)
         note("Code map skipped: " + e);
     code_map.reset(size, std::move(maps));
+    rom_heat.reset(size);
     JumpLogs jumps;
     if (!library_root.empty())
         jumps = Library(library_root).load_jump_logs(game, user_name(), size);
@@ -470,6 +477,7 @@ MemorySnapshot CorruptionSession::memorySnapshot()
         snap.rom_where = rom_where;
         snap.jump_tables = jump_tables;
         snap.jumps = jump_shown;
+        snap.live = rom_heat.levels();
         if (game_loaded)
             for (uint32_t o : rom_blame.changed_offsets())
             {

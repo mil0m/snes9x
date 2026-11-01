@@ -8,6 +8,7 @@
 #include "corrupt/memory_watch.h"
 #include "corrupt/rom_keeper.h"
 #include "corrupt/rom_blame.h"
+#include "corrupt/rom_heat.h"
 #include "corrupt/survivors.h"
 #include "corrupt/share.h"
 #include "corrupt/run_control.h"
@@ -200,6 +201,7 @@ class CorruptionSession
     std::vector<uint8_t> code_shown;        // everyone's map, copied between frames while the viewer shows the ROM
     std::vector<uint8_t> code_for_aim;      // everyone's map as aimed rules saw it when this run started
     corrupt::CodeCoverage code_coverage;
+    corrupt::RomHeat rom_heat;              // the viewer's Live overlay, while it shows the ROM
     corrupt::JumpLogKeeper jump_log;        // the tracer notes indirect jumps into it, kept like the code map
     corrupt::RomOffsets rom_offsets;        // where each 4 KB of the address space is in the ROM
     std::vector<corrupt::JumpTable> jump_tables; // found from everyone's log and map, every few seconds

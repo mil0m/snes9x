@@ -79,6 +79,17 @@ TEST_SUITE("rom blame")
         CHECK(f.flags[0x100] == cf::Opcode);
     }
 
+    TEST_CASE("each collect says which changed bytes it found used, for the live heat")
+    {
+        Fixture f;
+        f.change(0x100);
+        f.change(0x200);
+        f.run_to(1, { 0x100, 0x300 });
+        CHECK(f.blame.used_this_frame() == std::vector<uint32_t>{ 0x100 });
+        f.run_to(2);
+        CHECK(f.blame.used_this_frame().empty());
+    }
+
     TEST_CASE("suspects are bytes used inside the window")
     {
         Fixture f;

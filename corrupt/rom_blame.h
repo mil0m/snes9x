@@ -46,6 +46,9 @@ class RomBlame : public ByteBlame
     void set_pinned(const std::vector<uint32_t> &offsets);
 
     void collect(uint64_t frame); // after every frame, before the guard
+    // The changed bytes the last collect found used (it cleared their touched bits), for
+    // the viewer's live heat.
+    const std::vector<uint32_t> &used_this_frame() const { return just_used; }
     std::vector<uint32_t> take_survivals(); // bytes that turned survivors since the last take
 
     size_t suspects(uint64_t after, uint64_t through, bool only_new = false) const override;
@@ -73,6 +76,7 @@ class RomBlame : public ByteBlame
     uint64_t seed = 0;
     uint64_t rerolls = 0;
     uint64_t frame = 0; // the last collected
+    std::vector<uint32_t> just_used;
     std::vector<uint32_t> offsets; // watched, with their uses alongside
     std::vector<ByteUse> uses;
     std::unordered_map<uint32_t, size_t> index;

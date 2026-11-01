@@ -11,6 +11,7 @@
 #include "corrupt/hook.h"
 #include "corrupt/jump_tables.h"
 #include "corrupt/pointer_swap.h"
+#include "corrupt/rom_heat.h"
 #include "corrupt/rom_keeper.h"
 #include "corrupt/rom_blame.h"
 #include "corrupt/survivors.h"
@@ -742,6 +743,29 @@ TEST_SUITE("the code map tracer in the real core")
         CHECK(c.data == 5); // the table bytes and the NMI vector
         CHECK(c.dma == size_t(tr::kDmaBytes));
         CHECK(c.both_widths == 0);
+    }
+
+    TEST_CASE("live heat: what ran and was read this frame glows, padding doesn't")
+    {
+        REQUIRE(headless::init());
+        REQUIRE(headless::load_rom_memory(testrom::build_traced()));
+        CodeMap map(Memory.CalculatedSize);
+        RomTracer tracer;
+        REQUIRE(tracer.start(map));
+        RomHeat heat;
+        heat.reset(map.size());
+        headless::run_frames(3);
+        heat.observe(map.data(), map.size()); // starts watching: only clears
+        CHECK(heat.level(tr::kNmi) == 0);
+        headless::run_frames(1);
+        heat.observe(map.data(), map.size());
+        tracer.stop();
+        CHECK(heat.level(tr::kNmi) == 255);    // the handler ran
+        CHECK(heat.level(tr::kTable) == 255);  // its table was read
+        CHECK(heat.level(tr::kDmaSource) == 255); // and DMA copied from here
+        CHECK(heat.level(0x5000) == 0);        // padding nobody touches
+        CHECK(heat.level(0x0000) == 0);        // the reset code ran long ago, not this frame
+        CHECK(!(map.at(tr::kNmi) & codeflag::Touched));
     }
 
     TEST_CASE("ROM offsets get the CPU addresses a LoROM game runs them from")

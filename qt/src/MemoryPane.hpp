@@ -27,6 +27,7 @@ class MemoryPane
         Dma,     // what DMA copies (ROM)
         Changes, // bytes that differ from the clean ROM, stronger once the game used them
         Jumps,   // jump table entries (seen strong, likely lighter) and the instructions that jump through them
+        Live,    // what the game runs and reads in the ROM right now, fading
         None,
     };
 
@@ -43,6 +44,7 @@ class MemoryPane
                : overlay == Overlay::Dma     ? QColor(190, 210, 30)
                : overlay == Overlay::Changes ? QColor(255, 120, 30)
                : overlay == Overlay::Jumps   ? QColor(95, 110, 255)
+               : overlay == Overlay::Live    ? QColor(255, 225, 60)
                                             : QColor(235, 110, 40);
     }
 
@@ -126,6 +128,8 @@ class MemoryPane
             uint8_t m = offset < snap.jumps.size() ? snap.jumps[offset] : 0;
             return m == corrupt::jumpmark::Seen ? 1.0f : m == corrupt::jumpmark::Site ? 0.7f : m ? 0.4f : 0.0f;
         }
+        case Overlay::Live:
+            return offset < snap.live.size() ? float(snap.live[offset]) / 255.0f : 0.0f;
         case Overlay::None:
             return 0.0f;
         }

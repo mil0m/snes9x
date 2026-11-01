@@ -42,6 +42,8 @@ struct MemorySnapshot
     // ROM only: the jump tables found so far (everyone's), and a jumpmark per byte.
     std::vector<JumpTable> jump_tables;
     std::vector<uint8_t> jumps;
+    // ROM only: what the game runs and reads right now, 255 this frame fading to 0 (RomHeat).
+    std::vector<uint8_t> live;
 
     const RomChange *rom_change(uint32_t offset) const; // null when the byte is clean
 };

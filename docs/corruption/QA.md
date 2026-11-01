@@ -411,3 +411,14 @@ Use a game you have never set up (a fresh library folder, so no recipes exist fo
    - [ ] It changes nothing: nothing is known to swap yet.
 8. Look in the game's library folder.
    - [ ] There's a `jumps.<you>.json` next to `codemap.<you>.bin`, one jump a line.
+
+## 27. Live heat
+1. Load a game, play, and open the memory viewer on **rom**, **Show as: Pixels**, **Colour by: Live**.
+   - [ ] Yellow streaks flicker where the game is running code and reading tables, and fade over a second or two when they stop.
+   - [ ] Changing scene (a menu, a battle, a new area) moves the yellow somewhere else.
+   - [ ] Hovering a yellow byte says *in use right now* (or *used in the last second or two*).
+2. Switch the viewer to **wram** and back to **rom** after a while.
+   - [ ] It doesn't flash everything that ran meanwhile: only what runs from now on lights up.
+3. With a ROM recipe running (say **Starter: Branch flips**), compare **Changes** and **Live**.
+   - [ ] Changed bytes the game is using right now glow in **Live** too.
+4. The game runs as smoothly with the viewer on **Live** as on **Code**.

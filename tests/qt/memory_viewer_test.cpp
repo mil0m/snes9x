@@ -82,6 +82,9 @@ struct FakeSource : MemorySource
             t.entries = { { 0x1100, 0xC01200, 12, true }, { 0x1102, 0xC01210, 0, false } };
             s.jump_tables = { t };
             s.jumps = jump_marks(s.jump_tables, size);
+            s.live.assign(size, 0); // the JSL ran this frame; its table a second ago
+            s.live[0x1000] = 255;
+            s.live[0x2000] = 90;
         }
         if (s.crash_blocks.size() > 0x1F3)
         {
@@ -751,6 +754,36 @@ TEST_SUITE("the pixel view in the viewer")
         choose(v, "target", "wram");
         CHECK(hidden("jumps"));
         CHECK(overlay->currentData().toString() == "activity");
+    }
+
+    TEST_CASE("Live shows what the game uses right now, for the ROM only, and the hover says how recently")
+    {
+        FakeSource src;
+        MemoryViewer v(src);
+        v.show();
+        choose(v, "target", "rom");
+        v.refresh();
+        choose(v, "mode", "pixels");
+        auto pixels = child<PixelView>(v, "pixels");
+        QApplication::processEvents();
+        auto hover = [&](uint32_t offset) {
+            pixels->onHover(offset);
+            return child<QLabel>(v, "hover")->text();
+        };
+        CHECK(hover(0x1000).contains("in use right now"));
+        CHECK(hover(0x2000).contains("used in the last second or two"));
+        CHECK_FALSE(hover(0x3000).contains("use"));
+        auto overlay = child<QComboBox>(v, "overlay");
+        auto hidden = [&](const char *o) {
+            return static_cast<QListView *>(overlay->view())->isRowHidden(overlay->findData(QString(o)));
+        };
+        CHECK_FALSE(hidden("live"));
+        choose(v, "overlay", "live");
+        CHECK(child<QLabel>(v, "legend")->text().contains("right now"));
+        if (auto dir = getenv("CORRUPT_SHOTS_DIR"))
+            v.grab().save(QString("%1/viewer-rom-live.png").arg(dir));
+        choose(v, "target", "vram");
+        CHECK(hidden("live"));
     }
 
     TEST_CASE("hovering a byte the crash map knows shows its block's counts")

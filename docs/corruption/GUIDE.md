@@ -210,7 +210,10 @@ console where the game starts are never changed.
 runs it as code, reads it as data, or copies it to the screen as graphics. The panel's
 ROM section says how much it knows. It only knows what it has seen, so **play a while
 first**; it's saved in your library and adds up with your friend's. In the memory viewer,
-**Code** shows it (teal), **Data** (pink), **DMA** (graphics, yellow-green).
+**Code** shows it (teal), **Data** (pink), **DMA** (graphics, yellow-green). **Live**
+(yellow) shows what the game runs and reads *right now*: bright this frame, fading over a
+second and a half. Watch which code and tables a scene uses, or whether a corrupted spot
+is in play.
 
 **Aiming at code.** In the rule editor, with the memory set to rom, **Aim** picks bytes by
 what they are: **Opcodes** (which instruction it is), **Operands** (the number or address it

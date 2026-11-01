@@ -127,6 +127,7 @@ MemoryViewer::MemoryViewer(MemorySource &source, QWidget *parent)
     overlay_combo->addItem(tr("DMA: what DMA copies to the PPU (ROM)"), QString("dma"));
     overlay_combo->addItem(tr("Changes: what differs from the clean ROM, bright once used"), QString("changes"));
     overlay_combo->addItem(tr("Jumps: the game's tables of routines, for pointer swaps (ROM)"), QString("jumps"));
+    overlay_combo->addItem(tr("Live: what the game runs and reads right now (ROM)"), QString("live"));
     overlay_combo->addItem(tr("Plain"), QString("none"));
     goto_edit = new QLineEdit(this);
     goto_edit->setObjectName("goto");
@@ -543,6 +544,9 @@ void MemoryViewer::hovered(std::optional<uint32_t> offset)
         if (f & codeflag::Dma)
             text += tr(" · copied by DMA");
     }
+    // Live heat (ROM only), whatever the overlay.
+    if (*offset < snap.live.size() && snap.live[*offset])
+        text += snap.live[*offset] > 200 ? tr(" · in use right now") : tr(" · used in the last second or two");
     // Jump tables (ROM only): which entry of which dispatcher's table it is, and where it goes.
     if (!snap.jump_tables.empty())
     {
@@ -642,6 +646,7 @@ MemoryPane::Overlay MemoryViewer::overlayNamed(const QString &o)
            : o == "dma"     ? MemoryPane::Overlay::Dma
            : o == "changes" ? MemoryPane::Overlay::Changes
            : o == "jumps"   ? MemoryPane::Overlay::Jumps
+           : o == "live"    ? MemoryPane::Overlay::Live
            : o == "none"    ? MemoryPane::Overlay::None
                             : MemoryPane::Overlay::Activity;
 }
@@ -655,7 +660,7 @@ void MemoryViewer::filterOverlays()
     for (int i = 0; i < overlay_combo->count(); i++)
     {
         QString o = overlay_combo->itemData(i).toString();
-        bool rom_only = o == "code" || o == "data" || o == "dma" || o == "changes" || o == "jumps";
+        bool rom_only = o == "code" || o == "data" || o == "dma" || o == "changes" || o == "jumps" || o == "live";
         bool fits = (o != "reads" && o != "writes" && !rom_only) ||
                     ((o == "reads" || o == "writes") && t == "wram") || (t == "rom" && o != "reads" && o != "writes");
         if (view)
@@ -683,6 +688,8 @@ void MemoryViewer::showLegend()
                    : o == "data"     ? tr("bytes the game read as data: tables, text, stats")
                    : o == "dma"      ? tr("bytes copied straight to the graphics chip: tiles, maps, colours")
                    : o == "changes"  ? tr("bytes that differ from the clean ROM, bright once the game used them")
+                   : o == "live"     ? tr("what the game runs and reads right now: bright this frame, fading over a "
+                                          "second and a half")
                    : o == "jumps"    ? tr("jump tables: entries the game jumped through strong, likely ones lighter, "
                                           "the instruction that jumps in between")
                                      : tr("no colours: just the bytes");

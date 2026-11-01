@@ -688,6 +688,10 @@ void CorruptionDock::tour(const QString &dir)
         choose(memory_viewer, "overlay", "code");
     });
     steps->push_back([=, this] { shot(memory_viewer, "07-viewer-rom-code"); });
+    steps->push_back([=, this] { choose(memory_viewer, "overlay", "live"); });
+    steps->push_back([=, this] { shot(memory_viewer, "07b-viewer-rom-live"); });
+    steps->push_back([=, this] { choose(memory_viewer, "overlay", "jumps"); });
+    steps->push_back([=, this] { shot(memory_viewer, "07c-viewer-rom-jumps"); });
     steps->push_back([=, this] {
         choose(memory_viewer, "target", "vram");
         choose(memory_viewer, "mode", "tiles");

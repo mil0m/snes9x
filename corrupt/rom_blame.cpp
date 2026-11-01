@@ -82,6 +82,7 @@ void RomBlame::set_pinned(const std::vector<uint32_t> &offsets)
 void RomBlame::collect(uint64_t now)
 {
     frame = now;
+    just_used.clear();
     if (!flags)
         return;
     for (size_t i = 0; i < offsets.size(); i++)
@@ -91,6 +92,7 @@ void RomBlame::collect(uint64_t now)
         if (o < flags_size && (flags[o] & codeflag::Touched))
         {
             flags[o] &= uint8_t(~codeflag::Touched);
+            just_used.push_back(o);
             if (u.first_used == ByteUse::kNever)
                 u.first_used = now;
             u.last_used = now;
