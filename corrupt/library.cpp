@@ -192,6 +192,43 @@ std::string Library::save_code_map(const GameId &game, const std::string &user, 
     return write_file_atomic(code_map_path(game, user), encode_code_map(map));
 }
 
+fs::path Library::jump_log_path(const GameId &game, const std::string &user) const
+{
+    return game_dir(game) / ("jumps." + recipe_file_stem(user) + ".json");
+}
+
+JumpLogs Library::load_jump_logs(const GameId &game, const std::string &user, size_t rom_size) const
+{
+    JumpLogs out;
+    std::error_code ec;
+    auto mine = jump_log_path(game, user).filename().string();
+    for (auto &entry : fs::directory_iterator(game_dir(game), ec))
+    {
+        auto name = entry.path().filename().string();
+        if (name.rfind("jumps.", 0) != 0 || entry.path().extension() != ".json")
+            continue;
+        auto text = read_file(entry.path());
+        std::string error;
+        auto log = text ? decode_jump_log(*text, rom_size, error) : std::nullopt;
+        if (!text)
+            error = "couldn't read it";
+        if (!log)
+        {
+            out.errors.push_back(name + ": " + error);
+            continue;
+        }
+        (name == mine ? out.mine : out.others).merge(*log);
+    }
+    return out;
+}
+
+std::string Library::save_jump_log(const GameId &game, const std::string &user, const JumpLog &log, size_t rom_size) const
+{
+    if (auto err = ensure_game_dir(game); !err.empty())
+        return err;
+    return write_file_atomic(jump_log_path(game, user), encode_jump_log(log, rom_size));
+}
+
 std::vector<RecipeEntry> Library::list_recipes(const GameId &game) const
 {
     std::vector<RecipeEntry> entries;

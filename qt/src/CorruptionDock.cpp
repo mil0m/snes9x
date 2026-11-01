@@ -862,6 +862,10 @@ void CorruptionDock::refreshStatus()
                                      QLocale().toString(qulonglong(status.code.data)),
                                      QLocale().toString(qulonglong(status.code.dma)))
                           : tr("Nothing known about its code yet: it learns as you play."));
+        if (status.jump_tables)
+            rom_lines << tr("%1, %2 with entries to swap.")
+                             .arg(plural(status.jump_tables, tr("1 jump table found"), tr("%1 jump tables found")))
+                             .arg(QLocale().toString(qulonglong(status.jump_swappable)));
     }
     rom_label->setText(rom_lines.join("\n"));
     restore_rom_button->setEnabled(status.rom_changed > 0);

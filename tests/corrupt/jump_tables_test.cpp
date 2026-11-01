@@ -1,9 +1,15 @@
 #include "doctest/doctest.h"
 #include "corrupt/code_map.h"
 #include "corrupt/jump_tables.h"
+#include "corrupt/library.h"
+
+#include <chrono>
+#include <filesystem>
+#include <fstream>
 
 using namespace corrupt;
 namespace cf = codeflag;
+namespace fs = std::filesystem;
 
 namespace
 {
@@ -367,5 +373,101 @@ TEST_SUITE("jump tables")
         auto f = g.find(JumpLog{});
         CHECK(f.tables.empty());
         CHECK(f.pointer_jumps == 0);
+    }
+}
+
+TEST_SUITE("jump logs kept")
+{
+    TEST_CASE("the keeper records into mine, combines with everyone's, and saves once a minute while it grows")
+    {
+        JumpLogs loaded;
+        loaded.mine.note(0x10, jumpop::JmpIndexed, 0x100, 0x008000);
+        loaded.others.note(0x20, jumpop::JmpIndexed, 0x200, 0x008010);
+        JumpLogKeeper keeper;
+        keeper.reset(std::move(loaded));
+        CHECK(keeper.mine().size() == 1);
+        CHECK(keeper.combined().size() == 2);
+        CHECK_FALSE(keeper.unsaved());
+        for (uint64_t i = 0; i < JumpLogKeeper::kSaveEveryFrames; i++)
+            keeper.tick();
+        CHECK_FALSE(keeper.save_due()); // nothing new
+        keeper.mine().note(0x10, jumpop::JmpIndexed, 0x100, 0x008000);
+        CHECK_FALSE(keeper.unsaved()); // more hits alone aren't worth a save
+        keeper.mine().note(0x30, jumpop::JmpIndexed, 0x300, 0x008020);
+        CHECK(keeper.unsaved());
+        CHECK_FALSE(keeper.save_due()); // the minute started over
+        for (uint64_t i = 0; i < JumpLogKeeper::kSaveEveryFrames; i++)
+            keeper.tick();
+        CHECK(keeper.save_due());
+        keeper.saved();
+        CHECK_FALSE(keeper.unsaved());
+    }
+
+    TEST_CASE("the library keeps one file per person and loads them all")
+    {
+        auto stamp = std::chrono::steady_clock::now().time_since_epoch().count();
+        auto dir = fs::temp_directory_path() / ("corrupt-jumps-test-" + std::to_string(stamp));
+        fs::create_directories(dir);
+        {
+            Library lib(dir);
+            GameId game{ "TEST", "abcdef0123456789" };
+            JumpLog mine, erik;
+            mine.note(0x10, jumpop::JmpIndexed, 0x100, 0x008000);
+            erik.note(0x20, jumpop::JsrIndexed, kNoEntry, 0x008010);
+            CHECK(lib.save_jump_log(game, "mikael", mine, 0x1000).empty());
+            CHECK(lib.save_jump_log(game, "erik", erik, 0x1000).empty());
+            CHECK(lib.jump_log_path(game, "mikael").filename() == "jumps.mikael.json");
+            CHECK(lib.save_jump_log(game, "old", erik, 0x800).empty()); // another ROM size
+            {
+                std::ofstream out(lib.jump_log_path(game, "broken"));
+                out << "garbage";
+            }
+            auto logs = lib.load_jump_logs(game, "mikael", 0x1000);
+            CHECK(logs.mine.size() == 1);
+            CHECK(logs.others.size() == 1);
+            CHECK(logs.others.all().count(JumpKey{ 0x20, kNoEntry, 0x008010 }));
+            CHECK(logs.errors.size() == 2);
+        }
+        fs::remove_all(dir);
+    }
+}
+
+TEST_SUITE("jump tables shown")
+{
+    TEST_CASE("every byte of an entry is marked, seen above likely, and sites stand out")
+    {
+        JumpTable t;
+        t.site = 0x50;
+        t.stride = 2;
+        t.entries = { { 0x100, 0x008200, 3, true }, { 0x102, 0x008210, 0, false } };
+        auto marks = jump_marks({ t }, 0x200);
+        REQUIRE(marks.size() == 0x200);
+        CHECK(marks[0x50] == jumpmark::Site);
+        CHECK(marks[0x100] == jumpmark::Seen);
+        CHECK(marks[0x101] == jumpmark::Seen);
+        CHECK(marks[0x102] == jumpmark::Likely);
+        CHECK(marks[0x103] == jumpmark::Likely);
+        CHECK(marks[0x104] == 0);
+        CHECK(jump_marks({ t }, 0x80)[0x50] == jumpmark::Site); // what doesn't fit is left out
+    }
+
+    TEST_CASE("an offset finds its entry, its table, and the tables a site dispatches through")
+    {
+        JumpTable a, b;
+        a.site = 0x50;
+        a.entries = { { 0x100, 0x008200, 3, true }, { 0x102, 0x008210, 0, false } };
+        b.site = 0x50;
+        b.entries = { { 0x300, 0x008300, 1, true } };
+        std::vector<JumpTable> tables{ a, b };
+        auto at = jump_at(tables, 0x103);
+        REQUIRE(at.entry);
+        CHECK(at.table == &tables[0]);
+        CHECK(at.index == 1);
+        CHECK(at.entry->target == 0x008210);
+        CHECK_FALSE(jump_at(tables, 0x104).entry);
+        auto site = jump_at(tables, 0x50);
+        CHECK_FALSE(site.entry);
+        CHECK(site.site_tables == 2);
+        CHECK(site.site_entries == 3);
     }
 }

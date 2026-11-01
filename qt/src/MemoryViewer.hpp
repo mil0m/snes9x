@@ -2,6 +2,8 @@
 #include <QTimer>
 #include <QWidget>
 
+#include "MemoryPane.hpp"
+
 #include "corrupt/memory_map.h"
 #include "corrupt/memory_watch.h"
 #include "corrupt/recipe_json.h"
@@ -89,6 +91,7 @@ class MemoryViewer : public QWidget
     void newRule();
     void refreshRegions();
     void refreshMap();
+    static MemoryPane::Overlay overlayNamed(const QString &name);
     void filterOverlays();
     void showLegend();
     void askNameSelection();

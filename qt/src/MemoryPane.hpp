@@ -26,6 +26,7 @@ class MemoryPane
         Data,    // what the CPU reads as data (ROM)
         Dma,     // what DMA copies (ROM)
         Changes, // bytes that differ from the clean ROM, stronger once the game used them
+        Jumps,   // jump table entries (seen strong, likely lighter) and the instructions that jump through them
         None,
     };
 
@@ -41,6 +42,7 @@ class MemoryPane
                : overlay == Overlay::Data    ? QColor(235, 70, 160)
                : overlay == Overlay::Dma     ? QColor(190, 210, 30)
                : overlay == Overlay::Changes ? QColor(255, 120, 30)
+               : overlay == Overlay::Jumps   ? QColor(95, 110, 255)
                                             : QColor(235, 110, 40);
     }
 
@@ -119,6 +121,10 @@ class MemoryPane
         case Overlay::Changes: {
             auto *c = snap.rom_change(uint32_t(offset));
             return !c ? 0.0f : c->frames_used ? 1.0f : 0.45f;
+        }
+        case Overlay::Jumps: {
+            uint8_t m = offset < snap.jumps.size() ? snap.jumps[offset] : 0;
+            return m == corrupt::jumpmark::Seen ? 1.0f : m == corrupt::jumpmark::Site ? 0.7f : m ? 0.4f : 0.0f;
         }
         case Overlay::None:
             return 0.0f;

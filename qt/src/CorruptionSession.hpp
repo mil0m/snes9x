@@ -70,6 +70,8 @@ class CorruptionSession
         size_t pins = 0;        // ROM changes the recipe keeps
         size_t patched = 0;     // painted bytes kept in the recipe
         corrupt::CodeCoverage code; // the code map (everyone's), updated every few seconds
+        size_t jump_tables = 0;     // jump tables found (everyone's), updated with it
+        size_t jump_swappable = 0;  // ...of which have another entry to swap with
     };
 
     // Called by Snes9xController around ROM loading (emulation thread suspended).
@@ -178,6 +180,8 @@ class CorruptionSession
     void saveCrashMap();
     void loadCodeMap(); // emulation thread or suspended: the tracer's buffer is replaced
     void saveCodeMap();
+    void saveJumpLog();
+    void findJumpTables(const corrupt::CodeMap &all); // when the log or the map grew since last time
 
     std::mutex mutex;
     corrupt::Engine engine;
@@ -196,6 +200,11 @@ class CorruptionSession
     std::vector<uint8_t> code_shown;        // everyone's map, copied between frames while the viewer shows the ROM
     std::vector<uint8_t> code_for_aim;      // everyone's map as aimed rules saw it when this run started
     corrupt::CodeCoverage code_coverage;
+    corrupt::JumpLogKeeper jump_log;        // the tracer notes indirect jumps into it, kept like the code map
+    corrupt::RomOffsets rom_offsets;        // where each 4 KB of the address space is in the ROM
+    std::vector<corrupt::JumpTable> jump_tables; // found from everyone's log and map, every few seconds
+    std::vector<uint8_t> jump_shown;        // the viewer's marks for them
+    uint64_t jumps_found_print = ~uint64_t(0);
     std::filesystem::path code_map_root;    // the library the map came from (and is saved to)
     bool code_map_reload = false;           // the library changed: reload between frames
     bool back_to_normal = false;            // asked for; done between frames

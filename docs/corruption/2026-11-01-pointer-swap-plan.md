@@ -1,6 +1,6 @@
 # Jump tables and pointer swap: plan (roadmap #25 → #32)
 
-**Status (2026-11-01):** phase 1 done; Mikael said go. Builds on the code map tracer from
+**Status (2026-11-01):** phases 1-2 done; Mikael said go. Builds on the code map tracer from
 [the ROM plan](./2026-10-31-rom-corruption-plan.md) phase 3. Ideas behind it:
 [the horizons](./2026-10-31-horizons.md).
 
@@ -143,6 +143,16 @@ used); they show up as through-RAM "tables" whose entries sit in the code stream
 dispatcher went to, from any of its tables, as long as a 2-byte entry can hold it (same
 bank). That's the safety rule (same calling convention); tables only shape the viewer
 and the likely walk.
+
+## Phase 2: how it went (2026-11-01)
+
+JumpLogKeeper (saved once a minute while new jumps turn up, and on close or library
+switch), `Library::load_jump_logs` / `save_jump_log` (`jumps.<user>.json`), the session
+finds tables every 5 s when the log or the code map grew (from the clean ROM), the viewer's
+Jumps overlay (seen strong, sites, likely lighter) and hover ("entry 1 of 2 in a jump table
+for the `JMP ($1100,X)` at `$C0:1050`: goes to `$C0:1200`, jumped through 12 times"), and
+the dock's ROM line ("52 jump tables found, 41 with entries to swap" on Goof Troop's
+title and demo).
 
 ## Out of scope
 

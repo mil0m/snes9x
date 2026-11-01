@@ -161,11 +161,16 @@ void CorruptionSession::betweenFrames()
     {
         if (code_map.unsaved())
             saveCodeMap(); // to the library it came from
+        if (jump_log.unsaved())
+            saveJumpLog();
         loadCodeMap();
     }
     code_map.tick();
     if (code_map.save_due())
         saveCodeMap();
+    jump_log.tick();
+    if (jump_log.save_due())
+        saveJumpLog();
     if (++code_frames % 30 == 0) // twice a second: copying a 6 MB map isn't free
     {
         if (watch.watching() && watch.target() == Target::ROM)
@@ -174,7 +179,11 @@ void CorruptionSession::betweenFrames()
             code_shown = {};
     }
     if (code_frames % 300 == 1)
-        code_coverage = code_map.coverage();
+    {
+        auto all = code_map.combined();
+        code_coverage = all.coverage();
+        findJumpTables(all);
+    }
     if (watch.watching())
         live_map = watch.target() == Target::VRAM   ? video_map(SnesCoreAccess::video_layout())
                    : watch.target() == Target::ARAM ? sound_map(SnesCoreAccess::sound_layout())
@@ -244,6 +253,7 @@ void CorruptionSession::gameLoaded()
     message = "Loaded " + game_folder_name(game.title, game.sha256);
     loadCrashMap();
     rom_where = SnesCoreAccess::rom_addresses();
+    rom_offsets = SnesCoreAccess::rom_offsets();
     loadCodeMap(); // after the reset watch: the tracer goes on top of it
 }
 
@@ -260,9 +270,18 @@ void CorruptionSession::loadCodeMap()
     for (auto &e : maps.errors)
         note("Code map skipped: " + e);
     code_map.reset(size, std::move(maps));
-    code_coverage = code_map.coverage();
+    JumpLogs jumps;
+    if (!library_root.empty())
+        jumps = Library(library_root).load_jump_logs(game, user_name(), size);
+    for (auto &e : jumps.errors)
+        note("Jump log skipped: " + e);
+    jump_log.reset(std::move(jumps));
+    auto all = code_map.combined();
+    code_coverage = all.coverage();
     code_shown = {};
-    if (!tracer.start(code_map.mine()))
+    jumps_found_print = ~uint64_t(0);
+    findJumpTables(all);
+    if (!tracer.start(code_map.mine(), &jump_log.mine()))
         note("The code map isn't recording (no ROM?)");
     else
         rom_blame.attach(code_map.mine().data(), code_map.mine().size());
@@ -278,6 +297,28 @@ void CorruptionSession::saveCodeMap()
         note("Couldn't save the code map: " + err);
     else
         code_map.saved();
+}
+
+void CorruptionSession::saveJumpLog()
+{
+    if (code_map_root.empty())
+        return;
+    if (auto err = Library(code_map_root).save_jump_log(game, user_name(), jump_log.mine(), memory.size(Target::ROM));
+        !err.empty())
+        note("Couldn't save the jump log: " + err);
+    else
+        jump_log.saved();
+}
+
+void CorruptionSession::findJumpTables(const CodeMap &all)
+{
+    auto log = jump_log.combined();
+    uint64_t print = log.fingerprint() * 0x9E3779B97F4A7C15ULL ^ all.fingerprint();
+    if (print == jumps_found_print)
+        return;
+    jumps_found_print = print;
+    jump_tables = find_jump_tables(log, rom.clean(), all.flags(), rom_offsets).tables;
+    jump_shown = jump_marks(jump_tables, all.size());
 }
 
 void CorruptionSession::loadCrashMap()
@@ -313,6 +354,8 @@ void CorruptionSession::gameClosing()
     wram_access.stop();
     if (code_map.unsaved())
         saveCodeMap();
+    if (jump_log.unsaved())
+        saveJumpLog();
     rom_blame.attach(nullptr, 0);
     tracer.stop(); // before the reset watch goes
     rom.game_closed();
@@ -423,6 +466,8 @@ MemorySnapshot CorruptionSession::memorySnapshot()
     {
         snap.code = code_shown;
         snap.rom_where = rom_where;
+        snap.jump_tables = jump_tables;
+        snap.jumps = jump_shown;
         if (game_loaded)
             for (uint32_t o : rom_blame.changed_offsets())
             {
@@ -929,6 +974,9 @@ CorruptionSession::Status CorruptionSession::status()
     s.rule_crashes = guard.rule_crashes(engine);
     s.hot_blocks = crash_map.hot_blocks();
     s.code = code_coverage;
+    s.jump_tables = jump_tables.size();
+    for (auto &t : jump_tables)
+        s.jump_swappable += t.swappable();
     s.message = message;
     return s;
 }

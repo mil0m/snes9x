@@ -1,5 +1,6 @@
 #pragma once
 #include "code_map.h"
+#include "jump_tables.h"
 #include "crash_map.h"
 #include "engine.h"
 #include "memory.h"
@@ -38,6 +39,9 @@ struct MemorySnapshot
     std::vector<uint8_t> code;
     RomAddresses rom_where;
     std::vector<RomChange> rom_changes; // in offset order
+    // ROM only: the jump tables found so far (everyone's), and a jumpmark per byte.
+    std::vector<JumpTable> jump_tables;
+    std::vector<uint8_t> jumps;
 
     const RomChange *rom_change(uint32_t offset) const; // null when the byte is clean
 };

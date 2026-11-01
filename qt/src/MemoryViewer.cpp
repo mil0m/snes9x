@@ -19,6 +19,7 @@
 #include <QListView>
 #include <QLineEdit>
 #include <QListWidget>
+#include <QLocale>
 #include <QPushButton>
 #include <QSpinBox>
 #include <QStackedWidget>
@@ -125,6 +126,7 @@ MemoryViewer::MemoryViewer(MemorySource &source, QWidget *parent)
     overlay_combo->addItem(tr("Data: what the CPU reads as data (ROM)"), QString("data"));
     overlay_combo->addItem(tr("DMA: what DMA copies to the PPU (ROM)"), QString("dma"));
     overlay_combo->addItem(tr("Changes: what differs from the clean ROM, bright once used"), QString("changes"));
+    overlay_combo->addItem(tr("Jumps: the game's tables of routines, for pointer swaps (ROM)"), QString("jumps"));
     overlay_combo->addItem(tr("Plain"), QString("none"));
     goto_edit = new QLineEdit(this);
     goto_edit->setObjectName("goto");
@@ -353,18 +355,7 @@ MemoryViewer::MemoryViewer(MemorySource &source, QWidget *parent)
 
     connect(target_combo, &QComboBox::currentIndexChanged, this, [this] { targetChanged(); });
     connect(overlay_combo, &QComboBox::currentIndexChanged, this, [this] {
-        auto o = overlay_combo->currentData().toString();
-        auto overlay = o == "hits"     ? MemoryPane::Overlay::Hits
-                       : o == "danger"  ? MemoryPane::Overlay::Danger
-                       : o == "crashes" ? MemoryPane::Overlay::Crashes
-                       : o == "reads"   ? MemoryPane::Overlay::Reads
-                       : o == "writes"  ? MemoryPane::Overlay::Writes
-                       : o == "code"    ? MemoryPane::Overlay::Code
-                       : o == "data"    ? MemoryPane::Overlay::Data
-                       : o == "dma"     ? MemoryPane::Overlay::Dma
-                       : o == "changes" ? MemoryPane::Overlay::Changes
-                       : o == "none"   ? MemoryPane::Overlay::None
-                                       : MemoryPane::Overlay::Activity;
+        auto overlay = overlayNamed(overlay_combo->currentData().toString());
         view->setOverlay(overlay);
         pixels->setOverlay(overlay);
         tiles->setOverlay(overlay);
@@ -552,6 +543,30 @@ void MemoryViewer::hovered(std::optional<uint32_t> offset)
         if (f & codeflag::Dma)
             text += tr(" · copied by DMA");
     }
+    // Jump tables (ROM only): which entry of which dispatcher's table it is, and where it goes.
+    if (!snap.jump_tables.empty())
+    {
+        auto cpu = [](uint32_t a) {
+            return QString("$%1:%2").arg(a >> 16, 2, 16, QChar('0')).arg(a & 0xFFFF, 4, 16, QChar('0')).toUpper();
+        };
+        auto at = jump_at(snap.jump_tables, *offset);
+        if (at.entry)
+        {
+            auto &t = *at.table;
+            QString use = !at.entry->seen         ? tr("likely: nothing jumped through it yet, but it points at code that ran")
+                          : at.entry->hits == 1 ? tr("jumped through once")
+                                                : tr("jumped through %1 times").arg(QLocale().toString(qulonglong(at.entry->hits)));
+            auto site = instruction_at(snap.bytes, snap.code, t.site, snap.rom_where);
+            QString by = site && site->address ? tr("the %1 at %2").arg(QString::fromStdString(site->text), cpu(*site->address))
+                                               : tr("the jump at %1").arg(hexa(t.site, snap.target));
+            text += tr(" · entry %1 of %2 in a jump table for %3%4: goes to %5, %6")
+                        .arg(at.index + 1)
+                        .arg(t.entries.size())
+                        .arg(by, t.kind == JumpKind::ThroughRam ? tr(" (copied to RAM first)") : QString(), cpu(at.entry->target), use);
+        }
+        else if (at.site_tables)
+            text += tr(" · jumps through a table of routines: %1 entries known (Jumps shows them)").arg(at.site_entries);
+    }
     // Whether corruption changed it (ROM only), and whether the game has used it since.
     if (auto *c = snap.rom_change(*offset))
     {
@@ -615,6 +630,22 @@ void MemoryViewer::targetChanged()
     refresh();
 }
 
+MemoryPane::Overlay MemoryViewer::overlayNamed(const QString &o)
+{
+    return o == "hits"      ? MemoryPane::Overlay::Hits
+           : o == "danger"  ? MemoryPane::Overlay::Danger
+           : o == "crashes" ? MemoryPane::Overlay::Crashes
+           : o == "reads"   ? MemoryPane::Overlay::Reads
+           : o == "writes"  ? MemoryPane::Overlay::Writes
+           : o == "code"    ? MemoryPane::Overlay::Code
+           : o == "data"    ? MemoryPane::Overlay::Data
+           : o == "dma"     ? MemoryPane::Overlay::Dma
+           : o == "changes" ? MemoryPane::Overlay::Changes
+           : o == "jumps"   ? MemoryPane::Overlay::Jumps
+           : o == "none"    ? MemoryPane::Overlay::None
+                            : MemoryPane::Overlay::Activity;
+}
+
 // Overlays only make sense for some memories: the game's own reads and writes are counted
 // for WRAM, the code map and changes are about the ROM.
 void MemoryViewer::filterOverlays()
@@ -624,7 +655,8 @@ void MemoryViewer::filterOverlays()
     for (int i = 0; i < overlay_combo->count(); i++)
     {
         QString o = overlay_combo->itemData(i).toString();
-        bool fits = (o != "reads" && o != "writes" && o != "code" && o != "data" && o != "dma" && o != "changes") ||
+        bool rom_only = o == "code" || o == "data" || o == "dma" || o == "changes" || o == "jumps";
+        bool fits = (o != "reads" && o != "writes" && !rom_only) ||
                     ((o == "reads" || o == "writes") && t == "wram") || (t == "rom" && o != "reads" && o != "writes");
         if (view)
             view->setRowHidden(i, !fits);
@@ -651,18 +683,10 @@ void MemoryViewer::showLegend()
                    : o == "data"     ? tr("bytes the game read as data: tables, text, stats")
                    : o == "dma"      ? tr("bytes copied straight to the graphics chip: tiles, maps, colours")
                    : o == "changes"  ? tr("bytes that differ from the clean ROM, bright once the game used them")
+                   : o == "jumps"    ? tr("jump tables: entries the game jumped through strong, likely ones lighter, "
+                                          "the instruction that jumps in between")
                                      : tr("no colours: just the bytes");
-    auto overlay = o == "hits"      ? MemoryPane::Overlay::Hits
-                   : o == "danger"  ? MemoryPane::Overlay::Danger
-                   : o == "crashes" ? MemoryPane::Overlay::Crashes
-                   : o == "reads"   ? MemoryPane::Overlay::Reads
-                   : o == "writes"  ? MemoryPane::Overlay::Writes
-                   : o == "code"    ? MemoryPane::Overlay::Code
-                   : o == "data"    ? MemoryPane::Overlay::Data
-                   : o == "dma"     ? MemoryPane::Overlay::Dma
-                   : o == "changes" ? MemoryPane::Overlay::Changes
-                   : o == "none"    ? MemoryPane::Overlay::None
-                                    : MemoryPane::Overlay::Activity;
+    auto overlay = overlayNamed(o);
     QString base = mode() == "pixels" ? tr(" Under it, each dot's grey is the byte's value.")
                    : mode() == "tiles" ? tr(" Under it, the bytes drawn as the game's graphics.")
                                        : QString();

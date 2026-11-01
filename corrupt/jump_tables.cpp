@@ -367,4 +367,66 @@ JumpFindings find_jump_tables(const JumpLog &log, std::span<const uint8_t> rom, 
     return out;
 }
 
+void JumpLogKeeper::reset(JumpLogs loaded)
+{
+    own = std::move(loaded.mine);
+    others = std::move(loaded.others);
+    saved_print = own.fingerprint();
+    frames = 0;
+}
+
+JumpLog JumpLogKeeper::combined() const
+{
+    JumpLog all = own;
+    all.merge(others);
+    return all;
+}
+
+bool JumpLogKeeper::save_due()
+{
+    if (frames < kSaveEveryFrames)
+        return false;
+    frames = 0;
+    return unsaved();
+}
+
+std::vector<uint8_t> jump_marks(const std::vector<JumpTable> &tables, size_t rom_size)
+{
+    std::vector<uint8_t> marks(rom_size, 0);
+    for (auto &t : tables)
+    {
+        for (auto &e : t.entries)
+            for (int i = 0; i < t.stride; i++)
+                if (size_t o = e.offset + size_t(i); o < rom_size)
+                    marks[o] = std::max(marks[o], e.seen ? jumpmark::Seen : jumpmark::Likely);
+        if (t.site < rom_size)
+            marks[t.site] = jumpmark::Site;
+    }
+    return marks;
+}
+
+JumpAt jump_at(const std::vector<JumpTable> &tables, uint32_t offset)
+{
+    JumpAt at;
+    for (auto &t : tables)
+    {
+        if (t.site == offset)
+        {
+            at.site_tables++;
+            at.site_entries += t.entries.size();
+        }
+        if (at.entry || offset < t.first() || offset > t.last())
+            continue;
+        for (size_t i = 0; i < t.entries.size(); i++)
+            if (offset >= t.entries[i].offset && offset < t.entries[i].offset + uint32_t(t.stride))
+            {
+                at.table = &t;
+                at.entry = &t.entries[i];
+                at.index = i;
+                break;
+            }
+    }
+    return at;
+}
+
 } // namespace corrupt

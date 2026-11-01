@@ -71,6 +71,17 @@ struct FakeSource : MemorySource
             s.rom_where.chunks.assign(size / RomAddresses::kChunk, RomAddresses::kNone);
             s.rom_where.chunks[1] = 0xC01000;
             s.rom_changes = { { 0x1001, 0x07, 340 }, { 0x4000, 0x00, 0 } };
+            // JMP ($1100,X) at 0x1050, through a table at 0x1100: one entry used, one likely.
+            const uint8_t jmp[] = { 0x7C, 0x00, 0x11 };
+            std::copy(jmp, jmp + 3, s.bytes.begin() + 0x1050);
+            s.code[0x1050] = codeflag::Opcode;
+            s.code[0x1051] = s.code[0x1052] = codeflag::Operand;
+            JumpTable t;
+            t.site = 0x1050;
+            t.opcode = 0x7C;
+            t.entries = { { 0x1100, 0xC01200, 12, true }, { 0x1102, 0xC01210, 0, false } };
+            s.jump_tables = { t };
+            s.jumps = jump_marks(s.jump_tables, size);
         }
         if (s.crash_blocks.size() > 0x1F3)
         {
@@ -704,6 +715,42 @@ TEST_SUITE("the pixel view in the viewer")
         CHECK(hover(0x1001).contains("changed from 0x07, used in 340 frames"));
         CHECK(hover(0x4000).contains("changed from 0x00, not used yet"));
         CHECK_FALSE(hover(0x1002).contains("changed"));
+    }
+
+    TEST_CASE("hovering a jump table entry says whose it is and where it goes; Jumps shows them, for the ROM only")
+    {
+        FakeSource src;
+        MemoryViewer v(src);
+        v.show();
+        choose(v, "target", "rom");
+        v.refresh();
+        choose(v, "mode", "pixels");
+        auto pixels = child<PixelView>(v, "pixels");
+        QApplication::processEvents();
+        auto hover = [&](uint32_t offset) {
+            pixels->onHover(offset);
+            return child<QLabel>(v, "hover")->text();
+        };
+        auto used = hover(0x1101);
+        CHECK(used.contains("entry 1 of 2"));
+        CHECK(used.contains("JMP ($1100,X)"));
+        CHECK(used.contains("$C0:1050"));
+        CHECK(used.contains("goes to $C0:1200"));
+        CHECK(used.contains("jumped through 12 times"));
+        CHECK(hover(0x1102).contains("likely"));
+        CHECK(hover(0x1050).contains("jumps through a table of routines: 2 entries"));
+        CHECK_FALSE(hover(0x1104).contains("jump table"));
+
+        auto overlay = child<QComboBox>(v, "overlay");
+        auto hidden = [&](const char *o) {
+            return static_cast<QListView *>(overlay->view())->isRowHidden(overlay->findData(QString(o)));
+        };
+        CHECK_FALSE(hidden("jumps"));
+        choose(v, "overlay", "jumps");
+        CHECK(child<QLabel>(v, "legend")->text().contains("jump tables"));
+        choose(v, "target", "wram");
+        CHECK(hidden("jumps"));
+        CHECK(overlay->currentData().toString() == "activity");
     }
 
     TEST_CASE("hovering a byte the crash map knows shows its block's counts")

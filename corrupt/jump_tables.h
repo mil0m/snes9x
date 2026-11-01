@@ -125,6 +125,7 @@ struct JumpTable
 
     size_t seen() const;
     size_t likely() const { return entries.size() - seen(); }
+    bool swappable() const { return seen() >= 2 || (seen() && likely()); } // another entry to swap with
     uint32_t first() const { return entries.empty() ? 0 : entries.front().offset; }
     uint32_t last() const { return entries.empty() ? 0 : entries.back().offset + uint32_t(stride) - 1; }
     // The bytes an entry holds for `target`: low, high (, bank).
@@ -152,5 +153,55 @@ constexpr uint32_t kTableGap = 0x400;
 // looser walks off through plain data: in HiROM nearly any 16-bit value lands in ROM.
 JumpFindings find_jump_tables(const JumpLog &log, std::span<const uint8_t> rom, std::span<const uint8_t> flags,
                               const RomOffsets &offsets);
+
+// A game's jump logs: this person's (the only one they write) and everyone else's, merged.
+struct JumpLogs
+{
+    JumpLog mine;
+    JumpLog others;
+    std::vector<std::string> errors; // files that couldn't be read or are for another ROM size
+};
+
+// The loaded game's jump log while playing, like CodeMapKeeper: the tracer notes into
+// mine(), saved once a minute while new jumps turn up. Emulation thread, between frames.
+class JumpLogKeeper
+{
+  public:
+    static constexpr uint64_t kSaveEveryFrames = 3600;
+
+    void reset(JumpLogs loaded = {});
+    void tick() { frames++; }
+    JumpLog &mine() { return own; }
+    const JumpLog &mine() const { return own; }
+    JumpLog combined() const;
+    bool save_due(); // once a minute, when mine has new jumps; starts the minute over
+    bool unsaved() const { return own.fingerprint() != saved_print; }
+    void saved() { saved_print = own.fingerprint(); }
+
+  private:
+    JumpLog own, others;
+    uint64_t saved_print = 0;
+    uint64_t frames = 0;
+};
+
+// The viewer's Jumps overlay: one mark per ROM byte.
+namespace jumpmark
+{
+constexpr uint8_t Likely = 1; // in an entry nobody has jumped through yet
+constexpr uint8_t Seen = 2;   // in an entry the game jumped through
+constexpr uint8_t Site = 3;   // the dispatching instruction's opcode
+} // namespace jumpmark
+std::vector<uint8_t> jump_marks(const std::vector<JumpTable> &tables, size_t rom_size);
+
+// What the viewer says about one ROM byte.
+struct JumpAt
+{
+    const JumpTable *table = nullptr; // the table whose entry holds the byte, if any
+    const JumpEntry *entry = nullptr;
+    size_t index = 0;        // the entry's place in its table
+    size_t site_tables = 0;  // when the byte is a dispatcher's opcode: its tables
+    size_t site_entries = 0; // ...and their entries, seen and likely
+};
+JumpAt jump_at(const std::vector<JumpTable> &tables, uint32_t offset);
 
 } // namespace corrupt

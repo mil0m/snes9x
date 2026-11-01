@@ -665,7 +665,7 @@ int run_jumps(int frames, const char *file)
     printf("         %zu jumps through RAM no table explains, %zu ambiguous\n", found.pointer_jumps, found.ambiguous);
     size_t swappable = 0;
     for (auto &t : found.tables)
-        swappable += t.seen() >= 2 || (t.seen() && t.likely());
+        swappable += t.swappable();
     printf("swap     %zu tables have something to swap with (2+ seen, or seen and likely)\n", swappable);
 
     auto where = SnesCoreAccess::rom_addresses();
