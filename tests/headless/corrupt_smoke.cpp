@@ -1,7 +1,7 @@
 // End-to-end check of the corruption engine inside the real emulator, no window
 // needed:
 //
-//   corrupt-smoke <rom> <recipe.json> [frames=600] [warmup=600] [--guard | --instant [seeds] | --derail-fp [learn] | --learn [held=3] [from=0] | --replay | --copies | --map | --access [dir] | --codemap [file] | --jumps [file] | --dump <dir>]
+//   corrupt-smoke <rom> <recipe.json> [frames=600] [warmup=600] [--guard | --instant [seeds] | --ahead [seeds] | --derail-fp [learn] | --learn [held=3] [from=0] | --replay | --copies | --map | --access [dir] | --codemap [file] | --jumps [file] | --dump <dir>]
 //
 // Boots the ROM, runs `warmup` frames, saves a state, then runs `frames` twice
 // from that state: once clean, once with the recipe. Reports what the recipe
@@ -56,7 +56,8 @@
 // With --instant [seeds=5] it learns the code map from a clean boot (or CORRUPT_CODEMAP),
 // then plays the recipe guarded for `frames` frames per seed twice, the guard alone and
 // with the instant revert, and compares rollbacks, frames lost, changes kept and liveness.
-// CORRUPT_INSTANT_VERBOSE=1 prints every catch.
+// CORRUPT_INSTANT_VERBOSE=1 prints every catch. --ahead [seeds=5] is the same with the
+// instant revert in both arms and the second testing each live ROM firing first (#52).
 //
 // With --learn [held] it plays the recipe guarded for five seeds while learning a crash
 // map, then plays `held` other seeds three ways: plain, avoiding the learned hot blocks,
@@ -72,6 +73,7 @@
 #include "corrupt/crash_guard.h"
 #include "corrupt/derail.h"
 #include "corrupt/instant_revert.h"
+#include "corrupt/test_ahead.h"
 #include "corrupt/rom_blame.h"
 #include "corrupt/survivors.h"
 #include "corrupt/crash_map_keeper.h"
@@ -87,6 +89,8 @@
 #include "memmap.h"
 
 #include <algorithm>
+#include <array>
+#include <cmath>
 #include <chrono>
 #include <cstdio>
 #include <fstream>
@@ -933,11 +937,39 @@ struct InstantArm
     double keep_ms = 0;
     int keeps = 0;
     std::map<Landing, int> kinds;
+    // Test before applying (#52).
+    int tested = 0, kept = 0, rerolled = 0, skipped = 0, runs = 0;
+    size_t written = 0, untried = 0; // bytes that went ahead, and of them those not used in the window
+    double ahead_ms = 0;
+    void add(const InstantArm &o)
+    {
+        caught += o.caught;
+        gave_up += o.gave_up;
+        reverts += o.reverts;
+        alive += o.alive;
+        running += o.running;
+        lost += o.lost;
+        changed += o.changed;
+        used += o.used;
+        fixed += o.fixed;
+        keep_ms += o.keep_ms;
+        keeps += o.keeps;
+        for (auto [k, n] : o.kinds)
+            kinds[k] += n;
+        tested += o.tested;
+        kept += o.kept;
+        rerolled += o.rerolled;
+        skipped += o.skipped;
+        runs += o.runs;
+        ahead_ms += o.ahead_ms;
+        written += o.written;
+        untried += o.untried;
+    }
 };
 
 // One guarded run of `recipe` from `start`, as the app does it, with or without the instant revert.
 void instant_arm(const Recipe &recipe, int frames, const CodeMap &learned, bool on, const std::vector<uint8_t> &start,
-                 InstantArm &a)
+                 InstantArm &a, bool test_first = false)
 {
     headless::load_state(start);
     rom.restore_clean();
@@ -963,6 +995,8 @@ void instant_arm(const Recipe &recipe, int frames, const CodeMap &learned, bool 
     guard.set_detector_config(recipe.crash_detection.value_or(DetectorConfig{}));
     InstantRevert instant;
     instant.set_enabled(on);
+    TestAhead ahead;
+    ahead.set_config({ .frames = test_first ? uint32_t(std::lround(recipe.test_first.value_or(3.0) * 60)) : 0u });
 
     engine.set_recipe(recipe);
     start_run();
@@ -1019,6 +1053,25 @@ void instant_arm(const Recipe &recipe, int frames, const CodeMap &learned, bool 
             a.keep_ms += std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0).count();
             a.keeps++;
         }
+        if (test_first)
+        {
+            AheadHooks hooks;
+            hooks.take_derail = [&] { return tracer.take_derail(); };
+            auto t = ahead.before_frame(engine, rom, access, { map.data(), map.size() }, hooks);
+            if (t.kind != AheadResult::Nothing)
+            {
+                a.tested++;
+                a.kept += t.kind == AheadResult::Kept;
+                a.rerolled += t.kind == AheadResult::Rerolled;
+                a.skipped += t.kind == AheadResult::Skipped;
+                a.runs += int(t.runs);
+                a.ahead_ms += t.ms;
+                a.written += t.written.size();
+                a.untried += t.untried.size();
+                if (verbose && t.kind != AheadResult::Kept)
+                    printf("    frame %5d  %s (%.0f ms)\n", i + 1, t.summary.c_str(), t.ms);
+            }
+        }
     }
     S9xCorruptFrameHook = nullptr;
     auto end = access.sample();
@@ -1030,6 +1083,75 @@ void instant_arm(const Recipe &recipe, int frames, const CodeMap &learned, bool 
     tracer.stop();
     engine.set_active(false);
     engine.set_code_flags({});
+}
+
+// Two arms per seed over the same learned map: `arms` says, per arm, whether the instant
+// revert and the test before applying are on.
+int compare_arms(const Recipe &recipe, int frames, int seeds, const std::array<std::pair<bool, bool>, 2> &arms,
+                 const std::array<const char *, 2> &names)
+{
+    auto start = headless::save_state();
+    CodeMap learned(Memory.CalculatedSize);
+    std::vector<JumpTable> tables;
+    if (!load_saved_map(learned))
+    {
+        RomTracer tracer;
+        JumpLog log;
+        if (!tracer.start(learned, &log))
+            return 1;
+        access.reset_console();
+        headless::run_frames(frames);
+        tracer.stop();
+        std::span<const uint8_t> clean(rom.clean().data(), rom.clean().size());
+        tables = find_jump_tables(log, clean, learned.flags(), SnesCoreAccess::rom_offsets()).tables;
+        printf("codemap  %zu code bytes and %zu jump tables learned from a clean boot of %d frames\n",
+               learned.coverage().code, tables.size(), frames);
+    }
+    engine.set_jump_tables([&] { return tables; }); // for pointer swaps
+    InstantArm totals[2];
+    for (int seed = 1; seed <= seeds; seed++)
+    {
+        Recipe r = recipe;
+        r.seed = recipe.seed + uint64_t(seed) - 1;
+        for (int arm = 0; arm < 2; arm++)
+        {
+            InstantArm one;
+            if (getenv("CORRUPT_INSTANT_VERBOSE"))
+                printf("  seed %llu, %s\n", (unsigned long long)r.seed, names[arm]);
+            instant_arm(r, frames, learned, arms[arm].first, start, one, arms[arm].second);
+            totals[arm].add(one);
+            if (getenv("CORRUPT_INSTANT_VERBOSE"))
+                printf("    -> %d caught, %d instant, %d tested (%d re-rolled, %d skipped), %llu frames lost, %zu "
+                       "changed at the end, %s\n",
+                       one.caught, one.reverts, one.tested, one.rerolled, one.skipped, (unsigned long long)one.lost,
+                       one.changed, one.alive ? "moving" : one.running ? "running" : "dead");
+        }
+    }
+    rom.restore_clean();
+    engine.set_jump_tables({});
+    printf("seeds    %d of %d frames each\n", seeds, frames);
+    for (int arm = 0; arm < 2; arm++)
+    {
+        auto &a = totals[arm];
+        printf("%-8s %3d guard rollbacks (%d gave up), %3d instant reverts, %6llu frames lost; at the end %4zu bytes "
+               "changed (%zu used), %zu fixed; %d running, %d moving\n",
+               names[arm], a.caught, a.gave_up, a.reverts, (unsigned long long)a.lost, a.changed, a.used, a.fixed,
+               a.running, a.alive);
+        if (a.tested)
+            printf("         tested %d firings first: %d kept, %d re-rolled, %d skipped; %d runs ahead, %.0f ms each "
+                   "firing on average, %.1f s in all; %zu of the %zu bytes that went ahead weren't used in the window\n",
+                   a.tested, a.kept, a.rerolled, a.skipped, a.runs, a.ahead_ms / a.tested, a.ahead_ms / 1000, a.untried,
+                   a.written);
+    }
+    return 0;
+}
+
+// --ahead [seeds=5]: like --instant, but both arms have the instant revert, and the second
+// tests each live ROM firing first (#52).
+int run_ahead(const Recipe &recipe, int frames, int seeds)
+{
+    return compare_arms(recipe, frames, seeds, { std::pair{ true, false }, std::pair{ true, true } },
+                        { "instant", "ahead" });
 }
 
 // --instant [seeds=5]: the recipe played guarded for `frames` frames per seed, twice: the
@@ -1102,6 +1224,7 @@ int run_instant(const Recipe &recipe, int frames, int seeds)
 
 int main(int argc, char **argv)
 {
+    setvbuf(stdout, nullptr, _IOLBF, 0); // progress shows up even through a pipe or a kill
     if (argc < 3)
     {
         fprintf(stderr, "usage: %s <rom> <recipe.json> [frames=600] [warmup=600]\n", argv[0]);
@@ -1182,6 +1305,8 @@ int main(int argc, char **argv)
         return run_codemap(frames, argc > 6 ? argv[6] : nullptr);
     if (argc > 5 && std::string(argv[5]) == "--derail-fp")
         return run_derail_fp(frames, argc > 6 ? atoi(argv[6]) : frames);
+    if (argc > 5 && std::string(argv[5]) == "--ahead")
+        return run_ahead(*parsed.recipe, frames, argc > 6 ? atoi(argv[6]) : 5);
     if (argc > 5 && std::string(argv[5]) == "--instant")
         return run_instant(*parsed.recipe, frames, argc > 6 ? atoi(argv[6]) : 5);
     if (argc > 5 && std::string(argv[5]) == "--swaps")

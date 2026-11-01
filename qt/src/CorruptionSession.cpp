@@ -71,7 +71,16 @@ CorruptionSession &CorruptionSession::get()
 
 void CorruptionSession::frameHook()
 {
-    get().onFrame();
+    auto &s = get();
+    if (s.running_ahead)
+    {
+        // A frame of a run ahead (#52): betweenFrames already holds the lock, and only the
+        // engine belongs in it (no backups of a future that may not happen).
+        s.engine.on_frame(s.rom);
+        s.access.note_frame_start();
+        return;
+    }
+    s.onFrame();
 }
 
 void CorruptionSession::configureGuard()
@@ -85,6 +94,9 @@ void CorruptionSession::configureGuard()
     guard.set_byte_blame(&rom_blame);
     rom_blame.set_policy(recipe.rom_policy.value_or(RomPolicy::Revert), recipe.seed);
     instant.set_enabled(recipe.instant_revert.value_or(true));
+    AheadConfig ahead_config;
+    ahead_config.frames = test_first_enabled ? uint32_t(std::lround(recipe.test_first.value_or(3.0) * 60)) : 0u;
+    ahead.set_config(ahead_config);
 }
 
 void CorruptionSession::writeJournal(const JournalEntry &entry)
@@ -168,13 +180,13 @@ void CorruptionSession::betweenFrames()
                                                                         engine.recipe().rules.end(), [](const Rule &r) {
                                                                             return r.enabled && r.range.target == Target::ROM;
                                                                         }));
-    bool watch_now = instant.is_enabled() && rom_run && tracer.tracing();
+    bool watch_now = (instant.is_enabled() || ahead.config().frames) && rom_run && tracer.tracing();
     if (watch_now != watching_derails)
     {
         watching_derails = watch_now;
         tracer.watch_derails(watch_now ? &derails : nullptr);
     }
-    instant.keep(access, engine.current_frame(), watch_now);
+    instant.keep(access, engine.current_frame(), watch_now && instant.is_enabled());
     if (auto survivors = rom_blame.take_survivals(); !survivors.empty())
         crash_map.rom_survived(survivors);
     if (crash_map.crashed(out))
@@ -230,11 +242,32 @@ void CorruptionSession::betweenFrames()
         live_map = watch.target() == Target::VRAM   ? video_map(SnesCoreAccess::video_layout())
                    : watch.target() == Target::ARAM ? sound_map(SnesCoreAccess::sound_layout())
                                                     : std::vector<MapArea>{};
-    if (out.kind == GuardOutcome::Nothing)
+    if (out.kind != GuardOutcome::Nothing)
+    {
+        last_crash = out.summary;
+        note(out.summary);
+        S9xSetInfoString(out.summary.c_str());
+    }
+    testAhead(); // last: it plays the next frame's ROM changes ahead from exactly here
+}
+
+void CorruptionSession::testAhead()
+{
+    if (!watching_derails || !tracer.tracing())
+        return; // the watch is on exactly while a run could change the ROM
+    AheadHooks hooks;
+    hooks.take_derail = [this] { return tracer.take_derail(); };
+    hooks.begin = [this] { tracer.note_jumps(false); };
+    hooks.end = [this] { tracer.note_jumps(true); };
+    running_ahead = true;
+    auto tested = ahead.before_frame(engine, rom, access, { code_map.mine().data(), code_map.mine().size() }, hooks);
+    running_ahead = false;
+    if (tested.summary.empty())
         return;
-    last_crash = out.summary;
-    note(out.summary);
-    S9xSetInfoString(out.summary.c_str());
+    note(tested.summary);
+    std::string shown = tested.kind == AheadResult::Skipped ? "Corruption: tested ahead, a change skipped"
+                                                            : "Corruption: tested ahead, a change re-rolled";
+    S9xSetInfoString(shown.c_str());
 }
 
 void CorruptionSession::stateLoaded()
@@ -254,6 +287,13 @@ void CorruptionSession::setPolicyOverride(std::optional<PolicyKind> policy)
 {
     std::lock_guard lock(mutex);
     policy_override = policy;
+    configureGuard();
+}
+
+void CorruptionSession::setTestFirstEnabled(bool enabled)
+{
+    std::lock_guard lock(mutex);
+    test_first_enabled = enabled;
     configureGuard();
 }
 
@@ -282,6 +322,7 @@ void CorruptionSession::gameLoaded()
     guard.reset();
     instant.drop();
     instant.reset_counts();
+    ahead.reset_counts();
     last_crash.clear();
     configureGuard();
     last_backup_time.reset();
@@ -474,6 +515,7 @@ std::vector<std::string> CorruptionSession::loadRecipe(const Recipe &recipe, con
     guard.reset();
     instant.drop();
     instant.reset_counts();
+    ahead.reset_counts();
     last_crash.clear();
     configureGuard();
     note("Recipe: " + recipe.name);
@@ -709,6 +751,7 @@ void CorruptionSession::newRecipeLocked(const std::string &name)
     guard.reset();
     instant.drop();
     instant.reset_counts();
+    ahead.reset_counts();
     last_crash.clear();
     configureGuard();
     note("New recipe: " + name);
@@ -1030,6 +1073,9 @@ CorruptionSession::Status CorruptionSession::status()
         s.rom_used = rom_blame.used();
         s.survivors = rom_blame.survivor_count(kSurvivorFrames);
         s.instant_reverts = instant.total();
+        s.tested_first = ahead.tested();
+        s.tested_rerolled = ahead.rerolled();
+        s.tested_skipped = ahead.skipped();
         s.instant_revert = instant.is_enabled();
         s.pins = engine.recipe().pins.size();
         s.patched = patched_bytes(engine.recipe().patches);
@@ -1037,6 +1083,7 @@ CorruptionSession::Status CorruptionSession::status()
     s.policy = guard.get_policy();
     s.policy_overridden = policy_override.has_value();
     s.detection_enabled = detection_enabled;
+    s.test_first_enabled = test_first_enabled;
     s.crashes = guard.total_crashes();
     s.last_crash = last_crash;
     s.rule_crashes = guard.rule_crashes(engine);

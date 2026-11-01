@@ -461,6 +461,12 @@ CorruptionDock::CorruptionDock(EmuApplication &app, QWidget *parent)
                                 "to a moment before, and changes what caused it so it plays on."));
     detect_check->setChecked(true);
     guard_layout->addLayout(ui::row(detect_check));
+    test_first_check = new QCheckBox(tr("Try live ROM changes a few seconds ahead first"), guard_box);
+    test_first_check->setObjectName("test_first");
+    test_first_check->setToolTip(tr("Before a live ROM rule changes the game, plays a few seconds ahead with the change, "
+                                    "unseen, and rolls again if the game would crash. Costs a short pause each time."));
+    test_first_check->setChecked(true);
+    guard_layout->addLayout(ui::row(test_first_check));
     auto guard_form = ui::form();
     policy_combo = new QComboBox(guard_box);
     policy_combo->setObjectName("policy");
@@ -488,6 +494,7 @@ CorruptionDock::CorruptionDock(EmuApplication &app, QWidget *parent)
     guard_layout->addLayout(mark_row);
 
     connect(detect_check, &QCheckBox::clicked, [](bool on) { CorruptionSession::get().setDetectionEnabled(on); });
+    connect(test_first_check, &QCheckBox::clicked, [](bool on) { CorruptionSession::get().setTestFirstEnabled(on); });
     connect(policy_combo, &QComboBox::activated, [this](int index) {
         auto name = policy_combo->itemData(index).toString().toStdString();
         CorruptionSession::get().setPolicyOverride(name.empty() ? std::nullopt : parse_policy(name));
@@ -887,6 +894,11 @@ void CorruptionDock::refreshStatus()
             kept << plural(status.patched, tr("1 byte painted"), tr("%1 bytes painted"));
         if (status.instant_reverts)
             kept << plural(status.instant_reverts, tr("1 bad jump put back at once"), tr("%1 bad jumps put back at once"));
+        if (status.tested_first)
+            kept << tr("%1 tested first (%2 re-rolled, %3 skipped)")
+                        .arg(plural(status.tested_first, tr("1 change"), tr("%1 changes")))
+                        .arg(status.tested_rerolled)
+                        .arg(status.tested_skipped);
         if (!kept.isEmpty())
             rom_lines << kept.join(" · ");
         rom_lines << (status.code.seen

@@ -10,6 +10,7 @@
 #include "corrupt/crash_guard.h"
 #include "corrupt/hook.h"
 #include "corrupt/instant_revert.h"
+#include "corrupt/test_ahead.h"
 #include "corrupt/jump_tables.h"
 #include "corrupt/pointer_swap.h"
 #include "corrupt/rom_heat.h"
@@ -53,6 +54,10 @@ struct Harness
     RomTracer *tracer = nullptr;
     InstantRevert *instant = nullptr;
     std::vector<InstantRevertResult> reverts;
+    // Test before applying, wired like the app when set (needs the tracer and its map).
+    TestAhead *ahead = nullptr;
+    CodeMap *map = nullptr;
+    std::vector<AheadResult> tests;
 
     Harness(testrom::Crash crash, Recipe recipe, PolicyKind policy)
         : Harness(testrom::build(crash), std::move(recipe), policy)
@@ -101,6 +106,14 @@ struct Harness
                 outcomes.push_back(out);
             if (tracer && instant)
                 instant->keep(access, engine.current_frame(), engine.active() && tracer->tracing());
+            if (ahead && tracer && map)
+            {
+                AheadHooks hooks;
+                hooks.take_derail = [this] { return tracer->take_derail(); };
+                auto t = ahead->before_frame(engine, rom, access, { map->data(), map->size() }, hooks);
+                if (t.kind != AheadResult::Nothing)
+                    tests.push_back(t);
+            }
         }
     }
 
@@ -982,7 +995,8 @@ TEST_SUITE("instant revert in the real core")
         RomBlame blame{ h.rom };
         InstantRevert instant;
 
-        explicit Derailing(const std::vector<uint8_t> &image, bool on = true) : h(image, Recipe{}, PolicyKind::Skip)
+        explicit Derailing(const std::vector<uint8_t> &image, bool on = true, Recipe recipe = {})
+            : h(image, std::move(recipe), PolicyKind::Skip)
         {
             map = CodeMap(Memory.CalculatedSize);
             REQUIRE(tracer.start(map));
@@ -1074,4 +1088,62 @@ TEST_SUITE("instant revert in the real core")
         CHECK(d.h.outcomes.empty());
         CHECK(alive(d.h));
     }
+
+    Recipe live_branch_and_innocent()
+    {
+        Recipe r;
+        r.name = "live";
+        r.seed = 5;
+        Rule bad;
+        bad.name = "bad branch";
+        bad.range = { Target::ROM, dr::kBranch, dr::kBranch };
+        bad.op = { .type = OpType::Random, .min = 2, .max = 2 }; // onto the STP, every pick
+        bad.when = { .type = TriggerType::EveryFrames, .every = 60 };
+        r.rules.push_back(bad);
+        Rule fine = bad;
+        fine.name = "innocent";
+        fine.range = { Target::ROM, dr::kInnocent, dr::kInnocent };
+        fine.op = { .type = OpType::Random, .min = 0x15, .max = 0x15 };
+        r.rules.push_back(fine);
+        return r;
+    }
+
+    TEST_CASE("test before applying: a live change that would branch onto the STP never reaches the game")
+    {
+        Derailing d(testrom::build_derail(), true, live_branch_and_innocent());
+        TestAhead ahead;
+        ahead.set_config({ .frames = 60, .tries = 3 });
+        d.h.ahead = &ahead;
+        d.h.map = &d.map;
+        uint32_t reboots = d.h.access.sample().reboots;
+        uint8_t frames = d.h.wram(testrom::kFrameCounterAddr);
+        d.h.run(130); // two firings (frames 60 and 120) after the warm-up's 30
+        REQUIRE(!d.h.tests.empty());
+        for (auto &t : d.h.tests)
+        {
+            CAPTURE(t.summary);
+            // The bad rule has nothing else to pick, so after its tries it's skipped; the
+            // landing named its byte, so the innocent rule's write goes ahead.
+            CHECK(t.kind == AheadResult::Skipped);
+            CHECK(t.skipped == std::vector<uint32_t>{ dr::kBranch });
+            CHECK(t.runs == 3); // a landing is proof: no control runs
+        }
+        CHECK(d.rom(dr::kBranch) == 0x00);
+        CHECK(d.rom(dr::kInnocent) == 0x15);
+        CHECK(d.h.reverts.empty());  // the instant revert never had anything to catch
+        CHECK(d.h.outcomes.empty()); // nor the guard
+        CHECK(uint8_t(d.h.wram(testrom::kFrameCounterAddr) - frames) == 130); // no frame repeated or lost
+        CHECK(d.h.access.sample().reboots == reboots);
+        CHECK(IPPU.RenderThisFrame);
+        CHECK(alive(d.h));
+    }
+
+    TEST_CASE("without testing first, the same recipe needs the instant revert")
+    {
+        Derailing d(testrom::build_derail(), true, live_branch_and_innocent());
+        d.h.run(130);
+        CHECK(!d.h.reverts.empty());
+        CHECK(d.rom(dr::kInnocent) == 0x15);
+    }
 }
+

@@ -514,6 +514,11 @@ bool S9xPollPointer(unsigned int, short *, short *)
 
 void Snes9xController::SamplesAvailable()
 {
+    if (corrupt::SnesCoreAccess::unseen())
+    {
+        S9xClearSamples(); // a corruption test run ahead: nobody hears the future
+        return;
+    }
     static std::vector<int16_t> data;
     if (sound_output_function)
     {

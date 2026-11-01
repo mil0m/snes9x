@@ -38,6 +38,10 @@ struct Recipe
     // The instant revert (#51), on when unset: a changed ROM byte that sends the CPU into
     // non-code is fixed at once and the frame played again. Off: the guard catches it later.
     std::optional<bool> instant_revert;
+    // Test before applying (#52): how many seconds ahead each live ROM change is played,
+    // unseen, before it reaches the game (re-rolled or skipped if it crashes). Unset: the
+    // default (3); 0: off.
+    std::optional<double> test_first;
     std::optional<DetectorConfig> crash_detection;
 };
 

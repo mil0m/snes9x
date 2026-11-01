@@ -267,6 +267,17 @@ you've played. Crashes that build up slowly (a wrong number that breaks things l
 still the crash guard's. To watch a crash happen instead, set `"instant_revert": false` in
 the recipe. Starter: **Code drip** (two bytes of code changed every two seconds).
 
+**Live ROM changes are tried before they land.** When a live ROM rule is about to change
+the game, the app first plays a few seconds ahead with that change, unseen and silent, and
+comes back. If the game would have crashed, the rule rolls again and the new pick is tried
+instead; after three tries that firing is skipped. You feel it as a short pause when a live
+ROM rule fires (around a tenth of a second), the status line says when something was
+re-rolled or skipped, and the ROM section counts them (*30 changes tested first (3
+re-rolled, 0 skipped)*). It can only vouch for what the game actually uses in those
+seconds: a change in code the game won't reach for a while goes through untried, and the
+instant revert and the crash guard still watch it. In the recipe, `"test_first": 0` turns
+it off, and a number of seconds looks further ahead (3 by default).
+
 ## Survivors and pins
 
 **Survivors…** (in the ROM section) lists changes the game used in

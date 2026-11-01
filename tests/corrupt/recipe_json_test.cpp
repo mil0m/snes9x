@@ -285,6 +285,22 @@ TEST_CASE("the instant revert switch round-trips, and is left out when unset")
     CHECK_FALSE(parse_recipe(R"({"format":1,"rules":[],"instant_revert":"yes"})", {}).recipe);
 }
 
+TEST_CASE("test_first round-trips in seconds, is left out when unset, and must be 0-30")
+{
+    auto r = parse_recipe(R"({"format":1,"rules":[],"test_first":1.5})", {});
+    REQUIRE_MESSAGE(r.recipe, first_error(r));
+    CHECK(r.recipe->test_first == 1.5);
+    auto again = parse_recipe(write_recipe(*r.recipe), {});
+    REQUIRE(again.recipe);
+    CHECK(again.recipe->test_first == 1.5);
+    CHECK(parse_recipe(R"({"format":1,"rules":[],"test_first":0})", {}).recipe->test_first == 0.0);
+    auto plain = parse_recipe(R"({"format":1,"rules":[]})", {});
+    CHECK_FALSE(plain.recipe->test_first);
+    CHECK(write_recipe(*plain.recipe).find("test_first") == std::string::npos);
+    CHECK_FALSE(parse_recipe(R"({"format":1,"rules":[],"test_first":-1})", {}).recipe);
+    CHECK_FALSE(parse_recipe(R"({"format":1,"rules":[],"test_first":true})", {}).recipe);
+}
+
 TEST_CASE("bad crash settings are errors")
 {
     CHECK_FALSE(parse_recipe(R"({"format":1,"rules":[],"crash_policy":"yolo"})", {}).recipe);

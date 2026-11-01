@@ -806,3 +806,149 @@ TEST_CASE("locked bytes are skipped by every rule, avoiding or not, and never lo
     for (auto &ev : e.event_log())
         CHECK_FALSE(locked.is_hot(Target::ROM, ev.write.offset));
 }
+
+TEST_SUITE("engine: looking ahead (#52)")
+{
+    Recipe live_rom()
+    {
+        Recipe r;
+        r.name = "live rom";
+        r.seed = 9;
+        Rule drip;
+        drip.name = "drip";
+        drip.range = { Target::ROM, 0x100, 0x1FF };
+        drip.op = { .type = OpType::Random, .min = 0, .max = 255 };
+        drip.when = { .type = TriggerType::EveryFrames, .every = 3 };
+        drip.count = 2;
+        r.rules.push_back(drip);
+        Rule noise; // WRAM, every frame: in the preview too, but not asked for
+        noise.name = "noise";
+        noise.range = { Target::WRAM, 0x0, 0xFF };
+        noise.op = { .type = OpType::Random, .min = 0, .max = 255 };
+        noise.when = { .type = TriggerType::EveryFrames, .every = 1 };
+        r.rules.push_back(noise);
+        return r;
+    }
+
+    TEST_CASE("preview_next tells the next frame's writes and changes nothing")
+    {
+        FakeMemory mem;
+        Engine e;
+        e.set_recipe(live_rom());
+        e.set_active(true);
+        frames(e, mem, 2);
+        auto before = mem.bytes;
+        size_t logged = e.event_log().size();
+        auto runtimes = e.snapshot().runtimes;
+
+        auto planned = e.preview_next(mem, Target::ROM);
+        REQUIRE(planned.size() == 2);
+        for (auto &p : planned)
+        {
+            CHECK(p.frame == 3);
+            CHECK(p.write.target == Target::ROM);
+        }
+        CHECK(e.preview_next(mem).size() == 3); // the WRAM write too
+        CHECK(mem.bytes == before);
+        CHECK(e.current_frame() == 2);
+        CHECK(e.event_log().size() == logged);
+        CHECK(e.snapshot().runtimes.size() == runtimes.size());
+        CHECK(e.snapshot().runtimes[0].firings == runtimes[0].firings);
+
+        e.on_frame(mem); // the real frame makes exactly those writes
+        std::vector<std::pair<uint32_t, uint8_t>> real, seen;
+        for (auto &l : e.event_log())
+            if (l.frame == 3 && l.write.target == Target::ROM)
+                real.push_back({ l.write.offset, l.write.new_value });
+        for (auto &p : planned)
+            seen.push_back({ p.write.offset, p.write.new_value });
+        CHECK(real == seen);
+        CHECK(e.preview_next(mem, Target::ROM).empty()); // frame 4: the drip rests
+    }
+
+    TEST_CASE("a pressed hotkey survives a preview, and can be read and set back")
+    {
+        FakeMemory mem;
+        Engine e;
+        Recipe r;
+        Rule key = hotkey_rule(2);
+        key.range = { Target::ROM, 0x40, 0x40 };
+        r.rules.push_back(key);
+        e.set_recipe(r);
+        e.set_active(true);
+        e.press_hotkey(2);
+        CHECK(e.pressed_hotkeys() != 0);
+        CHECK(e.preview_next(mem, Target::ROM).size() == 1);
+        CHECK(e.pressed_hotkeys() != 0);
+        uint16_t bits = e.pressed_hotkeys();
+        e.restore(e.snapshot()); // a restore forgets it...
+        CHECK(e.pressed_hotkeys() == 0);
+        e.set_pressed_hotkeys(bits); // ...a run ahead puts it back
+        e.on_frame(mem);
+        CHECK(mem.of(Target::ROM)[0x40] == 1);
+    }
+
+    TEST_CASE("vetoed writes are skipped and not logged in that frame only, through restores, until dropped")
+    {
+        FakeMemory mem;
+        Engine e;
+        e.set_recipe(live_rom());
+        e.set_active(true);
+        frames(e, mem, 2);
+        auto snap = e.snapshot();
+        auto planned = e.preview_next(mem, Target::ROM);
+        REQUIRE(planned.size() == 2);
+        e.veto(3, Target::ROM, { planned[0].write.offset });
+        auto rom_before = mem.of(Target::ROM);
+
+        e.on_frame(mem); // a run ahead's frame 3
+        CHECK(mem.of(Target::ROM)[planned[0].write.offset] == rom_before[planned[0].write.offset]);
+        CHECK(mem.of(Target::ROM)[planned[1].write.offset] == planned[1].write.new_value);
+        size_t rom_logged = 0;
+        for (auto &l : e.event_log())
+            rom_logged += l.frame == 3 && l.write.target == Target::ROM;
+        CHECK(rom_logged == 1);
+        frames(e, mem, 3); // frame 6 drips both
+        size_t at6 = 0;
+        for (auto &l : e.event_log())
+            at6 += l.frame == 6 && l.write.target == Target::ROM;
+        CHECK(at6 == 2);
+
+        e.restore(snap); // back before frame 3: still vetoed
+        mem.of(Target::ROM) = rom_before;
+        e.on_frame(mem);
+        CHECK(mem.of(Target::ROM)[planned[0].write.offset] == rom_before[planned[0].write.offset]);
+        CHECK(e.vetoes() == 1);
+        e.drop_vetoes_through(3);
+        CHECK(e.vetoes() == 0);
+        e.veto(9, Target::ROM, { 1 });
+        e.set_active(false);
+        e.set_active(true); // a new run: the old run's vetoes mean nothing
+        CHECK(e.vetoes() == 0);
+    }
+}
+
+TEST_CASE("quiet_after keeps a target's writes from landing in later frames")
+{
+    FakeMemory mem;
+    Engine e;
+    Recipe r;
+    Rule rom_every;
+    rom_every.name = "rom";
+    rom_every.range = { Target::ROM, 0x10, 0x10 };
+    rom_every.op = { .type = OpType::Add, .min = 1, .max = 1 };
+    rom_every.when = { .type = TriggerType::EveryFrames, .every = 1 };
+    r.rules.push_back(rom_every);
+    Rule wram = rom_every;
+    wram.range = { Target::WRAM, 0x10, 0x10 };
+    r.rules.push_back(wram);
+    e.set_recipe(r);
+    e.set_active(true);
+    e.quiet_after(1);
+    frames(e, mem, 3);
+    CHECK(mem.of(Target::ROM)[0x10] == 1); // frame 1 only
+    CHECK(mem.of(Target::WRAM)[0x10] == 3); // other targets as usual
+    e.quiet_after(std::nullopt);
+    e.on_frame(mem);
+    CHECK(mem.of(Target::ROM)[0x10] == 2);
+}

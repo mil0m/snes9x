@@ -5,6 +5,7 @@
 #include <span>
 #include <unordered_map>
 #include <functional>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -125,6 +126,26 @@ class Engine
     uint64_t muted_until(size_t index) const;
     void set_rule_intensity(size_t index, double intensity);
 
+    // Test before applying (#52). The writes the next frame will make (only those to `only`,
+    // when given), worked out against memory that keeps none of them; the engine is left as
+    // it was, pressed hotkeys included.
+    std::vector<LoggedEvent> preview_next(MemoryAccess &mem, std::optional<Target> only = std::nullopt);
+    // Hotkeys pressed for the next frame (a snapshot doesn't hold them; a run ahead must).
+    uint16_t pressed_hotkeys() const { return pending_hotkeys; }
+    void set_pressed_hotkeys(uint16_t bits) { pending_hotkeys = bits; }
+    // Writes the engine skips (and doesn't log) whenever it runs `frame`: a change that
+    // failed its test. Kept through restores and runs ahead until dropped.
+    void veto(uint64_t frame, Target target, const std::vector<uint32_t> &offsets);
+    void drop_vetoes_through(uint64_t frame);
+    size_t vetoes() const { return vetoed.size(); }
+    // While set, writes to `target` in frames after `frame` don't land (and aren't logged):
+    // a run ahead tests one firing, not the ones after it.
+    void quiet_after(std::optional<uint64_t> frame, Target target = Target::ROM)
+    {
+        quiet_from = frame;
+        quiet_target = target;
+    }
+
     EngineStatus status() const;
     const std::deque<LoggedEvent> &event_log() const { return log; }
 
@@ -138,6 +159,15 @@ class Engine
     uint64_t next_id = 1;
     std::vector<uint64_t> mutes; // per rule: quiet through this frame
     std::deque<LoggedEvent> log;
+    struct Veto
+    {
+        uint64_t frame;
+        Target target;
+        uint32_t offset;
+    };
+    std::vector<Veto> vetoed;
+    std::optional<uint64_t> quiet_from;
+    Target quiet_target = Target::ROM;
     HotMask hot, locked;
     HotMask hot_and_locked; // what avoiding rules skip
     bool is_active = false;

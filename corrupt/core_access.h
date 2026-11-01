@@ -18,6 +18,14 @@ class SnesCoreAccess : public CoreAccess
     bool load_state(const std::vector<uint8_t> &state) override;
     FrameSignals sample() override;
     void reset_console() override; // S9xReset, then re-arms the reset watch (the ROM may have changed)
+    // Test before applying (#52): frames run with nothing drawn (which also makes them
+    // faster), the WRAM counters off, and the reset watch's count, the frameskip choice and
+    // the on-screen message's timer put back at the end. The sound is the front end's to
+    // drop while unseen() says so.
+    void begin_unseen() override;
+    void run_unseen_frame() override;
+    void end_unseen() override;
+    static bool unseen() { return unseen_now; }
 
     // The ROM bytes the CPU sees at $00:FFB0-$FFFF (the header and the interrupt vectors),
     // wherever this game's mapping puts them. Nothing may corrupt them.
@@ -52,6 +60,14 @@ class SnesCoreAccess : public CoreAccess
 
   private:
     bool drawing = true;
+    static inline bool unseen_now = false;
+    struct
+    {
+        bool render = true;
+        uint32_t info_timeout = 0;
+        uint32_t reboots = 0;
+        uint32_t *reads = nullptr, *writes = nullptr;
+    } before_unseen;
 };
 
 // The game's WRAM reads and writes, counted by the core (getset.h) while started, for the
@@ -90,6 +106,9 @@ class RomTracer
     // it has, the rest of the frame marks nothing. Take the note between frames, every
     // frame: that also turns marking back on.
     void watch_derails(DerailWatch *watch);
+    // Stops and resumes noting indirect jumps in the jump log, for frames that aren't
+    // real (a run ahead, #52): a rejected change's jumps would teach it garbage tables.
+    void note_jumps(bool on);
     std::optional<DerailWatch::Note> take_derail();
 
     // Every entry of the CPU's six opcode tables, for tests: what the tracer and the reset
@@ -98,6 +117,7 @@ class RomTracer
 
   private:
     bool mine = false;
+    JumpLog *paused_jumps = nullptr;
 };
 
 } // namespace corrupt

@@ -124,6 +124,7 @@ void Engine::restart()
     run_jumps.clear();
     frame = 0;
     pending_hotkeys = 0;
+    vetoed.clear(); // frames of the previous run
     released = false;
 }
 
@@ -250,7 +251,53 @@ bool Engine::has_at_load(Target t) const
     return false;
 }
 
-void Engine::on_frame(MemoryAccess &mem)
+namespace
+{
+
+// Passes everything through but the writes in `skip` (a frame's vetoes, or all of them for a
+// preview), which never land.
+struct FilteredMemory : MemoryAccess
+{
+    MemoryAccess &inner;
+    std::function<bool(Target, uint32_t)> skip;
+    FilteredMemory(MemoryAccess &inner, std::function<bool(Target, uint32_t)> skip) : inner(inner), skip(std::move(skip)) {}
+    size_t size(Target t) const override { return inner.size(t); }
+    uint8_t read(Target t, uint32_t offset) const override { return inner.read(t, offset); }
+    void write(Target t, uint32_t offset, uint8_t value) override
+    {
+        if (!skip(t, offset))
+            inner.write(t, offset, value);
+    }
+    void write_at_start(Target t, uint32_t offset, uint8_t value) override
+    {
+        if (!skip(t, offset))
+            inner.write_at_start(t, offset, value);
+    }
+    const uint8_t *data(Target t) const override { return inner.data(t); }
+};
+
+// Keeps every write to itself, on top of the memory underneath, which never changes: what a
+// preview writes reads back (the ops log what memory holds after a write) and lands nowhere.
+struct OverlayMemory : MemoryAccess
+{
+    MemoryAccess &inner;
+    std::unordered_map<uint64_t, uint8_t> written;
+    explicit OverlayMemory(MemoryAccess &inner) : inner(inner) {}
+    static uint64_t key(Target t, uint32_t offset) { return (uint64_t(t) << 32) | offset; }
+    size_t size(Target t) const override { return inner.size(t); }
+    uint8_t read(Target t, uint32_t offset) const override
+    {
+        auto it = written.find(key(t, offset));
+        return it == written.end() ? inner.read(t, offset) : it->second;
+    }
+    void write(Target t, uint32_t offset, uint8_t value) override { written[key(t, offset)] = value; }
+    // The whole block can't show the overlay; ops that need it read byte by byte.
+    const uint8_t *data(Target t) const override { return written.empty() ? inner.data(t) : nullptr; }
+};
+
+} // namespace
+
+void Engine::on_frame(MemoryAccess &real)
 {
     if (!is_active || waiting())
         return;
@@ -258,6 +305,16 @@ void Engine::on_frame(MemoryAccess &mem)
     frame++;
     uint16_t hotkeys = pending_hotkeys;
     pending_hotkeys = 0;
+
+    bool quiet = quiet_from && frame > *quiet_from;
+    bool vetoes_now = quiet || std::any_of(vetoed.begin(), vetoed.end(), [&](const Veto &v) { return v.frame == frame; });
+    auto is_vetoed = [&](Target t, uint32_t offset) {
+        return (quiet && t == quiet_target) ||
+               std::any_of(vetoed.begin(), vetoed.end(),
+                           [&](const Veto &v) { return v.frame == frame && v.target == t && v.offset == offset; });
+    };
+    FilteredMemory filtered(real, is_vetoed);
+    MemoryAccess &mem = vetoes_now ? static_cast<MemoryAccess &>(filtered) : real;
 
     for (uint32_t i = 0; i < current.rules.size(); i++)
     {
@@ -267,7 +324,8 @@ void Engine::on_frame(MemoryAccess &mem)
         auto events = tick_rule(rule, runtimes[i], mem, Rng::rule_seed(current.seed, rule.salt), i, frame, hotkeys,
                                 current.intensity, &hot_and_locked, &locked, aim_for(i, mem));
         for (auto &e : events)
-            log.push_back({ frame, i, e });
+            if (!vetoes_now || !is_vetoed(e.target, e.offset))
+                log.push_back({ frame, i, e });
     }
 
     while (log.size() > kEventLogLimit)
@@ -330,6 +388,34 @@ size_t Engine::aimed_count(size_t index) const
         return s->second.size();
     auto it = aimed.find(ids[index]);
     return it == aimed.end() ? 0 : it->second.size();
+}
+
+std::vector<LoggedEvent> Engine::preview_next(MemoryAccess &mem, std::optional<Target> only)
+{
+    std::vector<LoggedEvent> out;
+    if (!is_active || waiting())
+        return out;
+    auto snap = snapshot();
+    uint16_t hotkeys = pending_hotkeys;
+    OverlayMemory nothing_lands(mem);
+    on_frame(nothing_lands);
+    for (auto &e : log)
+        if (e.frame == frame && (!only || e.write.target == *only))
+            out.push_back(e);
+    restore(snap);
+    pending_hotkeys = hotkeys;
+    return out;
+}
+
+void Engine::veto(uint64_t at, Target target, const std::vector<uint32_t> &offsets)
+{
+    for (uint32_t o : offsets)
+        vetoed.push_back({ at, target, o });
+}
+
+void Engine::drop_vetoes_through(uint64_t at)
+{
+    std::erase_if(vetoed, [&](const Veto &v) { return v.frame <= at; });
 }
 
 EngineSnapshot Engine::snapshot() const

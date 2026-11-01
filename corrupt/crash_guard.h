@@ -28,6 +28,12 @@ struct CoreAccess
     virtual FrameSignals sample() = 0;
     // A power cycle, so the game boots again (from a corrupted ROM, for classic runs).
     virtual void reset_console() {}
+    // Frames nobody sees or hears, for testing a change before it's applied (#52): begin,
+    // run some, end. Between begin and end nothing is drawn or played, and what the front
+    // end counts per frame (the reset watch, the WRAM counters) is put back at the end.
+    virtual void begin_unseen() {}
+    virtual void run_unseen_frame() {}
+    virtual void end_unseen() {}
     virtual ~CoreAccess() = default;
 };
 

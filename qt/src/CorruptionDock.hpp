@@ -111,6 +111,7 @@ class CorruptionDock : public QDockWidget
     QPushButton *duplicate_rule_button;
     QPushButton *remove_rule_button;
     QCheckBox *detect_check;
+    QCheckBox *test_first_check;
     QComboBox *policy_combo;
     QLabel *crash_label;
     QLabel *status_label;

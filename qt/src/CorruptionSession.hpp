@@ -8,6 +8,7 @@
 #include "corrupt/memory_watch.h"
 #include "corrupt/rom_keeper.h"
 #include "corrupt/instant_revert.h"
+#include "corrupt/test_ahead.h"
 #include "corrupt/rom_blame.h"
 #include "corrupt/rom_heat.h"
 #include "corrupt/survivors.h"
@@ -59,6 +60,7 @@ class CorruptionSession
         corrupt::PolicyKind policy = corrupt::PolicyKind::Reroll;
         bool policy_overridden = false;
         bool detection_enabled = true;
+        bool test_first_enabled = true;
         unsigned crashes = 0;
         std::string last_crash;
         std::vector<unsigned> rule_crashes;
@@ -70,6 +72,9 @@ class CorruptionSession
         size_t rom_used = 0;    // ...of which the game has run or read since they changed
         size_t survivors = 0;   // ...of which proved themselves (see survivors())
         unsigned instant_reverts = 0; // changed bytes caught sending the CPU astray, fixed at once (#51)
+        unsigned tested_first = 0;    // live ROM firings played ahead before they landed (#52)
+        unsigned tested_rerolled = 0; // ...that crashed and rolled again
+        unsigned tested_skipped = 0;  // ...whose every pick crashed: skipped
         bool instant_revert = true;   // the recipe lets it
         size_t pins = 0;        // ROM changes the recipe keeps
         size_t patched = 0;     // painted bytes kept in the recipe
@@ -120,6 +125,7 @@ class CorruptionSession
     void markCrash();
     void setPolicyOverride(std::optional<corrupt::PolicyKind> policy); // nullopt: the recipe's choice
     void setDetectionEnabled(bool enabled);
+    void setTestFirstEnabled(bool enabled); // #52 for every recipe; a recipe's own "test_first" sets how far
 
     // Saved moments: Save writes the moment the current run started next to the recipe,
     // and loading a recipe that has one jumps back to it when the run starts.
@@ -205,6 +211,9 @@ class CorruptionSession
     corrupt::DerailWatch derails;  // the tracer notes landings on non-code in it (#51)
     corrupt::InstantRevert instant; // and this replays such a frame without the culprits
     bool watching_derails = false;  // the watch costs 5-10% while on: only during ROM runs
+    corrupt::TestAhead ahead;       // live ROM changes played ahead, unseen, before they land (#52)
+    bool running_ahead = false;     // the frame hook runs inside betweenFrames, which holds the lock
+    void testAhead();
     corrupt::RomAddresses rom_where;        // for disassembly in the viewer
     std::vector<uint8_t> code_shown;        // everyone's map, copied between frames while the viewer shows the ROM
     std::vector<uint8_t> code_for_aim;      // everyone's map as aimed rules saw it when this run started
@@ -225,6 +234,7 @@ class CorruptionSession
     bool moment_on_disk = false; // the current run's start is the recipe's saved moment
     std::optional<corrupt::PolicyKind> policy_override;
     bool detection_enabled = true;
+    bool test_first_enabled = true;
     std::string last_crash;
     std::filesystem::path library_root;
     bool game_loaded = false;

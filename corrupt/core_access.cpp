@@ -387,6 +387,37 @@ void SnesCoreAccess::reset_console()
         reset_watch::install(); // the reset code's first opcode may be a different one now
 }
 
+void SnesCoreAccess::begin_unseen()
+{
+    if (unseen_now)
+        return;
+    before_unseen.render = IPPU.RenderThisFrame;
+    before_unseen.info_timeout = GFX.InfoStringTimeout;
+    before_unseen.reboots = reset_watch::count;
+    before_unseen.reads = S9xWramReads;
+    before_unseen.writes = S9xWramWrites;
+    S9xWramReads = S9xWramWrites = nullptr;
+    unseen_now = true;
+}
+
+void SnesCoreAccess::run_unseen_frame()
+{
+    IPPU.RenderThisFrame = FALSE; // the front end's S9xSyncSpeed sets it again after each frame
+    S9xMainLoop();
+}
+
+void SnesCoreAccess::end_unseen()
+{
+    if (!unseen_now)
+        return;
+    IPPU.RenderThisFrame = before_unseen.render;
+    GFX.InfoStringTimeout = before_unseen.info_timeout;
+    reset_watch::count = before_unseen.reboots;
+    S9xWramReads = before_unseen.reads;
+    S9xWramWrites = before_unseen.writes;
+    unseen_now = false;
+}
+
 std::vector<AddressRange> SnesCoreAccess::locked_rom()
 {
     std::vector<AddressRange> out;
@@ -610,7 +641,24 @@ void RomTracer::stop()
     rom_trace::flags = nullptr;
     rom_trace::jumps = nullptr;
     rom_trace::derails = nullptr;
+    paused_jumps = nullptr;
     mine = false;
+}
+
+void RomTracer::note_jumps(bool on)
+{
+    if (!mine)
+        return;
+    if (!on && rom_trace::jumps)
+    {
+        paused_jumps = rom_trace::jumps;
+        rom_trace::jumps = nullptr;
+    }
+    else if (on && paused_jumps)
+    {
+        rom_trace::jumps = paused_jumps;
+        paused_jumps = nullptr;
+    }
 }
 
 void RomTracer::watch_derails(DerailWatch *watch)

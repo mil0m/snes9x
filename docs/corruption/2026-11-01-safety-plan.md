@@ -1,6 +1,6 @@
 # Safety first: plan (roadmap phase 7, #50-#52)
 
-**Status (2026-11-01):** #50 done (QA.md section 27), #51 done (QA.md section 28); #52 planned below, being built. From Erik's list (sorted in
+**Status (2026-11-01):** #50 done (QA.md section 27), #51 done (QA.md section 28), #52 done (QA.md section 29). Phase 7 complete; a follow-up idea (test at first use) is at the end of #52. From Erik's list (sorted in
 [the horizons doc](./2026-10-31-horizons.md#eriks-list-2026-11-01)): see what the game uses
 live, catch a bad change sooner, and test a change before it reaches the game.
 
@@ -246,3 +246,53 @@ while a harmless live change goes through. `corrupt-smoke --ahead [seeds]`: guar
 with and without testing first, on Goof Troop, Pocky & Rocky and FE4: rollbacks, instant
 reverts, frames lost, firings re-rolled or skipped, time spent testing, and whether the game
 still moves after a minute.
+
+**How it went.** Built as planned (`corrupt/test_ahead`, `Engine::preview_next`, pressed
+hotkeys, vetoes, `CoreAccess::begin_unseen/run_unseen_frame/end_unseen`, the tracer's
+`note_jumps`, the recipe's `test_first`, the session's re-entrant frame hook, the Qt front
+end dropping samples while unseen, the dock's *N changes tested first*), with these changes
+along the way:
+
+- **A run ahead tests one firing.** The rule fires again inside the window (Code drip every
+  2 s, the window 3 s), so the control run crashed too and nothing was ever blamed.
+  `Engine::quiet_after` keeps ROM writes after the tested frame from landing during a run.
+- **A landing names the rule.** With two rules writing in the same frame, only the one whose
+  byte the landing blamed rolls again or is skipped; the other's write goes ahead.
+- **Most changes aren't used within the window.** On FE4, 111 of 118 Code drip bytes that
+  went ahead were never run in those 3 s: it picks from all the code ever seen, mostly cold.
+  The test can only vouch for what's used, and a re-roll would drift towards cold code (a
+  pick survives easily if nobody runs it). So a re-roll that survives untouched is only a
+  reserve, kept while a pick the game ran is sought; and a run stops early once every
+  written byte was used and held up for a second (`settle_frames`).
+- **It found a way to freeze Snes9x itself.** A corrupted Goof Troop ran `INC $2133,X` in
+  a loop, flipping overscan between lines 225 and 240, so VBlank never started and
+  `S9xMainLoop` never returned. That would hang the app in normal play too: fixed in the
+  core (f346a6b8, VBlank at the latest at line 240, once a frame), with a test ROM.
+- **A panel switch.** *Try live ROM changes a few seconds ahead first* in the Crash Guard
+  section, on by default, so the pauses can go without editing the recipe.
+
+Measured with `corrupt-smoke --ahead 10`: 10 seeds of 60 s, both arms with the guard and #51,
+the second also testing first; code map and jump tables learned from a 60 s clean boot.
+Rollbacks are the guard's; *untried* is the share of written bytes the game didn't use in
+the 3 s window, which the test can't vouch for.
+
+| Recipe (live, every 2 s) | Game | guard rollbacks | frames lost | instant reverts | re-rolled / skipped | untried | ms per firing |
+|---|---|---|---|---|---|---|---|
+| Opcode drip (2 opcode swaps) | Goof Troop | 7 → 0 | 3659 → 2 | 3 → 2 | 1 / 0 | 79% | 214 |
+| | Pocky & Rocky | 5 → 5 | 1784 → 1783 | 1 → 0 | 1 / 0 | 89% | 128 |
+| | FE4 | 14 → 11 | 6319 → 4697 | 4 → 0 | 5 / 0 | 79% | 148 |
+| Code drip (2 random code bytes) | Goof Troop | 0 → 2 | 35 → 1050 | 35 → 30 | 15 / 2 | 91% | 152 |
+| | Pocky & Rocky | 7 → 9 | 2464 → 3524 | 49 → 55 | 17 / 2 | 94% | 126 |
+| | FE4 | 17 → 15 | 7376 → 6047 | 48 → 11 | 29 / 1 | 87% | 164 |
+| Swap drip (1 pointer swap) | Goof Troop | 0 → 0 | 0 → 0 | 0 → 0 | 0 / 0 | 94% | 157 |
+| | Pocky & Rocky | 3 → 1 | 462 → 365 | 2 → 0 | 2 / 0 | 97% | 197 |
+| | FE4 | 12 → 12 | 5456 → 5456 | 0 → 0 | 0 / 0 | 87% | 141 |
+
+What it means: where the game uses a change within the window, the test does its job (Goof
+Troop's opcode drip: no rollbacks left; FE4's instant reverts 48 → 11 and 4 → 0). But in
+these attract-mode runs 80-97% of changes aren't used within 3 s, so most later crashes come
+from changes nobody could try yet, and the totals move little (and, with re-rolls changing
+the run, sometimes the wrong way). Costs ~130-210 ms per firing. **Next idea, not built:
+test at first use** — when the crash blame sees a changed byte used for the first time, play
+ahead from there with and without it. That reaches the dormant changes, at the moment they
+matter, once per byte.

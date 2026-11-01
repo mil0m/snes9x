@@ -438,3 +438,19 @@ Use a game you have never set up (a fresh library folder, so no recipes exist fo
    - [ ] The game continues from the loaded state; nothing jumps back to before it.
 6. Look at the crash journal (`journal.<you>.jsonl` in the library).
    - [ ] Instant reverts are lines with `"event":"instant_revert"`, the kind of landing in `signal` and the bytes in `rom_bytes`.
+
+## 29. Test before applying
+1. Load Goof Troop (or any game) and play for a couple of minutes, so the code map knows its code.
+2. Pick **Starter: Code drip** and press **Corrupt (F7)**. Play on for a few minutes.
+   - [ ] Every two seconds there's a very short pause (the change being tried ahead). The picture and sound don't jump ahead or stutter backwards: the future is never shown or heard.
+   - [ ] Now and then the status line says *Tested ahead: drip crashed the game (…), so it rolled again*; rarely *…so it's skipped this time*.
+   - [ ] The ROM section counts *N changes tested first (N re-rolled, N skipped)*.
+   - [ ] Fewer *Caught at* and *Crash caught* lines than in section 28, though not none (changes the game uses only later aren't tried).
+3. Open the memory viewer on **rom**, **Colour by: Live**, during the pauses.
+   - [ ] Nothing lights up from the test runs (only what the game really runs).
+4. While **Code drip** runs, press a hotkey-driven recipe's key (say **Starter: Pointer roulette**, hotkey **1**).
+   - [ ] Each press still does its swap (after a short pause): the press isn't lost to the test.
+5. Save the recipe, add `"test_first": 0` to its file, load it again and play.
+   - [ ] No pauses and no *Tested ahead* lines.
+6. Load a save state, rewind if you use it, and fast-forward while **Code drip** runs.
+   - [ ] Nothing odd: no frozen picture, no sound glitches beyond the short pauses.
