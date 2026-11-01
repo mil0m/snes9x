@@ -151,13 +151,24 @@ Region names have 1–40 characters, start with a letter, and use letters, digit
 
 ## Design and plans
 
+What exists and where (for developers and coding agents): [FEATURES.md](./FEATURES.md).
+
 How it was designed and built, with measurements from real games:
 [RAM corruption design](./2026-10-30-ram-corruption-design.md) ·
+[engine and recipes](./2026-10-30-phase1-engine-recipes-plan.md) ·
 [crash rollback](./2026-10-30-phase2-crash-rollback-plan.md) ·
+[live panel](./2026-10-30-phase3-live-panel-plan.md) ·
+[reboot detection](./2026-10-30-reboot-detection-plan.md) ·
 [crash map](./2026-10-30-crash-map-plan.md) ·
 [memory viewer](./2026-10-30-memory-viewer-plan.md) ·
+[WRAM access map](./2026-10-31-access-map-plan.md) ·
+[crash frequency](./2026-10-31-crash-frequency-plan.md) ·
 [ROM corruption](./2026-10-31-rom-corruption-plan.md) ·
 [UX pass](./2026-10-31-ux-pass-plan.md) ·
+[visual UI pass](./2026-10-31-ui-pass-plan.md) ·
+[jump tables and pointer swap](./2026-11-01-pointer-swap-plan.md) ·
+[safety: live heat, instant revert, testing ahead, proven blame](./2026-11-01-safety-plan.md) ·
+[remote control](./2026-11-01-remote-plan.md) ·
 [what could come next](./2026-10-31-horizons.md).
 Manual test steps: [QA.md](./QA.md).
 
