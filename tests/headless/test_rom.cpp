@@ -181,6 +181,27 @@ std::vector<uint8_t> build_dispatch()
     return rom;
 }
 
+std::vector<uint8_t> build_overscan_flip()
+{
+    auto rom = build(Crash::None);
+    put(rom, 0x8011, {
+        0xAD, 0x37, 0x21, // LDA $2137     latch the H/V counters
+        0xAD, 0x3F, 0x21, // LDA $213F     next $213D read is the low byte
+        0xAD, 0x3D, 0x21, // LDA $213D     V, low byte
+        0xC9, 0xC8,       // CMP #200
+        0x90, 0x0B,       // BCC off
+        0xC9, 0xE9,       // CMP #233
+        0xB0, 0x07,       // BCS off
+        0xA9, 0x04,       // LDA #$04
+        0x8D, 0x33, 0x21, // STA $2133     overscan on
+        0x80, 0xE8,       // BRA loop
+        0x9C, 0x33, 0x21, // off ($8029): STZ $2133
+        0x80, 0xE3,       // BRA loop
+    });
+    fix_checksum(rom);
+    return rom;
+}
+
 std::vector<uint8_t> build_derail()
 {
     auto rom = build(Crash::None);

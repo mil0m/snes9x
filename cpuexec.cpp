@@ -26,6 +26,10 @@ uint32 *S9xWramReads = nullptr, *S9xWramWrites = nullptr;
 // Corruption tooling (getset.h, dma.cpp): the code map's flags per ROM byte, when recording.
 uint8 *S9xRomFlags = nullptr;
 uint32 S9xRomFetchFrom = 0, S9xRomFetchTo = 0;
+// Whether VBlank (and so the frame's end) has started in this frame. A game that flips the
+// overscan bit ($2133) between lines 225 and 240 could otherwise slip past both lines, and
+// S9xMainLoop would never return: the emulator freezes. Found by corrupted games.
+static bool8 VBlankStarted = FALSE;
 
 void S9xMainLoop (void)
 {
@@ -296,6 +300,8 @@ void S9xDoHEventProcessing (void)
 				SA1.Cycles -= Timings.H_Max * 3;
 
 			CPU.V_Counter++;
+			if (CPU.V_Counter < SNES_HEIGHT + FIRST_VISIBLE_LINE)	// before any VBlank (also right after a reset)
+				VBlankStarted = FALSE;
 			if (CPU.V_Counter >= Timings.V_Max)	// V ranges from 0 to Timings.V_Max - 1
 			{
 				CPU.V_Counter = 0;
@@ -346,8 +352,11 @@ void S9xDoHEventProcessing (void)
 			else
 				Timings.WRAMRefreshPos = SNES_WRAM_REFRESH_HC_v1;
 
-			if (CPU.V_Counter == PPU.ScreenHeight + FIRST_VISIBLE_LINE)	// VBlank starts from V=225(240).
+			// VBlank starts from V=225(240); at the latest at 240, once a frame (see VBlankStarted).
+			if (!VBlankStarted && (CPU.V_Counter == PPU.ScreenHeight + FIRST_VISIBLE_LINE ||
+			                       CPU.V_Counter == SNES_HEIGHT_EXTENDED + FIRST_VISIBLE_LINE))
 			{
+				VBlankStarted = TRUE;
 				S9xEndScreenRefresh();
 				#ifdef DEBUGGER
 					if (!(CPU.Flags & FRAME_ADVANCE_FLAG))

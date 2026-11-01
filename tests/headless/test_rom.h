@@ -68,6 +68,11 @@ constexpr uint32_t kRamCounts = 0x30;     // and $30 + i
 constexpr int kEntries = 4;
 } // namespace dispatch
 
+// Crash::None, whose main loop turns overscan ($2133 bit 2) on while the beam is on lines
+// 200-232 and off elsewhere, as a corrupted game once did: VBlank should start at line 225
+// with overscan off and at 240 with it on, and this dodges both. The NMI still counts frames.
+std::vector<uint8_t> build_overscan_flip();
+
 // Crash::None, whose main loop calls a routine every frame (instant revert, #51): it bumps
 // $7E:0014, counts down X from $50 (160 instructions, so a change it ran is long out of the
 // window), then BRA +0, LDA $DB00 (whose operand's second byte is STP), INC $13, RTS. A

@@ -23,6 +23,11 @@
 #include "memmap.h"
 void S9xSoftReset(void); // cpuexec.h pulls in the whole CPU core
 
+#include <atomic>
+#include <chrono>
+#include <thread>
+#include <unistd.h>
+
 using namespace corrupt;
 
 namespace
@@ -125,6 +130,28 @@ bool alive(Harness &h)
 }
 
 } // namespace
+
+TEST_CASE("a game flipping overscan around VBlank can't freeze the emulator")
+{
+    // The old core never started VBlank here, so S9xMainLoop never returned. Fail, don't hang.
+    std::atomic<bool> done{ false };
+    std::thread watchdog([&] {
+        for (int i = 0; i < 200 && !done; i++)
+            std::this_thread::sleep_for(std::chrono::milliseconds(50));
+        if (!done)
+        {
+            fprintf(stderr, "FATAL: the overscan-flipping ROM froze the emulator (no VBlank)\n");
+            _exit(1);
+        }
+    });
+    REQUIRE(headless::init());
+    REQUIRE(headless::load_rom_memory(testrom::build_overscan_flip()));
+    uint8_t before = Memory.RAM[testrom::kFrameCounterAddr];
+    headless::run_frames(30);
+    done = true;
+    watchdog.join();
+    CHECK(uint8_t(Memory.RAM[testrom::kFrameCounterAddr] - before) >= 29); // one NMI a frame
+}
 
 TEST_CASE("the test ROM runs and its NMI counts frames")
 {
