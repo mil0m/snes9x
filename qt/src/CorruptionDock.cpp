@@ -462,6 +462,13 @@ CorruptionDock::CorruptionDock(EmuApplication &app, QWidget *parent)
                                     "the run with it crashes. Costs a short pause each time."));
     test_first_check->setChecked(true);
     guard_layout->addLayout(ui::row(test_first_check));
+    proven_check = new QCheckBox(tr("Replay a crash that comes back to find its cause"), guard_box);
+    proven_check->setObjectName("proven");
+    proven_check->setToolTip(tr("When the same crash happens again after going back, plays the last seconds again "
+                                "unseen, with and without the changed ROM bytes, and puts back only the ones that "
+                                "cause it. Keeps more of the corruption; a pause of a second or two each time."));
+    proven_check->setChecked(true);
+    guard_layout->addLayout(ui::row(proven_check));
     auto guard_form = ui::form();
     policy_combo = new QComboBox(guard_box);
     policy_combo->setObjectName("policy");
@@ -490,6 +497,7 @@ CorruptionDock::CorruptionDock(EmuApplication &app, QWidget *parent)
 
     connect(detect_check, &QCheckBox::clicked, [](bool on) { CorruptionSession::get().setDetectionEnabled(on); });
     connect(test_first_check, &QCheckBox::clicked, [](bool on) { CorruptionSession::get().setTestFirstEnabled(on); });
+    connect(proven_check, &QCheckBox::clicked, [](bool on) { CorruptionSession::get().setProvenEnabled(on); });
     connect(policy_combo, &QComboBox::activated, [this](int index) {
         auto name = policy_combo->itemData(index).toString().toStdString();
         CorruptionSession::get().setPolicyOverride(name.empty() ? std::nullopt : parse_policy(name));

@@ -63,6 +63,7 @@ class CorruptionSession
         bool policy_overridden = false;
         bool detection_enabled = true;
         bool test_first_enabled = true;
+        bool proven_enabled = true; // #56: replay a crash that comes back to find its bytes
         unsigned crashes = 0;
         std::string last_crash;
         std::vector<unsigned> rule_crashes;
@@ -131,6 +132,7 @@ class CorruptionSession
     void setPolicyOverride(std::optional<corrupt::PolicyKind> policy); // nullopt: the recipe's choice
     void setDetectionEnabled(bool enabled);
     void setTestFirstEnabled(bool enabled); // #52 for every recipe; a recipe's own "test_first" sets how far
+    void setProvenEnabled(bool enabled);    // #56
 
     // Saved moments: Save writes the moment the current run started next to the recipe,
     // and loading a recipe that has one jumps back to it when the run starts.
@@ -246,6 +248,7 @@ class CorruptionSession
     std::optional<corrupt::PolicyKind> policy_override;
     bool detection_enabled = true;
     bool test_first_enabled = true;
+    bool proven_enabled = true;
     std::string last_crash;
     std::filesystem::path library_root;
     bool game_loaded = false;

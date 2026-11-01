@@ -500,4 +500,6 @@ Use a game you have never set up (a fresh library folder, so no recipes exist fo
    - [ ] That one is handled the old way (no *found by replaying it*).
 4. Look at the crash journal.
    - [ ] Proven catches have `"rom_action": "… (proven by replay)"`.
+5. Untick **Replay a crash that comes back to find its cause** and play the same recipe.
+   - [ ] No more *found by replaying it*; repeated crashes are guessed as before.
 

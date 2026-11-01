@@ -107,7 +107,7 @@ void CorruptionSession::configureGuard()
         running_ahead = false;
     };
     proven.set_hooks(proof_hooks);
-    guard.set_prover(&proven);
+    guard.set_prover(proven_enabled ? &proven : nullptr);
     rom_blame.set_policy(recipe.rom_policy.value_or(RomPolicy::Revert), recipe.seed);
     instant.set_enabled(recipe.instant_revert.value_or(true));
     AheadConfig ahead_config;
@@ -353,6 +353,13 @@ void CorruptionSession::setPolicyOverride(std::optional<PolicyKind> policy)
 {
     std::lock_guard lock(mutex);
     policy_override = policy;
+    configureGuard();
+}
+
+void CorruptionSession::setProvenEnabled(bool enabled)
+{
+    std::lock_guard lock(mutex);
+    proven_enabled = enabled;
     configureGuard();
 }
 
@@ -1165,6 +1172,7 @@ CorruptionSession::Status CorruptionSession::status()
     s.policy_overridden = policy_override.has_value();
     s.detection_enabled = detection_enabled;
     s.test_first_enabled = test_first_enabled;
+    s.proven_enabled = proven_enabled;
     s.crashes = guard.total_crashes();
     s.last_crash = last_crash;
     s.rule_crashes = guard.rule_crashes(engine);
