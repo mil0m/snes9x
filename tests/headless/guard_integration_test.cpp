@@ -1240,3 +1240,207 @@ TEST_SUITE("instant revert in the real core")
     }
 }
 
+
+TEST_SUITE("call graph")
+{
+    namespace cl = testrom::calls;
+
+    const Function *function_at(const std::vector<Function> &fs, uint32_t entry)
+    {
+        auto it = std::find_if(fs.begin(), fs.end(), [&](const Function &f) { return f.entry == entry; });
+        return it == fs.end() ? nullptr : &*it;
+    }
+
+    TEST_CASE("the tracer notes every call, near, long and mixed, and in how many frames each ran")
+    {
+        REQUIRE(headless::init());
+        REQUIRE(headless::load_rom_memory(testrom::build_calls()));
+        SnesCoreAccess::watch_resets();
+        CodeMap map(Memory.CalculatedSize);
+        CallKeeper calls;
+        RomTracer tracer;
+        REQUIRE(tracer.start(map, nullptr, &calls.mine()));
+        for (int i = 0; i < 30; i++)
+        {
+            headless::run_frames(1);
+            calls.end_frame();
+        }
+        tracer.stop();
+        SnesCoreAccess::unwatch_resets();
+        CHECK(!(CPU.Flags & HALTED_FLAG));
+        CHECK(Memory.RAM[cl::kCounts + 3] != 0x55); // the inline one ran and came back past its data
+
+        auto &all = calls.mine().all();
+        REQUIRE(all.count({ cl::kNearSite, cl::kNear }));
+        CHECK(all.at({ cl::kNearSite, cl::kNear }).opcode == callop::Jsr);
+        CHECK(all.at({ cl::kLongSite, cl::kLong }).opcode == callop::Jsl);
+        CHECK(all.at({ cl::kMixedNearSite, cl::kMixed }).opcode == callop::Jsr);
+        CHECK(all.at({ cl::kMixedLongSite, cl::kMixed }).opcode == callop::Jsl);
+        CHECK(all.at({ cl::kInlineSite, cl::kInline }).opcode == callop::Jsr);
+        CHECK(calls.mine().size() == 5);
+
+        auto fs = calls.functions();
+        REQUIRE(fs.size() == 4);
+        auto *near = function_at(fs, cl::kNear);
+        REQUIRE(near);
+        CHECK(near->type == CallType::Near);
+        CHECK(near->callers == 1);
+        CHECK(near->frames >= 28); // once a frame, every frame
+        CHECK(near->now == near->frames);
+        CHECK(near->calls == near->frames);
+        CHECK(function_at(fs, cl::kLong)->type == CallType::Long);
+        auto *mixed = function_at(fs, cl::kMixed);
+        CHECK(mixed->type == CallType::Mixed);
+        CHECK(mixed->callers == 2);
+        CHECK(mixed->calls == 2 * mixed->frames);
+        CHECK(function_at(fs, cl::kInline)->type == CallType::Near);
+    }
+
+    TEST_CASE("a JSR through a table is a near call; a JMP through RAM isn't a call")
+    {
+        namespace dp = testrom::dispatch;
+        REQUIRE(headless::init());
+        REQUIRE(headless::load_rom_memory(testrom::build_dispatch()));
+        SnesCoreAccess::watch_resets();
+        CodeMap map(Memory.CalculatedSize);
+        CallKeeper calls;
+        RomTracer tracer;
+        REQUIRE(tracer.start(map, nullptr, &calls.mine()));
+        for (int i = 0; i < 20; i++)
+        {
+            headless::run_frames(1);
+            calls.end_frame();
+        }
+        tracer.stop();
+        SnesCoreAccess::unwatch_resets();
+        auto fs = calls.functions();
+        REQUIRE(fs.size() == size_t(dp::kEntries)); // the four routines behind JSR ($9100,X)
+        for (int i = 0; i < dp::kEntries; i++)
+        {
+            auto *f = function_at(fs, dp::kRoutines + 0x10 * uint32_t(i));
+            REQUIRE(f);
+            CHECK(f->type == CallType::Near);
+            CHECK(f->first_site == dp::kSite);
+        }
+    }
+
+    TEST_CASE("frames that aren't real (a run ahead) teach it nothing")
+    {
+        REQUIRE(headless::init());
+        REQUIRE(headless::load_rom_memory(testrom::build_calls()));
+        SnesCoreAccess::watch_resets();
+        CodeMap map(Memory.CalculatedSize);
+        CallKeeper calls;
+        RomTracer tracer;
+        REQUIRE(tracer.start(map, nullptr, &calls.mine()));
+        tracer.note_jumps(false);
+        headless::run_frames(10);
+        CHECK(calls.mine().empty());
+        tracer.note_jumps(true);
+        headless::run_frames(1);
+        tracer.stop();
+        SnesCoreAccess::unwatch_resets();
+        CHECK(calls.mine().size() == 5);
+    }
+}
+
+TEST_SUITE("kill switches")
+{
+    namespace cl = testrom::calls;
+
+    // The calls ROM, guarded like the app: the tracer, the derail watch, the blame and the
+    // instant revert, after 30 clean frames.
+    struct Switching
+    {
+        Harness h{ testrom::build_calls(), Recipe{}, PolicyKind::Skip };
+        CodeMap map{ 0 };
+        RomTracer tracer;
+        DerailWatch watch;
+        RomBlame blame{ h.rom };
+        InstantRevert instant;
+
+        Switching()
+        {
+            map = CodeMap(Memory.CalculatedSize);
+            REQUIRE(tracer.start(map));
+            tracer.watch_derails(&watch);
+            blame.attach(map.data(), map.size());
+            h.guard.set_byte_blame(&blame);
+            h.blame = &blame;
+            h.tracer = &tracer;
+            h.instant = &instant;
+            h.run(30);
+        }
+        uint8_t rom(uint32_t o) { return h.memory.read(Target::ROM, o); }
+        uint8_t runs(int i) { return h.wram(cl::kCounts + uint32_t(i)); }
+        void flip(uint32_t entry, uint8_t ret) { h.engine.flip_function(entry, ret, h.rom.clean()[entry]); }
+    };
+
+    TEST_CASE("a near function switched off stops running and the game goes on; switched on, it runs again")
+    {
+        Switching s;
+        s.flip(cl::kNear, kRts);
+        s.h.run(1);
+        CHECK(s.rom(cl::kNear) == kRts);
+        uint8_t near = s.runs(0), others = s.runs(1);
+        s.h.run(20);
+        CHECK(s.runs(0) == near);
+        CHECK(s.runs(1) == uint8_t(others + 20));
+        CHECK(alive(s.h));
+        s.flip(cl::kNear, kRts);
+        s.h.run(5);
+        CHECK(s.rom(cl::kNear) == 0xE6);
+        CHECK(s.runs(0) != near);
+        CHECK(s.h.reverts.empty());
+        CHECK(s.h.outcomes.empty());
+        CHECK(s.h.engine.event_log().empty()); // not a rule's write
+    }
+
+    TEST_CASE("a long function switched off with RTL, from a recipe switch on its hotkey")
+    {
+        Switching s;
+        Switch sw;
+        sw.entry = cl::kLong;
+        sw.ret = kRtl;
+        sw.was = 0xE6;
+        sw.hotkey = 2;
+        s.h.engine.add_switch(sw);
+        s.h.engine.press_hotkey(2);
+        s.h.run(1);
+        CHECK(s.rom(cl::kLong) == kRtl);
+        uint8_t long_runs = s.runs(1), near = s.runs(0);
+        s.h.run(20);
+        CHECK(s.runs(1) == long_runs);
+        CHECK(s.runs(0) == uint8_t(near + 20));
+        CHECK(alive(s.h));
+        s.h.engine.press_hotkey(2);
+        s.h.run(2);
+        CHECK(s.rom(cl::kLong) == 0xE6);
+        CHECK(s.runs(1) != long_runs);
+    }
+
+    TEST_CASE("a rollback to before the flip turns it back on")
+    {
+        Switching s;
+        uint64_t before = s.h.engine.current_frame();
+        s.flip(cl::kNear, kRts);
+        s.h.run(10);
+        CHECK(s.rom(cl::kNear) == kRts);
+        s.h.rom.revert_after(before);
+        CHECK(s.rom(cl::kNear) == 0xE6);
+    }
+
+    TEST_CASE("a function that reads data after its call runs into it when switched off: the instant revert turns it back on")
+    {
+        Switching s;
+        uint8_t inline_runs = s.runs(3);
+        s.flip(cl::kInline, kRts);
+        s.h.run(3);
+        REQUIRE(s.h.reverts.size() == 1);
+        CHECK(s.h.reverts[0].kind == Landing::Brk);
+        CHECK(s.h.reverts[0].offsets == std::vector<uint32_t>{ cl::kInline });
+        CHECK(s.rom(cl::kInline) == 0xC2);
+        CHECK(s.runs(3) != inline_runs); // the frame played again with it back on
+        CHECK(alive(s.h));
+    }
+}

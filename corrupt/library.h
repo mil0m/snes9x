@@ -1,5 +1,6 @@
 #pragma once
 #include "code_map.h"
+#include "calls.h"
 #include "jump_tables.h"
 #include "crash_map.h"
 #include "recipe.h"
@@ -83,6 +84,10 @@ class Library
     std::filesystem::path jump_log_path(const GameId &game, const std::string &user) const;
     JumpLogs load_jump_logs(const GameId &game, const std::string &user, size_t rom_size) const;
     std::string save_jump_log(const GameId &game, const std::string &user, const JumpLog &log, size_t rom_size) const;
+    // Call logs (calls.h, #26): calls.<user>.json beside them, one per person.
+    std::filesystem::path call_log_path(const GameId &game, const std::string &user) const;
+    CallLogs load_call_logs(const GameId &game, const std::string &user, size_t rom_size) const;
+    std::string save_call_log(const GameId &game, const std::string &user, const CallLog &log, size_t rom_size) const;
 
     Regions load_regions(const GameId &game, std::vector<std::string> &errors) const;
     std::string save_regions(const GameId &game, const Regions &regions) const; // error or empty

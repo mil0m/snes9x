@@ -32,6 +32,24 @@ struct Pin
 
 // Merges (offset, value) pairs in; a byte set again takes the new value. Keeps the list
 // sorted by target and offset, with runs that never overlap or touch.
+// A kill switch (#34): a function's entry, the return that skips it (RTS for a function
+// called near, RTL for one called long) and the clean byte it replaces. Its state is the ROM
+// byte itself: off while the entry holds the return. With a hotkey (1-9) a press flips it;
+// start_off writes the return as every run starts. `was` skips it on another ROM version.
+struct Switch
+{
+    uint32_t entry = 0;
+    uint8_t ret = 0x60;
+    uint8_t was = 0;
+    int hotkey = 0; // 0: none
+    bool start_off = false;
+    std::string note;
+};
+inline bool switch_off(const Switch &s, const MemoryAccess &mem)
+{
+    return s.entry < mem.size(Target::ROM) && mem.read(Target::ROM, s.entry) == s.ret;
+}
+
 void add_patch_bytes(std::vector<Patch> &patches, Target t, const std::vector<std::pair<uint32_t, uint8_t>> &bytes);
 void remove_patch_bytes(std::vector<Patch> &patches, Target t, const std::vector<uint32_t> &offsets);
 size_t patched_bytes(const std::vector<Patch> &patches);

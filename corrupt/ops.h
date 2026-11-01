@@ -47,9 +47,13 @@ enum class OpType
 
     // Jump op: ROM only, on jump table entries the tracer found (pointer_swap.h).
     PointerSwap, // an entry gets the target of another entry its dispatcher went to
+
+    // Function op: ROM only, on functions the call graph found (calls.h, #34).
+    Kill, // a return (RTS or RTL, as it's called) at a function's entry: the function is skipped
 };
 
 constexpr bool is_jump_op(OpType t) { return t == OpType::PointerSwap; }
+constexpr bool is_function_op(OpType t) { return t == OpType::Kill; }
 
 enum class Axis
 {
@@ -115,6 +119,8 @@ struct Op
     // Pointer swap.
     bool likely = false; // also take targets from entries nobody jumped through yet
     bool mutual = false; // both ways: the donor's entry gets this entry's target
+    // Kill: pick from any function learned, not only the 64 that ran in the most frames.
+    bool any = false;
 };
 
 // Per-rule state that has to survive between firings.

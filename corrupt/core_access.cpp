@@ -63,6 +63,7 @@ void (*original[kTables][256])(void) = {};
 bool installed = false;
 uint8 *flags = nullptr;     // the map being recorded into, sized like the ROM
 JumpLog *jumps = nullptr;   // where indirect jumps are noted, if anywhere
+CallLog *calls = nullptr;   // where calls are noted, if anywhere (#26)
 DerailWatch *derails = nullptr; // fed every instruction, for the instant revert, if anyone listens
 // After a landing (#57): mark nothing at all, as before, instead of the changed bytes run.
 bool blind_after_landing = false;
@@ -136,10 +137,35 @@ void note_jump(uint8 op)
         for (int i = 0; i < (op == jumpop::JmlPointer ? 3 : 2); i++)
             if (uint32_t o = rom_offset_of(base | uint16(at + i)); o != kNoEntry)
                 note_changed(o, 1);
-    if (!jumps)
-        return;
     uint32_t bank = op == jumpop::JmlPointer ? uint32_t(*p2) << 16 : pb;
-    jumps->note(site, op, pointer, bank | uint32_t(*p1 << 8) | *p0);
+    uint32_t target = bank | uint32_t(*p1 << 8) | *p0;
+    if (calls && op == callop::JsrIndexed)
+        if (uint32_t entry = rom_offset_of(target); entry != kNoEntry)
+            calls->note(site, op, entry);
+    if (jumps)
+        jumps->note(site, op, pointer, target);
+}
+
+// A JSR $abs or JSL $long from ROM is about to run (PC is past its opcode): note the call
+// site and the function's entry, both ROM offsets. Calls into RAM or I/O aren't noted.
+void note_call(uint8 op)
+{
+    uint32 pb = uint32(Registers.PB) << 16;
+    uint16 pc = Registers.PCw;
+    uint32_t site = rom_offset_of(pb | uint16(pc - 1));
+    const uint8 *lo = byte_at(pb | pc), *hi = byte_at(pb | uint16(pc + 1));
+    if (site == kNoEntry || !lo || !hi)
+        return;
+    uint32_t address = pb | uint32_t(*hi << 8) | *lo;
+    if (op == callop::Jsl)
+    {
+        const uint8 *bank = byte_at(pb | uint16(pc + 2));
+        if (!bank)
+            return;
+        address = (uint32_t(*bank) << 16) | uint32_t(*hi << 8) | *lo;
+    }
+    if (uint32_t entry = rom_offset_of(address); entry != kNoEntry)
+        calls->note(site, op, entry);
 }
 
 // After a landing: a changed byte the instruction holds gets Touched, nothing else.
@@ -165,8 +191,10 @@ void see_changed_slow(uint8 op)
 
 void trace_slow(uint8 op)
 {
-    if ((jumps || derails) && jumpop::noted(op))
+    if ((jumps || derails || calls) && jumpop::noted(op))
         note_jump(op);
+    if (calls && (op == callop::Jsr || op == callop::Jsl))
+        note_call(op);
     bool e = CheckEmulation();
     bool m8 = e || CheckMemory();
     bool x8 = e || CheckIndex();
@@ -239,8 +267,11 @@ void traced()
         return;
     }
     if constexpr (T != kSlow && jumpop::noted(uint8_t(Op)))
-        if (jumps || derails)
+        if (jumps || derails || calls)
             note_jump(uint8(Op));
+    if constexpr (T != kSlow && (Op == callop::Jsr || Op == callop::Jsl))
+        if (calls)
+            note_call(uint8(Op));
     if constexpr (T == kSlow)
         trace_slow(uint8(Op));
     else
@@ -660,12 +691,13 @@ void WramAccessCounter::take(MemoryWatch &watch)
         watch.observe_accesses(reads, writes);
 }
 
-bool RomTracer::start(CodeMap &map, JumpLog *jumps)
+bool RomTracer::start(CodeMap &map, JumpLog *jumps, CallLog *calls)
 {
     if (rom_trace::installed || !Memory.ROM || map.size() != Memory.CalculatedSize || map.empty())
         return false;
     rom_trace::flags = map.data();
     rom_trace::jumps = jumps;
+    rom_trace::calls = calls;
     rom_trace::blind_after_landing = false;
     rom_trace::seen_after_landing = 0;
     S9xRomFetchFrom = S9xRomFetchTo = 0;
@@ -683,8 +715,10 @@ void RomTracer::stop()
     S9xRomFlags = nullptr;
     rom_trace::flags = nullptr;
     rom_trace::jumps = nullptr;
+    rom_trace::calls = nullptr;
     rom_trace::derails = nullptr;
     paused_jumps = nullptr;
+    paused_calls = nullptr;
     mine = false;
 }
 
@@ -692,15 +726,19 @@ void RomTracer::note_jumps(bool on)
 {
     if (!mine)
         return;
-    if (!on && rom_trace::jumps)
+    if (!on)
     {
-        paused_jumps = rom_trace::jumps;
-        rom_trace::jumps = nullptr;
+        if (rom_trace::jumps)
+            paused_jumps = std::exchange(rom_trace::jumps, nullptr);
+        if (rom_trace::calls)
+            paused_calls = std::exchange(rom_trace::calls, nullptr);
     }
-    else if (on && paused_jumps)
+    else
     {
-        rom_trace::jumps = paused_jumps;
-        paused_jumps = nullptr;
+        if (paused_jumps)
+            rom_trace::jumps = std::exchange(paused_jumps, nullptr);
+        if (paused_calls)
+            rom_trace::calls = std::exchange(paused_calls, nullptr);
     }
 }
 

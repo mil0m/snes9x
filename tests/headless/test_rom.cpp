@@ -288,4 +288,35 @@ std::vector<uint8_t> build_fuse()
     return rom;
 }
 
+std::vector<uint8_t> build_calls()
+{
+    auto rom = build(Crash::None);
+    put(rom, 0x8011, {
+        0xCB,                   // WAI              main
+        0x20, 0x60, 0x80,       // JSR $8060        near
+        0x22, 0x70, 0x80, 0x00, // JSL $00:8070     long
+        0x4B,                   // PHK
+        0x20, 0xA0, 0x80,       // JSR $80A0        mixed, near (PHK makes the RTL come back)
+        0x22, 0xA0, 0x80, 0x00, // JSL $00:80A0     mixed, long
+        0x20, 0xB0, 0x80,       // JSR $80B0        inline data after it
+        0x00,                   //                  the data: a BRK if it ever runs
+        0x80, 0xEA,             // BRA main
+    });
+    put(rom, 0x8060, { 0xE6, 0x20, 0x60 }); // INC $20; RTS
+    put(rom, 0x8070, { 0xE6, 0x21, 0x6B }); // INC $21; RTL
+    put(rom, 0x80A0, { 0xE6, 0x22, 0x6B }); // INC $22; RTL
+    put(rom, 0x80B0, {
+        0xC2, 0x20,             // REP #$20
+        0x68,                   // PLA              the return address
+        0x1A,                   // INC A            past the data byte
+        0x48,                   // PHA
+        0xE2, 0x20,             // SEP #$20
+        0xE6, 0x23,             // INC $23
+        0x60,                   // RTS
+    });
+    fix_checksum(rom);
+    return rom;
+}
+
 } // namespace testrom
+

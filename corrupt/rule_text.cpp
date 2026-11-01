@@ -76,6 +76,7 @@ std::string describe_op(const Rule &rule)
     case OpType::PointerSwap:
         text = std::string("swap pointers") + (op.mutual ? " both ways" : "") + (op.likely ? " (unused entries too)" : "");
         break;
+    case OpType::Kill: text = op.any ? "turn functions off (any)" : "turn busy functions off"; break;
     }
     return text + " x" + std::to_string(rule.count);
 }

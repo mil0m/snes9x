@@ -1,4 +1,5 @@
 #pragma once
+#include "calls.h"
 #include "code_map.h"
 #include "crash_guard.h"
 #include "derail.h"
@@ -91,13 +92,14 @@ class WramAccessCounter
 // DMA reads. Costs a wrapped call per instruction while on, nothing while off. Only one
 // may record at a time. Start and stop between frames; the map must stay alive and keep
 // its size until stop (or the tracer goes). With a jump log, the four indirect jumps
-// (JMP/JSR (a,X), JMP (a), JML [a]) run from ROM are noted in it too (jump_tables.h);
-// it must stay alive until stop as well.
+// (JMP/JSR (a,X), JMP (a), JML [a]) run from ROM are noted in it too (jump_tables.h), and
+// with a call log the calls (JSR, JSL, JSR (a,X)) from ROM into ROM (calls.h, #26); they
+// must stay alive until stop as well.
 class RomTracer
 {
   public:
     ~RomTracer() { stop(); }
-    bool start(CodeMap &map, JumpLog *jumps = nullptr); // false when another records, no ROM is loaded, or the size is wrong
+    bool start(CodeMap &map, JumpLog *jumps = nullptr, CallLog *calls = nullptr); // false when another records, no ROM is loaded, or the size is wrong
     void stop();
     bool tracing() const { return mine; }
 
@@ -112,8 +114,8 @@ class RomTracer
     void set_blind_after_landing(bool on);
     // Changed bytes marked used after a landing that weren't already used that frame.
     uint64_t seen_after_landing() const;
-    // Stops and resumes noting indirect jumps in the jump log, for frames that aren't
-    // real (a run ahead, #52): a rejected change's jumps would teach it garbage tables.
+    // Stops and resumes noting indirect jumps and calls, for frames that aren't real (a run
+    // ahead, #52): a rejected change's jumps would teach it garbage tables.
     void note_jumps(bool on);
     std::optional<DerailWatch::Note> take_derail();
 
@@ -124,6 +126,7 @@ class RomTracer
   private:
     bool mine = false;
     JumpLog *paused_jumps = nullptr;
+    CallLog *paused_calls = nullptr;
 };
 
 } // namespace corrupt

@@ -45,6 +45,7 @@ RunVerdict RunAhead::play(Engine &engine, RomKeeper &rom, CoreAccess &core, std:
     const auto &written = spec.watched;
     auto snap = engine.snapshot();
     uint16_t hotkeys = engine.pressed_hotkeys();
+    auto flips = engine.pending_flips();
     flags_before.assign(flags.begin(), flags.end());
     for (uint32_t o : written) // "used" means used in this run
         if (o < flags.size())
@@ -109,6 +110,7 @@ RunVerdict RunAhead::play(Engine &engine, RomKeeper &rom, CoreAccess &core, std:
     core.load_state(state);
     engine.restore(snap);
     engine.set_pressed_hotkeys(hotkeys);
+    engine.set_pending_flips(std::move(flips));
     rom.revert_after(start);
     std::copy(flags_before.begin(), flags_before.end(), flags.begin());
     return v;

@@ -163,12 +163,12 @@ void parse_op_json(Ctx &ctx, const json &o, const std::string &path, Op &op, con
     if (!require_object(ctx, o, path))
         return;
     check_keys(ctx, o, path, { "type", "min", "max", "mode", "bits", "mask", "width", "a", "b", "from", "length", "value",
-                               "window", "dx", "dy", "wrap", "axis", "curve", "amount", "kernel", "reach", "mutual" });
+                               "window", "dx", "dy", "wrap", "axis", "curve", "amount", "kernel", "reach", "mutual", "pick" });
 
     if (!o.contains("type") || !o["type"].is_string() || !parse_op(o["type"].get<std::string>()))
     {
         ctx.fail(path + ".type", "expected one of add, random, bitflip, swap, copy, freeze, shuffle, shift, flip, "
-                                 "levels, filter, stamp, fill, opcode_swap, branch_flip, nop_out, pointer_swap");
+                                 "levels, filter, stamp, fill, opcode_swap, branch_flip, nop_out, pointer_swap, kill");
         return;
     }
     op.type = *parse_op(o["type"].get<std::string>());
@@ -212,6 +212,14 @@ void parse_op_json(Ctx &ctx, const json &o, const std::string &path, Op &op, con
             op.likely = true;
         else if (reach != "seen")
             ctx.fail(path + ".reach", "expected \"seen\" or \"likely\"");
+    }
+    if (o.contains("pick"))
+    {
+        auto pick = o["pick"].is_string() ? o["pick"].get<std::string>() : "";
+        if (pick == "any")
+            op.any = true;
+        else if (pick != "busiest")
+            ctx.fail(path + ".pick", "expected \"busiest\" or \"any\"");
     }
     if (o.contains("mutual"))
     {
@@ -586,6 +594,10 @@ ojson op_json(const Op &op)
         if (op.mutual)
             o["mutual"] = true;
         break;
+    case OpType::Kill:
+        if (op.any)
+            o["pick"] = "any";
+        break;
     }
     return o;
 }
@@ -738,7 +750,7 @@ ParseResult parse_recipe(std::string_view json_text, const Regions &regions)
         return result;
     }
     check_keys(ctx, doc, "recipe", { "format", "name", "notes", "game", "seed", "intensity", "anchor_state", "rules",
-                                     "patches", "pins", "crash_policy", "rom_policy", "instant_revert", "test_first",
+                                     "patches", "pins", "switches", "crash_policy", "rom_policy", "instant_revert", "test_first",
                                      "crash_detection" });
 
     if (!doc.contains("format") || !doc["format"].is_number_integer() || doc["format"].get<int>() != Recipe::kFormat)
@@ -870,6 +882,57 @@ ParseResult parse_recipe(std::string_view json_text, const Regions &regions)
             }
     }
 
+    if (doc.contains("switches"))
+    {
+        const json &ss = doc["switches"];
+        if (!ss.is_array())
+            ctx.fail("recipe.switches", "expected a list");
+        else
+            for (size_t i = 0; i < ss.size(); i++)
+            {
+                std::string path = "switches[" + std::to_string(i) + "]";
+                const json &j = ss[i];
+                if (!require_object(ctx, j, path))
+                    continue;
+                check_keys(ctx, j, path, { "entry", "return", "was", "hotkey", "start_off", "note" });
+                if (!j.contains("entry") || !j.contains("return") || !j.contains("was"))
+                {
+                    ctx.fail(path, "needs entry (the offset), return (0x60 or 0x6B) and was (the clean value)");
+                    continue;
+                }
+                auto entry = get_int_in(ctx, j["entry"], path + ".entry", 0, 0xFFFFFF);
+                auto ret = get_int_in(ctx, j["return"], path + ".return", 0, 255);
+                auto was = get_int_in(ctx, j["was"], path + ".was", 0, 255);
+                if (!entry || !ret || !was)
+                    continue;
+                if (*ret != 0x60 && *ret != 0x6B)
+                {
+                    ctx.fail(path + ".return", "expected 0x60 (RTS) or 0x6B (RTL)");
+                    continue;
+                }
+                Switch s{ uint32_t(*entry), uint8_t(*ret), uint8_t(*was), 0, false, {} };
+                if (j.contains("hotkey"))
+                {
+                    auto key = get_int_in(ctx, j["hotkey"], path + ".hotkey", 0, 9);
+                    if (!key)
+                        continue;
+                    s.hotkey = int(*key);
+                }
+                if (j.contains("start_off"))
+                {
+                    if (!j["start_off"].is_boolean())
+                    {
+                        ctx.fail(path + ".start_off", "expected true or false");
+                        continue;
+                    }
+                    s.start_off = j["start_off"].get<bool>();
+                }
+                if (j.contains("note") && j["note"].is_string())
+                    s.note = j["note"].get<std::string>();
+                recipe.switches.push_back(s);
+            }
+    }
+
     if (doc.contains("crash_policy"))
     {
         const json &p = doc["crash_policy"];
@@ -968,6 +1031,25 @@ std::string write_recipe(const Recipe &recipe)
             ps.push_back(j);
         }
         doc["pins"] = ps;
+    }
+    if (!recipe.switches.empty())
+    {
+        ojson ss = ojson::array();
+        for (auto &s : recipe.switches)
+        {
+            char ret[8], was[8];
+            snprintf(ret, sizeof ret, "0x%02X", s.ret);
+            snprintf(was, sizeof was, "0x%02X", s.was);
+            ojson j = { { "entry", hex_addr(s.entry) }, { "return", ret }, { "was", was } };
+            if (s.hotkey)
+                j["hotkey"] = s.hotkey;
+            if (s.start_off)
+                j["start_off"] = true;
+            if (!s.note.empty())
+                j["note"] = s.note;
+            ss.push_back(j);
+        }
+        doc["switches"] = ss;
     }
     if (recipe.crash_policy)
         doc["crash_policy"] = policy_name(*recipe.crash_policy);

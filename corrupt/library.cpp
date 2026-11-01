@@ -229,6 +229,43 @@ std::string Library::save_jump_log(const GameId &game, const std::string &user, 
     return write_file_atomic(jump_log_path(game, user), encode_jump_log(log, rom_size));
 }
 
+fs::path Library::call_log_path(const GameId &game, const std::string &user) const
+{
+    return game_dir(game) / ("calls." + recipe_file_stem(user) + ".json");
+}
+
+CallLogs Library::load_call_logs(const GameId &game, const std::string &user, size_t rom_size) const
+{
+    CallLogs out;
+    std::error_code ec;
+    auto mine = call_log_path(game, user).filename().string();
+    for (auto &entry : fs::directory_iterator(game_dir(game), ec))
+    {
+        auto name = entry.path().filename().string();
+        if (name.rfind("calls.", 0) != 0 || entry.path().extension() != ".json")
+            continue;
+        auto text = read_file(entry.path());
+        std::string error;
+        auto log = text ? decode_call_log(*text, rom_size, error) : std::nullopt;
+        if (!text)
+            error = "couldn't read it";
+        if (!log)
+        {
+            out.errors.push_back(name + ": " + error);
+            continue;
+        }
+        (name == mine ? out.mine : out.others).merge(*log);
+    }
+    return out;
+}
+
+std::string Library::save_call_log(const GameId &game, const std::string &user, const CallLog &log, size_t rom_size) const
+{
+    if (auto err = ensure_game_dir(game); !err.empty())
+        return err;
+    return write_file_atomic(call_log_path(game, user), encode_call_log(log, rom_size));
+}
+
 std::vector<RecipeEntry> Library::list_recipes(const GameId &game) const
 {
     std::vector<RecipeEntry> entries;

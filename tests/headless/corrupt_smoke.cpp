@@ -1,7 +1,7 @@
 // End-to-end check of the corruption engine inside the real emulator, no window
 // needed:
 //
-//   corrupt-smoke <rom> <recipe.json> [frames=600] [warmup=600] [--guard | --instant [seeds] | --ahead [seeds] | --eyes [seeds] | --derail-fp [learn] | --learn [held=3] [from=0] | --replay | --copies | --map | --access [dir] | --codemap [file] | --jumps [file] | --dump <dir>]
+//   corrupt-smoke <rom> <recipe.json> [frames=600] [warmup=600] [--guard | --instant [seeds] | --ahead [seeds] | --eyes [seeds] | --derail-fp [learn] | --learn [held=3] [from=0] | --replay | --copies | --map | --access [dir] | --codemap [file] | --jumps [file] | --calls | --dump <dir>]
 //
 // Boots the ROM, runs `warmup` frames, saves a state, then runs `frames` twice
 // from that state: once clean, once with the recipe. Reports what the recipe
@@ -70,6 +70,7 @@
 #include "corrupt/code_map.h"
 #include "corrupt/core_access.h"
 #include "corrupt/core_memory.h"
+#include "corrupt/calls.h"
 #include "corrupt/jump_tables.h"
 #include "corrupt/pointer_swap.h"
 #include "corrupt/crash_guard.h"
@@ -636,6 +637,80 @@ int run_codemap(int frames, const char *file)
         out.write(encoded.data(), std::streamsize(encoded.size()));
         printf("wrote    %s (%zu bytes)\n", file, encoded.size());
     }
+    return 0;
+}
+
+// --calls: what call noting costs (the code map and jumps, then calls too), then a run of
+// `frames` with the call graph (#26): functions found after 10 s, 1 min and 5 min, how they
+// are called, how many run in nearly every frame, and the busiest.
+int run_calls(int frames)
+{
+    auto start = headless::save_state();
+    CodeMap map(Memory.CalculatedSize);
+    JumpLog jumps;
+    CallKeeper calls;
+    RomTracer tracer;
+    auto timed = [&](bool with_calls) {
+        headless::load_state(start);
+        map = CodeMap(Memory.CalculatedSize);
+        jumps.clear();
+        calls.reset();
+        if (!tracer.start(map, &jumps, with_calls ? &calls.mine() : nullptr))
+            return -1.0;
+        int n = std::min(frames, 1800);
+        auto t0 = std::chrono::steady_clock::now();
+        for (int i = 0; i < n; i++)
+        {
+            headless::run_frames(1);
+            calls.end_frame();
+        }
+        double s = std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count();
+        tracer.stop();
+        return n / s;
+    };
+    double fps[2] = { 0, 0 };
+    for (int round = 0; round < 2; round++)
+        for (int how = 0; how < 2; how++)
+            fps[how] = std::max(fps[how], timed(how == 1));
+    if (fps[1] < 0)
+    {
+        fprintf(stderr, "the tracer didn't start\n");
+        return 1;
+    }
+    printf("speed    %.0f fps with the code map and jumps, %.0f with calls too (%.1f%%)\n", fps[0], fps[1],
+           100.0 * (fps[0] / fps[1] - 1.0));
+
+    headless::load_state(start);
+    map = CodeMap(Memory.CalculatedSize);
+    calls.reset();
+    if (!tracer.start(map, nullptr, &calls.mine()))
+        return 1;
+    auto report = [&](int f) {
+        auto fs = calls.functions();
+        size_t types[4] = {}, every = 0;
+        for (auto &fn : fs)
+        {
+            types[int(fn.type)]++;
+            every += fn.frames * 10 >= uint64_t(f) * 9;
+        }
+        printf("%5.0f s  %4zu functions (%zu near, %zu long, %zu mixed), %zu called in 90%%+ of frames, %zu call sites\n",
+               f / 60.0, fs.size(), types[1], types[2], types[3], every, calls.mine().size());
+    };
+    for (int f = 1; f <= frames; f++)
+    {
+        headless::run_frames(1);
+        calls.end_frame();
+        if (f == 600 || f == 3600 || f == 18000 || f == frames)
+            report(f);
+    }
+    tracer.stop();
+    auto where = SnesCoreAccess::rom_addresses();
+    auto fs = busiest(calls.functions(), 0);
+    std::sort(fs.begin(), fs.end(), [](const Function &a, const Function &b) { return a.frames > b.frames; });
+    printf("busiest  (frames called in, calls, callers)\n");
+    for (size_t i = 0; i < fs.size() && i < 12; i++)
+        printf("         $%06X %-5s %6llu %8u %3u\n", where.cpu_address(fs[i].entry).value_or(0), fs[i].type == CallType::Near ? "near" : "long",
+               (unsigned long long)fs[i].frames, fs[i].calls, fs[i].callers);
     return 0;
 }
 
@@ -1382,6 +1457,8 @@ int main(int argc, char **argv)
         return run_instant(*parsed.recipe, frames, argc > 6 ? atoi(argv[6]) : 5);
     if (argc > 5 && std::string(argv[5]) == "--swaps")
         return run_swaps(frames, argc > 6 ? atoi(argv[6]) : 10, argc > 7 ? atoi(argv[7]) : 3);
+    if (argc > 5 && std::string(argv[5]) == "--calls")
+        return run_calls(frames);
     if (argc > 5 && std::string(argv[5]) == "--jumps")
         return run_jumps(frames, argc > 6 ? argv[6] : nullptr);
     if (argc > 5 && std::string(argv[5]) == "--access")

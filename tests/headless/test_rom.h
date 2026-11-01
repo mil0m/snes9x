@@ -114,4 +114,21 @@ constexpr uint32_t kInnocent = 0x0081;  // INC $16's operand: $16 -> $17 is harm
 constexpr uint32_t kRunsAddr = 0x12;    // WRAM: runs of the second routine
 } // namespace landing
 
+// Crash::None for the call graph and kill switches (#26, #34). Each frame the main loop
+// calls: a near function (INC $20; RTS), a long one (INC $21; RTL), a mixed one twice
+// (PHK / JSR and JSL, to INC $22; RTL), and one that skips a byte of data after its JSR
+// (REP #$20 / PLA / INC A / PHA / SEP #$20 / INC $23 / RTS; the byte is $00, a BRK if run).
+// ROM offsets.
+std::vector<uint8_t> build_calls();
+namespace calls
+{
+constexpr uint32_t kNear = 0x0060;   // $8060
+constexpr uint32_t kLong = 0x0070;   // $8070
+constexpr uint32_t kMixed = 0x00A0;  // $80A0
+constexpr uint32_t kInline = 0x00B0; // $80B0
+constexpr uint32_t kNearSite = 0x0012, kLongSite = 0x0015, kMixedNearSite = 0x001A, kMixedLongSite = 0x001D,
+                   kInlineSite = 0x0021;
+constexpr uint32_t kCounts = 0x20; // WRAM: runs of near, long, mixed (twice a frame), inline at $20-$23
+} // namespace calls
+
 } // namespace testrom

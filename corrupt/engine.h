@@ -43,6 +43,7 @@ class Engine
 {
   public:
     static constexpr size_t kEventLogLimit = 10000;
+    static constexpr size_t kBusiestFunctions = 64; // what a kill op picks from, unless it may pick any
 
     void set_recipe(Recipe recipe); // restarts the run
     const Recipe &recipe() const { return current; }
@@ -69,6 +70,9 @@ class Engine
     // Where pointer swaps learn the game's jump tables (everyone's). Called when a jump op
     // first fires in a run, and again while it returns none.
     void set_jump_tables(std::function<std::vector<JumpTable>()> tables) { jump_tables = std::move(tables); }
+    // Where function ops learn the game's functions (the call graph, everyone's). Called when
+    // one first fires in a run, and again while it returns none.
+    void set_functions(std::function<std::vector<Function>()> functions) { learned_functions = std::move(functions); }
     // How many bytes an aimed rule picks from this run, or entries a pointer swap may change
     // (0 until it first fires).
     size_t aimed_count(size_t index) const;
@@ -99,6 +103,27 @@ class Engine
     void add_pins(const std::vector<Pin> &pins);       // a pin on the same byte is replaced; no restart
     void remove_pins(const std::vector<uint32_t> &offsets); // no restart
     void add_patches(Target t, const std::vector<std::pair<uint32_t, uint8_t>> &bytes); // no restart
+
+    // Kill switches (#34). A flip happens at the start of the next frame, only while the
+    // run is on: the entry gets `ret` unless it holds it already, then it gets `clean`
+    // back; an entry holding neither (another version of the ROM) is left alone. Through the
+    // memory given to on_frame (the ROM keeper: a rollback undoes it), never logged as a
+    // rule's write. The recipe's switches flip on their hotkeys the same way.
+    struct Flip
+    {
+        uint32_t entry = 0;
+        uint8_t ret = 0;
+        uint8_t clean = 0;
+    };
+    void flip_function(uint32_t entry, uint8_t ret, uint8_t clean);
+    // Flips asked for and not done yet (a snapshot doesn't hold them; a run ahead must).
+    std::vector<Flip> pending_flips() const { return flips; }
+    void set_pending_flips(std::vector<Flip> f) { flips = std::move(f); }
+    void add_switch(const Switch &s);      // one on the same entry is replaced; no restart
+    void remove_switch(uint32_t entry);    // no restart
+    // The start-off switches, as the run starts (after the pins); skipped like a pin when
+    // `was` isn't the byte there.
+    PinsApplied apply_switches(MemoryAccess &mem);
     void clear_patches(Target t);                                                          // no restart
 
     // Held starts: with hold_starts(true), every (re)start waits at frame 0 until
@@ -180,6 +205,10 @@ class Engine
     AimedBytes aimed_now;
     std::span<const uint8_t> run_flags; // the code map this run aims with
     std::function<std::vector<JumpTable>()> jump_tables;
+    std::function<std::vector<Function>()> learned_functions;
+    std::vector<Function> run_functions;                           // the functions this run may turn off
+    std::unordered_map<uint64_t, std::vector<Function>> kills;     // by rule id, for this run
+    std::vector<Flip> flips;
     std::vector<JumpTable> run_jumps;                             // the tables this run swaps with
     std::unordered_map<uint64_t, std::vector<SwapSlot>> swaps;    // by rule id, for this run
 };

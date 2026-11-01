@@ -21,6 +21,7 @@ void Engine::replace_rule(size_t index, Rule rule)
     current.rules[index] = std::move(rule);
     aimed.erase(ids[index]);
     swaps.erase(ids[index]);
+    kills.erase(ids[index]);
     run_flags = {}; // an edited rule aims with the map as it is now
     ids[index] = next_id++;
     runtimes[index] = RuleRuntime{};
@@ -43,6 +44,7 @@ void Engine::remove_rule(size_t index)
     current.rules.erase(current.rules.begin() + std::ptrdiff_t(index));
     aimed.erase(ids[index]);
     swaps.erase(ids[index]);
+    kills.erase(ids[index]);
     ids.erase(ids.begin() + std::ptrdiff_t(index));
     runtimes.erase(runtimes.begin() + std::ptrdiff_t(index));
     mutes.erase(mutes.begin() + std::ptrdiff_t(index));
@@ -70,6 +72,7 @@ void Engine::set_active(bool on)
         restart();
     is_active = on;
     pending_hotkeys = 0;
+    flips.clear();
 }
 
 void Engine::reroll(uint64_t seed)
@@ -122,6 +125,9 @@ void Engine::restart()
     run_flags = {};
     swaps.clear();
     run_jumps.clear();
+    kills.clear();
+    run_functions.clear();
+    flips.clear();
     frame = 0;
     pending_hotkeys = 0;
     vetoed.clear(); // frames of the previous run
@@ -218,6 +224,51 @@ void Engine::add_pins(const std::vector<Pin> &pins)
     std::sort(current.pins.begin(), current.pins.end(), [](const Pin &a, const Pin &b) { return a.offset < b.offset; });
 }
 
+void Engine::flip_function(uint32_t entry, uint8_t ret, uint8_t clean)
+{
+    if (is_active)
+        flips.push_back({ entry, ret, clean });
+}
+
+void Engine::add_switch(const Switch &s)
+{
+    auto it = std::find_if(current.switches.begin(), current.switches.end(),
+                           [&](const Switch &o) { return o.entry == s.entry; });
+    if (it != current.switches.end())
+        *it = s;
+    else
+        current.switches.push_back(s);
+    std::sort(current.switches.begin(), current.switches.end(),
+              [](const Switch &a, const Switch &b) { return a.entry < b.entry; });
+}
+
+void Engine::remove_switch(uint32_t entry)
+{
+    std::erase_if(current.switches, [&](const Switch &s) { return s.entry == entry; });
+}
+
+Engine::PinsApplied Engine::apply_switches(MemoryAccess &mem)
+{
+    PinsApplied out;
+    size_t size = mem.size(Target::ROM);
+    for (auto &s : current.switches)
+    {
+        if (!s.start_off || s.entry >= size || locked.is_hot(Target::ROM, s.entry))
+            continue;
+        uint8_t now = mem.read(Target::ROM, s.entry);
+        if (now == s.ret)
+            continue;
+        if (now != s.was)
+        {
+            out.mismatched++;
+            continue;
+        }
+        mem.write_at_start(Target::ROM, s.entry, s.ret);
+        out.written++;
+    }
+    return out;
+}
+
 void Engine::remove_pins(const std::vector<uint32_t> &offsets)
 {
     std::erase_if(current.pins, [&](const Pin &p) {
@@ -305,6 +356,11 @@ void Engine::on_frame(MemoryAccess &real)
     frame++;
     uint16_t hotkeys = pending_hotkeys;
     pending_hotkeys = 0;
+    std::vector<Flip> flipping;
+    flipping.swap(flips);
+    for (auto &s : current.switches)
+        if (s.hotkey >= 1 && s.hotkey <= 9 && (hotkeys & hotkey_bit(s.hotkey)))
+            flipping.push_back({ s.entry, s.ret, s.was });
 
     bool quiet = quiet_from && frame > *quiet_from;
     bool vetoes_now = quiet || std::any_of(vetoed.begin(), vetoed.end(), [&](const Veto &v) { return v.frame == frame; });
@@ -315,6 +371,18 @@ void Engine::on_frame(MemoryAccess &real)
     };
     FilteredMemory filtered(real, is_vetoed);
     MemoryAccess &mem = vetoes_now ? static_cast<MemoryAccess &>(filtered) : real;
+
+    // Kill switches first: the frame runs with them as asked.
+    for (auto &f : flipping)
+    {
+        if (f.entry >= mem.size(Target::ROM) || locked.is_hot(Target::ROM, f.entry) || f.ret == f.clean)
+            continue;
+        uint8_t now = mem.read(Target::ROM, f.entry);
+        if (now == f.ret)
+            mem.write(Target::ROM, f.entry, f.clean);
+        else if (now == f.clean)
+            mem.write(Target::ROM, f.entry, f.ret);
+    }
 
     for (uint32_t i = 0; i < current.rules.size(); i++)
     {
@@ -337,6 +405,27 @@ const AimedBytes *Engine::aim_for(uint32_t index, MemoryAccess &mem)
     const Rule &rule = current.rules[index];
     if (!needs_aim(rule))
         return nullptr;
+    if (is_function_op(rule.op.type))
+    {
+        auto found = kills.find(ids[index]);
+        if (found == kills.end())
+        {
+            if (run_functions.empty() && learned_functions)
+                run_functions = learned_functions();
+            if (run_functions.empty())
+            {
+                aimed_now = {}; // nothing learned yet: try again next time
+                return &aimed_now;
+            }
+            std::vector<Function> in_range;
+            for (auto &f : run_functions)
+                if (f.entry >= rule.range.first && f.entry <= rule.range.last)
+                    in_range.push_back(f);
+            found = kills.emplace(ids[index], busiest(std::move(in_range), rule.op.any ? 0 : kBusiestFunctions)).first;
+        }
+        aimed_now = { nullptr, {}, nullptr, &found->second };
+        return &aimed_now;
+    }
     if (is_jump_op(rule.op.type))
     {
         auto found = swaps.find(ids[index]);
@@ -386,6 +475,8 @@ size_t Engine::aimed_count(size_t index) const
         return 0;
     if (auto s = swaps.find(ids[index]); s != swaps.end())
         return s->second.size();
+    if (auto k = kills.find(ids[index]); k != kills.end())
+        return k->second.size();
     auto it = aimed.find(ids[index]);
     return it == aimed.end() ? 0 : it->second.size();
 }
@@ -397,6 +488,7 @@ std::vector<LoggedEvent> Engine::preview_next(MemoryAccess &mem, std::optional<T
         return out;
     auto snap = snapshot();
     uint16_t hotkeys = pending_hotkeys;
+    auto queued = flips;
     OverlayMemory nothing_lands(mem);
     on_frame(nothing_lands);
     for (auto &e : log)
@@ -404,6 +496,7 @@ std::vector<LoggedEvent> Engine::preview_next(MemoryAccess &mem, std::optional<T
             out.push_back(e);
     restore(snap);
     pending_hotkeys = hotkeys;
+    flips = std::move(queued);
     return out;
 }
 

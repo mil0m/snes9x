@@ -196,6 +196,7 @@ class CorruptionSession
     void loadCodeMap(); // emulation thread or suspended: the tracer's buffer is replaced
     void saveCodeMap();
     void saveJumpLog();
+    void saveCallLog();
     void findJumpTables(const corrupt::CodeMap &all); // when the log or the map grew since last time
 
     std::mutex mutex;
@@ -223,6 +224,7 @@ class CorruptionSession
     corrupt::CodeCoverage code_coverage;
     corrupt::RomHeat rom_heat;              // the viewer's Live overlay, while it shows the ROM
     corrupt::JumpLogKeeper jump_log;        // the tracer notes indirect jumps into it, kept like the code map
+    corrupt::CallKeeper call_log;           // ...and calls (#26): the functions kill switches turn off
     corrupt::RomOffsets rom_offsets;        // where each 4 KB of the address space is in the ROM
     std::vector<corrupt::JumpTable> jump_tables; // found from everyone's log and map, every few seconds
     std::vector<uint8_t> jump_shown;        // the viewer's marks for them

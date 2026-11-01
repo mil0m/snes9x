@@ -214,6 +214,8 @@ void CorruptionSession::betweenFrames()
             saveCodeMap(); // to the library it came from
         if (jump_log.unsaved())
             saveJumpLog();
+        if (call_log.unsaved())
+            saveCallLog();
         loadCodeMap();
     }
     code_map.tick();
@@ -222,6 +224,9 @@ void CorruptionSession::betweenFrames()
     jump_log.tick();
     if (jump_log.save_due())
         saveJumpLog();
+    call_log.end_frame(); // the frame's calls count towards each function's frames (#26)
+    if (call_log.save_due())
+        saveCallLog();
     if (++code_frames % 30 == 0) // twice a second: copying a 6 MB map isn't free
     {
         if (watch.watching() && watch.target() == Target::ROM)
@@ -276,6 +281,7 @@ void CorruptionSession::stateLoaded()
     std::lock_guard lock(mutex);
     guard.reset();
     instant.drop();
+    call_log.forget_now(); // what ran a moment ago is from another moment of the game
 }
 
 void CorruptionSession::markCrash()
@@ -343,6 +349,7 @@ void CorruptionSession::gameLoaded()
     });
     // Pointer swaps pick from the jump tables found so far (everyone's), as a run starts.
     engine.set_jump_tables([this] { return jump_tables; });
+    engine.set_functions([this] { return call_log.functions(); }); // what kill ops pick from (#34)
 
     backupNow("load"); // before the first frame runs
     message = "Loaded " + game_folder_name(game.title, game.sha256);
@@ -372,12 +379,18 @@ void CorruptionSession::loadCodeMap()
     for (auto &e : jumps.errors)
         note("Jump log skipped: " + e);
     jump_log.reset(std::move(jumps));
+    CallLogs calls;
+    if (!library_root.empty())
+        calls = Library(library_root).load_call_logs(game, user_name(), size);
+    for (auto &e : calls.errors)
+        note("Call log skipped: " + e);
+    call_log.reset(std::move(calls));
     auto all = code_map.combined();
     code_coverage = all.coverage();
     code_shown = {};
     jumps_found_print = ~uint64_t(0);
     findJumpTables(all);
-    if (!tracer.start(code_map.mine(), &jump_log.mine()))
+    if (!tracer.start(code_map.mine(), &jump_log.mine(), &call_log.mine()))
         note("The code map isn't recording (no ROM?)");
     else
     {
@@ -408,6 +421,17 @@ void CorruptionSession::saveJumpLog()
         note("Couldn't save the jump log: " + err);
     else
         jump_log.saved();
+}
+
+void CorruptionSession::saveCallLog()
+{
+    if (code_map_root.empty())
+        return;
+    if (auto err = Library(code_map_root).save_call_log(game, user_name(), call_log.mine(), memory.size(Target::ROM));
+        !err.empty())
+        note("Couldn't save the call log: " + err);
+    else
+        call_log.saved();
 }
 
 void CorruptionSession::findJumpTables(const CodeMap &all)
@@ -456,6 +480,8 @@ void CorruptionSession::gameClosing()
         saveCodeMap();
     if (jump_log.unsaved())
         saveJumpLog();
+    if (call_log.unsaved())
+        saveCallLog();
     rom_blame.attach(nullptr, 0);
     tracer.stop(); // before the reset watch goes
     watching_derails = false;
