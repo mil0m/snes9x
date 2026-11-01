@@ -32,7 +32,7 @@ namespace
 constexpr OpType kOps[] = { OpType::Random, OpType::Add,   OpType::Bitflip, OpType::Swap,   OpType::Copy,
                             OpType::Freeze, OpType::Shuffle, OpType::Shift,  OpType::Flip,   OpType::Levels,
                             OpType::Filter, OpType::Stamp,   OpType::Fill,    OpType::OpcodeSwap,
-                            OpType::BranchFlip, OpType::NopOut, OpType::PointerSwap };
+                            OpType::BranchFlip, OpType::NopOut, OpType::PointerSwap, OpType::Kill };
 constexpr TriggerType kTriggers[] = { TriggerType::EveryFrames, TriggerType::ChancePerFrame,
                                       TriggerType::OnceAtFrame, TriggerType::Hotkey, TriggerType::AtLoad };
 
@@ -73,6 +73,7 @@ QString op_label(OpType t)
     case OpType::BranchFlip: return QObject::tr("Flip branches (ROM)");
     case OpType::NopOut: return QObject::tr("NOP out instructions (ROM)");
     case OpType::PointerSwap: return QObject::tr("Swap pointers in jump tables (ROM)");
+    case OpType::Kill: return QObject::tr("Turn functions off (ROM)");
     }
     return {};
 }
@@ -450,6 +451,16 @@ void RuleEditor::buildForm()
     swap_mutual = new QCheckBox(tr("Both ways: the other entry gets this one's routine"), pointer_page);
     swap_mutual->setObjectName("swap_mutual");
     f->addRow(ui::row(swap_mutual));
+
+    auto kill_page = page(f);
+    f->addRow(hint_label(tr("Each picked function of the game gets a return at its start, so the game skips it: "
+                            "gravity, collision, an enemy's brain. Picked from the functions it has seen the game "
+                            "call, the busiest first. Play a while first; the Functions window lists them."),
+                         kill_page));
+    kill_any = new QCheckBox(tr("Any function, not only the 64 busiest"), kill_page);
+    kill_any->setObjectName("kill_any");
+    kill_any->setToolTip(tr("Rarely run functions too: a menu, a boss, an ending. Less often visible."));
+    f->addRow(ui::row(kill_any));
     layout->addWidget(what_box);
 
     // Aim (ROM only): which bytes, by what the code map knows about them.
@@ -753,6 +764,9 @@ void RuleEditor::load(const Rule &r)
         swap_likely->setChecked(op.likely);
         swap_mutual->setChecked(op.mutual);
         break;
+    case OpType::Kill:
+        kill_any->setChecked(op.any);
+        break;
     }
 
     const Trigger &t = r.when;
@@ -910,6 +924,9 @@ RuleEditor::Built RuleEditor::build() const
         op.likely = swap_likely->isChecked();
         op.mutual = swap_mutual->isChecked();
         break;
+    case OpType::Kill:
+        op.any = kill_any->isChecked();
+        break;
     }
     r.op = op;
 
@@ -935,7 +952,8 @@ RuleEditor::Built RuleEditor::build() const
 
     // The aim, for ROM rules only; code ops always aim at opcodes.
     r.aim = {};
-    if (r.range.target == Target::ROM && !is_jump_op(op.type)) // a pointer swap aims at jump tables
+    // A pointer swap aims at jump tables, a kill at functions.
+    if (r.range.target == Target::ROM && !is_jump_op(op.type) && !is_function_op(op.type))
     {
         if (!is_code_op(op.type))
             r.aim.role = parse_role(role_combo->currentData().toString().toStdString()).value_or(Role::Any);
@@ -1012,18 +1030,19 @@ void RuleEditor::refresh()
     pick_combo->setEnabled(!area_op);
     bool rom = target_of(target_combo) == Target::ROM;
     auto op_type = parse_op(op_combo->currentData().toString().toStdString()).value_or(OpType::Random);
-    bool code_op = is_code_op(op_type), jump_op = is_jump_op(op_type);
+    bool code_op = is_code_op(op_type), jump_op = is_jump_op(op_type), function_op = is_function_op(op_type);
     aim_box->setEnabled(rom && !area_op);
     role_combo->setEnabled(!code_op);
     if (auto label = qobject_cast<QLabel *>(how_form->labelForField(count_spin)))
-        label->setText(jump_op ? tr("Entries each time") : tr("Bytes each time"));
+        label->setText(jump_op ? tr("Entries each time") : function_op ? tr("Functions each time") : tr("Bytes each time"));
     if (auto label = qobject_cast<QLabel *>(how_form->labelForField(pick_combo)))
-        label->setText(jump_op ? tr("Which entries") : tr("Which bytes"));
-    count_spin->setToolTip(jump_op ? tr("How many jump table entries it changes each time it fires")
-                                   : tr("How many bytes it changes each time it fires"));
+        label->setText(jump_op ? tr("Which entries") : function_op ? tr("Which functions") : tr("Which bytes"));
+    count_spin->setToolTip(jump_op       ? tr("How many jump table entries it changes each time it fires")
+                           : function_op ? tr("How many functions it turns off each time it fires")
+                                         : tr("How many bytes it changes each time it fires"));
     // Sections that don't apply are hidden, and the pages take only the room they need;
     // the dialog fits itself again when that changes.
-    bool show_aim = rom && !area_op && !jump_op, show_rect = custom_range && rect;
+    bool show_aim = rom && !area_op && !jump_op && !function_op, show_rect = custom_range && rect;
     bool layout_changed = aim_box->isVisibleTo(this) != show_aim || no_aim_hint->isVisibleTo(this) == rom ||
                           shown_page != op_pages->currentIndex() || shown_when_page != when_pages->currentIndex() ||
                           rect_fields->isVisibleTo(this) != show_rect;

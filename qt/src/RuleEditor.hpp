@@ -84,6 +84,7 @@ class RuleEditor : public QDialog
     QCheckBox *shift_wrap;
     QCheckBox *swap_likely;
     QCheckBox *swap_mutual;
+    QCheckBox *kill_any;
     QLineEdit *shift_fill;
     QComboBox *flip_axis;
     QComboBox *levels_curve;

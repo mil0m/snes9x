@@ -1,0 +1,57 @@
+#pragma once
+#include <QDialog>
+
+#include "FunctionSource.hpp"
+
+class QCheckBox;
+class QComboBox;
+class QLabel;
+class QLineEdit;
+class QPushButton;
+class QTableWidget;
+class QTableWidgetItem;
+class QTimer;
+namespace ui
+{
+class StatusLine;
+}
+
+// Kill switches (#34): the functions the game runs, busiest now first. Tick one off and the
+// game skips it; put it on a hotkey and keep it in the recipe. While open it updates twice a
+// second in place (rows keep their order until Refresh, so nothing moves under the mouse).
+class FunctionsDialog : public QDialog
+{
+  public:
+    explicit FunctionsDialog(FunctionSource &source, QWidget *parent = nullptr);
+    void refresh(); // reload, busiest now first
+
+  protected:
+    void showEvent(QShowEvent *event) override;
+    void hideEvent(QHideEvent *event) override;
+
+  private:
+    void update(); // the same rows, their numbers and states now
+    void fill(int row, const FunctionRow &r);
+    void offChanged(QTableWidgetItem *item);
+    void selectionChanged();
+    void applyFilter();
+    void keepSelected();
+    void forgetSelected();
+    int selectedRow() const;
+
+    FunctionSource &source;
+    std::vector<FunctionRow> shown;
+    bool filling = false;
+    QTimer *timer;
+    QLabel *empty_label;
+    ui::StatusLine *not_running;
+    QLineEdit *filter;
+    QTableWidget *table;
+    QWidget *switch_row;
+    QComboBox *hotkey;
+    QCheckBox *start_off;
+    QLineEdit *note;
+    QPushButton *keep_button;
+    QPushButton *forget_button;
+    ui::StatusLine *message;
+};

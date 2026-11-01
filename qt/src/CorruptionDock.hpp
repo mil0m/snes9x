@@ -6,6 +6,7 @@
 
 #include "MemoryViewer.hpp"
 #include "Starters.hpp"
+#include "FunctionsDialog.hpp"
 #include "SurvivorsDialog.hpp"
 #include "corrupt/library.h"
 
@@ -91,6 +92,9 @@ class CorruptionDock : public QDockWidget
     std::unique_ptr<MemorySource> memory_source;
     std::unique_ptr<SurvivorSource> survivor_source;
     SurvivorsDialog *survivors_dialog = nullptr;
+    std::unique_ptr<FunctionSource> function_source;
+    FunctionsDialog *functions_dialog = nullptr;
+    QPushButton *functions_button = nullptr;
     class GuideWindow *guide = nullptr;
     QPushButton *survivors_button = nullptr;
     QPushButton *corrupt_button;

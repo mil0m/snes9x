@@ -12,6 +12,7 @@
 #include "corrupt/rom_blame.h"
 #include "corrupt/rom_heat.h"
 #include "corrupt/survivors.h"
+#include "FunctionSource.hpp"
 #include "corrupt/share.h"
 #include "corrupt/run_control.h"
 #include "corrupt/save_backup.h"
@@ -68,8 +69,11 @@ class CorruptionSession
 
         bool can_go_back = false; // a run started (its moment is there to go back to), or the ROM changed
         bool back_to_normal = false; // Back to normal was the last thing done (nothing has run since)
+        size_t rom_size = 0;
         size_t rom_changed = 0; // ROM bytes that differ from the clean ROM
         size_t rom_used = 0;    // ...of which the game has run or read since they changed
+        size_t functions = 0;     // the call graph's functions (#26)
+        size_t functions_off = 0; // of them, switched off now (#34)
         size_t survivors = 0;   // ...of which proved themselves (see survivors())
         unsigned instant_reverts = 0; // changed bytes caught sending the CPU astray, fixed at once (#51)
         unsigned tested_first = 0;    // live ROM firings played ahead before they landed (#52)
@@ -167,6 +171,15 @@ class CorruptionSession
     std::vector<corrupt::Pin> pins();
     std::string pin(const std::vector<uint32_t> &offsets, const std::string &note);
     void unpin(const std::vector<uint32_t> &offsets);
+
+    // Kill switches (#34): the functions the call graph knows, everyone's, busiest now
+    // first, with whether each is off and the recipe's switch for it. A flip happens at the
+    // next frame while corruption is on. Errors or empty.
+    std::vector<FunctionRow> functions();
+    bool corruptionOn();
+    std::string flipFunction(uint32_t entry);
+    std::string keepSwitch(uint32_t entry, int hotkey, bool start_off, const std::string &note);
+    void forgetSwitch(uint32_t entry);
 
     // Save backups.
     std::filesystem::path backupDir();

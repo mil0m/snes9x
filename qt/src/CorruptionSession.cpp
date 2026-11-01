@@ -1098,7 +1098,14 @@ CorruptionSession::Status CorruptionSession::status()
         s.can_go_back = control.has_anchor() || rom.changed() > 0;
         s.back_to_normal = at_normal && !engine.active();
         s.rom_used = rom_blame.used();
+        s.rom_size = memory.size(Target::ROM);
         s.survivors = rom_blame.survivor_count(kSurvivorFrames);
+        for (auto &f : call_log.functions())
+        {
+            s.functions++;
+            uint8_t ret = return_byte(f.type);
+            s.functions_off += ret && f.entry < memory.size(Target::ROM) && memory.read(Target::ROM, f.entry) == ret;
+        }
         s.instant_reverts = instant.total();
         s.tested_first = ahead.tested();
         s.tested_rerolled = ahead.rerolled();
@@ -1192,6 +1199,87 @@ void CorruptionSession::pinChanged()
     for (auto &p : engine.recipe().pins)
         offsets.push_back(p.offset);
     rom_blame.set_pinned(offsets);
+}
+
+std::vector<FunctionRow> CorruptionSession::functions()
+{
+    std::lock_guard lock(mutex);
+    std::vector<FunctionRow> rows;
+    if (!game_loaded)
+        return rows;
+    size_t size = memory.size(Target::ROM);
+    for (auto &f : call_log.functions())
+    {
+        FunctionRow r;
+        r.f = f;
+        r.address = rom_where.cpu_address(f.entry);
+        uint8_t ret = return_byte(f.type);
+        r.off = ret && f.entry < size && memory.read(Target::ROM, f.entry) == ret;
+        for (auto &s : engine.recipe().switches)
+            if (s.entry == f.entry)
+                r.kept = s;
+        rows.push_back(std::move(r));
+    }
+    return rows;
+}
+
+bool CorruptionSession::corruptionOn()
+{
+    std::lock_guard lock(mutex);
+    return game_loaded && engine.active();
+}
+
+std::string CorruptionSession::flipFunction(uint32_t entry)
+{
+    std::lock_guard lock(mutex);
+    if (!game_loaded || !engine.active())
+        return "corruption is off";
+    for (auto &f : call_log.functions())
+        if (f.entry == entry)
+        {
+            uint8_t ret = return_byte(f.type);
+            if (!ret)
+                return "it's called both near and long";
+            if (entry >= rom.clean().size() || rom.locked_mask().is_hot(Target::ROM, entry))
+                return "that byte can't be changed";
+            engine.flip_function(entry, ret, rom.clean()[entry]);
+            return {};
+        }
+    return "no such function";
+}
+
+std::string CorruptionSession::keepSwitch(uint32_t entry, int hotkey, bool start_off, const std::string &note_text)
+{
+    std::lock_guard lock(mutex);
+    if (!game_loaded)
+        return "No game loaded";
+    for (auto &f : call_log.functions())
+        if (f.entry == entry)
+        {
+            uint8_t ret = return_byte(f.type);
+            if (!ret)
+                return "it's called both near and long";
+            if (entry >= rom.clean().size())
+                return "that byte isn't in the ROM";
+            if (!has_recipe)
+                newRecipeLocked("Switches");
+            Switch s;
+            s.entry = entry;
+            s.ret = ret;
+            s.was = rom.clean()[entry];
+            s.hotkey = std::clamp(hotkey, 0, 9);
+            s.start_off = start_off;
+            s.note = note_text;
+            engine.add_switch(s);
+            return {};
+        }
+    return "no such function";
+}
+
+void CorruptionSession::forgetSwitch(uint32_t entry)
+{
+    std::lock_guard lock(mutex);
+    engine.remove_switch(entry);
 }
 
 std::vector<Survivor> CorruptionSession::survivors()

@@ -1,0 +1,16 @@
+{
+  "format": 1,
+  "name": "Function roulette",
+  "notes": "Live: every press of hotkey 1 turns one more of the game's busiest functions off (a return at its start, so the game skips it): gravity, collision, an enemy's brain, the scroll. Watch what stops. The crash guard turns back on one that breaks the game; Back to Normal turns them all back on. Needs the functions the game calls: play a moment first. For picking them one by one, open Functions in the ROM section.",
+  "seed": 3401,
+  "rules": [
+    {
+      "name": "one more off",
+      "target": "rom",
+      "range": [ "0x0", "0x7FFFFF" ],
+      "op": { "type": "kill" },
+      "when": { "hotkey": 1 },
+      "count": 1
+    }
+  ]
+}

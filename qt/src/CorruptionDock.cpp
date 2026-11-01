@@ -94,6 +94,19 @@ struct SessionSurvivors : SurvivorSource
     void unpin(const std::vector<uint32_t> &offsets) override { s.unpin(offsets); }
 };
 
+struct SessionFunctions : FunctionSource
+{
+    CorruptionSession &s = CorruptionSession::get();
+    std::vector<FunctionRow> functions() override { return s.functions(); }
+    bool running() override { return s.corruptionOn(); }
+    std::string flip(uint32_t entry) override { return s.flipFunction(entry); }
+    std::string keep(uint32_t entry, int hotkey, bool start_off, const std::string &note) override
+    {
+        return s.keepSwitch(entry, hotkey, start_off, note);
+    }
+    void forget(uint32_t entry) override { s.forgetSwitch(entry); }
+};
+
 QPushButton *button(const QString &text, QWidget *parent, const char *icon = nullptr)
 {
     auto b = new QPushButton(text, parent);
@@ -505,6 +518,10 @@ CorruptionDock::CorruptionDock(EmuApplication &app, QWidget *parent)
     survivors_button->setObjectName("survivors");
     survivors_button->setToolTip(tr("ROM changes the game keeps using without crashing. Pin the ones you like to "
                                     "keep them in the recipe."));
+    functions_button = button(tr("Functions…"), rom_box, "power");
+    functions_button->setObjectName("functions");
+    functions_button->setToolTip(tr("The game's functions, busiest now first: turn one off and the game skips it "
+                                    "(gravity, collision, enemy AI…), or put it on a hotkey"));
     clear_paint_button = button(tr("Clear Paint"), rom_box, "eraser");
     clear_paint_button->setObjectName("clear_paint");
     clear_paint_button->setToolTip(tr("Forget the bytes painted in the memory viewer. They stay until the next run "
@@ -516,12 +533,13 @@ CorruptionDock::CorruptionDock(EmuApplication &app, QWidget *parent)
     export_rom->setObjectName("export_rom");
     export_rom->setToolTip(tr("Save the ROM as it is now as a .sfc file (checksum fixed), for other emulators or "
                               "a flash cart"));
-    // Two by two, so the four fit a narrow panel.
+    // Two by two, so they fit a narrow panel.
     auto rom_grid = new QGridLayout;
-    rom_grid->addWidget(survivors_button, 0, 0);
-    rom_grid->addWidget(export_rom, 0, 1);
-    rom_grid->addWidget(restore_rom_button, 1, 0);
-    rom_grid->addWidget(clear_paint_button, 1, 1);
+    rom_grid->addWidget(functions_button, 0, 0);
+    rom_grid->addWidget(survivors_button, 0, 1);
+    rom_grid->addWidget(export_rom, 1, 0);
+    rom_grid->addWidget(restore_rom_button, 1, 1);
+    rom_grid->addWidget(clear_paint_button, 2, 0);
     rom_grid->setColumnStretch(2, 1);
     rom_layout->addLayout(rom_grid);
     connect(restore_rom_button, &QPushButton::clicked, [] { CorruptionSession::get().restoreCleanRom(); });
@@ -536,6 +554,17 @@ CorruptionDock::CorruptionDock(EmuApplication &app, QWidget *parent)
         survivors_dialog->show();
         survivors_dialog->raise();
         survivors_dialog->activateWindow();
+    });
+    connect(functions_button, &QPushButton::clicked, [this] {
+        if (!functions_dialog)
+        {
+            function_source = std::make_unique<SessionFunctions>();
+            functions_dialog = new FunctionsDialog(*function_source, this);
+        }
+        functions_dialog->refresh();
+        functions_dialog->show();
+        functions_dialog->raise();
+        functions_dialog->activateWindow();
     });
     connect(export_rom, &QPushButton::clicked, this, &CorruptionDock::exportRom);
 
@@ -829,6 +858,14 @@ void CorruptionDock::tour(const QString &dir)
             shot(survivors_dialog, "09-survivors");
             survivors_dialog->close();
         }
+        functions_button->click();
+    });
+    steps->push_back([=, this] {
+        if (functions_dialog)
+        {
+            shot(functions_dialog, "09b-functions");
+            functions_dialog->close();
+        }
         openGuide({});
     });
     steps->push_back([=, this] {
@@ -844,7 +881,8 @@ void CorruptionDock::tour(const QString &dir)
         QFile audit(dir + "/audit.txt");
         if (audit.open(QIODevice::WriteOnly | QIODevice::Text))
             for (auto [name, w] : std::initializer_list<std::pair<const char *, QWidget *>>{
-                     { "panel", this }, { "memory viewer", memory_viewer }, { "survivors", survivors_dialog } })
+                     { "panel", this }, { "memory viewer", memory_viewer }, { "survivors", survivors_dialog },
+                     { "functions", functions_dialog } })
                 if (w)
                     for (auto &issue : ui::audit(w))
                         audit.write(QString("%1: %2\n").arg(name, issue).toUtf8());
@@ -974,6 +1012,12 @@ void CorruptionDock::refreshStatus()
                                 .arg(plural(status.rom_changed, tr("1 byte changed"), tr("%1 bytes changed")))
                                 .arg(QLocale().toString(qulonglong(status.rom_used))));
         QStringList kept;
+        if (status.functions)
+            kept << (status.functions_off
+                         ? tr("%1 (%2 off)")
+                               .arg(plural(status.functions, tr("1 function known"), tr("%1 functions known")))
+                               .arg(status.functions_off)
+                         : plural(status.functions, tr("1 function known"), tr("%1 functions known")));
         if (status.survivors)
             kept << plural(status.survivors, tr("1 survivor"), tr("%1 survivors"));
         if (status.pins)
@@ -1311,6 +1355,10 @@ void CorruptionDock::recipeChosen(int index)
         std::vector<std::string> region_errors;
         Recipe recipe = starter.recipe;
         recipe.game = status.game;
+        // A starter's ROM range means "the whole game", up to its size: fit it to this one.
+        for (auto &rule : recipe.rules)
+            if (rule.range.target == Target::ROM && !rule.rect && status.rom_size && rule.range.last >= status.rom_size)
+                rule.range.last = uint32_t(status.rom_size - 1);
         problems = CorruptionSession::get().loadRecipe(recipe);
         loaded = qs(recipe.name);
     }
