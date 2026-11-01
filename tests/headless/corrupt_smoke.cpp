@@ -1,7 +1,7 @@
 // End-to-end check of the corruption engine inside the real emulator, no window
 // needed:
 //
-//   corrupt-smoke <rom> <recipe.json> [frames=600] [warmup=600] [--guard | --instant [seeds] | --ahead [seeds] | --eyes [seeds] | --derail-fp [learn] | --learn [held=3] [from=0] | --replay | --copies | --map | --access [dir] | --codemap [file] | --jumps [file] | --calls | --dump <dir>]
+//   corrupt-smoke <rom> <recipe.json> [frames=600] [warmup=600] [--guard | --instant [seeds] | --ahead [seeds] | --eyes [seeds] | --derail-fp [learn] | --learn [held=3] [from=0] | --replay | --copies | --map | --access [dir] | --codemap [file] | --jumps [file] | --calls | --kill [seeds] [count] | --dump <dir>]
 //
 // Boots the ROM, runs `warmup` frames, saves a state, then runs `frames` twice
 // from that state: once clean, once with the recipe. Reports what the recipe
@@ -927,6 +927,126 @@ int run_swaps(int frames, int seeds, int count)
     return 0;
 }
 
+// --kill [seeds=10] [count=6]: learns the call graph (and the code map) from `frames` of the
+// clean game, then per seed plays `frames` from the warm-up's end three ways, unguarded:
+// turning one of the 64 busiest functions off every frames/(count+1) frames (#34), writing a
+// random byte over one opcode the map knows at the same moments (the control), and clean. Is
+// the game still running and moving at the end, did it run the changed byte, and does its
+// last picture differ from the clean run's.
+int run_kill(int frames, int seeds, int count)
+{
+    auto start = headless::save_state();
+    CodeMap map(Memory.CalculatedSize);
+    CallKeeper calls;
+    RomTracer tracer;
+    if (!tracer.start(map, nullptr, &calls.mine()))
+        return 1;
+    for (int i = 0; i < frames; i++)
+    {
+        headless::run_frames(1);
+        calls.end_frame();
+    }
+    tracer.stop();
+    auto functions = busiest(calls.functions(), 64);
+    std::vector<uint32_t> opcodes;
+    for (uint32_t o = 0; o < map.size(); o++)
+        if ((map.at(o) & codeflag::Code) == codeflag::Opcode && !rom.locked_mask().is_hot(Target::ROM, o))
+            opcodes.push_back(o);
+    printf("learned  %zu functions (picking from the %zu busiest), %zu opcodes; %d seeds, %d changes each, %d frames\n",
+           calls.functions().size(), functions.size(), opcodes.size(), seeds, count, frames);
+    if (functions.empty() || opcodes.empty())
+        return 1;
+    int every = frames / (count + 1);
+
+    ArmResult kill, random, plain;
+    for (int seed = 1; seed <= seeds; seed++)
+    {
+        Rng pick_rng(uint64_t(seed) * 0x9E3779B97F4A7C15ULL);
+        std::vector<uint32_t> killed, bytes;
+        for (int i = 0; i < count; i++)
+        {
+            uint32_t f;
+            do
+                f = uint32_t(pick_rng.range(0, int64_t(functions.size()) - 1));
+            while (functions.size() > size_t(count) &&
+                   std::find(killed.begin(), killed.end(), functions[f].entry) != killed.end());
+            killed.push_back(functions[f].entry);
+            bytes.push_back(opcodes[size_t(pick_rng.range(0, int64_t(opcodes.size()) - 1))]);
+        }
+        uint64_t clean_picture = 0;
+        for (int arm = 2; arm >= 0; arm--) // clean first, for the picture to compare with
+        {
+            headless::load_state(start);
+            rom.restore_clean();
+            Rng rng{ uint64_t(seed) };
+            CodeMap seen(Memory.CalculatedSize);
+            RomTracer watch;
+            watch.start(seen);
+            uint64_t picture = 0;
+            int moving_late = 0, nmi_late = 0;
+            uint32_t reboots = access.sample().reboots;
+            std::vector<uint32_t> changed;
+            for (int i = 0; i < frames; i++)
+            {
+                if (i && i % every == 0 && changed.size() < size_t(count))
+                {
+                    size_t k = changed.size();
+                    if (arm == 0)
+                    {
+                        auto it = std::find_if(functions.begin(), functions.end(),
+                                               [&](const Function &f) { return f.entry == killed[k]; });
+                        rom.write(Target::ROM, killed[k], return_byte(it->type));
+                        changed.push_back(killed[k]);
+                    }
+                    else if (arm == 1)
+                    {
+                        rom.write(Target::ROM, bytes[k], uint8_t(rng.range(0, 255)));
+                        changed.push_back(bytes[k]);
+                    }
+                    else
+                        changed.push_back(kNoEntry);
+                    if (changed.back() != kNoEntry) // "ran" means since its change
+                        seen.data()[changed.back()] &= uint8_t(~codeflag::Touched);
+                }
+                headless::run_frames(1);
+                auto signals = access.sample();
+                if (signals.picture_valid && signals.picture_hash != picture && i >= frames - 300)
+                    moving_late++;
+                if (signals.nmi_enabled && i >= frames - 300)
+                    nmi_late++;
+                if (signals.picture_valid)
+                    picture = signals.picture_hash;
+            }
+            watch.stop();
+            auto end = access.sample();
+            bool used = false;
+            for (uint32_t o : changed)
+                used |= o != kNoEntry && (seen.at(o) & codeflag::Touched);
+            bool running = !end.cpu_halted && !end.emulation_stopped && end.reboots == reboots && (nmi_late || moving_late);
+            bool alive = running && moving_late >= 3;
+            if (arm == 2)
+                clean_picture = picture;
+            auto &r = arm == 0 ? kill : arm == 1 ? random : plain;
+            r.alive += alive;
+            r.running += running;
+            r.used += used;
+            r.differed += picture != clean_picture;
+            if (getenv("CORRUPT_KILL_VERBOSE"))
+                printf("  seed %2d %-6s %s%s\n", seed, arm == 0 ? "kill" : arm == 1 ? "random" : "clean",
+                       alive ? "moving " : running ? "running" : "dead   ", used ? ", ran a changed byte" : "");
+        }
+    }
+    rom.restore_clean();
+    auto line = [&](const char *name, const ArmResult &r) {
+        printf("%-8s %2d of %d running, %2d of them moving; %2d ran a changed byte, %2d ended on another picture than clean\n",
+               name, r.running, seeds, r.alive, r.used, r.differed);
+    };
+    line("kill", kill);
+    line("random", random);
+    line("clean", plain);
+    return 0;
+}
+
 // A code map saved earlier (CORRUPT_CODEMAP, --codemap's file) merged into `map`.
 bool load_saved_map(CodeMap &map)
 {
@@ -1457,6 +1577,8 @@ int main(int argc, char **argv)
         return run_instant(*parsed.recipe, frames, argc > 6 ? atoi(argv[6]) : 5);
     if (argc > 5 && std::string(argv[5]) == "--swaps")
         return run_swaps(frames, argc > 6 ? atoi(argv[6]) : 10, argc > 7 ? atoi(argv[7]) : 3);
+    if (argc > 5 && std::string(argv[5]) == "--kill")
+        return run_kill(frames, argc > 6 ? atoi(argv[6]) : 10, argc > 7 ? atoi(argv[7]) : 6);
     if (argc > 5 && std::string(argv[5]) == "--calls")
         return run_calls(frames);
     if (argc > 5 && std::string(argv[5]) == "--jumps")

@@ -12,7 +12,7 @@ Each feature has a plan doc in `docs/corruption/`, tests, and a numbered section
 
 ## Where things happen each frame
 
-Inside the frame (core): `cpuexec.cpp` calls `S9xCorruptFrameHook` at V=1 (frame start, not VBlank start, because games copy OAM/CGRAM shadows in VBlank). That is `CorruptionSession::frameHook` -> `onFrame` -> `Engine::on_frame` (rules fire, writes go to memory, backups tick). During a run ahead (`running_ahead`) it only calls `engine.on_frame`.
+Inside the frame (core): `cpuexec.cpp` calls `S9xCorruptFrameHook` at V=1 (frame start, not VBlank start, because games copy OAM/CGRAM shadows in VBlank). That is `CorruptionSession::frameHook` -> `onFrame` -> `Engine::on_frame` (kill switches flip first, then rules fire, writes go to memory, backups tick). During a run ahead (`running_ahead`) it only calls `engine.on_frame`.
 
 Between frames, `CorruptionSession::betweenFrames()` (`qt/src/CorruptionSession.cpp`), under the session mutex, after `S9xMainLoop()` returns:
 
@@ -24,7 +24,7 @@ Between frames, `CorruptionSession::betweenFrames()` (`qt/src/CorruptionSession.
 6. `CrashGuard::between_frames`: detector, policy, rollback; then `RomKeeper::after_guard`.
 7. Derail watch on/off, `InstantRevert::keep` (frame-start checkpoint), crash-map survivals and save.
 8. `MemoryWatch::observe` (heat, hits), WRAM access counters, `RomHeat::observe` (Live overlay).
-9. Code map and jump log housekeeping: reload, tick, save, copy for the viewer twice a second, jump-table search.
+9. Code map, jump log and call log housekeeping: reload, tick, `call_log.end_frame()` (#26), save, copy for the viewer twice a second, jump-table search.
 10. Guard notice to the status line.
 11. `testAhead()` (#52), last: plays the next frame's ROM changes ahead from exactly here.
 
@@ -207,7 +207,7 @@ Plan: `rom-corruption-plan` (six phases, each with "Phase N in detail"). QA 20-2
 - Docs: `ui-pass-plan`; project skill `.claude/skills/qt-widgets-ui`.
 - Gotchas: offscreen cannot paint the macOS style (blank controls). A hand-written scratch config needs `[%General]` or `PauseEmulationWhenUnfocused` is ignored and the game pauses when another window takes focus.
 
-## Phases 8 and 9: game-aware (#25, #32)
+## Phases 8 and 9: game-aware (#25, #26, #32, #34)
 
 **Jump tables (#25)** - finds tables of jump targets from indirect jumps the game ran.
 - Code: `corrupt/jump_tables.cpp` (JumpLog noted by `RomTracer` for opcodes 7C/FC/6C/DC; `find_jump_tables`; JumpLogKeeper; Library `jumps.<user>.json`), `SnesCoreAccess::rom_offsets`, viewer Jumps overlay and hover, dock line.
@@ -221,6 +221,20 @@ Plan: `rom-corruption-plan` (six phases, each with "Phase N in detail"). QA 20-2
 - Tests: `tests/corrupt/pointer_swap_test.cpp`; `guard_integration_test.cpp` ("a pointer swap makes the dispatcher run another real routine").
 - Measure: `--swaps [seeds] [count]` (swap vs random bytes vs clean).
 - Docs: `pointer-swap-plan`; QA 26.
+
+**Call graph (#26)** - the tracer notes every call from ROM into ROM (`JSR` 20, `JSL` 22, `JSR (a,X)` FC) and folds them into functions: entry, near/long/mixed, calls, callers, frames run in all, and *now* (frames of the last 300).
+- Code: `corrupt/calls.cpp` (CallLog noted by `RomTracer` via `note_call` and `note_jump`; CallKeeper with `end_frame` each frame, `functions()`, `forget_now` on state load; `busiest`; Library `calls.<user>.json`, merged), session `call_log` (loaded with the code map, saved once a minute and on close), paused with `note_jumps(false)` during runs ahead.
+- Tests: `tests/corrupt/calls_test.cpp`; `guard_integration_test.cpp` suite "call graph"; test ROM `build_calls` (near, long, mixed via PHK+JSR, inline data after a JSR).
+- Measure: `--calls` (speed with and without, functions found after 10 s, 1 min, 5 min, the busiest).
+- Docs: `functions-plan`.
+- Gotchas: counts frames, not calls (a loading loop calls one function hundreds of times in a frame). Mixed functions (called both ways) can't be switched off; none turned up in Goof, Pocky, FE4 or FF6. FF6's title screen runs from WRAM, so nothing is learned there (#30).
+
+**Kill switches (#34)** - turn a function off live: a return (RTS/RTL, as it's called) at its entry. The switch's state is the ROM byte, so rollbacks, the crash blame, the instant revert and Back to Normal keep it honest.
+- Code: `Switch` in `corrupt/patches.h` and `Recipe::switches` (`"switches"`: entry, return, was, hotkey, start_off, note), `Engine::flip_function` / hotkey flips at the start of `on_frame` (through the ROM keeper, not logged as a rule's write; kept through runs ahead via `pending_flips`), `apply_switches` at run start after the pins, `OpType::Kill` (`"kill"`, `"pick": "any"`; `AimedBytes.functions`, busiest 64 per run, `Engine::set_functions`); `qt/src/FunctionsDialog.cpp` + `FunctionSource.hpp`, session `functions/flipFunction/keepSwitch/forgetSwitch`, dock *Functions…* and the ROM line's count; rule editor *Turn functions off (ROM)*; starter `rom-function-roulette`. Starter ROM ranges are fitted to the game on load.
+- Tests: `tests/corrupt/kill_switch_test.cpp`; `guard_integration_test.cpp` suite "kill switches" (near, long via a recipe hotkey, rollback, inline data caught by the instant revert); `tests/qt/functions_dialog_test.cpp`.
+- Measure: `--kill [seeds] [count]` (busiest functions off vs random opcodes vs clean, unguarded): 6 off in a minute left the game running and moving in 31 of 35 runs (Goof, Pocky, FE4, FF6), against 7 of 35 for random code bytes.
+- Docs: `functions-plan`; GUIDE "Turning the game's functions off"; QA 33.
+- Gotchas: switches only flip while corruption is on (the engine is the only writer during a run). The Functions window keeps its row order until Refresh, so nothing moves under the mouse.
 
 ## Phase 7: safety (#50-#52, #57; #55 and #56 tried and removed)
 
@@ -301,6 +315,8 @@ Plan for all: `safety-plan` (one section per item, each with "How it went").
 - `--codemap [file]`: record the code map; speed with and without tracing; coverage; optional map file.
 - `--jumps [file]`: record jumps; cost; jump tables found; optional jump log file.
 - `--swaps [seeds=10] [count=3]`: pointer swap vs random bytes vs clean, unguarded.
+- `--calls`: call noting's cost; functions found over time; the busiest (#26).
+- `--kill [seeds=10] [count=6]`: turning busy functions off vs random opcodes vs clean, unguarded (#34).
 - `--derail-fp [learn]`: false alarms of the derail watch on a clean game.
 - `--instant [seeds=5]`: guard alone vs with instant revert.
 - `--ahead [seeds=5]`: instant revert in both arms; the second tests each live ROM firing first.
@@ -308,7 +324,7 @@ Plan for all: `safety-plan` (one section per item, each with "How it went").
 - `--eyes [seeds]`: the guard, #51 and #52 in both arms; the first blind after a landing, as before #57.
 - `--learn [held=3] [from=0]`: crash-map learning, then held-out seeds plain vs avoid vs random control.
 - `--dump <dir>`: write raw `.bin` per target (needs a recipe and frames; used for viewer pictures).
-- Env: `CORRUPT_CODEMAP`, `CORRUPT_LEARN_VERBOSE`, `CORRUPT_INSTANT_VERBOSE`, `CORRUPT_WATCH_BYTE` (one ROM byte's flags, value and PC each frame, the first 400), `CORRUPT_DUMP_DIR`, `CORRUPT_SHOTS_DIR`.
+- Env: `CORRUPT_CODEMAP`, `CORRUPT_LEARN_VERBOSE`, `CORRUPT_INSTANT_VERBOSE`, `CORRUPT_KILL_VERBOSE`, `CORRUPT_WATCH_BYTE` (one ROM byte's flags, value and PC each frame, the first 400), `CORRUPT_DUMP_DIR`, `CORRUPT_SHOTS_DIR`.
 
 ## Tried and removed (read before building a new safety feature)
 

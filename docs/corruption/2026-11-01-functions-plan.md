@@ -1,6 +1,6 @@
 # Functions: the call graph and kill switches (plan, roadmap #26 and #34)
 
-**Status (2026-11-01):** planned, being built. #26 is in phase 8 (the tracer learns the
+**Status (2026-11-02):** done (QA.md section 33); see *How it went*. #26 is in phase 8 (the tracer learns the
 game's structure), #34 in phase 9 (wrong-but-valid operations). From
 [the horizons doc](./2026-10-31-horizons.md).
 
@@ -144,4 +144,42 @@ before a crash. Either way the switch shows *on* again, and the status line says
 
 ## How it went
 
-(To be written.)
+Built as planned (commits 81236d55 for the engine, 61044ea1 for the window), plus two
+small things found on the way: starter recipes' ROM ranges are now fitted to the game when
+loaded (a range wider than a small ROM used to refuse to load), and the call log is paused
+with the jump log during runs ahead.
+
+**Learning (`--calls`, 5 minutes of each game's demo, from 10 s in):**
+
+| Game | Cost | Functions after 10 s | 1 min | 5 min | Called in 90%+ of frames |
+|---|---|---|---|---|---|
+| Goof Troop | 2.5% | 233 | 330 | 331 | 5 |
+| Pocky & Rocky | 1.2% | 20 | 383 | 517 | 4 |
+| FE4 | 1.5% | 68 | 124 | 1012 | 24 |
+| FF6 | ~0% | 0 | 0 | 204 | 0 |
+
+- Mikael's question answered: the busy functions are there within seconds of a scene;
+  breadth grows with play (FE4's demo walks through scenes and keeps finding more).
+- FF6 learns nothing for its first minute: its title and intro run from WRAM, which the
+  tracer doesn't see (#30 would).
+- No function in any of the four games is called both near and long, so nothing is lost
+  by refusing mixed ones.
+
+**Turning functions off (`--kill`, unguarded, one of the 64 busiest off every ~8.5 s, 6 in
+a minute; the control writes a random byte over a known opcode at the same moments):**
+
+| Game | Kill: running / moving / picture differs | Random opcodes: running / moving | Clean |
+|---|---|---|---|
+| Goof Troop (10 seeds) | 10 / 10 / 10 | 10 / 0 | 10 / 10 |
+| Pocky & Rocky (10) | 9 / 9 / 10 | 4 / 0 | 10 / 10 |
+| FE4 (10) | 9 / 7 / 10 | 2 / 1 | 10 / 10 |
+| FF6 (5, 5 minutes) | 5 / 5 / 1 | 3 / 3 | 5 / 5 |
+
+- It does what it's for: six functions off in a minute leave the game running and moving
+  in 31 of 35 runs, against 7 of 35 for six random code bytes, and nearly always end on a
+  different picture from clean play. Every switched-off function was one the game kept
+  calling, so the change is in play, not dormant.
+- FF6 is the exception on "different": its 5-minute demo mostly ended on the same picture,
+  so the functions picked there didn't change what's on screen at that moment.
+- Which function does what still takes trying (no names). Scene tags (#48) and game
+  profiles (#41) are where names would come from.

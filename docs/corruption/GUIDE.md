@@ -290,6 +290,34 @@ with a note if you want. A pin is part of the recipe: it's applied every time a 
 starts, the crash guard never undoes it, and it's skipped on a different version of the
 game. **Save** to keep pins. A recipe with only pins is a hand-made ROM hack.
 
+## Turning the game's functions off
+
+Games are made of functions: one moves the player, one runs gravity, one checks collisions,
+one thinks for each enemy, one scrolls the screen. **Functions…** (in the ROM section)
+lists the ones the game has called, busiest right now first, with how many of the last 5
+seconds they ran in. Tick **Off** and the game skips that function from the next frame on:
+its first byte becomes a return, so it's called and comes straight back. Untick to put it
+back.
+
+There are no names: the app can't know which one is gravity. Try the busy ones near the
+top and watch what stops; when you find a good one, give it a note (*gravity*), pick a
+hotkey and **Keep in Recipe**. Then that key turns it off and on again while you play (the
+panel's 1-9, the keyboard shortcuts, or the remote page). **Starts off** has it off from
+the start of every run. **Save** to keep it.
+
+Switches work while corruption is on (press **Corrupt**). Some functions can't be skipped
+(one that reads data placed right after its call, or one the game needs to keep going):
+the game breaks, and the crash guard turns that function back on. A few are called two
+different ways; those can't be ticked at all.
+
+The list grows as you play: the busiest functions show up in the first second of a scene,
+rarer ones (a boss, a menu) when you get there. What everyone has learned is saved in the
+library (*calls.<you>.json*), like the code map, so it carries over.
+
+For chaos instead of picking: the rule type **Turn functions off (ROM)** turns random busy
+functions off when it fires. Starter: **Function roulette** (each press of hotkey 1 turns
+one more off).
+
 ## Editing memory like a picture
 
 The old Photoshop way, built in. In the memory viewer's **Pixels** view:

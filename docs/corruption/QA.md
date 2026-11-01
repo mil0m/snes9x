@@ -483,3 +483,26 @@ Removed on 2026-11-01: it didn't pay off (see FEATURES.md, *Tried and removed*).
 ## 32. Proven blame (removed)
 Removed on 2026-11-01: it didn't pay off (see FEATURES.md, *Tried and removed*).
    - [ ] Crash Guard has no *Replay a crash that comes back to find its cause* switch, and no catch says *found by replaying it*.
+
+## 33. Functions and kill switches
+1. Load Goof Troop (or any game) and play for a few seconds. Look at the ROM section.
+   - [ ] It says *N functions known* (a few dozen within seconds, more as you go to new places).
+2. Open **Functions…** without pressing Corrupt.
+   - [ ] The list shows addresses like `$80:99EE`, busiest now first, with *Now* (percent of the last 5 s), *Frames* and *Callers*.
+   - [ ] A warning line says switches work while corruption is on.
+   - [ ] Ticking **Off** does nothing and stays unticked.
+3. Pick **Starter: Gentle WRAM noise** (or any recipe), press **Corrupt (F7)**, then in Functions tick **Off** on one of the top rows.
+   - [ ] Something in the game stops or changes right away (a movement, a sound, the scroll, an enemy), and the game keeps running.
+   - [ ] The status line under the table says it was turned off; the ROM section says *(1 off)*.
+   - [ ] Unticking puts it back; the game behaves as before.
+4. Try a few more of the busy ones.
+   - [ ] One that breaks the game is caught: *caught a bad jump* or *Crash caught*, and its box unticks by itself.
+5. Select a row, pick **Key 2**, write a note, **Keep in Recipe**.
+   - [ ] *In Recipe* shows *key 2 · <note>*. Pressing hotkey 2 (panel, keyboard shortcut or remote page) turns it off; again turns it on.
+6. **Save** the recipe, **Back to Normal**, then load it again and press Corrupt.
+   - [ ] The switch is still there (key 2, the note), on until you press the key. With **Starts off** ticked and kept, it's off from the start.
+7. **Starter: Function roulette**, Corrupt, press hotkey 1 a few times.
+   - [ ] Each press turns one more busy function off; **Back to Normal** turns them all back on.
+8. Close the game and open it again.
+   - [ ] The list is there at once (from `calls.<you>.json` in the library's game folder).
+
