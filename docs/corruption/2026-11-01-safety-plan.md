@@ -1,6 +1,6 @@
-# Safety first: plan (roadmap phase 7, #50-#52)
+# Safety first: plan (roadmap phase 7, #50-#52, #55)
 
-**Status (2026-11-01):** #50 done (QA.md section 27), #51 done (QA.md section 28), #52 done (QA.md section 29). Phase 7 complete; a follow-up idea (test at first use) is at the end of #52. From Erik's list (sorted in
+**Status (2026-11-01):** #50 done (QA.md section 27), #51 done (QA.md section 28), #52 done (QA.md section 29). #55 test at first use (the follow-up to #52): planned, being built. From Erik's list (sorted in
 [the horizons doc](./2026-10-31-horizons.md#eriks-list-2026-11-01)): see what the game uses
 live, catch a bad change sooner, and test a change before it reaches the game.
 
@@ -296,3 +296,96 @@ the run, sometimes the wrong way). Costs ~130-210 ms per firing. **Next idea, no
 test at first use** — when the crash blame sees a changed byte used for the first time, play
 ahead from there with and without it. That reaches the dormant changes, at the moment they
 matter, once per byte.
+
+## #55 Test at first use
+
+**Goal.** #52 tries a live change when it's written, but most changed bytes aren't used in
+those 3 s (80-97% in the measurements above), and a classic run's hundreds of at-load
+changes are never tried at all. So try each changed byte at the moment it matters: the
+first frame the game runs or reads it. Then play a second ahead from the start of that
+frame with the byte, and if the game falls over, again without it; if only the run with
+the byte falls over, fix the byte the ROM policy's way (revert or re-roll) and play the
+frame again, as the instant revert does. Each changed value is tested once.
+
+**Trigger.** Between frames, right after `RomBlame::collect`, which already finds the
+changed bytes the game used this frame: the ones used for the first time (`frames_used ==
+1`) go into a queue. They're tested against the **frame-start checkpoint**: the state
+the instant revert keeps of the start of the frame that just ran (#51), so the byte's
+first use is replayed in the test, not skipped. The test runs after the guard and before
+the checkpoint is replaced for the next frame. Nothing is tested in a frame where the
+guard acted (its rollback left the checkpoint's timeline), where the instant revert
+replayed the frame (the culprits are fixed already; the rest stay queued for the next
+frame), or without a checkpoint of this frame. The checkpoint is kept whenever either the
+instant revert or test at first use is on.
+
+**"Without it".** The byte's **clean** value, not the journal's previous one: a byte's
+uses are counted from when it first differs from the clean ROM, so an earlier changed
+value was never used either and has nothing to vouch for it. The control run swaps the
+clean values in directly (`RomKeeper::borrow`: no journal entry, no change notice, so the
+blame's bookkeeping isn't disturbed) and puts the changed ones back after; the code map's
+*changed* bit is cleared for the run so a landing doesn't name a byte that isn't changed
+in it.
+
+**A run.** The same run ahead as #52 (`TestAhead`'s runner, now shared): unseen and
+unheard, from the checkpoint instead of from now, the engine snapshotted and the ROM
+writes of every rule quieted for the whole run (only the bytes under test differ between
+the two runs; WRAM rules fire as they would), the code map's flags put back after.
+Verdict:
+
+- a landing (#51) naming a byte under test: **guilty** at once, no control run;
+- a landing naming none of them: *inconclusive*, left to the instant revert for real;
+- a definite crash (STP, deadlock, reboot, runaway): a **control run** with the whole
+  batch clean. If that crashes too, older damage: not theirs, keep. If only the changed
+  run crashed: guilty.
+- every byte under test used, then 60 frames held up (`settle_frames`): **survived**,
+  early. Since the first use is replayed in frame 1, a run is usually 61 frames, ~1 s.
+
+**Batches and the cost cap.** First uses come in bursts (a classic run's at-load changes
+as the game reaches new code), so the queue is tested as a **batch** of up to 16 bytes
+per run, oldest first. At most one test every 30 frames (2 a second), about 50 ms each
+(Goof Troop runs ~1200 undrawn frames a second): under 10% of the time while a burst
+lasts, nothing otherwise. A batch that crashes alone without a landing naming the
+culprit is **narrowed down**: halves tried alone (the other half clean) while a half
+crashes on its own, within 8 runs per test; a byte that crashes alone is guilty, and the
+rest of the batch gets one more run without it. If the budget runs out, or neither half
+crashes alone (two bytes needed together), the whole remaining batch is fixed, as the
+guard's third attempt would. A queued byte that has already been running for the window's
+length for real (180 frames) drops out of the queue: it has had its test, live.
+*(Design choice: batches and a fixed rate keep a burst of hundreds of first uses from
+freezing the picture for seconds; the price is that a byte may wait a few frames for its
+test and crash for real first, which leaves it to #51 and the guard as before.)*
+
+**With the rest of phase 7.**
+
+- **#51 instant revert** catches a landing in the very frame of the first use; test at
+  first use catches what comes later (a bad value written somewhere, a loop that never
+  ends, a jump far from the change). They share the checkpoint and the replay.
+- **#52 test before applying** vouches for the bytes its window used: those (at the value
+  tested) are skipped at first use. The rest of its writes, the *untried*, are what this
+  catches.
+- **The guard** stays the net for crashes later than a second, ones needing input, and
+  quiet breakage.
+- **The ROM policy**: revert puts the clean byte back; re-roll writes a new value, which
+  starts unproven and is tested again at its next use. After 3 failed values of one byte
+  it's reverted, whatever the policy.
+
+**Switch.** The same as #52: *Try live ROM changes a few seconds ahead first* becomes
+*Try ROM changes ahead first* (it now covers classic changes too), and the recipe's
+`"test_first"` seconds sets both windows (0 turns both off). *(Design choice: one switch.
+They're the same idea at two moments; separate switches would mean explaining the
+difference in the panel.)* Journal event `first_use` (bytes, what the run saw); the crash
+map learns from it like an instant revert; dock: *N first uses tested (N put back)*.
+
+**Tests.** `FirstUseTest` with a fake core: a byte first used and harmless is kept (one run,
+everything as it was, tested only once); one whose crash comes frames later is fixed and
+the frame replayed; a crash the control run shares is kept; a landing naming the byte needs
+no control run; a landing naming another byte is left alone; a batch with one bad byte
+narrows down to it and keeps the rest; the rate cap and the queue's expiry; bytes #52
+vouched for are skipped; the re-roll policy retests the new value and reverts after 3.
+Real core: a ROM with a fuse (a rarely run routine whose changed operand lights a fuse
+that stops the CPU 20 frames later, far from any landing): with the test, the guard never
+sees a crash and an innocent change made alongside stays; without it, the guard rolls
+back. `corrupt-smoke --first-use [seeds]`: both arms with the guard, #51 and #52, the
+second also testing at first use, on Goof Troop, Pocky & Rocky and FE4, with Code drip
+(live) and Code roulette (30 code bytes at load, classic): rollbacks, instant reverts,
+frames lost, bytes tested, put back, time spent, still moving after a minute.
