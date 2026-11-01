@@ -46,3 +46,6 @@ input:not([type]), input[class~=mono], select { font: inherit; color: var(--text
 .canvas-wrap { margin-top: 10px; overflow: auto; border: 1px solid var(--line); border-radius: 8px; max-height: 70vh; }
 canvas { display: block; width: 100%; image-rendering: pixelated; touch-action: none; }
 .paint canvas { cursor: crosshair; }
+.starter-row { margin: 0 0 12px; align-items: flex-end; }
+.grow { flex: 1; min-width: 0; }
+.grow select { width: 100%; }

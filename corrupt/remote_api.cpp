@@ -191,6 +191,15 @@ Connection::Reply Connection::handle(std::string_view message, Clock::time_point
         control.set_rule_strength(size_t(*rule), *v);
         return done("set rule " + std::to_string(*rule + 1) + " to " + std::to_string(int(*v * 100 + 0.5)) + "%");
     }
+    if (action == "starter")
+    {
+        auto index = integer(j, "index");
+        if (!index || *index < 0 || size_t(*index) >= control.starter_count())
+            return refuse("no such starter");
+        if (auto err = control.load_starter(size_t(*index)); !err.empty())
+            return refuse(err);
+        return done("loaded the starter " + control.starter_name(size_t(*index)));
+    }
     if (action == "hotkey")
     {
         auto key = integer(j, "key");
@@ -281,7 +290,8 @@ std::string status_json(const StatusView &s)
                      { "message", s.message },
                      { "rules", rules },
                      { "sizes", sizes },
-                     { "clients", s.clients } } } }
+                     { "clients", s.clients },
+                     { "starters", s.starters } } } }
         .dump();
 }
 

@@ -50,7 +50,8 @@ struct StatusView
     std::string message;
     std::vector<RuleView> rules;
     std::array<size_t, kTargetCount> sizes{};
-    std::vector<std::string> clients; // who is connected
+    std::vector<std::string> clients;  // who is connected
+    std::vector<std::string> starters; // names of the recipes that come with the app
 };
 std::string status_json(const StatusView &s); // {"status":{...}}
 
@@ -66,6 +67,10 @@ struct Control
     virtual void set_rule_strength(size_t index, double strength) = 0;
     virtual void press_hotkey(int n) = 0;
     virtual std::string paint(Target t, const std::vector<uint32_t> &offsets, uint8_t value) = 0; // error or empty
+    // The recipes that come with the app (never files): load one by its place in the list.
+    virtual size_t starter_count() = 0;
+    virtual std::string starter_name(size_t index) = 0;
+    virtual std::string load_starter(size_t index) = 0; // error or empty
     virtual size_t rule_count() = 0;
     virtual size_t memory_size(Target t) = 0;
     virtual ~Control() = default;

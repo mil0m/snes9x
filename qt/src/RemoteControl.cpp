@@ -1,5 +1,6 @@
 #include "RemoteControl.hpp"
 #include "CorruptionSession.hpp"
+#include "Starters.hpp"
 #include "corrupt/rule_text.h"
 
 using namespace corrupt;
@@ -63,6 +64,30 @@ std::string SessionRemote::paint(Target t, const std::vector<uint32_t> &offsets,
     return session().paint(t, offsets, value);
 }
 
+size_t SessionRemote::starter_count()
+{
+    return bundled_starters().size();
+}
+
+std::string SessionRemote::starter_name(size_t index)
+{
+    return bundled_starters().at(index).recipe.name;
+}
+
+std::string SessionRemote::load_starter(size_t index)
+{
+    auto s = session().status();
+    if (!s.game_loaded)
+        return "No game loaded";
+    Recipe recipe = bundled_starters().at(index).recipe;
+    recipe.game = s.game;
+    auto problems = session().loadRecipe(recipe);
+    if (problems.empty())
+        return {};
+    std::string text = "This recipe doesn't fit this game: " + problems[0];
+    return text;
+}
+
 size_t SessionRemote::rule_count()
 {
     return session().status().rules.size();
@@ -100,6 +125,8 @@ remote::StatusView SessionRemote::status()
     }
     if (s.game_loaded)
         v.sizes = s.sizes;
+    for (auto &st : bundled_starters())
+        v.starters.push_back(st.recipe.name);
     return v;
 }
 

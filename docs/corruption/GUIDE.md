@@ -314,8 +314,8 @@ The old Photoshop way, built in. In the memory viewer's **Pixels** view:
 
 ## Remote control from a browser
 
-A friend (or you, from your phone) can run the corruption from a web page: Corrupt and
-Stop, Chaos, Re-roll, *It crashed: go back*, *Back to normal*, each rule on or off and its
+A friend (or you, from your phone) can run the corruption from a web page: load one of
+the starter recipes that come with the app, Corrupt and Stop, Chaos, Re-roll, *It crashed: go back*, *Back to normal*, each rule on or off and its
 strength, the recipe's hotkeys, and a live picture of a memory to paint in (tick
 **Paint**, choose a value, tap or drag). The game itself isn't on the page: stream it as
 you normally would.
@@ -341,8 +341,8 @@ is dropped, and browsers that remembered the old key forget it. The panel says w
 (the email they logged in with), and the status line says what each of them does
 (*Remote (erik@…): pressed hotkey 1*).
 
-What a remote can't do: anything with files (loading or saving recipes or ROMs, backups,
-exporting), or settings. Painting only changes the emulated SNES, which the crash guard
+What a remote can't do: anything with files (your own recipes, saving, ROMs, backups,
+exporting), or settings; the starters it can load are built into the app. Painting only changes the emulated SNES, which the crash guard
 looks after: the worst a remote can do is crash the game it's corrupting.
 
 If you change the code: `tools/install-hooks.sh` makes a pre-commit check that refuses

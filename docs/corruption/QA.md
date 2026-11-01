@@ -478,6 +478,8 @@ Use a game you have never set up (a fresh library folder, so no recipes exist fo
 3. On the page: **Corrupt**, move **Chaos**, press hotkey **1**, turn a rule off and on, **Re-roll**.
    - [ ] Each one happens in the app at once, and the panel's status line says what the remote did.
    - [ ] Changes made in the panel show up on the page within a second.
+3b. On the page, pick **Code drip** under *Starter recipe* and **Load**.
+   - [ ] It asks first if a recipe is already loaded; then the app's panel shows Code drip and its rule, and the page lists the rule.
 4. Memory: WRAM, tick **Paint**, value `FF`, tap the picture.
    - [ ] The byte changes (in the app's memory viewer too); the status line says *painted 1 byte of wram with 0xFF*.
 5. **New Key** in the panel.

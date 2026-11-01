@@ -99,6 +99,22 @@ function render(s) {
   renderRules(s.rules);
   renderHotkeys(s.rules);
   renderMemories(s.sizes);
+  renderStarters(s.starters || []);
+}
+
+function renderStarters(names) {
+  const sel = $("starter");
+  const sig = JSON.stringify(names);
+  if (sel.dataset.sig === sig) return;
+  sel.dataset.sig = sig;
+  sel.textContent = "";
+  names.forEach((n, i) => {
+    const o = document.createElement("option");
+    o.value = String(i);
+    o.textContent = n;
+    sel.appendChild(o);
+  });
+  $("load-starter").disabled = names.length === 0;
 }
 
 function renderRules(rules) {
@@ -240,6 +256,14 @@ function flushPaint() {
 }
 
 function setup() {
+  $("load-starter").addEventListener("click", () => {
+    const sel = $("starter");
+    const name = sel.options[sel.selectedIndex] ? sel.options[sel.selectedIndex].textContent : "";
+    const s = state.status;
+    if (s && s.recipe && !confirm("Load the starter " + name + "? It replaces the recipe " + s.recipe +
+        " in the app (unsaved changes there are lost).")) return;
+    send({ do: "starter", index: parseInt(sel.value, 10) });
+  });
   $("toggle").addEventListener("click", () => send({ do: "active", on: !(state.status && state.status.active) }));
   $("reroll").addEventListener("click", () => send({ do: "reroll" }));
   $("crashed").addEventListener("click", () => send({ do: "mark_crash" }));

@@ -7,6 +7,7 @@
 #include "IntensitySlider.hpp"
 #include "MemoryViewer.hpp"
 #include "RemoteControl.hpp"
+#include "Starters.hpp"
 #include "RuleEditor.hpp"
 #include "UiKit.hpp"
 #include "corrupt/rule_text.h"
@@ -256,17 +257,7 @@ CorruptionDock::CorruptionDock(EmuApplication &app, QWidget *parent)
     message_line->setObjectName("message");
     layout->addWidget(message_line);
 
-    for (auto &file : QDir(":/corruption-examples").entryList({ "*.json" }, QDir::Files, QDir::Name))
-    {
-        QFile f(":/corruption-examples/" + file);
-        if (!f.open(QIODevice::ReadOnly))
-            continue;
-        if (auto parsed = parse_recipe(f.readAll().toStdString(), {}); parsed.recipe)
-            starters.push_back({ ":/corruption-examples/" + file, *parsed.recipe });
-    }
-    // The gentlest first, so the obvious pick is a mild one.
-    std::stable_partition(starters.begin(), starters.end(),
-                          [](const Starter &s) { return s.resource.endsWith("gentle-wram-noise.json"); });
+    starters = bundled_starters();
 
     connect(moments_check, &QCheckBox::toggled, [this](bool on) {
         this->app.config->corruption_saved_moments = on;

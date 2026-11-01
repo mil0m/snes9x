@@ -47,6 +47,15 @@ struct FakeControl : remote::Control
         calls.push_back("paint");
         return {};
     }
+    std::vector<std::string> starter_names = { "Gentle noise", "Code drip" };
+    std::string starter_error;
+    size_t starter_count() override { return starter_names.size(); }
+    std::string starter_name(size_t i) override { return starter_names.at(i); }
+    std::string load_starter(size_t i) override
+    {
+        calls.push_back("starter " + std::to_string(i));
+        return starter_error;
+    }
     size_t rule_count() override { return 1; }
     size_t memory_size(Target t) override { return t == Target::WRAM ? 0x20000 : 0; }
 };

@@ -5,6 +5,7 @@
 #include <memory>
 
 #include "MemoryViewer.hpp"
+#include "Starters.hpp"
 #include "SurvivorsDialog.hpp"
 #include "corrupt/library.h"
 
@@ -78,11 +79,6 @@ class CorruptionDock : public QDockWidget
     uint64_t shown_choice_generation = UINT64_MAX;
     std::filesystem::path shown_recipe_path;
 
-    struct Starter
-    {
-        QString resource;
-        corrupt::Recipe recipe;
-    };
     std::vector<Starter> starters; // the example recipes that come with the app
 
     QLabel *game_label;

@@ -158,6 +158,7 @@ list(APPEND QT_GUI_SOURCES
     src/CorruptionDock.cpp
     src/RemoteServer.cpp
     src/RemoteControl.cpp
+    src/Starters.cpp
     src/RuleEditor.cpp
     src/IntensitySlider.cpp
     src/MemoryView.cpp

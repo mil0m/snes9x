@@ -42,6 +42,12 @@ for (const scheme of ["light", "dark"]) {
         null, { timeout: 5000 });
       check(true, "a tap paints a byte, and the panel's status line names the remote");
       await page.waitForFunction(() => !document.getElementById("toggle").disabled, null, { timeout: 5000 });
+      // A starter replaces it (after asking).
+      page.once("dialog", (d) => d.accept());
+      await page.selectOption("#starter", { label: "Code drip" });
+      await page.click("#load-starter");
+      await page.waitForFunction(() => /Code drip/.test(document.getElementById("recipe").textContent), null, { timeout: 5000 });
+      check((await page.locator("#rules li").count()) > 0, "loading a starter brings its rules");
       await page.click("#toggle");
       await page.waitForFunction(() => document.getElementById("state").textContent === "corrupting", null, { timeout: 5000 });
       check(true, "Corrupt turns corruption on");

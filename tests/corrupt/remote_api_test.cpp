@@ -51,6 +51,15 @@ struct FakeControl : Control
         painted_value = value;
         return paint_error;
     }
+    std::vector<std::string> starter_names = { "Gentle noise", "Code drip" };
+    std::string starter_error;
+    size_t starter_count() override { return starter_names.size(); }
+    std::string starter_name(size_t i) override { return starter_names.at(i); }
+    std::string load_starter(size_t i) override
+    {
+        calls.push_back("starter " + std::to_string(i));
+        return starter_error;
+    }
     size_t rule_count() override { return rules; }
     size_t memory_size(Target t) override { return t == Target::WRAM ? 0x20000 : t == Target::ROM ? 0x100000 : 0x800; }
 };
@@ -202,6 +211,24 @@ TEST_SUITE("remote control")
         CHECK(!f.conn.watch());
     }
 
+    TEST_CASE("starters: one that comes with the app, by its place in the list")
+    {
+        Fixture f;
+        f.hello();
+        auto r = f.send({ { "do", "starter" }, { "index", 1 }, { "id", 3 } });
+        CHECK(json::parse(r.text)["done"] == 3);
+        CHECK(r.did == "loaded the starter Code drip");
+        CHECK(f.control.calls == std::vector<std::string>{ "starter 1" });
+        for (json bad : std::vector<json>{ { { "do", "starter" }, { "index", 2 } },
+                                           { { "do", "starter" }, { "index", -1 } },
+                                           { { "do", "starter" }, { "name", "../../etc/passwd" } },
+                                           { { "do", "starter" }, { "index", "0" } } })
+            CHECK(f.act(bad).contains("error"));
+        f.control.starter_error = "This recipe doesn't fit this game";
+        CHECK(f.act({ { "do", "starter" }, { "index", 0 } })["error"] == "This recipe doesn't fit this game");
+        CHECK(f.control.calls.size() == 2);
+    }
+
     TEST_CASE("the session's own refusal comes back as the error")
     {
         Fixture f;
@@ -275,6 +302,7 @@ TEST_SUITE("remote control")
         s.rules = { { "drip", "rom: random", true, 1.0, 0 }, { "swap", "pointer swap", false, 0.5, 1 } };
         s.sizes[size_t(Target::WRAM)] = 0x20000;
         s.clients = { "erik@example.com" };
+        s.starters = { "Gentle noise" };
         auto j = json::parse(status_json(s))["status"];
         CHECK(j["game"] == "GOOF TROOP");
         CHECK(j["active"] == true);
@@ -285,6 +313,7 @@ TEST_SUITE("remote control")
         CHECK(j["rules"][1]["enabled"] == false);
         CHECK(j["sizes"]["wram"] == 0x20000);
         CHECK(j["clients"][0] == "erik@example.com");
+        CHECK(j["starters"][0] == "Gentle noise");
     }
 
     TEST_CASE("tokens: random, long, URL-safe, and compared whole")
