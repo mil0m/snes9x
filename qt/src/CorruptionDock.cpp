@@ -461,10 +461,12 @@ CorruptionDock::CorruptionDock(EmuApplication &app, QWidget *parent)
                                 "to a moment before, and changes what caused it so it plays on."));
     detect_check->setChecked(true);
     guard_layout->addLayout(ui::row(detect_check));
-    test_first_check = new QCheckBox(tr("Try live ROM changes a few seconds ahead first"), guard_box);
+    test_first_check = new QCheckBox(tr("Try ROM changes ahead first"), guard_box);
     test_first_check->setObjectName("test_first");
     test_first_check->setToolTip(tr("Before a live ROM rule changes the game, plays a few seconds ahead with the change, "
-                                    "unseen, and rolls again if the game would crash. Costs a short pause each time."));
+                                    "unseen, and rolls again if the game would crash. And when the game first runs a "
+                                    "changed byte, plays a second ahead with and without it, and puts it back if only "
+                                    "the run with it crashes. Costs a short pause each time."));
     test_first_check->setChecked(true);
     guard_layout->addLayout(ui::row(test_first_check));
     auto guard_form = ui::form();
@@ -899,6 +901,10 @@ void CorruptionDock::refreshStatus()
                         .arg(plural(status.tested_first, tr("1 change"), tr("%1 changes")))
                         .arg(status.tested_rerolled)
                         .arg(status.tested_skipped);
+        if (status.first_use_tested)
+            kept << tr("%1 at first use (%2 put back)")
+                        .arg(plural(status.first_use_tested, tr("1 byte tested"), tr("%1 bytes tested")))
+                        .arg(status.first_use_fixed);
         if (!kept.isEmpty())
             rom_lines << kept.join(" · ");
         rom_lines << (status.code.seen

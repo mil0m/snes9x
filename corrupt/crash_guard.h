@@ -46,6 +46,7 @@ struct JournalEntry
         Recovered, // a clean stretch followed the last rollback
         GaveUp,
         InstantRevert, // a changed ROM byte sent the CPU into non-code: fixed, the frame replayed
+        FirstUse,      // a changed ROM byte crashed a run ahead from its first use: fixed, the frame replayed
     } kind = Crash;
 
     std::string recipe;

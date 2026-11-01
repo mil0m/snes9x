@@ -97,6 +97,9 @@ void CorruptionSession::configureGuard()
     AheadConfig ahead_config;
     ahead_config.frames = test_first_enabled ? uint32_t(std::lround(recipe.test_first.value_or(3.0) * 60)) : 0u;
     ahead.set_config(ahead_config);
+    FirstUseConfig first_use_config;
+    first_use_config.frames = ahead_config.frames; // one switch, one window
+    first_use.set_config(first_use_config);
 }
 
 void CorruptionSession::writeJournal(const JournalEntry &entry)
@@ -131,7 +134,8 @@ void CorruptionSession::betweenFrames()
     // The instant revert first, before anything reads the frame that ran: a changed ROM byte
     // that sent the CPU into non-code is fixed and the frame played again (#51). The note is
     // taken every frame, which also lets the tracer mark the map again.
-    if (auto caught = instant.after_frame(tracer.take_derail(), engine.current_frame(), access, rom_blame))
+    auto caught = instant.after_frame(tracer.take_derail(), engine.current_frame(), access, rom_blame);
+    if (caught)
     {
         auto entry = journal_entry(*caught);
         entry.recipe = engine.recipe().name;
@@ -147,6 +151,7 @@ void CorruptionSession::betweenFrames()
     auto started = control.between_frames(engine, access, &rom);
     if (started != RunControl::Started::Nothing)
     {
+        first_use.forget(); // a new run: its bytes are untested again
         at_normal = false;
         moment_on_disk = started == RunControl::Started::FromAnchor;
         pinChanged();
@@ -170,6 +175,10 @@ void CorruptionSession::betweenFrames()
     }
     // Which changed ROM bytes the game used this frame, for the guard to blame.
     rom_blame.collect(engine.current_frame());
+    // Those used for the first time are played ahead from the frame's start, with and without
+    // them (#55), before the guard looks at the frame; not when the frame was just replayed.
+    if (!caught && engine.active() && tracer.tracing())
+        testFirstUse();
     // The crash map collects this frame's writes before the guard can roll them back.
     crash_map.observe(engine.event_log(), engine.current_frame());
     auto out = guard.between_frames(engine, access);
@@ -186,7 +195,8 @@ void CorruptionSession::betweenFrames()
         watching_derails = watch_now;
         tracer.watch_derails(watch_now ? &derails : nullptr);
     }
-    instant.keep(access, engine.current_frame(), watch_now && instant.is_enabled());
+    instant.keep(access, engine.current_frame(), watch_now && (instant.is_enabled() || ahead.config().frames),
+                 &engine);
     if (auto survivors = rom_blame.take_survivals(); !survivors.empty())
         crash_map.rom_survived(survivors);
     if (crash_map.crashed(out))
@@ -262,11 +272,51 @@ void CorruptionSession::testAhead()
     running_ahead = true;
     auto tested = ahead.before_frame(engine, rom, access, { code_map.mine().data(), code_map.mine().size() }, hooks);
     running_ahead = false;
+    if (tested.kind != AheadResult::Nothing)
+    {
+        // What its window used has had its test: not again at first use.
+        std::vector<uint32_t> used;
+        for (uint32_t o : tested.written)
+            if (std::find(tested.untried.begin(), tested.untried.end(), o) == tested.untried.end())
+                used.push_back(o);
+        first_use.vouch(used, engine.current_frame());
+    }
     if (tested.summary.empty())
         return;
     note(tested.summary);
     std::string shown = tested.kind == AheadResult::Skipped ? "Corruption: tested ahead, a change skipped"
                                                             : "Corruption: tested ahead, a change re-rolled";
+    S9xSetInfoString(shown.c_str());
+}
+
+void CorruptionSession::testFirstUse()
+{
+    if (!first_use.config().frames)
+        return;
+    first_use.note_uses(rom_blame, rom, engine.current_frame());
+    auto cp = instant.checkpoint_for(engine.current_frame());
+    if (!cp.state || !first_use.queued())
+        return;
+    AheadHooks hooks;
+    if (watching_derails)
+        hooks.take_derail = [this] { return tracer.take_derail(); };
+    hooks.begin = [this] { tracer.note_jumps(false); };
+    hooks.end = [this] { tracer.note_jumps(true); };
+    running_ahead = true;
+    auto tested = first_use.test(engine, rom, rom_blame, access, { code_map.mine().data(), code_map.mine().size() },
+                                 hooks, cp.state, cp.engine);
+    running_ahead = false;
+    if (tested.kind != FirstUseResult::Fixed)
+        return;
+    auto entry = journal_entry(tested);
+    entry.recipe = engine.recipe().name;
+    entry.seed = engine.recipe().seed;
+    entry.policy = rom_policy_name(rom_blame.policy());
+    writeJournal(entry);
+    if (crash_map.rom_crashed(tested.fixed))
+        engine.set_hot_mask(crash_map.hot_mask());
+    note(tested.summary);
+    std::string shown = "Corruption: tested at first use, " + tested.rom_action;
     S9xSetInfoString(shown.c_str());
 }
 
@@ -323,6 +373,8 @@ void CorruptionSession::gameLoaded()
     instant.drop();
     instant.reset_counts();
     ahead.reset_counts();
+    first_use.forget();
+    first_use.reset_counts();
     last_crash.clear();
     configureGuard();
     last_backup_time.reset();
@@ -516,6 +568,8 @@ std::vector<std::string> CorruptionSession::loadRecipe(const Recipe &recipe, con
     instant.drop();
     instant.reset_counts();
     ahead.reset_counts();
+    first_use.forget();
+    first_use.reset_counts();
     last_crash.clear();
     configureGuard();
     note("Recipe: " + recipe.name);
@@ -752,6 +806,8 @@ void CorruptionSession::newRecipeLocked(const std::string &name)
     instant.drop();
     instant.reset_counts();
     ahead.reset_counts();
+    first_use.forget();
+    first_use.reset_counts();
     last_crash.clear();
     configureGuard();
     note("New recipe: " + name);
@@ -1076,6 +1132,8 @@ CorruptionSession::Status CorruptionSession::status()
         s.tested_first = ahead.tested();
         s.tested_rerolled = ahead.rerolled();
         s.tested_skipped = ahead.skipped();
+        s.first_use_tested = first_use.bytes_tested();
+        s.first_use_fixed = first_use.fixes();
         s.instant_revert = instant.is_enabled();
         s.pins = engine.recipe().pins.size();
         s.patched = patched_bytes(engine.recipe().patches);

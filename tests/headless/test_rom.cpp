@@ -224,4 +224,45 @@ std::vector<uint8_t> build_derail()
     return rom;
 }
 
+std::vector<uint8_t> build_fuse()
+{
+    auto rom = build(Crash::None);
+    // WRAM powers up as $55s: clear the fuse and counts before NMI goes on.
+    put(rom, 0x800E, { 0x4C, 0x50, 0x80 }); // JMP $8050 (instead of STA $4200)
+    put(rom, 0x8050, {
+        0x64, 0x15,       // STZ $15
+        0x64, 0x16,       // STZ $16
+        0x64, 0x12,       // STZ $12
+        0x8D, 0x00, 0x42, // STA $4200    NMI on (A is still $80)
+        0x4C, 0x11, 0x80, // JMP main
+    });
+    put(rom, 0x8011, {
+        0xCB,             // WAI          main
+        0x20, 0x70, 0x80, // JSR $8070    tick the fuse
+        0xA5, 0x10,       // LDA $10
+        0xC9, 0x42,       // CMP #$42
+        0xD0, 0xF6,       // BNE main
+        0x20, 0x60, 0x80, // JSR $8060    somewhere new
+        0x80, 0xF1,       // BRA main
+    });
+    put(rom, 0x8060, {
+        0xA9, 0x00,       // LDA #$00     (kLight)
+        0x85, 0x15,       // STA $15
+        0xE6, 0x16,       // INC $16      (kInnocent)
+        0xE6, 0x12,       // INC $12
+        0x64, 0x10,       // STZ $10
+        0x60,             // RTS
+    });
+    put(rom, 0x8070, {
+        0xA5, 0x15,       // LDA $15
+        0xF0, 0x05,       // BEQ out
+        0xC6, 0x15,       // DEC $15
+        0xD0, 0x01,       // BNE out
+        0xDB,             // STP          ($8078)
+        0x60,             // RTS          out ($8079)
+    });
+    fix_checksum(rom);
+    return rom;
+}
+
 } // namespace testrom

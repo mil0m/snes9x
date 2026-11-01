@@ -275,8 +275,22 @@ ROM rule fires (around a tenth of a second), the status line says when something
 re-rolled or skipped, and the ROM section counts them (*30 changes tested first (3
 re-rolled, 0 skipped)*). It can only vouch for what the game actually uses in those
 seconds: a change in code the game won't reach for a while goes through untried, and the
-instant revert and the crash guard still watch it. In the recipe, `"test_first": 0` turns
-it off, and a number of seconds looks further ahead (3 by default).
+instant revert and the crash guard still watch it.
+
+**Every changed byte is tried when the game first uses it.** Most changes sit in code the
+game hasn't reached yet, and a classic run makes hundreds at once. So the moment the game
+first runs or reads a changed byte, the app goes back to the start of that frame and plays
+a second ahead with it, and if the game falls over, again without it. If only the run with
+it falls over, the byte is put back (or re-rolled, if the recipe says so) and the frame
+plays again. Each changed value is tried once; first uses that come in a burst are tried
+together, at most twice a second. The status line says *Tested at first use: 1 changed
+byte crashed the game (…) where the clean ROM didn't, so reverted 1 ROM byte and played the
+frame again*, and the ROM section counts them (*40 bytes tested at first use (2 put
+back)*).
+
+Both are the panel's **Try ROM changes ahead first** (in Crash Guard). In the recipe,
+`"test_first": 0` turns both off, and a number of seconds looks further ahead (3 by
+default).
 
 ## Survivors and pins
 

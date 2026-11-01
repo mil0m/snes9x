@@ -87,4 +87,19 @@ constexpr uint32_t kStp = 0x006B;       // LDA $DB00's high byte
 constexpr uint32_t kRunsAddr = 0x13;    // WRAM: runs of the routine's end
 } // namespace derail
 
+// Crash::None with a fuse (test at first use, #55). Each frame the main loop ticks the fuse
+// ($7E:0015: while it's set it counts down, and STP when it reaches 0), and while $7E:0010
+// is $42 calls a rarely run routine: LDA #$00 / STA $15 (the fuse stays out), INC $16 (a
+// harmless count), INC $12, STZ $10. A changed immediate lights the fuse: the CPU stops that
+// many frames later, far from the change (no landing). ROM offsets.
+std::vector<uint8_t> build_fuse();
+namespace fuse
+{
+constexpr uint32_t kRoutine = 0x0060;  // LDA #$00 (A9 00)
+constexpr uint32_t kLight = 0x0061;    // its immediate: nonzero lights the fuse for that many frames
+constexpr uint32_t kInnocent = 0x0065; // INC $16's operand: $16 -> $17 is harmless
+constexpr uint32_t kFuseAddr = 0x15;   // WRAM
+constexpr uint32_t kRunsAddr = 0x12;   // WRAM: runs of the routine
+} // namespace fuse
+
 } // namespace testrom

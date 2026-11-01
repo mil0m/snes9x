@@ -186,9 +186,10 @@ ByteBlameResult RomBlame::act(uint64_t after, uint64_t through, unsigned attempt
     return fix(picked);
 }
 
-ByteBlameResult RomBlame::fix(const std::vector<uint32_t> &bytes)
+ByteBlameResult RomBlame::fix(const std::vector<uint32_t> &bytes, std::optional<RomPolicy> as)
 {
     ByteBlameResult out;
+    RomPolicy how = as.value_or(pol);
     std::vector<std::pair<uint32_t, uint8_t>> writes;
     const auto &clean = rom.clean();
     for (uint32_t o : bytes)
@@ -197,7 +198,7 @@ ByteBlameResult RomBlame::fix(const std::vector<uint32_t> &bytes)
             continue; // not changed (any more), or not ours to touch
         out.offsets.push_back(o);
         uint8_t value = clean[o];
-        if (pol == RomPolicy::Reroll)
+        if (how == RomPolicy::Reroll)
         {
             uint8_t bad = rom.read(Target::ROM, o);
             Rng rng(seed ^ (uint64_t(o) * 0x9e3779b97f4a7c15ULL) ^ (++rerolls << 32));
@@ -210,7 +211,7 @@ ByteBlameResult RomBlame::fix(const std::vector<uint32_t> &bytes)
     if (writes.empty())
         return out;
     rom.settle(writes); // reverted bytes stop being watched
-    if (pol == RomPolicy::Reroll)
+    if (how == RomPolicy::Reroll)
         for (auto [o, value] : writes)
             if (auto it = index.find(o); it != index.end())
             {
@@ -220,7 +221,7 @@ ByteBlameResult RomBlame::fix(const std::vector<uint32_t> &bytes)
             }
 
     size_t n = out.offsets.size();
-    out.text = std::string(pol == RomPolicy::Reroll ? "re-rolled " : "reverted ") + std::to_string(n) +
+    out.text = std::string(how == RomPolicy::Reroll ? "re-rolled " : "reverted ") + std::to_string(n) +
                (n == 1 ? " ROM byte" : " ROM bytes");
     return out;
 }

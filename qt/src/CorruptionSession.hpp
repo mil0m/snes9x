@@ -7,6 +7,7 @@
 #include "corrupt/library.h"
 #include "corrupt/memory_watch.h"
 #include "corrupt/rom_keeper.h"
+#include "corrupt/first_use.h"
 #include "corrupt/instant_revert.h"
 #include "corrupt/test_ahead.h"
 #include "corrupt/rom_blame.h"
@@ -75,6 +76,8 @@ class CorruptionSession
         unsigned tested_first = 0;    // live ROM firings played ahead before they landed (#52)
         unsigned tested_rerolled = 0; // ...that crashed and rolled again
         unsigned tested_skipped = 0;  // ...whose every pick crashed: skipped
+        unsigned first_use_tested = 0; // changed bytes played ahead at their first use (#55)
+        unsigned first_use_fixed = 0;  // ...that crashed the game alone: put back or re-rolled
         bool instant_revert = true;   // the recipe lets it
         size_t pins = 0;        // ROM changes the recipe keeps
         size_t patched = 0;     // painted bytes kept in the recipe
@@ -212,8 +215,10 @@ class CorruptionSession
     corrupt::InstantRevert instant; // and this replays such a frame without the culprits
     bool watching_derails = false;  // the watch costs 5-10% while on: only during ROM runs
     corrupt::TestAhead ahead;       // live ROM changes played ahead, unseen, before they land (#52)
+    corrupt::FirstUseTest first_use; // changed ROM bytes played ahead at their first use (#55)
     bool running_ahead = false;     // the frame hook runs inside betweenFrames, which holds the lock
     void testAhead();
+    void testFirstUse();
     corrupt::RomAddresses rom_where;        // for disassembly in the viewer
     std::vector<uint8_t> code_shown;        // everyone's map, copied between frames while the viewer shows the ROM
     std::vector<uint8_t> code_for_aim;      // everyone's map as aimed rules saw it when this run started

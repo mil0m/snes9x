@@ -54,6 +54,56 @@ struct AheadHooks
     std::function<void()> begin, end;
 };
 
+// One run ahead, unseen and unheard, and everything put back after it: the core's state, the
+// engine (and its pressed hotkeys), the ROM, the code map's flags. Shared by test before
+// applying (#52) and test at first use (#55).
+struct RunSpec
+{
+    // Start from this state (a frame-start checkpoint) instead of from now, and with the
+    // engine as it was then if given (so the frame's own rules fire again in the run).
+    const std::vector<uint8_t> *from = nullptr;
+    const EngineSnapshot *engine_from = nullptr;
+    // The bytes under test: their uses are seen, and a landing naming one of them is theirs.
+    std::vector<uint32_t> watched;
+    // ROM values swapped in for the run only (the clean value of a byte left out of a
+    // test), with no journal entry and no change notice, and put back after.
+    std::vector<std::pair<uint32_t, uint8_t>> borrowed;
+    // The engine's ROM writes after this frame are dropped during the run (unset: none).
+    std::optional<uint64_t> quiet_after;
+    uint32_t frames = 180;
+    uint32_t settle_frames = 60; // stops early once every watched byte was used this long ago
+    // Frames of NMI off that count as a crash (0: not at all). A guess on its own, so only
+    // worth it where a control run without the change has to disagree (#55).
+    uint32_t nmi_off_frames = 0;
+};
+
+struct RunVerdict
+{
+    enum Kind
+    {
+        Survived,
+        Crashed,
+        Inconclusive, // a landing blamed on other changes: not these bytes' to answer for
+    } kind = Survived;
+    bool guilty = false; // crashed, and a watched byte was what did it beyond doubt (a landing)
+    bool used = false;   // the game ran or read a watched byte
+    std::vector<uint32_t> culprits; // with a landing: the watched bytes it blamed
+    std::vector<uint32_t> unused;   // watched bytes the game never ran or read in the window
+    uint32_t frames = 0;            // frames played
+    std::string text;
+};
+
+class RunAhead
+{
+  public:
+    RunVerdict play(Engine &engine, RomKeeper &rom, CoreAccess &core, std::span<uint8_t> flags,
+                    const AheadHooks &hooks, const RunSpec &spec);
+
+  private:
+    CrashDetector detector;
+    std::vector<uint8_t> state, flags_before;
+};
+
 class TestAhead
 {
   public:
@@ -73,26 +123,8 @@ class TestAhead
     void reset_counts() { firings_tested = firings_rerolled = firings_skipped = 0; }
 
   private:
-    struct Verdict
-    {
-        enum Kind
-        {
-            Survived,
-            Crashed,
-            Inconclusive, // a landing blamed on older changes: not this change's to answer for
-        } kind = Survived;
-        bool guilty = false; // crashed, and the change was what did it beyond doubt
-        bool used = false;   // the game ran or read a written byte
-        std::vector<uint32_t> culprits; // with a landing: the written bytes it blamed
-        std::vector<uint32_t> unused;   // written bytes the game never ran or read in the window
-        std::string text;
-    };
-    Verdict run(Engine &engine, RomKeeper &rom, CoreAccess &core, std::span<uint8_t> flags,
-                const AheadHooks &hooks, const std::vector<uint32_t> &written);
-
     AheadConfig cfg;
-    CrashDetector detector;
-    std::vector<uint8_t> state, flags_before;
+    RunAhead runner;
     unsigned firings_tested = 0, firings_rerolled = 0, firings_skipped = 0;
 };
 

@@ -1,6 +1,6 @@
 # Safety first: plan (roadmap phase 7, #50-#52, #55)
 
-**Status (2026-11-01):** #50 done (QA.md section 27), #51 done (QA.md section 28), #52 done (QA.md section 29). #55 test at first use (the follow-up to #52): planned, being built. From Erik's list (sorted in
+**Status (2026-11-01):** #50 done (QA.md section 27), #51 done (QA.md section 28), #52 done (QA.md section 29). #55 test at first use (the follow-up to #52) done (QA.md section 30); it works but measured little, see its "How it went". From Erik's list (sorted in
 [the horizons doc](./2026-10-31-horizons.md#eriks-list-2026-11-01)): see what the game uses
 live, catch a bad change sooner, and test a change before it reaches the game.
 
@@ -311,12 +311,13 @@ frame again, as the instant revert does. Each changed value is tested once.
 changed bytes the game used this frame: the ones used for the first time (`frames_used ==
 1`) go into a queue. They're tested against the **frame-start checkpoint**: the state
 the instant revert keeps of the start of the frame that just ran (#51), so the byte's
-first use is replayed in the test, not skipped. The test runs after the guard and before
-the checkpoint is replaced for the next frame. Nothing is tested in a frame where the
-guard acted (its rollback left the checkpoint's timeline), where the instant revert
-replayed the frame (the culprits are fixed already; the rest stay queued for the next
-frame), or without a checkpoint of this frame. The checkpoint is kept whenever either the
-instant revert or test at first use is on.
+first use is replayed in the test, not skipped. The test runs before the guard looks at
+the frame (as the instant revert does, so a crash it explains is fixed and replayed instead
+of rolled back) and before the checkpoint is replaced for the next frame. Nothing is tested
+in a frame the instant revert replayed (the culprits are fixed already; the rest stay
+queued for the next frame), or without a checkpoint of this frame. The checkpoint, now
+with the engine's snapshot beside it so a run fires that frame's rules again, is kept
+whenever either the instant revert or test at first use is on.
 
 **"Without it".** The byte's **clean** value, not the journal's previous one: a byte's
 uses are counted from when it first differs from the clean ROM, so an earlier changed
@@ -389,3 +390,58 @@ back. `corrupt-smoke --first-use [seeds]`: both arms with the guard, #51 and #52
 second also testing at first use, on Goof Troop, Pocky & Rocky and FE4, with Code drip
 (live) and Code roulette (30 code bytes at load, classic): rollbacks, instant reverts,
 frames lost, bytes tested, put back, time spent, still moving after a minute.
+
+**How it went.** Built as planned (`corrupt/first_use`, `RunAhead` shared with #52 and able
+to start from a checkpoint with borrowed bytes, `RomKeeper::borrow`, `RomBlame::fix` with a
+policy override, the journal's `first_use`, the dock's *N bytes tested at first use (N put
+back)*, the switch renamed *Try ROM changes ahead first*, a fuse test ROM), with these
+changes along the way:
+
+- **The checkpoint keeps the engine too.** The frame hook fires at line 1, after the
+  frame-start checkpoint, so a run from it that didn't rewind the engine lost that frame's
+  own writes (in the fuse test the rule that sends the game somewhere new). The instant
+  revert's checkpoint now keeps `Engine::snapshot()` beside the state; a run restores it,
+  quiets ROM writes from there on (the replayed frame's were made for real), and puts the
+  engine's log back afterwards (`Engine::put_back_log`). The real replay after a fix still
+  doesn't rewind the engine, as with #51.
+- **Before the guard, not after it**, as the instant revert does, so a crash it can
+  explain is fixed and replayed instead of rolled back.
+
+Measured with `corrupt-smoke --first-use 10`: 10 seeds of 60 s, both arms with the guard,
+#51 and #52, the second also testing at first use with the defaults (1 s runs in practice,
+batches of up to 16, every 30 frames at most).
+
+| Recipe | Game | guard rollbacks | frames lost | instant reverts | bytes tested (tests) | fixed | ms per test |
+|---|---|---|---|---|---|---|---|
+| Code roulette (30 code bytes at load) | Goof Troop | 3 → 4 | 1270 → 1680 | 35 → 34 | 123 (48) | 1 | 66 |
+| | Pocky & Rocky | 12 → 12 | 6671 → 6671 | 27 → 27 | 91 (67) | 0 | 47 |
+| | FE4 | 36 → 42 | 16476 → 19571 | 95 → 103 | 174 (74) | 2 | 83 |
+| Code drip (live) | Goof Troop | 2 → 1 | 1050 → 419 | 30 → 29 | 78 (52) | 1 | 61 |
+| | Pocky & Rocky | 9 → 9 | 3524 → 3524 | 55 → 54 | 79 (47) | 2 | 47 |
+| | FE4 | 15 → 15 | 6047 → 6047 | 11 → 10 | 13 (13) | 1 | 87 |
+
+What it means: it costs little (under 1% of the time) and catches what it was built for
+(a crash a second after first use, as in the fuse test), but in these runs that is rare:
+1-2 bytes in 10 minutes. The totals move only by the usual drift of two runs that have
+parted ways. Why, from `CORRUPT_INSTANT_VERBOSE=1` (which now says, for each byte the
+guard blames, whether and when it passed its first-use test):
+
+- **The crashes it misses are NMI off, seconds later.** Nearly every guard rollback on
+  FE4 is *frame interrupt off for 5 s*, and the blamed bytes had passed their test 1-4 s
+  before NMI went off. A 1 s run with definite signals only can't see that.
+- **Counting NMI off doesn't rescue it.** With runs of 7, 10 and 15 s that count 3, 4 or
+  5 s of NMI off as a crash (the control run keeps it honest; `RunSpec::nmi_off_frames`,
+  `FirstUseConfig::nmi_off_frames`, smoke `CORRUPT_FU_FRAMES/_SETTLE/_NMI/_GAP`), FE4 Code
+  roulette over 5 seeds fixed 5 bytes instead of 2, but in 7 of 43 tests the run *without*
+  the batch went NMI-off too: the damage is older and spread over many bytes, which no
+  first-use batch can be blamed for. Rollbacks didn't fall, and each test cost 200-370 ms.
+  So the default stays at 1 s and NMI off isn't counted.
+- **The guard's blame is part of the picture.** The same NMI-off crash comes back at the
+  same moment after each rollback, and the guard reverts a different group of recently
+  used bytes each time until it stops: the culprit is probably among older bytes. That's
+  the guard's blame, not this test's, and a better target for the next safety idea than
+  longer runs ahead.
+
+Left on by default under the shared switch, because it's cheap and right when it acts. Its
+real worth is in play with a person reaching new code, which attract mode doesn't do:
+QA.md section 30 is the check.

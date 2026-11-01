@@ -454,3 +454,17 @@ Use a game you have never set up (a fresh library folder, so no recipes exist fo
    - [ ] No pauses and no *Tested ahead* lines.
 6. Load a save state, rewind if you use it, and fast-forward while **Code drip** runs.
    - [ ] Nothing odd: no frozen picture, no sound glitches beyond the short pauses.
+
+## 30. Test at first use
+1. Load Goof Troop (or any game) and play for a couple of minutes, so the code map knows its code.
+2. Pick **Starter: Opcode swap** (classic: code changed when the run starts) and press **Corrupt (F7)**. Play on, going somewhere new now and then.
+   - [ ] When the game reaches changed code there's a very short pause now and then (a byte tried at its first use). The picture and sound never show the future.
+   - [ ] Now and then the status line says *Tested at first use: 1 changed byte crashed the game (…) where the clean ROM didn't, so reverted 1 ROM byte and played the frame again*, and the on-screen message says *tested at first use*.
+   - [ ] The ROM section counts *N bytes tested at first use (N put back)*.
+   - [ ] Fewer *Crash caught* lines than with the switch off (step 4), though not none.
+3. Look at the crash journal (`journal.<you>.jsonl` in the library).
+   - [ ] Those are lines with `"event":"first_use"`, what the run saw in `text`, the bytes in `rom_bytes`.
+4. Untick **Try ROM changes ahead first** in Crash Guard and play the same recipe.
+   - [ ] No pauses, no *Tested at first use* lines; the same kind of changes end in crashes the guard catches.
+5. With the switch on, load a save state while the recipe runs.
+   - [ ] The game continues from the loaded state; nothing jumps back to before it.

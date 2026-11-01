@@ -32,25 +32,47 @@ std::string seconds_in(uint32_t frames)
 
 } // namespace
 
-TestAhead::Verdict TestAhead::run(Engine &engine, RomKeeper &rom, CoreAccess &core, std::span<uint8_t> flags,
-                                  const AheadHooks &hooks, const std::vector<uint32_t> &written)
+RunVerdict RunAhead::play(Engine &engine, RomKeeper &rom, CoreAccess &core, std::span<uint8_t> flags,
+                          const AheadHooks &hooks, const RunSpec &spec)
 {
-    Verdict v;
+    RunVerdict v;
     uint64_t start = engine.current_frame();
-    if (!core.save_state_into(state))
+    if (!core.save_state_into(state) || (spec.from && !core.load_state(*spec.from)))
     {
-        v.kind = Verdict::Inconclusive;
+        if (spec.from && !state.empty())
+            core.load_state(state);
+        v.kind = RunVerdict::Inconclusive;
         return v;
     }
+    const auto &written = spec.watched;
     auto snap = engine.snapshot();
     uint16_t hotkeys = engine.pressed_hotkeys();
+    std::vector<LoggedEvent> dropped; // what going back to the engine's earlier snapshot drops
+    if (spec.engine_from)
+    {
+        for (auto &e : engine.event_log())
+            if (e.frame > spec.engine_from->frame)
+                dropped.push_back(e);
+        engine.restore(*spec.engine_from);
+    }
     flags_before.assign(flags.begin(), flags.end());
     for (uint32_t o : written) // "used" means used in this run
         if (o < flags.size())
             flags[o] &= uint8_t(~codeflag::Touched);
+    // Borrowed values: in the ROM for this run only, and not changed as far as a landing knows.
+    std::vector<std::pair<uint32_t, uint8_t>> lent;
+    for (auto [o, value] : spec.borrowed)
+    {
+        lent.push_back({ o, rom.read(Target::ROM, o) });
+        rom.borrow(o, value);
+        if (o < flags.size())
+            flags[o] &= uint8_t(~codeflag::Changed);
+    }
 
-    engine.quiet_after(start + 1, Target::ROM); // this firing only, not the ones after it
-    detector.set_config(definite_only());
+    engine.quiet_after(spec.quiet_after, Target::ROM);
+    auto detect = definite_only();
+    detect.nmi_off_frames = spec.nmi_off_frames;
+    detector.set_config(detect);
     if (hooks.begin)
         hooks.begin();
     core.begin_unseen();
@@ -59,9 +81,10 @@ TestAhead::Verdict TestAhead::run(Engine &engine, RomKeeper &rom, CoreAccess &co
     std::vector<bool> seen(written.size(), false);
     size_t seen_count = 0;
     uint32_t last_first_use = 0;
-    for (uint32_t f = 1; f <= cfg.frames; f++)
+    for (uint32_t f = 1; f <= spec.frames; f++)
     {
         core.run_unseen_frame();
+        v.frames = f;
         for (size_t i = 0; i < written.size(); i++)
             if (!seen[i] && written[i] < flags.size() && (flags[written[i]] & codeflag::Touched))
             {
@@ -76,19 +99,19 @@ TestAhead::Verdict TestAhead::run(Engine &engine, RomKeeper &rom, CoreAccess &co
                     if (std::find(written.begin(), written.end(), o) != written.end())
                         v.culprits.push_back(o);
                 bool ours = !v.culprits.empty();
-                v.kind = ours ? Verdict::Crashed : Verdict::Inconclusive;
+                v.kind = ours ? RunVerdict::Crashed : RunVerdict::Inconclusive;
                 v.guilty = v.used = ours;
                 v.text = std::string(landing_text(note->kind)) + " at " + describe_pc(note->pc) + seconds_in(f);
                 break;
             }
         if (auto crash = detector.observe(start + f, core.sample()))
         {
-            v.kind = Verdict::Crashed;
+            v.kind = RunVerdict::Crashed;
             v.text = crash->text + seconds_in(f);
             break;
         }
-        // Every written byte has been used and held up a while: that's the answer.
-        if (!written.empty() && seen_count == written.size() && f >= last_first_use + cfg.settle_frames)
+        // Every watched byte has been used and held up a while: that's the answer.
+        if (!written.empty() && seen_count == written.size() && f >= last_first_use + spec.settle_frames)
             break;
     }
     for (uint32_t o : written)
@@ -105,9 +128,14 @@ TestAhead::Verdict TestAhead::run(Engine &engine, RomKeeper &rom, CoreAccess &co
     // As it was: the core, the engine (and its pressed hotkeys), the ROM, the code map.
     engine.quiet_after(std::nullopt);
     core.load_state(state);
+    if (spec.engine_from)
+        engine.restore(*spec.engine_from); // the run's own log entries go, from its first frame on
     engine.restore(snap);
+    engine.put_back_log(dropped);
     engine.set_pressed_hotkeys(hotkeys);
     rom.revert_after(start);
+    for (auto it = lent.rbegin(); it != lent.rend(); ++it)
+        rom.borrow(it->first, it->second);
     std::copy(flags_before.begin(), flags_before.end(), flags.begin());
     return v;
 }
@@ -150,25 +178,30 @@ AheadResult TestAhead::before_frame(Engine &engine, RomKeeper &rom, CoreAccess &
     for (unsigned attempt = 0;; attempt++)
     {
         auto written = offsets_of(planned);
-        auto v = run(engine, rom, core, flags, hooks, written);
+        RunSpec spec;
+        spec.watched = written;
+        spec.quiet_after = start + 1; // this firing only, not the ones after it
+        spec.frames = cfg.frames;
+        spec.settle_frames = cfg.settle_frames;
+        auto v = runner.play(engine, rom, core, flags, hooks, spec);
         out.runs++;
-        bool guilty = v.kind == Verdict::Crashed && v.guilty;
-        if (v.kind == Verdict::Crashed && !v.guilty && v.used)
+        bool guilty = v.kind == RunVerdict::Crashed && v.guilty;
+        if (v.kind == RunVerdict::Crashed && !v.guilty && v.used)
         {
             if (!baseline_crashes)
             {
                 engine.veto(next, Target::ROM, written);
-                auto control = run(engine, rom, core, flags, hooks, written);
+                auto control = runner.play(engine, rom, core, flags, hooks, spec);
                 engine.drop_vetoes_through(next);
                 out.runs++;
-                baseline_crashes = control.kind == Verdict::Crashed;
+                baseline_crashes = control.kind == RunVerdict::Crashed;
             }
             guilty = !*baseline_crashes; // only the changed run fell over
         }
         bool last = attempt + 1 >= cfg.tries;
         if (!guilty)
         {
-            bool dormant = attempt > 0 && v.kind == Verdict::Survived && !v.used;
+            bool dormant = attempt > 0 && v.kind == RunVerdict::Survived && !v.used;
             if (!dormant || last)
             {
                 out.untried = v.unused;

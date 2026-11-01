@@ -10,6 +10,7 @@
 #include "corrupt/crash_guard.h"
 #include "corrupt/hook.h"
 #include "corrupt/instant_revert.h"
+#include "corrupt/first_use.h"
 #include "corrupt/test_ahead.h"
 #include "corrupt/jump_tables.h"
 #include "corrupt/pointer_swap.h"
@@ -58,6 +59,10 @@ struct Harness
     TestAhead *ahead = nullptr;
     CodeMap *map = nullptr;
     std::vector<AheadResult> tests;
+    // Test at first use, wired like the app when set (needs the blame, the tracer, its map
+    // and the instant revert's checkpoints).
+    FirstUseTest *first_use = nullptr;
+    std::vector<FirstUseResult> first_uses;
 
     Harness(testrom::Crash crash, Recipe recipe, PolicyKind policy)
         : Harness(testrom::build(crash), std::move(recipe), policy)
@@ -100,12 +105,23 @@ struct Harness
                 starts.push_back(s);
             if (blame)
                 blame->collect(engine.current_frame());
+            if (first_use && blame && tracer && map && instant)
+            {
+                first_use->note_uses(*blame, rom, engine.current_frame());
+                AheadHooks hooks;
+                hooks.take_derail = [this] { return tracer->take_derail(); };
+                auto cp = instant->checkpoint_for(engine.current_frame());
+                auto t = first_use->test(engine, rom, *blame, access, { map->data(), map->size() }, hooks, cp.state,
+                                         cp.engine);
+                if (t.kind != FirstUseResult::Nothing)
+                    first_uses.push_back(t);
+            }
             auto out = guard.between_frames(engine, access);
             rom.after_guard(out);
             if (out.kind != GuardOutcome::Nothing)
                 outcomes.push_back(out);
             if (tracer && instant)
-                instant->keep(access, engine.current_frame(), engine.active() && tracer->tracing());
+                instant->keep(access, engine.current_frame(), engine.active() && tracer->tracing(), &engine);
             if (ahead && tracer && map)
             {
                 AheadHooks hooks;
@@ -1136,6 +1152,70 @@ TEST_SUITE("instant revert in the real core")
         CHECK(d.h.access.sample().reboots == reboots);
         CHECK(IPPU.RenderThisFrame);
         CHECK(alive(d.h));
+    }
+
+    // The fuse ROM with a light (20 frames) and an innocent change made by hand, and a rule
+    // that sends the game somewhere new (the rare routine) at `frame`.
+    Recipe somewhere_new_at(uint64_t frame)
+    {
+        Recipe r = trigger_at(frame);
+        r.name = "somewhere new";
+        return r;
+    }
+
+    TEST_CASE("test at first use: a change that lights a fuse is put back before the game ever stops")
+    {
+        namespace fz = testrom::fuse;
+        Derailing d(testrom::build_fuse(), true, somewhere_new_at(60));
+        FirstUseTest first;
+        first.set_config({ .frames = 180, .settle_frames = 60, .gap = 30 });
+        d.h.first_use = &first;
+        d.h.map = &d.map;
+        d.h.rom.write(Target::ROM, fz::kLight, 20);
+        d.h.rom.write(Target::ROM, fz::kInnocent, 0x17);
+        uint32_t reboots = d.h.access.sample().reboots;
+        uint8_t innocent_count = d.h.wram(0x17);
+        d.h.run(29); // to frame 59: the routine hasn't run
+        CHECK(d.h.first_uses.empty());
+        CHECK(d.blame.used() == 0);
+        // Frame 60's rule sets $10; the main loop sees it after the next NMI and runs the
+        // routine for the first time.
+        for (int i = 0; i < 4 && d.h.first_uses.empty(); i++)
+            d.h.run(1);
+        REQUIRE(d.h.first_uses.size() == 1);
+        auto &t = d.h.first_uses[0];
+        CAPTURE(t.summary);
+        CHECK(t.kind == FirstUseResult::Fixed);
+        CHECK(t.tested.size() == 2);
+        CHECK(t.fixed == std::vector<uint32_t>{ fz::kLight });
+        CHECK(t.failure.find("CPU stopped") != std::string::npos);
+        CHECK(t.runs == 4); // both, neither, the light alone, the innocent one again
+        CHECK(d.rom(fz::kLight) == 0x00);
+        CHECK(d.rom(fz::kInnocent) == 0x17);
+        CHECK(!(CPU.Flags & HALTED_FLAG));
+
+        d.h.run(60);
+        CHECK(d.h.outcomes.empty()); // the guard never saw a crash
+        CHECK(d.h.reverts.empty());
+        CHECK(d.h.first_uses.size() == 1);
+        CHECK(d.h.wram(fz::kFuseAddr) == 0);
+        CHECK(d.h.wram(fz::kRunsAddr) == 1); // the frame played again, the routine ran once
+        CHECK(d.h.wram(0x17) == uint8_t(innocent_count + 1)); // with the innocent change in it
+        CHECK(d.h.access.sample().reboots == reboots);
+        CHECK(IPPU.RenderThisFrame);
+        CHECK(alive(d.h));
+    }
+
+    TEST_CASE("without test at first use, the fuse stops the game and the guard rolls back")
+    {
+        namespace fz = testrom::fuse;
+        Derailing d(testrom::build_fuse(), true, somewhere_new_at(60));
+        d.h.rom.write(Target::ROM, fz::kLight, 20);
+        d.h.run(80);
+        REQUIRE(d.h.outcomes.size() == 1);
+        CHECK(d.h.outcomes[0].verdict.signal == CrashSignal::CpuStopped);
+        CHECK(d.h.reverts.empty()); // no landing: nothing for the instant revert
+        CHECK(d.rom(fz::kLight) == 0x00);
     }
 
     TEST_CASE("without testing first, the same recipe needs the instant revert")

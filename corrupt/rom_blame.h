@@ -55,8 +55,9 @@ class RomBlame : public ByteBlame
     ByteBlameResult act(uint64_t after, uint64_t through, unsigned attempt, bool only_new = false) override;
 
     // Deals with these changed bytes now, the way the policy says (revert or re-roll), for
-    // good: the instant revert's culprits. Bytes that aren't changed are left alone.
-    ByteBlameResult fix(const std::vector<uint32_t> &bytes);
+    // good: the instant revert's culprits. Bytes that aren't changed are left alone. `as`
+    // overrides the policy (a byte that failed too many re-rolls is reverted).
+    ByteBlameResult fix(const std::vector<uint32_t> &bytes, std::optional<RomPolicy> as = std::nullopt);
 
     bool fixes_for_good() const override { return pol == RomPolicy::Revert; }
 
