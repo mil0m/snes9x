@@ -1,4 +1,4 @@
-# Safety first: plan (roadmap phase 7, #50-#52, #55)
+# Safety first: plan (roadmap phase 7, #50-#52, #55, #56)
 
 **Status (2026-11-01):** #50 done (QA.md section 27), #51 done (QA.md section 28), #52 done (QA.md section 29). #55 test at first use (the follow-up to #52) done (QA.md section 30); it works but measured little, see its "How it went". From Erik's list (sorted in
 [the horizons doc](./2026-10-31-horizons.md#eriks-list-2026-11-01)): see what the game uses
@@ -445,3 +445,54 @@ guard blames, whether and when it passed its first-use test):
 Left on by default under the shared switch, because it's cheap and right when it acts. Its
 real worth is in play with a person reaching new code, which attract mode doesn't do:
 QA.md section 30 is the check.
+
+## #56 Proven blame
+
+**Goal.** When the guard catches a crash it can replay, find the changed ROM bytes that cause
+it by replaying the stretch before it, unseen, instead of guessing and rolling back again
+and again. Seen in #55's measurements: on FE4, the same *frame interrupt off* crash came
+back at the same moment after every rollback, while the guard reverted a different handful
+of recently used bytes each time (5-10 s lost per round, several rounds). The culprit had
+often been used *before* the rollback's window, so its damage was already in the
+checkpoint the guard went back to.
+
+**When.** A crash the replay can show again without the player: CPU stopped, deadlock,
+reboot, runaway PC, NMI off (not a frozen or black screen, which need button presses), with
+a ROM blame (#22 phase 4) attached and changed bytes the game used before the crash.
+Otherwise the guard does what it does now.
+
+**How** (`ProvenBlame`, called by the guard before it acts; the guard's checkpoints hold the
+state and the engine's snapshot):
+
+1. **Starts.** The checkpoints the guard would roll back to, newest first: the usual target
+   (30 frames before the trouble) and then 5 s further back each, up to 3.
+2. **Candidates** for a start: changed bytes the game used between it and the crash.
+3. **Reproduce** once, from the newest start with candidates: play to the crash's frame
+   (and 30 more) as things are (the ROM as it is now, the engine's ROM writes quieted, its
+   other rules firing as they did). No crash: it needed something the replay hasn't (input),
+   so it falls back to today's guessing.
+4. **Prove**: the same run with every candidate's clean value borrowed in (`RomKeeper::borrow`,
+   as #55 does). Still crashes: not (only) these; try the next, older start. No crash:
+   they're it.
+5. **Narrow down** by halves while a half crashes on its own, within the budget; what's
+   left is fixed by the ROM policy, as the guard's byte blame does now.
+6. **Act**: roll back to that start (not the newer one), fix the culprits for good, and no
+   rule is blamed (the rules fired in every run). The journal says *proven by replay*.
+
+**Budget.** At most 8 runs and 4000 frames of replay per crash (about 3 s unseen on FE4,
+undrawn); out of budget while narrowing, the whole proven set is fixed. *(Design choice: a
+pause of a second or three once, instead of several 5-10 s rollbacks the player sees.)*
+
+**With the rest.** It reuses #55's run ahead (from a checkpoint, with the engine's snapshot,
+borrowed bytes) and #51's landing watch (a landing naming a candidate counts as that run's
+crash). It changes nothing for crashes the replay can't show, so the guard is never worse
+than now, only slower by the reproduce run when the crash doesn't come back in replay.
+
+**Tests.** Fake core: a byte that stops the CPU frames after it ran, used before the usual
+window: one rollback, to the older start, that byte fixed and the newer ones kept; a crash
+that needs input (doesn't reproduce) falls back; a crash the clean candidates don't prevent
+(a rule's WRAM writes) falls back; narrowing to one of several; the budget. Real core: the
+fuse ROM with a long fuse: today's guard rolls back twice, the proven blame once.
+`corrupt-smoke --prove [seeds]`: guard + #51 + #52 + #55 with and without it, on Goof
+Troop, Pocky & Rocky and FE4, Code roulette and Code drip: rollbacks, frames lost, how many
+crashes were proven, runs and time.
