@@ -29,7 +29,7 @@ Use a game you have never set up (a fresh library folder, so no recipes exist fo
 9. **More > Choose the Library Folder…** and pick a different, empty folder. Open the same game, then **More > Import a Shared Recipe…** and pick the file.
    - [ ] The recipe lands in the Recipe list and loads, named like the original, or with a ` 2` after it if that name is taken.
 10. Open the **Recipe** list and look at the starters.
-   - [ ] All 13 are there: *Starter: Gentle WRAM noise*, *Low WRAM roulette*, *Music mangler*, *Palette drift*, *Sprite jitter*, *Stat swap on hotkey*, *Tile rot*, *Classic ROM sprinkle*, *Live ROM drip*, *ROM region shift*, *Branch flips*, *Operand nudge*, *Opcode swap*.
+   - [ ] All 15 are there: *Starter: Gentle WRAM noise*, *Low WRAM roulette*, *Music mangler*, *Palette drift*, *Sprite jitter*, *Stat swap on hotkey*, *Tile rot*, *Classic ROM sprinkle*, *Live ROM drip*, *ROM region shift*, *Branch flips*, *Operand nudge*, *Opcode swap*, *Pointer swap*, *Pointer roulette*.
 
 ## 1. Panel and library
 1. `build/qt/snes9x-qt <copy>.sfc`, then **Corruption > Show Panel**.
@@ -392,3 +392,22 @@ Use a game you have never set up (a fresh library folder, so no recipes exist fo
 7. Open the recipe file in a text editor.
    - [ ] `"pins"` lists offset, value, `was` and the note. Change a `was` to a wrong value and load it: the panel says a pin was left out (made on another version).
 
+## 26. Jump tables and pointer swaps
+1. Load Goof Troop (or any game) and let it play for a couple of minutes, ideally through a few different scenes.
+   - [ ] The ROM section says *N jump tables found, N with entries to swap*, and the numbers grow as new scenes show up.
+2. Open the memory viewer on **rom**, **Colour by: Jumps**.
+   - [ ] Blue marks: short runs of strong blue (entries the game used), lighter blue next to some (likely ones), and single marks at the instructions that jump.
+   - [ ] Hovering a strong one says *entry N of M in a jump table for the `JMP ($xxxx,X)` at `$xx:xxxx`: goes to `$xx:xxxx`, jumped through N times*. A light one says *likely*. Hovering the instruction says it jumps through a table.
+3. Pick **Starter: Pointer swap** and press **Corrupt (F7)** (the console restarts).
+   - [ ] **Colour by: Changes** shows a few orange pairs of bytes, all on blue entries.
+   - [ ] The game keeps running, and sooner or later something does the wrong thing (another behaviour, another screen, a step out of order) rather than crashing.
+4. Press **Corrupt (F7)** a few more times with **Re-roll (F8)** between.
+   - [ ] Most runs keep playing. Note the games and seeds that crash, and the ones that do something good.
+5. Pick **Starter: Pointer roulette**, press **Corrupt (F7)**, then press hotkey **1** a few times while the game runs.
+   - [ ] Each press adds orange marks (two entries each, both ways) and the game changes live. **Back to Normal** puts them all back.
+6. Open a pointer swap rule in the editor.
+   - [ ] **What** says *Swap pointers in jump tables (ROM)* with its two checkboxes; there's no **Aim** section; **How Much** says *Entries each time* and *Which entries*.
+7. Load a game you've never played (no jump tables yet) and press **Corrupt (F7)** with **Pointer swap**.
+   - [ ] It changes nothing: nothing is known to swap yet.
+8. Look in the game's library folder.
+   - [ ] There's a `jumps.<you>.json` next to `codemap.<you>.bin`, one jump a line.

@@ -44,7 +44,12 @@ enum class OpType
     OpcodeSwap, // another opcode of the same length and addressing mode
     BranchFlip, // a conditional branch becomes its opposite
     NopOut,     // the whole instruction becomes NOPs
+
+    // Jump op: ROM only, on jump table entries the tracer found (pointer_swap.h).
+    PointerSwap, // an entry gets the target of another entry its dispatcher went to
 };
+
+constexpr bool is_jump_op(OpType t) { return t == OpType::PointerSwap; }
 
 enum class Axis
 {
@@ -107,6 +112,9 @@ struct Op
     double amount = 0.0;
     Kernel kernel = Kernel::Blur;
     uint32_t source = 0; // stamp: the top-left of the region copied from
+    // Pointer swap.
+    bool likely = false; // also take targets from entries nobody jumped through yet
+    bool mutual = false; // both ways: the donor's entry gets this entry's target
 };
 
 // Per-rule state that has to survive between firings.

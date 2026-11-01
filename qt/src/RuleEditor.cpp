@@ -32,7 +32,7 @@ namespace
 constexpr OpType kOps[] = { OpType::Random, OpType::Add,   OpType::Bitflip, OpType::Swap,   OpType::Copy,
                             OpType::Freeze, OpType::Shuffle, OpType::Shift,  OpType::Flip,   OpType::Levels,
                             OpType::Filter, OpType::Stamp,   OpType::Fill,    OpType::OpcodeSwap,
-                            OpType::BranchFlip, OpType::NopOut };
+                            OpType::BranchFlip, OpType::NopOut, OpType::PointerSwap };
 constexpr TriggerType kTriggers[] = { TriggerType::EveryFrames, TriggerType::ChancePerFrame,
                                       TriggerType::OnceAtFrame, TriggerType::Hotkey, TriggerType::AtLoad };
 
@@ -72,6 +72,7 @@ QString op_label(OpType t)
     case OpType::OpcodeSwap: return QObject::tr("Swap opcodes (same length, ROM)");
     case OpType::BranchFlip: return QObject::tr("Flip branches (ROM)");
     case OpType::NopOut: return QObject::tr("NOP out instructions (ROM)");
+    case OpType::PointerSwap: return QObject::tr("Swap pointers in jump tables (ROM)");
     }
     return {};
 }
@@ -435,6 +436,20 @@ void RuleEditor::buildForm()
         auto code_page = page(f);
         f->addRow(hint_label(text, code_page));
     }
+
+    auto pointer_page = page(f);
+    f->addRow(hint_label(tr("Each picked entry of one of the game's jump tables gets the address of another routine "
+                            "the same code jumped to: an enemy runs another enemy's behaviour, a menu opens the "
+                            "wrong screen. The game learns its tables as you play, so play a while first."),
+                         pointer_page));
+    swap_likely = new QCheckBox(tr("Also use entries nobody has jumped through yet"), pointer_page);
+    swap_likely->setObjectName("swap_likely");
+    swap_likely->setToolTip(tr("Entries next to the used ones that point at code the game has run. More variety, "
+                               "a little less safe."));
+    f->addRow(ui::row(swap_likely));
+    swap_mutual = new QCheckBox(tr("Both ways: the other entry gets this one's routine"), pointer_page);
+    swap_mutual->setObjectName("swap_mutual");
+    f->addRow(ui::row(swap_mutual));
     layout->addWidget(what_box);
 
     // Aim (ROM only): which bytes, by what the code map knows about them.
@@ -544,6 +559,7 @@ void RuleEditor::buildForm()
     // How much
     auto how_box = section(tr("How Much"));
     auto how = ui::form();
+    how_form = how;
     column(how_box)->addLayout(how);
     count_spin = spin(how_box, "count", 1, 1000000);
     count_spin->setToolTip(tr("How many bytes it changes each time it fires"));
@@ -729,6 +745,14 @@ void RuleEditor::load(const Rule &r)
     case OpType::Fill:
         fill_value->setText(hex2(op.value.value_or(0)));
         break;
+    case OpType::OpcodeSwap:
+    case OpType::BranchFlip:
+    case OpType::NopOut:
+        break;
+    case OpType::PointerSwap:
+        swap_likely->setChecked(op.likely);
+        swap_mutual->setChecked(op.mutual);
+        break;
     }
 
     const Trigger &t = r.when;
@@ -878,6 +902,14 @@ RuleEditor::Built RuleEditor::build() const
         if (auto v = number(fill_value, "value", 0, 255, err))
             op.value = uint8_t(*v);
         break;
+    case OpType::OpcodeSwap:
+    case OpType::BranchFlip:
+    case OpType::NopOut:
+        break;
+    case OpType::PointerSwap:
+        op.likely = swap_likely->isChecked();
+        op.mutual = swap_mutual->isChecked();
+        break;
     }
     r.op = op;
 
@@ -903,7 +935,7 @@ RuleEditor::Built RuleEditor::build() const
 
     // The aim, for ROM rules only; code ops always aim at opcodes.
     r.aim = {};
-    if (r.range.target == Target::ROM)
+    if (r.range.target == Target::ROM && !is_jump_op(op.type)) // a pointer swap aims at jump tables
     {
         if (!is_code_op(op.type))
             r.aim.role = parse_role(role_combo->currentData().toString().toStdString()).value_or(Role::Any);
@@ -979,12 +1011,19 @@ void RuleEditor::refresh()
     count_spin->setEnabled(!area_op); // area ops act on the whole area
     pick_combo->setEnabled(!area_op);
     bool rom = target_of(target_combo) == Target::ROM;
-    bool code_op = is_code_op(parse_op(op_combo->currentData().toString().toStdString()).value_or(OpType::Random));
+    auto op_type = parse_op(op_combo->currentData().toString().toStdString()).value_or(OpType::Random);
+    bool code_op = is_code_op(op_type), jump_op = is_jump_op(op_type);
     aim_box->setEnabled(rom && !area_op);
     role_combo->setEnabled(!code_op);
+    if (auto label = qobject_cast<QLabel *>(how_form->labelForField(count_spin)))
+        label->setText(jump_op ? tr("Entries each time") : tr("Bytes each time"));
+    if (auto label = qobject_cast<QLabel *>(how_form->labelForField(pick_combo)))
+        label->setText(jump_op ? tr("Which entries") : tr("Which bytes"));
+    count_spin->setToolTip(jump_op ? tr("How many jump table entries it changes each time it fires")
+                                   : tr("How many bytes it changes each time it fires"));
     // Sections that don't apply are hidden, and the pages take only the room they need;
     // the dialog fits itself again when that changes.
-    bool show_aim = rom && !area_op, show_rect = custom_range && rect;
+    bool show_aim = rom && !area_op && !jump_op, show_rect = custom_range && rect;
     bool layout_changed = aim_box->isVisibleTo(this) != show_aim || no_aim_hint->isVisibleTo(this) == rom ||
                           shown_page != op_pages->currentIndex() || shown_when_page != when_pages->currentIndex() ||
                           rect_fields->isVisibleTo(this) != show_rect;

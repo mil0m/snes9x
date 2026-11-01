@@ -1,6 +1,6 @@
 # Jump tables and pointer swap: plan (roadmap #25 → #32)
 
-**Status (2026-11-01):** phases 1-2 done; Mikael said go. Builds on the code map tracer from
+**Status (2026-11-01):** phases 1-3 done; Mikael said go. Builds on the code map tracer from
 [the ROM plan](./2026-10-31-rom-corruption-plan.md) phase 3. Ideas behind it:
 [the horizons](./2026-10-31-horizons.md).
 

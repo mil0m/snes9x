@@ -85,13 +85,15 @@ rectangle with its top-left at `start`, in rows of `row` bytes.
 | `filter` | `kernel` (`blur`, `sharpen`, `median`, `emboss`, `edges`, `max`, `min`) | 3×3 over the area's rows |
 | `stamp` | `from` (the source's top-left) | copies a same-sized region onto the area |
 | `fill` | `value` | sets the whole area |
-
 | `opcode_swap` | | `rom`: an instruction becomes another of the same length and addressing mode |
 | `branch_flip` | | `rom`: a conditional branch goes the other way |
 | `nop_out` | | `rom`: the whole instruction becomes NOPs |
+| `pointer_swap` | `reach` (`seen`, default, or `likely`), `mutual` (default false) | `rom`: a jump table entry gets another routine its dispatcher went to; `count` is entries |
 
-`shift` to `fill` act on the whole area at once and ignore `count` and `pick`. The last
-three only pick instructions the code map knows.
+`shift` to `fill` act on the whole area at once and ignore `count` and `pick`.
+`opcode_swap`, `branch_flip` and `nop_out` only pick instructions the code map knows;
+`pointer_swap` only picks entries of the jump tables found so far (both are learned as you
+play).
 
 **`when`**: exactly one of `every_frames`, `chance_per_frame` (0–1), `once_at_frame`,
 `hotkey` (1–9), or `at_load: true` (once as the run starts, before frame 1; on the ROM that's

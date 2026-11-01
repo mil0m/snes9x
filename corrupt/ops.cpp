@@ -70,6 +70,7 @@ const char *op_name(OpType t)
     case OpType::OpcodeSwap: return "opcode_swap";
     case OpType::BranchFlip: return "branch_flip";
     case OpType::NopOut: return "nop_out";
+    case OpType::PointerSwap: return "pointer_swap";
     }
     return "?";
 }
@@ -141,7 +142,7 @@ std::optional<OpType> parse_op(std::string_view name)
 {
     for (auto t : { OpType::Add, OpType::Random, OpType::Bitflip, OpType::Swap, OpType::Copy, OpType::Freeze,
                     OpType::Shuffle, OpType::Shift, OpType::Flip, OpType::Levels, OpType::Filter, OpType::Stamp,
-                    OpType::Fill, OpType::OpcodeSwap, OpType::BranchFlip, OpType::NopOut })
+                    OpType::Fill, OpType::OpcodeSwap, OpType::BranchFlip, OpType::NopOut, OpType::PointerSwap })
         if (name == op_name(t))
             return t;
     return std::nullopt;
@@ -260,6 +261,8 @@ std::vector<WriteEvent> apply_op(const Op &op, OpState &state, MemoryAccess &mem
     case OpType::BranchFlip:
     case OpType::NopOut:
         break; // code ops: apply_code_op
+    case OpType::PointerSwap:
+        break; // apply_pointer_swap
     }
 
     return w.events;
@@ -331,6 +334,7 @@ std::optional<std::string> validate_op(const Op &op, const AddressRange &range, 
     case OpType::OpcodeSwap:
     case OpType::BranchFlip:
     case OpType::NopOut:
+    case OpType::PointerSwap:
         if (range.target != Target::ROM)
             return std::string(op_name(op.type)) + " works on the rom target only";
         break;

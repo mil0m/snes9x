@@ -101,9 +101,12 @@ std::vector<WriteEvent> tick_rule(const Rule &rule, RuleRuntime &rt, MemoryAcces
             return {};
     }
 
-    // An aimed rule with nothing to aim at (no code map yet) fires on nothing.
-    bool aiming = needs_aim(rule);
+    // An aimed rule with nothing to aim at (no code map, or no jump tables yet) fires on nothing.
+    bool swapping = is_jump_op(rule.op.type);
+    bool aiming = needs_aim(rule) && !swapping;
     if (aiming && (!aimed || !aimed->bytes || aimed->bytes->empty()))
+        return {};
+    if (swapping && (!aimed || !aimed->swaps || aimed->swaps->empty()))
         return {};
 
     Rng rng = Rng::for_firing(seed, rule_index, rt.firings++);
@@ -116,6 +119,8 @@ std::vector<WriteEvent> tick_rule(const Rule &rule, RuleRuntime &rt, MemoryAcces
     uint32_t count = std::max<uint32_t>(1, uint32_t(std::lround(expected)));
     // A rectangle picks among its cells; a plain range as before, so old recipes replay.
     auto pick = [&](uint32_t n) {
+        if (swapping) // slot numbers
+            return pick_distinct({ rule.range.target, 0, uint32_t(aimed->swaps->size() - 1) }, n, rng);
         if (aiming)
         {
             auto &bytes = *aimed->bytes;
@@ -145,12 +150,14 @@ std::vector<WriteEvent> tick_rule(const Rule &rule, RuleRuntime &rt, MemoryAcces
 
     if (is_code_op(rule.op.type))
         return apply_code_op(rule.op, mem, aimed->flags, addresses, rng, skip);
+    if (swapping)
+        return apply_pointer_swap(*aimed->swaps, addresses, rule.op.mutual, mem, rng, skip);
     return apply_op(scaled_op(rule.op, intensity), rt.op_state, mem, rule.range, addresses, rng, skip);
 }
 
 std::vector<uint32_t> aim_rule(const Rule &rule, std::span<const uint8_t> rom, std::span<const uint8_t> flags)
 {
-    if (rule.range.target != Target::ROM || flags.empty())
+    if (rule.range.target != Target::ROM || flags.empty() || is_jump_op(rule.op.type))
         return {};
     if (is_code_op(rule.op.type))
         return code_op_targets(rule.op.type, rom, flags, rule.range.first, rule.range.last, rule.aim);

@@ -73,6 +73,9 @@ std::string describe_op(const Rule &rule)
     case OpType::OpcodeSwap: text = "swap opcodes"; break;
     case OpType::BranchFlip: text = "flip branches"; break;
     case OpType::NopOut: text = "NOP out"; break;
+    case OpType::PointerSwap:
+        text = std::string("swap pointers") + (op.mutual ? " both ways" : "") + (op.likely ? " (unused entries too)" : "");
+        break;
     }
     return text + " x" + std::to_string(rule.count);
 }

@@ -183,6 +183,19 @@ std::vector<Rule> sample_rules()
     r.op = { .type = OpType::Random, .min = 0, .max = 255 };
     r.aim = { .role = Role::Data };
     rules.push_back(r);
+
+    r = base();
+    r.range = { Target::ROM, 0, 0xFFFFF };
+    r.op = { .type = OpType::PointerSwap };
+    r.when = { .type = TriggerType::AtLoad };
+    r.count = 3;
+    rules.push_back(r);
+
+    r = base();
+    r.range = { Target::ROM, 0, 0xFFFFF };
+    r.op = { .type = OpType::PointerSwap, .likely = true, .mutual = true };
+    r.when = { .type = TriggerType::Hotkey, .hotkey = 1 };
+    rules.push_back(r);
     return rules;
 }
 
@@ -270,6 +283,33 @@ TEST_CASE("aiming: only for the ROM, code ops aim at opcodes, and leaving out su
     choose(e, "target", "wram");
     CHECK(!e.rule().aim.active());
     CHECK(!ok_enabled(e)); // opcode_swap is ROM only
+}
+
+TEST_CASE("a pointer swap counts entries, has no aim, and keeps its two choices")
+{
+    SizedMemory sizes;
+    RuleEditor e(default_rule(), sample_regions(), sizes);
+    e.show();
+    choose(e, "target", "rom");
+    child<QLineEdit>(e, "first")->setText("0x0");
+    child<QLineEdit>(e, "last")->setText("0xFFFFF");
+    choose(e, "op", "pointer_swap");
+    QApplication::processEvents();
+    CHECK(ok_enabled(e));
+    CHECK_FALSE(child<QComboBox>(e, "role")->isVisible()); // it aims at jump tables, not the code map
+    bool entries = false;
+    for (auto label : e.findChildren<QLabel *>())
+        entries |= label->isVisible() && label->text() == "Entries each time";
+    CHECK(entries);
+    CHECK_FALSE(e.rule().aim.active());
+    child<QCheckBox>(e, "swap_likely")->setChecked(true);
+    child<QCheckBox>(e, "swap_mutual")->setChecked(true);
+    CHECK(e.rule().op.likely);
+    CHECK(e.rule().op.mutual);
+    CHECK(child<QLabel>(e, "summary")->text().contains("swap pointers both ways"));
+    maybe_shot(e, "rule-editor-pointer-swap");
+    choose(e, "target", "wram");
+    CHECK(!ok_enabled(e)); // ROM only
 }
 
 TEST_CASE("a rectangle is drawn from its corner, row width and size; area ops need no count")

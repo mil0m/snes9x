@@ -82,6 +82,8 @@ class RuleEditor : public QDialog
     QSpinBox *shuffle_window;
     QSpinBox *shift_dx, *shift_dy;
     QCheckBox *shift_wrap;
+    QCheckBox *swap_likely;
+    QCheckBox *swap_mutual;
     QLineEdit *shift_fill;
     QComboBox *flip_axis;
     QComboBox *levels_curve;
@@ -107,6 +109,7 @@ class RuleEditor : public QDialog
     QWidget *sections;
     QWidget *aim_box;
     class QFormLayout *where_form;
+    class QFormLayout *how_form = nullptr;
     QLabel *no_aim_hint;
     int shown_page = -1, shown_when_page = -1;
     QComboBox *role_combo;

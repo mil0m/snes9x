@@ -1,0 +1,16 @@
+{
+  "format": 1,
+  "name": "Pointer swap",
+  "notes": "Classic: 3 entries of the game's jump tables get the address of another routine the same code jumped to, and the console restarts from that ROM. Every jump still lands on a real routine, so the game keeps running and does the wrong thing with its own parts: an enemy with another enemy's behaviour, a menu that opens the wrong screen, a cutscene step out of order. Needs jump tables: play the game a while first (the ROM section says how many it found). Widen the range for bigger games.",
+  "seed": 3201,
+  "rules": [
+    {
+      "name": "pointers",
+      "target": "rom",
+      "range": [ "0x0", "0x7FFFF" ],
+      "op": { "type": "pointer_swap" },
+      "when": { "at_load": true },
+      "count": 3
+    }
+  ]
+}

@@ -163,12 +163,12 @@ void parse_op_json(Ctx &ctx, const json &o, const std::string &path, Op &op, con
     if (!require_object(ctx, o, path))
         return;
     check_keys(ctx, o, path, { "type", "min", "max", "mode", "bits", "mask", "width", "a", "b", "from", "length", "value",
-                               "window", "dx", "dy", "wrap", "axis", "curve", "amount", "kernel" });
+                               "window", "dx", "dy", "wrap", "axis", "curve", "amount", "kernel", "reach", "mutual" });
 
     if (!o.contains("type") || !o["type"].is_string() || !parse_op(o["type"].get<std::string>()))
     {
         ctx.fail(path + ".type", "expected one of add, random, bitflip, swap, copy, freeze, shuffle, shift, flip, "
-                                 "levels, filter, stamp, fill");
+                                 "levels, filter, stamp, fill, opcode_swap, branch_flip, nop_out, pointer_swap");
         return;
     }
     op.type = *parse_op(o["type"].get<std::string>());
@@ -205,6 +205,21 @@ void parse_op_json(Ctx &ctx, const json &o, const std::string &path, Op &op, con
     opt_field("b", op.b, 0, 0xFFFFFF);
     int_field("dx", op.dx, -0xFFFF, 0xFFFF);
     int_field("dy", op.dy, -0xFFFF, 0xFFFF);
+    if (o.contains("reach"))
+    {
+        auto reach = o["reach"].is_string() ? o["reach"].get<std::string>() : "";
+        if (reach == "likely")
+            op.likely = true;
+        else if (reach != "seen")
+            ctx.fail(path + ".reach", "expected \"seen\" or \"likely\"");
+    }
+    if (o.contains("mutual"))
+    {
+        if (o["mutual"].is_boolean())
+            op.mutual = o["mutual"].get<bool>();
+        else
+            ctx.fail(path + ".mutual", "expected true or false");
+    }
     if (o.contains("wrap"))
     {
         if (o["wrap"].is_boolean())
@@ -560,6 +575,16 @@ ojson op_json(const Op &op)
         break;
     case OpType::Fill:
         o["value"] = hex_byte(op.value.value_or(0));
+        break;
+    case OpType::OpcodeSwap:
+    case OpType::BranchFlip:
+    case OpType::NopOut:
+        break;
+    case OpType::PointerSwap:
+        if (op.likely)
+            o["reach"] = "likely";
+        if (op.mutual)
+            o["mutual"] = true;
         break;
     }
     return o;

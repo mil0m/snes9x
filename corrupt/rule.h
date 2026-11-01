@@ -4,6 +4,7 @@
 #include "crash_map.h"
 #include "memory.h"
 #include "ops.h"
+#include "pointer_swap.h"
 #include "trigger.h"
 
 #include <string>
@@ -45,18 +46,20 @@ struct RuleRuntime
     uint64_t firings = 0;
 };
 
-// Whether the rule picks from the code map (an aim, or a code op).
+// Whether the rule picks from what the game was seen doing: the code map (an aim, or a code
+// op) or the jump tables (a jump op).
 inline bool needs_aim(const Rule &rule)
 {
-    return rule.aim.active() || is_code_op(rule.op.type);
+    return rule.aim.active() || is_code_op(rule.op.type) || is_jump_op(rule.op.type);
 }
 
 // For a rule that needs aim: the ROM offsets it may pick (worked out once per run), and
-// the code map, which code ops read widths from.
+// the code map, which code ops read widths from. A jump op gets its slots instead.
 struct AimedBytes
 {
     const std::vector<uint32_t> *bytes = nullptr;
     std::span<const uint8_t> flags;
+    const std::vector<SwapSlot> *swaps = nullptr; // not "slots": a Qt macro
 };
 
 // The offsets the rule may pick from the ROM and code map as they are now.

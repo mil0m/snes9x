@@ -248,6 +248,8 @@ void CorruptionSession::gameLoaded()
             f &= codeflag::All;
         return std::span<const uint8_t>(code_for_aim);
     });
+    // Pointer swaps pick from the jump tables found so far (everyone's), as a run starts.
+    engine.set_jump_tables([this] { return jump_tables; });
 
     backupNow("load"); // before the first frame runs
     message = "Loaded " + game_folder_name(game.title, game.sha256);

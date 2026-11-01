@@ -20,6 +20,7 @@ void Engine::replace_rule(size_t index, Rule rule)
         return;
     current.rules[index] = std::move(rule);
     aimed.erase(ids[index]);
+    swaps.erase(ids[index]);
     run_flags = {}; // an edited rule aims with the map as it is now
     ids[index] = next_id++;
     runtimes[index] = RuleRuntime{};
@@ -41,6 +42,7 @@ void Engine::remove_rule(size_t index)
         return;
     current.rules.erase(current.rules.begin() + std::ptrdiff_t(index));
     aimed.erase(ids[index]);
+    swaps.erase(ids[index]);
     ids.erase(ids.begin() + std::ptrdiff_t(index));
     runtimes.erase(runtimes.begin() + std::ptrdiff_t(index));
     mutes.erase(mutes.begin() + std::ptrdiff_t(index));
@@ -118,6 +120,8 @@ void Engine::restart()
     log.clear();
     aimed.clear(); // the next run aims at the map as it is then
     run_flags = {};
+    swaps.clear();
+    run_jumps.clear();
     frame = 0;
     pending_hotkeys = 0;
     released = false;
@@ -275,6 +279,23 @@ const AimedBytes *Engine::aim_for(uint32_t index, MemoryAccess &mem)
     const Rule &rule = current.rules[index];
     if (!needs_aim(rule))
         return nullptr;
+    if (is_jump_op(rule.op.type))
+    {
+        auto found = swaps.find(ids[index]);
+        if (found == swaps.end())
+        {
+            if (run_jumps.empty() && jump_tables)
+                run_jumps = jump_tables();
+            if (run_jumps.empty())
+            {
+                aimed_now = {}; // nothing known yet: try again next time
+                return &aimed_now;
+            }
+            found = swaps.emplace(ids[index], swap_slots(run_jumps, rule.range.first, rule.range.last, rule.op.likely)).first;
+        }
+        aimed_now = { nullptr, {}, &found->second };
+        return &aimed_now;
+    }
     if (run_flags.empty() && code_flags)
         run_flags = code_flags();
     std::span<const uint8_t> flags = run_flags;
@@ -305,6 +326,8 @@ size_t Engine::aimed_count(size_t index) const
 {
     if (index >= ids.size())
         return 0;
+    if (auto s = swaps.find(ids[index]); s != swaps.end())
+        return s->second.size();
     auto it = aimed.find(ids[index]);
     return it == aimed.end() ? 0 : it->second.size();
 }

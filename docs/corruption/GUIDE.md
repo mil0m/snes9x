@@ -230,6 +230,24 @@ those ticked. An aimed rule only picks bytes the code map knows.
 
 Starters: **Branch flips**, **Operand nudge**, **Opcode swap**.
 
+**Pointer swaps.** Games pick what to do next from **jump tables**: lists of routine
+addresses (one per enemy type, menu screen or cutscene step) that the code jumps through.
+While you play, the app notes every such jump and finds the tables behind them; the ROM
+section says how many (*52 jump tables found, 41 with entries to swap*), and the viewer's
+**Jumps** overlay shows them (blue): entries the game used strong, likely ones lighter,
+the jumping instruction in between. Hovering an entry says whose table it is and where it
+goes.
+
+**Swap pointers in jump tables** (in *What*) gives a picked entry the address of another
+routine the same code jumped to. Every jump still lands at the start of a real routine,
+so the game keeps going and does the wrong thing with its own parts: an enemy runs
+another enemy's behaviour, a menu opens the wrong screen. **Entries each time** is how
+many. **Also use entries nobody has jumped through yet** adds more variety (a bit less
+safe); **Both ways** makes two entries trade routines.
+
+Starters: **Pointer swap** (3 at the start, classic), **Pointer roulette** (hotkey 1: one
+more each press, live).
+
 **When the ROM crashes the game**, the crash guard looks at which changed bytes the game
 actually ran or read just before, and puts back only those, keeping the rest. That's what
 lets a classic run with hundreds of changes keep playing. The **Changes** overlay shows

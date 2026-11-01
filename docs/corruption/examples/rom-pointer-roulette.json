@@ -1,0 +1,16 @@
+{
+  "format": 1,
+  "name": "Pointer roulette",
+  "notes": "Live: every press of hotkey 1 swaps one more jump table entry while you play, both ways (two entries trade routines). Press it when something is on screen and watch what changes. Back to Normal undoes them all. Needs jump tables: play the game a while first. Widen the range for bigger games.",
+  "seed": 3202,
+  "rules": [
+    {
+      "name": "one more",
+      "target": "rom",
+      "range": [ "0x0", "0x7FFFF" ],
+      "op": { "type": "pointer_swap", "mutual": true },
+      "when": { "hotkey": 1 },
+      "count": 1
+    }
+  ]
+}

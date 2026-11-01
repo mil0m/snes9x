@@ -65,7 +65,11 @@ class Engine
     // Called once per run, when an aimed rule first fires; the span must stay valid until
     // the next run starts.
     void set_code_flags(std::function<std::span<const uint8_t>()> flags) { code_flags = std::move(flags); }
-    // How many bytes an aimed rule picks from this run (0 until it first fires).
+    // Where pointer swaps learn the game's jump tables (everyone's). Called when a jump op
+    // first fires in a run, and again while it returns none.
+    void set_jump_tables(std::function<std::vector<JumpTable>()> tables) { jump_tables = std::move(tables); }
+    // How many bytes an aimed rule picks from this run, or entries a pointer swap may change
+    // (0 until it first fires).
     size_t aimed_count(size_t index) const;
 
     void on_frame(MemoryAccess &mem);
@@ -145,6 +149,9 @@ class Engine
     std::unordered_map<uint64_t, std::vector<uint32_t>> aimed; // by rule id, for this run
     AimedBytes aimed_now;
     std::span<const uint8_t> run_flags; // the code map this run aims with
+    std::function<std::vector<JumpTable>()> jump_tables;
+    std::vector<JumpTable> run_jumps;                             // the tables this run swaps with
+    std::unordered_map<uint64_t, std::vector<SwapSlot>> swaps;    // by rule id, for this run
 };
 
 } // namespace corrupt
