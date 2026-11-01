@@ -1,6 +1,6 @@
 # Safety first: plan (roadmap phase 7, #50-#52)
 
-**Status (2026-11-01):** #50 done (QA.md section 27), #51 done (QA.md section 28); #52 next. From Erik's list (sorted in
+**Status (2026-11-01):** #50 done (QA.md section 27), #51 done (QA.md section 28); #52 planned below, being built. From Erik's list (sorted in
 [the horizons doc](./2026-10-31-horizons.md#eriks-list-2026-11-01)): see what the game uses
 live, catch a bad change sooner, and test a change before it reaches the game.
 
@@ -181,4 +181,68 @@ quietly, which is #52's job.
 
 ## #52 Test before applying
 
-Planned in its own section before it's built.
+**Goal.** A live ROM change only reaches the game you're playing once it has been tried: the
+app saves the moment, plays a few seconds ahead with the change, unseen and unheard, and
+keeps the change only if the game is still standing. If it isn't, the rule rolls again
+(another pick) and that is tried instead; after a few failures this firing is skipped. A
+short pause per change (about 0.15 s for 3 s ahead) buys live ROM corruption that almost
+never crashes. Erik's "how much do we get away with if performance matters less".
+
+**Which changes.** The ROM writes of live rules (every N frames, a chance, a hotkey, once
+at a frame): what the engine will write in the next frame. Not tested: WRAM and the other
+memories (rules fire there every frame, and the guard handles them well), classic at-load
+changes (hundreds at a power cycle: the guard and #51 handle those), painting.
+
+**How.** Last thing between frames, when the recipe has an enabled live ROM rule:
+
+1. **Preview.** `Engine::preview_next` runs the engine's next frame against a memory that
+   drops writes, records the ROM writes it would make, and restores the engine (its
+   snapshot plus the pressed hotkeys, which a snapshot doesn't hold). No ROM writes: done,
+   nothing else costs anything.
+2. **Run ahead.** Save the core's state, the engine, and the code map's flags; play
+   `frames` frames (default 180, 3 s) with nothing drawn (`IPPU.RenderThisFrame` off, which
+   also makes them faster), the sound thrown away (the Qt front end clears samples while a
+   flag is up), the WRAM counters and the jump log paused, and buttons as they are. The
+   engine fires as it would for real, the preview's writes in the first frame.
+3. **Verdict**, per frame: a landing from #51's watch whose culprits include a previewed
+   byte (guilty at once); otherwise only definite signals count, since the window is short
+   and nobody presses buttons: CPU stopped, deadlock, a reboot, runaway PC. NMI off, frozen
+   and black screens need seconds and presses: not in a run ahead. A landing that blames
+   other, older changes stops the run as *inconclusive* (#51 will deal with it for real).
+4. **Put everything back**: the core's state, the engine, the hotkeys, the ROM (the
+   keeper's journal reverts the run's writes, and the blame's bookkeeping follows), the code
+   map's flags (no touched bits from the future, no garbage learned), the reset watch's
+   count (or the guard would see a reboot), the on-screen message's timer.
+5. **Decide.** Survived, or inconclusive: keep; the real frame makes the same writes. A
+   crash with the previewed bytes never used: not theirs, keep. A crash otherwise gets a
+   **control run**: the same window with those writes vetoed. If that crashes too, the
+   change isn't guilty (older damage): keep it and leave the crash to the guard. If only the
+   changed run crashed, the rule is **re-rolled** (a new salt, as the guard's re-roll does)
+   and the new picks are previewed and tested, up to `tries` (3); after that the firing is
+   **vetoed**: the engine skips those writes in the real frame.
+
+Engine additions: `preview_next(mem)`, pressed hotkeys readable and settable, and vetoes
+by frame and offset (kept until the frame has passed for real, so a control run and the
+restore don't lose them).
+
+**Cost.** Only in frames where a live ROM rule fires: ~3 s of emulation unseen (Goof Troop
+runs ~1000 fps drawn, more undrawn) plus a control run only after a crash. The game pauses
+for that long; the status line says what was tried. Per recipe `"test_first": 3` (seconds;
+`0` off), on by default for live ROM rules. *(Design choice: on by default, since this is
+what phase 7 is for; a recipe or a panel switch can turn it off if the pauses bother.)*
+
+**What it can't see.** Crashes later than the window, crashes that need the player's
+input, damage that only shows as a wrong picture. Those stay the guard's and #51's.
+
+**Tests.** Engine: preview returns the next frame's writes and changes nothing (state,
+memory, hotkeys); vetoes skip exactly that frame's writes. `TestAhead` with a fake core:
+nothing to test, a change that survives (kept, ROM and engine as before, hotkey still
+pressed), a poisoned pick re-rolled into a good one, an always-poisoned rule vetoed after
+the tries, a crash the control run shares (kept), a crash with the change unused (kept), a
+landing blaming the change (no control run), an unrelated landing (kept), the map's flags
+restored. Real core, the derail test ROM: a live rule that would branch onto the STP never
+reaches the game (no instant revert, no guard rollback, the frame counter never repeats),
+while a harmless live change goes through. `corrupt-smoke --ahead [seeds]`: guard + #51
+with and without testing first, on Goof Troop, Pocky & Rocky and FE4: rollbacks, instant
+reverts, frames lost, firings re-rolled or skipped, time spent testing, and whether the game
+still moves after a minute.
