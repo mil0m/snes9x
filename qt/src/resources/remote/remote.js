@@ -15,11 +15,13 @@ const state = {
 function key() {
   const fromHash = location.hash.length > 1 ? decodeURIComponent(location.hash.slice(1)) : "";
   if (fromHash) {
-    try { sessionStorage.setItem("s9x-remote-key", fromHash); } catch (e) { /* private mode */ }
+    // Remembered in this browser, so the bare address works next time. A wrong key (after
+    // New Key in the panel) forgets it again.
+    try { localStorage.setItem("s9x-remote-key", fromHash); } catch (e) { /* private mode */ }
     history.replaceState(null, "", location.pathname); // out of the address bar
     return fromHash;
   }
-  try { return sessionStorage.getItem("s9x-remote-key") || ""; } catch (e) { return ""; }
+  try { return localStorage.getItem("s9x-remote-key") || ""; } catch (e) { return ""; }
 }
 
 function send(obj) {
@@ -58,6 +60,7 @@ function onText(m) {
   } else if (m.error) {
     if (!state.colours && /token/.test(m.error)) {
       state.refused = true;
+      if (m.error === "wrong token") try { localStorage.removeItem("s9x-remote-key"); } catch (e) { /* nothing kept */ }
       setChip("refused", "off");
       $("recipe").textContent = m.error === "wrong token" ? "The key in this link is old: ask for a new link." : m.error;
     } else {

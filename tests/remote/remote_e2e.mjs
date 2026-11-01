@@ -59,13 +59,30 @@ for (const scheme of ["light", "dark"]) {
   }
 }
 
-// A wrong key is refused and says so.
+// The browser remembers the key: the bare address works the second time.
+{
+  const { page, close } = await openContext({ viewport: { width: 390, height: 844 } });
+  try {
+    await page.goto(url);
+    await page.waitForSelector("#ui:not([hidden])", { timeout: 15000 });
+    await page.goto(url.replace(/#.*/, ""));
+    await page.waitForSelector("#ui:not([hidden])", { timeout: 15000 });
+    check(true, "the bare address works once the browser has the key");
+  } catch (e) {
+    check(false, `remembered key: ${e.message.split("\n")[0]}`);
+  } finally {
+    await close();
+  }
+}
+
+// A wrong key is refused and says so, and isn't remembered.
 {
   const { page, close } = await openContext({ viewport: { width: 390, height: 844 } });
   try {
     await page.goto(url.replace(/#.*/, "#not-the-key"));
     await page.waitForFunction(() => document.getElementById("state").textContent === "refused", null, { timeout: 8000 });
     check(/old/.test(await page.textContent("#recipe")), "a wrong key is refused, with a reason");
+    check((await page.evaluate(() => localStorage.getItem("s9x-remote-key"))) === null, "and forgotten");
   } catch (e) {
     check(false, `wrong key: ${e.message.split("\n")[0]}`);
   } finally {

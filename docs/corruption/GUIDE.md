@@ -335,8 +335,9 @@ you choose:
 3. Type `https://<that hostname>` into **Public address**, **Copy Link**, and send it.
 
 The link carries a key after the `#`, which browsers never send to any server; the page
-keeps it for the tab and takes it out of the address bar. **New Key** makes a new one: old
-links stop working and everyone connected is dropped. The panel says who is connected
+takes it out of the address bar and remembers it in that browser, so next time the plain
+address is enough. **New Key** makes a new one: old links stop working, everyone connected
+is dropped, and browsers that remembered the old key forget it. The panel says who is connected
 (the email they logged in with), and the status line says what each of them does
 (*Remote (erik@…): pressed hotkey 1*).
 
