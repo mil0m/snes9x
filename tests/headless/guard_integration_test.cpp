@@ -9,6 +9,7 @@
 #include "corrupt/core_memory.h"
 #include "corrupt/crash_guard.h"
 #include "corrupt/hook.h"
+#include "corrupt/jump_tables.h"
 #include "corrupt/rom_keeper.h"
 #include "corrupt/rom_blame.h"
 #include "corrupt/survivors.h"
@@ -794,5 +795,76 @@ TEST_SUITE("the code map tracer in the real core")
         tracer.stop();
         CHECK(RomTracer::opcode_tables() == watched);
         CHECK(alive(h));
+    }
+}
+
+TEST_SUITE("jump tables in the real core")
+{
+    namespace dp = testrom::dispatch;
+
+    TEST_CASE("the tracer notes both kinds of dispatch, and the tables are found behind them")
+    {
+        REQUIRE(headless::init());
+        REQUIRE(headless::load_rom_memory(testrom::build_dispatch()));
+        SnesCoreAccess::watch_resets();
+        CodeMap map(Memory.CalculatedSize);
+        JumpLog log;
+        RomTracer tracer;
+        REQUIRE(tracer.start(map, &log));
+        headless::run_frames(20);
+        tracer.stop();
+        SnesCoreAccess::unwatch_resets();
+        CHECK(!(CPU.Flags & HALTED_FLAG));
+
+        for (int i = 0; i < dp::kEntries; i++)
+        {
+            CAPTURE(i);
+            CHECK(Memory.RAM[dp::kCounts + i] > 0); // every routine ran
+            CHECK(Memory.RAM[dp::kRamCounts + i] > 0);
+            auto routine = 0x008000 + dp::kRoutines + 0x10 * uint32_t(i);
+            auto direct = log.all().find(JumpKey{ dp::kSite, dp::kTable + 2 * uint32_t(i), routine });
+            REQUIRE(direct != log.all().end());
+            CHECK(direct->second.opcode == jumpop::JsrIndexed);
+            auto through = log.all().find(JumpKey{ dp::kRamSite, kNoEntry, 0x008000 + dp::kRamRoutines + 0x10 * uint32_t(i) });
+            REQUIRE(through != log.all().end());
+            CHECK(through->second.opcode == jumpop::JmpPointer);
+        }
+        CHECK(log.size() == size_t(2 * dp::kEntries));
+
+        auto offsets = SnesCoreAccess::rom_offsets();
+        CHECK(offsets.offset(0x008100) == dp::kRoutines);
+        CHECK(offsets.offset(0x808100) == dp::kRoutines); // a mirror
+        CHECK(offsets.offset(0x7E0000) == std::nullopt);  // WRAM
+        CHECK(offsets.offset(0x002100) == std::nullopt);  // I/O
+
+        std::span<const uint8_t> rom(Memory.ROM, Memory.CalculatedSize);
+        auto found = find_jump_tables(log, rom, map.flags(), offsets);
+        REQUIRE(found.tables.size() == 2);
+        auto &direct = found.tables[0];
+        CHECK(direct.site == dp::kSite);
+        CHECK(direct.kind == JumpKind::Direct);
+        CHECK(direct.first() == dp::kTable);
+        CHECK(direct.seen() == size_t(dp::kEntries));
+        CHECK(direct.likely() == 1); // the fifth entry, which points at routine 0
+        auto &through = found.tables[1];
+        CHECK(through.site == dp::kRamSite);
+        CHECK(through.kind == JumpKind::ThroughRam);
+        CHECK(through.first() == dp::kRamTable);
+        CHECK(through.seen() == size_t(dp::kEntries));
+        CHECK(through.likely() == 0);
+        CHECK(found.pointer_jumps == 0);
+        CHECK(found.ambiguous == 0);
+    }
+
+    TEST_CASE("without a jump log the tracer notes nothing and still records the map")
+    {
+        REQUIRE(headless::init());
+        REQUIRE(headless::load_rom_memory(testrom::build_dispatch()));
+        CodeMap map(Memory.CalculatedSize);
+        RomTracer tracer;
+        REQUIRE(tracer.start(map));
+        headless::run_frames(5);
+        tracer.stop();
+        CHECK((map.at(dp::kSite) & codeflag::Opcode));
     }
 }

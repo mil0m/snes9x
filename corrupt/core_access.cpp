@@ -1,4 +1,5 @@
 #include "core_access.h"
+#include "jump_tables.h"
 #include "opcodes.h"
 
 #include <array>
@@ -59,7 +60,8 @@ SOpcodes *const tables[kTables] = { S9xOpcodesE1, S9xOpcodesM1X1, S9xOpcodesM1X0
                                     S9xOpcodesM0X1, S9xOpcodesM0X0, S9xOpcodesSlow };
 void (*original[kTables][256])(void) = {};
 bool installed = false;
-uint8 *flags = nullptr; // the map being recorded into, sized like the ROM
+uint8 *flags = nullptr;     // the map being recorded into, sized like the ROM
+JumpLog *jumps = nullptr;   // where indirect jumps are noted, if anywhere
 
 constexpr uint8_t width_flag(uint8_t op, bool m8, bool x8)
 {
@@ -80,8 +82,40 @@ const uint8 *byte_at(uint32 address)
     return block + (address & 0xFFFF);
 }
 
+uint32_t rom_offset_of(uint32 address)
+{
+    const uint8 *p = byte_at(address);
+    uintptr_t o = uintptr_t(p) - uintptr_t(Memory.ROM);
+    return p && o < Memory.CalculatedSize ? uint32_t(o) : kNoEntry;
+}
+
+// An indirect jump is about to run (PC is past its opcode): note where it is, where its
+// pointer is and where it goes. Jumps from code in RAM, or through I/O, aren't noted.
+void note_jump(uint8 op)
+{
+    uint32 pb = uint32(Registers.PB) << 16;
+    uint16 pc = Registers.PCw;
+    uint32_t site = rom_offset_of(pb | uint16(pc - 1));
+    const uint8 *lo = byte_at(pb | pc), *hi = byte_at(pb | uint16(pc + 1));
+    if (site == kNoEntry || !lo || !hi)
+        return;
+    uint16 a = uint16(*lo | (*hi << 8));
+    // The pointer: JMP/JSR (a,X) read it from the program bank, JMP (a) and JML [a] from bank 0.
+    bool indexed = op == jumpop::JmpIndexed || op == jumpop::JsrIndexed;
+    uint32 base = indexed ? pb : 0;
+    uint16 at = indexed ? uint16(a + Registers.X.W) : a;
+    const uint8 *p0 = byte_at(base | at), *p1 = byte_at(base | uint16(at + 1));
+    const uint8 *p2 = op == jumpop::JmlPointer ? byte_at(base | uint16(at + 2)) : nullptr;
+    if (!p0 || !p1 || (op == jumpop::JmlPointer && !p2))
+        return;
+    uint32_t bank = op == jumpop::JmlPointer ? uint32_t(*p2) << 16 : pb;
+    jumps->note(site, op, rom_offset_of(base | at), bank | uint32_t(*p1 << 8) | *p0);
+}
+
 void trace_slow(uint8 op)
 {
+    if (jumps && jumpop::noted(op))
+        note_jump(op);
     bool e = CheckEmulation();
     bool m8 = e || CheckMemory();
     bool x8 = e || CheckIndex();
@@ -107,6 +141,9 @@ void trace_slow(uint8 op)
 template <int T, int Op>
 void traced()
 {
+    if constexpr (T != kSlow && jumpop::noted(uint8_t(Op)))
+        if (jumps)
+            note_jump(uint8(Op));
     if constexpr (T == kSlow)
         trace_slow(uint8(Op));
     else
@@ -343,6 +380,17 @@ RomAddresses SnesCoreAccess::rom_addresses()
     return out;
 }
 
+RomOffsets SnesCoreAccess::rom_offsets()
+{
+    RomOffsets out;
+    if (!Memory.ROM || !Memory.CalculatedSize)
+        return out;
+    out.blocks.assign(0x1000000 / RomOffsets::kBlock, RomOffsets::kNone);
+    for (uint32 block = 0; block < out.blocks.size(); block++)
+        out.blocks[block] = rom_trace::rom_offset_of(block * RomOffsets::kBlock);
+    return out;
+}
+
 VideoLayout SnesCoreAccess::video_layout()
 {
     VideoLayout v;
@@ -449,11 +497,12 @@ void WramAccessCounter::take(MemoryWatch &watch)
         watch.observe_accesses(reads, writes);
 }
 
-bool RomTracer::start(CodeMap &map)
+bool RomTracer::start(CodeMap &map, JumpLog *jumps)
 {
     if (rom_trace::installed || !Memory.ROM || map.size() != Memory.CalculatedSize || map.empty())
         return false;
     rom_trace::flags = map.data();
+    rom_trace::jumps = jumps;
     S9xRomFetchFrom = S9xRomFetchTo = 0;
     S9xRomFlags = map.data();
     rom_trace::wrap();
@@ -468,6 +517,7 @@ void RomTracer::stop()
     rom_trace::unwrap();
     S9xRomFlags = nullptr;
     rom_trace::flags = nullptr;
+    rom_trace::jumps = nullptr;
     mine = false;
 }
 

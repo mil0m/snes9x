@@ -1,6 +1,6 @@
 # Jump tables and pointer swap: plan (roadmap #25 → #32)
 
-**Status (2026-11-01):** planned; Mikael said go. Builds on the code map tracer from
+**Status (2026-11-01):** phase 1 done; Mikael said go. Builds on the code map tracer from
 [the ROM plan](./2026-10-31-rom-corruption-plan.md) phase 3. Ideas behind it:
 [the horizons](./2026-10-31-horizons.md).
 
@@ -58,10 +58,14 @@ opcodes pay; nothing changes for the others. No core change.
   (`(offset - first) % stride == 0`, within 1 KB). A table belongs to one site: two
   dispatchers reading the same entries are two tables (see *Risks*), and the viewer says
   the entries are shared.
-- **Likely entries**: walking out from the known entries one stride at a time, a neighbour
-  counts while its value points at an instruction start the code map knows, in the same
-  bank, and its own bytes aren't code. The first miss stops the walk. These are entries
-  nobody has reached yet (an enemy never met), so they're kept apart from **seen** ones.
+- **Several spots with the value**: the one spot in line with the site's other entries
+  (the same stride, within 1 KB) is the entry; otherwise it stays ambiguous.
+- **Likely entries** fill the gaps between known entries and continue the table outward,
+  one stride at a time, while the value points at a routine that **has run** (just not
+  through this entry), in the same bank, and the entry's own bytes aren't code. The first
+  miss stops the outward walk. They're kept apart from **seen** ones. (A looser rule, "lands
+  in ROM, not on data", walked off through plain data: in HiROM nearly any 16-bit value
+  lands in ROM; FF6 found 128 "likely" entries from one seen one.)
 
 To turn targets into ROM offsets and back, the core gives a map of every 4 KB block of the
 CPU's address space to its ROM offset (`SnesCoreAccess::rom_offsets()`), the reverse of
@@ -115,6 +119,30 @@ while with the game loaded") instead of failing quietly, like aimed rules do.
    the same number of random ROM bytes in the same tables' banks, over 10 seeds each:
    alive (picture changes, NMI on, code runs) and how different the picture is. Expect
    swaps to stay alive far more often. FF6 waits for live play (QA 26).
+
+## Phase 1: how it went (2026-11-01)
+
+`corrupt/jump_tables` (JumpLog, JSON file, `find_jump_tables`), the tracer's `note_jump`
+for the four opcodes, `SnesCoreAccess::rom_offsets()`, the test ROM `build_dispatch`
+(both kinds, checked in the real core), and `corrupt-smoke <rom> <recipe> <frames> 1
+--jumps [file]`. 4000 frames each, no input:
+
+| Game | Cost on top of the code map | Tables direct / through RAM | Seen + likely entries | Swappable | Unexplained / ambiguous |
+|---|---|---|---|---|---|
+| Goof Troop | none measurable | 81 / 0 | 279 + 51 | 72 | 0 / 0 |
+| Pocky & Rocky | none | 10 / 21 | 116 + 55 | 21 | 7 / 11 |
+| FE4 | none | 7 / 44 | 73 + 16 | 18 | 11 / 50 |
+| FF6 (title only) | none | 1 / 1 | 3 + 7 | 2 | 0 / 0 |
+
+FE4's ambiguous values are mostly inline pointers (`JSL` to a trampoline that reads 3
+bytes after the call and `JML [$0024]`s there), the same routine named in many places.
+Swapping one of those is still wrong-but-valid (the same trampoline, another target it
+used); they show up as through-RAM "tables" whose entries sit in the code stream.
+
+**Pointer swap donors come from the site, not the table**: every target the same
+dispatcher went to, from any of its tables, as long as a 2-byte entry can hold it (same
+bank). That's the safety rule (same calling convention); tables only shape the viewer
+and the likely walk.
 
 ## Out of scope
 

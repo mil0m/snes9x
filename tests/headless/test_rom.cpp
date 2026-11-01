@@ -145,4 +145,40 @@ std::vector<uint8_t> build_rare()
     return rom;
 }
 
+std::vector<uint8_t> build_dispatch()
+{
+    auto rom = build(Crash::None);
+    put(rom, 0x8030, { 0x4C, 0x40, 0x80 }); // nmi: JMP $8040
+    put(rom, 0x8040, {
+        0xA5, 0x11,       // LDA $11         frame counter
+        0x29, 0x03,       // AND #$03
+        0x0A,             // ASL A           entry offset 0, 2, 4, 6
+        0xAA,             // TAX
+        0xFC, 0x00, 0x91, // JSR ($9100,X)   straight through the ROM table ($8046)
+        0xBD, 0x00, 0x92, // LDA $9200,X     copy the other table's entry to $14
+        0x85, 0x14,       // STA $14
+        0xBD, 0x01, 0x92, // LDA $9201,X
+        0x85, 0x15,       // STA $15
+        0x6C, 0x14, 0x00, // JMP ($0014)     through RAM ($8053)
+        0xE6, 0x11,       // back ($8056): INC $11
+        0x40,             // RTI
+    });
+    for (int i = 0; i < dispatch::kEntries; i++)
+    {
+        auto r = uint16_t(0x8000 + dispatch::kRoutines + 0x10 * i);
+        put(rom, r, { 0xE6, uint8_t(dispatch::kCounts + i), 0x60 }); // INC $20+i; RTS
+        put16(rom, uint16_t(0x8000 + dispatch::kTable + 2 * i), r);
+        auto s = uint16_t(0x8000 + dispatch::kRamRoutines + 0x10 * i);
+        put(rom, s, { 0xE6, uint8_t(dispatch::kRamCounts + i), 0x4C, 0x56, 0x80 }); // INC $30+i; JMP back
+        put16(rom, uint16_t(0x8000 + dispatch::kRamTable + 2 * i), s);
+    }
+    put16(rom, uint16_t(0x8000 + dispatch::kTable - 2), 0x0000);
+    put16(rom, uint16_t(0x8000 + dispatch::kTable + 2 * dispatch::kEntries), uint16_t(0x8000 + dispatch::kRoutines));
+    put16(rom, uint16_t(0x8000 + dispatch::kTable + 2 * dispatch::kEntries + 2), 0x0000);
+    put16(rom, uint16_t(0x8000 + dispatch::kRamTable - 2), 0x0000);
+    put16(rom, uint16_t(0x8000 + dispatch::kRamTable + 2 * dispatch::kEntries), 0x0000);
+    fix_checksum(rom);
+    return rom;
+}
+
 } // namespace testrom

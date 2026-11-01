@@ -1,6 +1,7 @@
 #pragma once
 #include "code_map.h"
 #include "crash_guard.h"
+#include "jump_tables.h"
 #include "memory_map.h"
 #include "memory_watch.h"
 
@@ -38,6 +39,9 @@ class SnesCoreAccess : public CoreAccess
     // Where each 4 KB of ROM shows up for the CPU: the bank games normally run it from
     // ($C0-$FF for HiROM, $80-$FF:8000 for LoROM), for disassembly and the viewer.
     static RomAddresses rom_addresses();
+    // The reverse: for every 4 KB block of the CPU's address space, where it is in the ROM
+    // (every mirror), to turn jump targets into ROM offsets.
+    static RomOffsets rom_offsets();
 
     // The live layout for the memory viewer's map: where the PPU reads the picture
     // from VRAM, and where the sound DSP keeps its echo buffer and samples in ARAM.
@@ -68,12 +72,14 @@ class WramAccessCounter
 // opcode, operands and width, and the core marks the ROM bytes the CPU reads as data and
 // DMA reads. Costs a wrapped call per instruction while on, nothing while off. Only one
 // may record at a time. Start and stop between frames; the map must stay alive and keep
-// its size until stop (or the tracer goes).
+// its size until stop (or the tracer goes). With a jump log, the four indirect jumps
+// (JMP/JSR (a,X), JMP (a), JML [a]) run from ROM are noted in it too (jump_tables.h);
+// it must stay alive until stop as well.
 class RomTracer
 {
   public:
     ~RomTracer() { stop(); }
-    bool start(CodeMap &map); // false when another records, no ROM is loaded, or the size is wrong
+    bool start(CodeMap &map, JumpLog *jumps = nullptr); // false when another records, no ROM is loaded, or the size is wrong
     void stop();
     bool tracing() const { return mine; }
 

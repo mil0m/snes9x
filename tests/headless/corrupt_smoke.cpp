@@ -1,7 +1,7 @@
 // End-to-end check of the corruption engine inside the real emulator, no window
 // needed:
 //
-//   corrupt-smoke <rom> <recipe.json> [frames=600] [warmup=600] [--guard | --learn [held=3] [from=0] | --replay | --copies | --map | --access [dir] | --dump <dir>]
+//   corrupt-smoke <rom> <recipe.json> [frames=600] [warmup=600] [--guard | --learn [held=3] [from=0] | --replay | --copies | --map | --access [dir] | --codemap [file] | --jumps [file] | --dump <dir>]
 //
 // Boots the ROM, runs `warmup` frames, saves a state, then runs `frames` twice
 // from that state: once clean, once with the recipe. Reports what the recipe
@@ -33,6 +33,12 @@
 // the ROM banks with the most code, and the first instructions it found. With a file it
 // also writes the map there, in the library's format.
 //
+// With --jumps it records the code map and the indirect jumps for `frames` frames after the
+// warmup (the recipe is only read, not run), alternating with plain runs and runs recording
+// the map alone, and prints what noting jumps costs, the jump tables found behind them
+// (direct and through RAM, seen and likely entries) and the busiest ones. With a file it
+// also writes the jump log there, in the library's format.
+//
 // With --learn [held] it plays the recipe guarded for five seeds while learning a crash
 // map, then plays `held` other seeds three ways: plain, avoiding the learned hot blocks,
 // and avoiding as many random blocks the rules wrote (the control). `from` skips that many
@@ -42,6 +48,7 @@
 #include "corrupt/code_map.h"
 #include "corrupt/core_access.h"
 #include "corrupt/core_memory.h"
+#include "corrupt/jump_tables.h"
 #include "corrupt/crash_guard.h"
 #include "corrupt/rom_blame.h"
 #include "corrupt/survivors.h"
@@ -597,6 +604,106 @@ int run_codemap(int frames, const char *file)
     return 0;
 }
 
+int run_jumps(int frames, const char *file)
+{
+    auto start = headless::save_state();
+    CodeMap map(Memory.CalculatedSize);
+    JumpLog log;
+    RomTracer tracer;
+    auto timed = [&](int how) { // 0 plain, 1 the map, 2 the map and jumps
+        headless::load_state(start);
+        if (how)
+        {
+            map = CodeMap(Memory.CalculatedSize);
+            log.clear();
+            if (!tracer.start(map, how == 2 ? &log : nullptr))
+                return -1.0;
+        }
+        auto t0 = std::chrono::steady_clock::now();
+        headless::run_frames(frames);
+        double s = std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count();
+        tracer.stop();
+        return frames / s;
+    };
+    double fps[3] = { 0, 0, 0 };
+    for (int round = 0; round < 2; round++)
+        for (int how = 0; how < 3; how++)
+            fps[how] = std::max(fps[how], timed(how));
+    if (fps[2] < 0)
+    {
+        fprintf(stderr, "the tracer didn't start\n");
+        return 1;
+    }
+    printf("speed    %.0f fps plain, %.0f with the code map (%.1f%%), %.0f with jumps too (%.1f%%)\n", fps[0], fps[1],
+           100.0 * (fps[0] / fps[1] - 1.0), fps[2], 100.0 * (fps[0] / fps[2] - 1.0));
+
+    size_t direct = 0, through = 0;
+    std::vector<uint32_t> sites;
+    for (auto &[key, seen] : log.all())
+    {
+        (key.entry != kNoEntry ? direct : through)++;
+        sites.push_back(key.site);
+    }
+    std::sort(sites.begin(), sites.end());
+    sites.erase(std::unique(sites.begin(), sites.end()), sites.end());
+    printf("jumps    %zu distinct at %zu sites: %zu through a ROM pointer, %zu through RAM\n", log.size(), sites.size(),
+           direct, through);
+
+    std::span<const uint8_t> rom(Memory.ROM, Memory.CalculatedSize);
+    auto offsets = SnesCoreAccess::rom_offsets();
+    auto found = find_jump_tables(log, rom, map.flags(), offsets);
+    size_t n[2] = {}, seen[2] = {}, likely[2] = {};
+    for (auto &t : found.tables)
+    {
+        int k = t.kind == JumpKind::Direct ? 0 : 1;
+        n[k]++;
+        seen[k] += t.seen();
+        likely[k] += t.likely();
+    }
+    printf("tables   %zu direct (%zu entries seen, %zu likely), %zu through RAM (%zu seen, %zu likely)\n", n[0], seen[0],
+           likely[0], n[1], seen[1], likely[1]);
+    printf("         %zu jumps through RAM no table explains, %zu ambiguous\n", found.pointer_jumps, found.ambiguous);
+    size_t swappable = 0;
+    for (auto &t : found.tables)
+        swappable += t.seen() >= 2 || (t.seen() && t.likely());
+    printf("swap     %zu tables have something to swap with (2+ seen, or seen and likely)\n", swappable);
+
+    auto where = SnesCoreAccess::rom_addresses();
+    auto order = found.tables;
+    auto hits = [](const JumpTable &t) {
+        uint64_t h = 0;
+        for (auto &e : t.entries)
+            h += e.hits;
+        return h;
+    };
+    std::sort(order.begin(), order.end(), [&](auto &a, auto &b) { return hits(a) > hits(b); });
+    printf("busiest  tables (site, instruction, kind, table, entries seen + likely, targets):\n");
+    for (size_t i = 0; i < order.size() && i < 15; i++)
+    {
+        auto &t = order[i];
+        auto in = instruction_at(rom, map, t.site, where);
+        auto at = where.cpu_address(t.site);
+        auto table_at = where.cpu_address(t.first());
+        std::string targets;
+        int shown = 0;
+        for (auto &e : t.entries)
+            if (e.seen && shown++ < 4)
+                targets += " " + hex(e.target);
+        printf("  %s  %-16s %-11s %s x%d  %zu + %zu  %llu hits ->%s%s\n", at ? hex(*at).c_str() : hex(t.site).c_str(),
+               in ? in->text.c_str() : "?", t.kind == JumpKind::Direct ? "direct" : "through RAM",
+               table_at ? hex(*table_at).c_str() : hex(t.first()).c_str(), t.stride, t.seen(), t.likely(),
+               (unsigned long long)hits(t), targets.c_str(), t.seen() > 4 ? " ..." : "");
+    }
+    if (file)
+    {
+        auto encoded = encode_jump_log(log, Memory.CalculatedSize);
+        std::ofstream out(file, std::ios::binary);
+        out.write(encoded.data(), std::streamsize(encoded.size()));
+        printf("wrote    %s (%zu bytes)\n", file, encoded.size());
+    }
+    return 0;
+}
+
 } // namespace
 
 int main(int argc, char **argv)
@@ -679,6 +786,8 @@ int main(int argc, char **argv)
     }
     if (argc > 5 && std::string(argv[5]) == "--codemap")
         return run_codemap(frames, argc > 6 ? argv[6] : nullptr);
+    if (argc > 5 && std::string(argv[5]) == "--jumps")
+        return run_jumps(frames, argc > 6 ? argv[6] : nullptr);
     if (argc > 5 && std::string(argv[5]) == "--access")
         return run_access(frames, argc > 6 ? argv[6] : nullptr);
     if (argc > 6 && std::string(argv[5]) == "--dump")

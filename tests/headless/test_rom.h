@@ -49,4 +49,23 @@ constexpr uint32_t kRoutine = 0x0060; // INC $12 (E6 12); STZ $10; RTS
 constexpr uint32_t kRunsAddr = 0x12;  // WRAM
 } // namespace rare
 
+// Crash::None, whose NMI handler dispatches both ways, picking entry ($11 & 3) each frame:
+// JSR ($9100,X) straight through a ROM table of 4 routines (each INC $20+i; RTS), then
+// LDA $9200,X / STA $14 / ... / JMP ($0014) through a copy in RAM of another table of 4
+// (each INC $30+i, then JMP back). The ROM table has a fifth entry the game never uses,
+// pointing at routine 0 (a likely entry); both tables end with $0000. ROM offsets.
+std::vector<uint8_t> build_dispatch();
+namespace dispatch
+{
+constexpr uint32_t kSite = 0x0046;        // JSR ($9100,X)
+constexpr uint32_t kTable = 0x1100;       // $9100
+constexpr uint32_t kRoutines = 0x0100;    // $8100 + 0x10 * i
+constexpr uint32_t kRamSite = 0x0053;     // JMP ($0014)
+constexpr uint32_t kRamTable = 0x1200;    // $9200
+constexpr uint32_t kRamRoutines = 0x0180; // $8180 + 0x10 * i
+constexpr uint32_t kCounts = 0x20;        // WRAM: runs of routine i at $20 + i
+constexpr uint32_t kRamCounts = 0x30;     // and $30 + i
+constexpr int kEntries = 4;
+} // namespace dispatch
+
 } // namespace testrom
