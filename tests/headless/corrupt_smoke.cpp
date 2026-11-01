@@ -1,7 +1,7 @@
 // End-to-end check of the corruption engine inside the real emulator, no window
 // needed:
 //
-//   corrupt-smoke <rom> <recipe.json> [frames=600] [warmup=600] [--guard | --instant [seeds] | --ahead [seeds] | --first-use [seeds] | --prove [seeds] | --derail-fp [learn] | --learn [held=3] [from=0] | --replay | --copies | --map | --access [dir] | --codemap [file] | --jumps [file] | --dump <dir>]
+//   corrupt-smoke <rom> <recipe.json> [frames=600] [warmup=600] [--guard | --instant [seeds] | --ahead [seeds] | --first-use [seeds] | --prove [seeds] | --eyes [seeds] | --derail-fp [learn] | --learn [held=3] [from=0] | --replay | --copies | --map | --access [dir] | --codemap [file] | --jumps [file] | --dump <dir>]
 //
 // Boots the ROM, runs `warmup` frames, saves a state, then runs `frames` twice
 // from that state: once clean, once with the recipe. Reports what the recipe
@@ -59,7 +59,9 @@
 // CORRUPT_INSTANT_VERBOSE=1 prints every catch. --ahead [seeds=5] is the same with the
 // instant revert in both arms and the second testing each live ROM firing first (#52).
 // --first-use [seeds=5] has both of those in both arms, and the second also tests each
-// changed byte at its first use (#55).
+// changed byte at its first use (#55). --prove [seeds=5] adds the guard's proven blame (#56)
+// to the second; --eyes [seeds=5] has everything in both, the first blind after a landing
+// as before #57.
 //
 // With --learn [held] it plays the recipe guarded for five seeds while learning a crash
 // map, then plays `held` other seeds three ways: plain, avoiding the learned hot blocks,
@@ -987,8 +989,11 @@ struct InstantArm
     int proven = 0, proof_tries = 0, proof_runs = 0;
     size_t proof_bytes = 0;
     double proof_ms = 0;
+    // Eyes open after a landing (#57): changed bytes seen used only thanks to it.
+    uint64_t seen_after_landing = 0;
     void add(const InstantArm &o)
     {
+        seen_after_landing += o.seen_after_landing;
         proven += o.proven;
         proof_tries += o.proof_tries;
         proof_runs += o.proof_runs;
@@ -1026,7 +1031,8 @@ struct InstantArm
 
 // One guarded run of `recipe` from `start`, as the app does it, with or without the instant revert.
 void instant_arm(const Recipe &recipe, int frames, const CodeMap &learned, bool on, const std::vector<uint8_t> &start,
-                 InstantArm &a, bool test_first = false, bool at_first_use = false, bool prove = false)
+                 InstantArm &a, bool test_first = false, bool at_first_use = false, bool prove = false,
+                 bool blind = false)
 {
     headless::load_state(start);
     rom.restore_clean();
@@ -1040,6 +1046,7 @@ void instant_arm(const Recipe &recipe, int frames, const CodeMap &learned, bool 
     });
     RomTracer tracer;
     tracer.start(map);
+    tracer.set_blind_after_landing(blind);
     DerailWatch watch;
     if (on)
         tracer.watch_derails(&watch);
@@ -1117,6 +1124,14 @@ void instant_arm(const Recipe &recipe, int frames, const CodeMap &learned, bool 
             picture = signals.picture_hash;
         if (late && i == frames - 300)
             reboots = signals.reboots;
+        // CORRUPT_WATCH_BYTE=<hex ROM offset>: that byte's map flags and value each frame (the first 400).
+        if (static const char *w = getenv("CORRUPT_WATCH_BYTE"); w && i < 400)
+        {
+            uint32_t o = uint32_t(strtoul(w, nullptr, 16));
+            printf("    frame %d (engine %llu): %06X flags %02X, rom %02X (clean %02X), PC %06X\n", i + 1,
+                   (unsigned long long)engine.current_frame(), o, map.at(o), rom.read(Target::ROM, o), rom.clean()[o],
+                   access.sample().pc);
+        }
         blame.collect(engine.current_frame());
         if (at_first_use)
         {
@@ -1140,18 +1155,39 @@ void instant_arm(const Recipe &recipe, int frames, const CodeMap &learned, bool 
                     printf("    frame %5d  %s (%.0f ms, %u runs)\n", i + 1, t.summary.c_str(), t.ms, t.runs);
             }
         }
+        std::map<uint32_t, ByteUse> uses_before; // CORRUPT_PROOF_DIAG: what the blame knew
+        if (prove && getenv("CORRUPT_PROOF_DIAG"))
+            for (uint32_t o : blame.changed_offsets())
+                if (auto *u = blame.use(o))
+                    uses_before[o] = *u;
         auto out = guard.between_frames(engine, access);
         rom.after_guard(out);
         if (out.kind != GuardOutcome::Nothing)
         {
             a.caught++;
+            if (out.proven && getenv("CORRUPT_PROOF_DIAG"))
+                printf("    proof at frame %llu (crash %llu, since %llu), back to %llu\n",
+                       (unsigned long long)engine.current_frame(), (unsigned long long)out.verdict.frame,
+                       (unsigned long long)out.verdict.since_frame, (unsigned long long)out.restored_frame);
             a.proven += out.proven;
             if (out.proven && getenv("CORRUPT_PROOF_DIAG"))
                 for (uint32_t o : out.rom_blamed)
                 {
-                    printf("    proven %06X: map flags %02X (learned %02X), clean %02X -> %02X\n", o,
+                {
+                    printf("    proven %06X: map flags %02X (learned %02X), clean %02X -> %02X", o,
                            map.at(o) & codeflag::All, learned.at(o) & codeflag::All, rom.clean()[o],
                            rom.read(Target::ROM, o));
+                    if (auto it = uses_before.find(o); it != uses_before.end())
+                    {
+                        auto &u = it->second;
+                        printf("; changed at %llu, used in %u frames, first %lld, last %llu\n",
+                               (unsigned long long)u.changed_at, u.frames_used,
+                               u.first_used == ByteUse::kNever ? -1LL : (long long)u.first_used,
+                               (unsigned long long)u.last_used);
+                    }
+                    else
+                        printf("; not watched\n");
+                }
                 }
             if (out.proven)
             {
@@ -1227,6 +1263,7 @@ void instant_arm(const Recipe &recipe, int frames, const CodeMap &learned, bool 
     a.alive += running && moving_late >= 3;
     a.changed += rom.changed();
     a.used += blame.used();
+    a.seen_after_landing += tracer.seen_after_landing();
     tracer.stop();
     engine.set_active(false);
     engine.set_code_flags({});
@@ -1236,7 +1273,7 @@ void instant_arm(const Recipe &recipe, int frames, const CodeMap &learned, bool 
 // revert and the test before applying are on.
 struct ArmSetup
 {
-    bool instant = false, ahead = false, first_use = false, prove = false;
+    bool instant = false, ahead = false, first_use = false, prove = false, blind = false;
 };
 
 int compare_arms(const Recipe &recipe, int frames, int seeds, const std::array<ArmSetup, 2> &arms,
@@ -1271,7 +1308,7 @@ int compare_arms(const Recipe &recipe, int frames, int seeds, const std::array<A
             if (getenv("CORRUPT_INSTANT_VERBOSE"))
                 printf("  seed %llu, %s\n", (unsigned long long)r.seed, names[arm]);
             instant_arm(r, frames, learned, arms[arm].instant, start, one, arms[arm].ahead, arms[arm].first_use,
-                        arms[arm].prove);
+                        arms[arm].prove, arms[arm].blind);
             totals[arm].add(one);
             if (getenv("CORRUPT_INSTANT_VERBOSE"))
                 printf("    -> %d caught, %d instant, %d tested (%d re-rolled, %d skipped), %d first uses fixed, %llu "
@@ -1300,6 +1337,9 @@ int compare_arms(const Recipe &recipe, int frames, int seeds, const std::array<A
             printf("         proven blame: %d of %d crashes replayed were proven, %zu bytes fixed; %d runs, %.0f ms each "
                    "proven crash on average\n",
                    a.proven, a.proof_tries, a.proof_bytes, a.proof_runs, a.proven ? a.proof_ms / a.proven : 0.0);
+        if (a.seen_after_landing)
+            printf("         after a landing: %llu uses of changed bytes seen only thanks to #57\n",
+                   (unsigned long long)a.seen_after_landing);
         if (a.fu_tests)
             printf("         at first use: %d bytes in %d tests, %d fixed (%d tests saw older damage); %d runs, %.0f ms "
                    "each test on average, %.1f s in all\n",
@@ -1322,6 +1362,15 @@ int run_prove(const Recipe &recipe, int frames, int seeds)
 {
     return compare_arms(recipe, frames, seeds,
                         { ArmSetup{ true, true, true, false }, ArmSetup{ true, true, true, true } }, { "first", "proven" });
+}
+
+// --eyes [seeds=5]: both arms with everything (the guard, #51, #52, #55, #56); the first is
+// blind after a landing, as before #57, the second sees the changed bytes run after one.
+int run_eyes(const Recipe &recipe, int frames, int seeds)
+{
+    return compare_arms(recipe, frames, seeds,
+                        { ArmSetup{ true, true, true, true, true }, ArmSetup{ true, true, true, true, false } },
+                        { "blind", "eyes" });
 }
 
 // --first-use [seeds=5]: both arms with the guard, the instant revert and the test before
@@ -1485,6 +1534,8 @@ int main(int argc, char **argv)
         return run_derail_fp(frames, argc > 6 ? atoi(argv[6]) : frames);
     if (argc > 5 && std::string(argv[5]) == "--nmi")
         return run_nmi(frames);
+    if (argc > 5 && std::string(argv[5]) == "--eyes")
+        return run_eyes(*parsed.recipe, frames, argc > 6 ? atoi(argv[6]) : 5);
     if (argc > 5 && std::string(argv[5]) == "--prove")
         return run_prove(*parsed.recipe, frames, argc > 6 ? atoi(argv[6]) : 5);
     if (argc > 5 && std::string(argv[5]) == "--first-use")

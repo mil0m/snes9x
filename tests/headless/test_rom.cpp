@@ -224,6 +224,29 @@ std::vector<uint8_t> build_derail()
     return rom;
 }
 
+std::vector<uint8_t> build_landing()
+{
+    auto rom = build(Crash::None);
+    put(rom, 0x8011, {
+        0xCB,             // WAI          main
+        0x20, 0x60, 0x80, // JSR $8060    the branch
+        0x20, 0x80, 0x80, // JSR $8080    later in the frame
+        0x80, 0xF7,       // BRA main
+    });
+    put(rom, 0x8060, {
+        0x80, 0x00,       // BRA +0       (kBranch)
+        0xA9, 0xEA,       // LDA #$EA     (kLanding: a NOP)
+        0x60,             // RTS
+    });
+    put(rom, 0x8080, {
+        0xE6, 0x16,       // INC $16      (kInnocent)
+        0xE6, 0x12,       // INC $12
+        0x60,             // RTS
+    });
+    fix_checksum(rom);
+    return rom;
+}
+
 std::vector<uint8_t> build_fuse()
 {
     auto rom = build(Crash::None);

@@ -103,9 +103,15 @@ class RomTracer
 
     // Instant revert (#51): while tracing, every instruction also goes to `watch` (null
     // stops), which notes the CPU landing on non-code right after a changed byte ran. Once
-    // it has, the rest of the frame marks nothing. Take the note between frames, every
+    // it has, the rest of the frame teaches the map nothing; only a changed byte that runs
+    // still gets Touched, for the crash blame (#57). Take the note between frames, every
     // frame: that also turns marking back on.
     void watch_derails(DerailWatch *watch);
+    // For measuring (corrupt-smoke --eyes): after a landing mark nothing at all, as before
+    // #57. Reset by start().
+    void set_blind_after_landing(bool on);
+    // Changed bytes marked used after a landing that weren't already used that frame.
+    uint64_t seen_after_landing() const;
     // Stops and resumes noting indirect jumps in the jump log, for frames that aren't
     // real (a run ahead, #52): a rejected change's jumps would teach it garbage tables.
     void note_jumps(bool on);

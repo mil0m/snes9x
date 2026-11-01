@@ -102,4 +102,16 @@ constexpr uint32_t kFuseAddr = 0x15;   // WRAM
 constexpr uint32_t kRunsAddr = 0x12;   // WRAM: runs of the routine
 } // namespace fuse
 
+// Crash::None for the blame after a landing (#57). Each frame the main loop calls two
+// routines: BRA +0 / LDA #$EA / RTS (a branch offset of 1 lands on the immediate, a NOP: the
+// middle of an instruction, harmless), then INC $16 / INC $12 / RTS. ROM offsets.
+std::vector<uint8_t> build_landing();
+namespace landing
+{
+constexpr uint32_t kBranch = 0x0061;    // BRA's offset byte (80 00)
+constexpr uint32_t kLanding = 0x0063;   // LDA #$EA's immediate: a NOP when run
+constexpr uint32_t kInnocent = 0x0081;  // INC $16's operand: $16 -> $17 is harmless
+constexpr uint32_t kRunsAddr = 0x12;    // WRAM: runs of the second routine
+} // namespace landing
+
 } // namespace testrom

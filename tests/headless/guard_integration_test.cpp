@@ -1063,6 +1063,50 @@ TEST_SUITE("instant revert in the real core")
         CHECK(alive(d.h));
     }
 
+    // #57: after a landing the map learns nothing more that frame, but the blame still sees
+    // the changed bytes the game runs. (The slow opcode table's half isn't reached: the core
+    // only runs it for an instruction crossing the end of a bank.)
+    TEST_CASE("after a landing, changed bytes run later in the frame still count as used")
+    {
+        namespace la = testrom::landing;
+        Derailing d(testrom::build_landing(), false); // no instant revert: the frame stands
+        REQUIRE((d.map.at(la::kLanding) & codeflag::Code) == codeflag::Operand);
+        d.h.rom.write(Target::ROM, la::kInnocent, 0x17);
+        uint8_t runs = d.h.wram(la::kRunsAddr);
+        d.h.run(1);
+        // No landing yet: ordinary uses.
+        REQUIRE(d.blame.use(la::kInnocent));
+        CHECK(d.blame.use(la::kInnocent)->frames_used == 1);
+        CHECK(d.tracer.seen_after_landing() == 0);
+
+        d.h.rom.write(Target::ROM, la::kBranch, 0x01); // BRA +1: onto the NOP in LDA #$EA
+        d.h.run(1);
+        CHECK(uint8_t(d.h.wram(la::kRunsAddr) - runs) == 2); // the game went on
+        CHECK(d.blame.use(la::kInnocent)->frames_used == 2);
+        CHECK(d.tracer.seen_after_landing() == 1);
+        // Nothing taught: the landing is still only an operand.
+        CHECK((d.map.at(la::kLanding) & codeflag::Code) == codeflag::Operand);
+        d.h.run(5);
+        CHECK(d.blame.use(la::kInnocent)->frames_used == 7);
+        CHECK(d.tracer.seen_after_landing() == 6);
+        CHECK((d.map.at(la::kLanding) & codeflag::Code) == codeflag::Operand);
+        CHECK(alive(d.h));
+    }
+
+    TEST_CASE("blind after a landing (as before #57, for measuring), they go unseen")
+    {
+        namespace la = testrom::landing;
+        Derailing d(testrom::build_landing(), false);
+        d.tracer.set_blind_after_landing(true);
+        d.h.rom.write(Target::ROM, la::kInnocent, 0x17);
+        d.h.rom.write(Target::ROM, la::kBranch, 0x01);
+        d.h.run(3);
+        REQUIRE(d.blame.use(la::kInnocent));
+        CHECK(d.blame.use(la::kInnocent)->frames_used == 0);
+        CHECK(d.blame.use(la::kBranch)->frames_used == 3); // ran before the landing
+        CHECK(d.tracer.seen_after_landing() == 0);
+    }
+
     TEST_CASE("switched off, the guard catches the same crash as before")
     {
         Derailing d(testrom::build_derail(), false);

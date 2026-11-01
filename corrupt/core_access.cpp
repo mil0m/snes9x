@@ -64,9 +64,13 @@ bool installed = false;
 uint8 *flags = nullptr;     // the map being recorded into, sized like the ROM
 JumpLog *jumps = nullptr;   // where indirect jumps are noted, if anywhere
 DerailWatch *derails = nullptr; // fed every instruction, for the instant revert, if anyone listens
+// After a landing (#57): mark nothing at all, as before, instead of the changed bytes run.
+bool blind_after_landing = false;
+uint64_t seen_after_landing = 0; // changed bytes marked used only because of that
 
 // A landing was noted: the rest of the frame is garbage, so stop teaching the map (the
-// core's data and DMA marks too) until the note is taken between frames.
+// core's data and DMA marks too) until the note is taken between frames. Only the crash
+// blame's mark goes on: a changed byte run after the landing is still used (#57).
 void derailed(Landing kind)
 {
     derails->land(kind, (uint32_t(Registers.PB) << 16) | uint16(Registers.PCw - 1));
@@ -138,6 +142,27 @@ void note_jump(uint8 op)
     jumps->note(site, op, pointer, bank | uint32_t(*p1 << 8) | *p0);
 }
 
+// After a landing: a changed byte the instruction holds gets Touched, nothing else.
+inline void see_changed(uint8 &f)
+{
+    if ((f & (codeflag::Changed | codeflag::Touched)) == codeflag::Changed)
+    {
+        f |= codeflag::Touched;
+        seen_after_landing++;
+    }
+}
+
+void see_changed_slow(uint8 op)
+{
+    bool e = CheckEmulation();
+    int length = op_length(op, e || CheckMemory(), e || CheckIndex());
+    uint32 pb = uint32(Registers.PB) << 16;
+    uint16 pc = uint16(Registers.PCw - 1);
+    for (int i = 0; i < length; i++)
+        if (uint32_t o = rom_offset_of(pb | uint16(pc + i)); o != kNoEntry)
+            see_changed(flags[o]);
+}
+
 void trace_slow(uint8 op)
 {
     if ((jumps || derails) && jumpop::noted(op))
@@ -192,8 +217,24 @@ void traced()
 {
     if (derails && derails->derailed())
     {
-        // Garbage until the frame ends: nothing marked. The core's own marks are off too.
+        // Garbage until the frame ends: the map learns nothing (the core's own marks are off
+        // too), but the blame still sees the changed bytes run.
         S9xRomFetchFrom = S9xRomFetchTo = 0;
+        if (!blind_after_landing)
+        {
+            if constexpr (T == kSlow)
+                see_changed_slow(uint8(Op));
+            else
+            {
+                constexpr bool m8 = T == 0 || T == 1 || T == 2;
+                constexpr bool x8 = T == 0 || T == 1 || T == 3;
+                constexpr int length = op_length(uint8_t(Op), m8, x8);
+                uintptr_t o = uintptr_t(CPU.PCBase + uint16(Registers.PCw - 1)) - uintptr_t(Memory.ROM);
+                if (o < Memory.CalculatedSize && length <= Memory.CalculatedSize - o)
+                    for (int i = 0; i < length; i++)
+                        see_changed(flags[o + i]);
+            }
+        }
         original[T][Op]();
         return;
     }
@@ -625,6 +666,8 @@ bool RomTracer::start(CodeMap &map, JumpLog *jumps)
         return false;
     rom_trace::flags = map.data();
     rom_trace::jumps = jumps;
+    rom_trace::blind_after_landing = false;
+    rom_trace::seen_after_landing = 0;
     S9xRomFetchFrom = S9xRomFetchTo = 0;
     S9xRomFlags = map.data();
     rom_trace::wrap();
@@ -679,6 +722,17 @@ std::optional<DerailWatch::Note> RomTracer::take_derail()
     auto note = rom_trace::derails->take();
     S9xRomFlags = rom_trace::flags; // the core marks data and DMA again
     return note;
+}
+
+void RomTracer::set_blind_after_landing(bool on)
+{
+    if (mine)
+        rom_trace::blind_after_landing = on;
+}
+
+uint64_t RomTracer::seen_after_landing() const
+{
+    return mine ? rom_trace::seen_after_landing : 0;
 }
 
 std::vector<uintptr_t> RomTracer::opcode_tables()
