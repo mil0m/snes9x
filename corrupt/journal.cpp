@@ -20,7 +20,6 @@ const char *event_name(JournalEntry::Kind k)
     case JournalEntry::Recovered: return "recovered";
     case JournalEntry::GaveUp: return "gave_up";
     case JournalEntry::InstantRevert: return "instant_revert";
-    case JournalEntry::FirstUse: return "first_use";
     }
     return "?";
 }

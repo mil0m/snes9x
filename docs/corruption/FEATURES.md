@@ -6,6 +6,8 @@ This fork of Snes9x adds live RAM and ROM corruption for fun, with tooling that 
 - `qt/src/` is the app glue. `CorruptionSession` is the hub and lives on the emulation thread. `CorruptionDock` is the panel.
 - The core has a few tiny hooks, so upstream merges stay easy.
 
+Ideas that were built and then removed are listed at the end, under *Tried and removed*: check there before building a new safety feature.
+
 Each feature has a plan doc in `docs/corruption/`, tests, and a numbered section in `QA.md` (manual checks). `GUIDE.md` is the player's guide (shown in the app by "? Guide"). Paths below are relative to the repo root; plan docs are `docs/corruption/<date>-<name>.md`, shortened to the name.
 
 ## Where things happen each frame
@@ -16,16 +18,15 @@ Between frames, `CorruptionSession::betweenFrames()` (`qt/src/CorruptionSession.
 
 1. Back to normal, if requested: engine off, `RomKeeper::restore_clean`, load the run's anchor.
 2. Instant revert (#51): `tracer.take_derail()` -> `InstantRevert::after_frame`; a caught bad jump fixes the ROM byte and replays the frame.
-3. `RunControl::between_frames`: starts a pending run at a frame boundary (restore clean ROM, ROM at_load rules, power cycle, anchor, pins, other at_load rules). Forgets first-use state.
+3. `RunControl::between_frames`: starts a pending run at a frame boundary (restore clean ROM, ROM at_load rules, power cycle, anchor, pins, other at_load rules).
 4. `RomBlame::collect`: which changed ROM bytes the game used this frame.
-5. `testFirstUse()` (#55): plays newly used bytes ahead from the frame's start checkpoint, before the guard looks.
-6. `CrashMap::observe` the frame's writes (before a rollback can discard them).
-7. `CrashGuard::between_frames`: detector, policy, rollback, proven blame (#56); then `RomKeeper::after_guard`.
-8. Derail watch on/off, `InstantRevert::keep` (frame-start checkpoint), crash-map survivals and save.
-9. `MemoryWatch::observe` (heat, hits), WRAM access counters, `RomHeat::observe` (Live overlay).
-10. Code map and jump log housekeeping: reload, tick, save, copy for the viewer twice a second, jump-table search.
-11. Guard notice to the status line.
-12. `testAhead()` (#52), last: plays the next frame's ROM changes ahead from exactly here.
+5. `CrashMap::observe` the frame's writes (before a rollback can discard them).
+6. `CrashGuard::between_frames`: detector, policy, rollback; then `RomKeeper::after_guard`.
+7. Derail watch on/off, `InstantRevert::keep` (frame-start checkpoint), crash-map survivals and save.
+8. `MemoryWatch::observe` (heat, hits), WRAM access counters, `RomHeat::observe` (Live overlay).
+9. Code map and jump log housekeeping: reload, tick, save, copy for the viewer twice a second, jump-table search.
+10. Guard notice to the status line.
+11. `testAhead()` (#52), last: plays the next frame's ROM changes ahead from exactly here.
 
 ## Phases 1 and 4: recipes, panel, shaping while playing (#2-#5, #14-#17)
 
@@ -221,7 +222,7 @@ Plan: `rom-corruption-plan` (six phases, each with "Phase N in detail"). QA 20-2
 - Measure: `--swaps [seeds] [count]` (swap vs random bytes vs clean).
 - Docs: `pointer-swap-plan`; QA 26.
 
-## Phase 7: safety (#50-#52, #55-#57)
+## Phase 7: safety (#50-#52, #57; #55 and #56 tried and removed)
 
 Plan for all: `safety-plan` (one section per item, each with "How it went").
 
@@ -244,24 +245,12 @@ Plan for all: `safety-plan` (one section per item, each with "How it went").
 - Docs: `safety-plan` #52; QA 29.
 - Gotchas: a run tests ONE firing (rules re-fire inside the window). 80-97% of written bytes are unused within 3 s in attract mode, so totals move little. About 130-210 ms per firing.
 
-**Test at first use (#55)** - when a changed byte is used for the first time, run ahead with and without it; fix it if the control run is clean.
-- Code: `corrupt/first_use.cpp` (FirstUseTest: queue batch 16, gap 30 frames, narrowing by halves within 8 runs, `vouch`), `RomKeeper::borrow`, `RomBlame::fix(bytes, policy)`, `Engine::put_back_log`, `InstantRevert::checkpoint_for(frame)`, session `testFirstUse`; journal `first_use`. Same panel switch and `test_first` as #52.
-- Tests: `tests/corrupt/first_use_test.cpp`.
-- Measure: `--first-use [seeds]` (+ `CORRUPT_FU_FRAMES/_SETTLE/_NMI/_GAP`).
-- Docs: `safety-plan` #55; QA 30.
-- Gotchas: the frame hook fires after the frame-start checkpoint, so a run from it must restore the engine snapshot or the frame's own writes vanish. Cheap (<1% time) but catches 1-2 bytes per 10 min in attract mode.
+**Test at first use (#55) and proven blame (#56): removed.** Both were built, measured and taken out on 2026-11-01; see *Tried and removed* below before building anything like them.
 
-**Proven blame (#56)** - a crash that comes back after a rollback is replayed from the guard's checkpoints to find the bytes that cause it, then only those are fixed.
-- Code: `corrupt/proven_blame.cpp` (ProvenBlame; `BlameProver` in `crash_guard.h`; budget 10 runs/4000 frames; `reduce` narrows to a small set whose clean values *prevent* the crash, since #57; at most 8 bytes else fall back), `RomBlame::used_between`, `RunSpec.detect`, session `configureGuard` (`proven`, `setProven...`). Panel switch "Replay a crash that comes back to find its cause" (on).
-- Tests: `tests/corrupt/proven_blame_test.cpp`.
-- Measure: `--prove [seeds]` (+ `CORRUPT_PROOF_DIAG`: each proven byte's flags and use record; `CORRUPT_WATCH_BYTE=<hex>`: one byte each frame; `CORRUPT_PROVE_FIRST`), `--nmi` (clean NMI-off stretches per game).
-- Docs: `safety-plan` #56; QA 32.
-- Gotchas: only for a repeat crash (same signal within 120 frames). Finding: used bytes seen by the tracer never explained FE4's repeat NMI-off crashes, and the real reason (#57) was the narrowing: it kept a half that crashed *on its own*, which finds bytes that could crash the game if it got further, not the ones that did. Now it narrows by prevention. Since the fix, on FE4 Code roulette it beats guessing (39 rollbacks vs 42); FE4 Code drip is still worse (20 vs 15).
-
-**Eyes open after a landing (#57)** - after the derail watch notes a landing, the tracer still marks the changed bytes the game runs (Touched only), so the crash blame, #55 and #56 see them.
+**Eyes open after a landing (#57)** - after the derail watch notes a landing, the tracer still marks the changed bytes the game runs (Touched only), so the crash blame sees them.
 - Code: `corrupt/core_access.cpp` (`traced()`'s derailed branch, `see_changed`, `see_changed_slow`), `RomTracer::set_blind_after_landing` (measuring only) and `seen_after_landing()`.
 - Tests: `guard_integration_test.cpp` ("after a landing, changed bytes run later in the frame still count as used", "blind after a landing"); `test_rom.cpp` `build_landing`.
-- Measure: `--eyes [seeds]` (everything in both arms, the first blind as before).
+- Measure: `--eyes [seeds]` (the guard, #51 and #52 in both arms, the first blind as before).
 - Docs: `safety-plan` #57.
 - Gotchas: the map still learns nothing after a landing (no Opcode/Operand/width, no jumps), and the core's data/DMA marks stay off, so a changed byte *read as data* after a landing is still unseen. The slow opcode table's half isn't reached by a test ROM (the core runs it only for an instruction crossing a bank's end).
 
@@ -315,9 +304,52 @@ Plan for all: `safety-plan` (one section per item, each with "How it went").
 - `--derail-fp [learn]`: false alarms of the derail watch on a clean game.
 - `--instant [seeds=5]`: guard alone vs with instant revert.
 - `--ahead [seeds=5]`: instant revert in both arms; the second tests each live ROM firing first.
-- `--first-use [seeds=5]`: both of those in both arms; the second also tests at first use.
-- `--prove [seeds]`: proven blame on repeat crashes (see #56). `--nmi`: clean NMI-off stretches per game.
-- `--eyes [seeds]`: everything in both arms; the first blind after a landing, as before #57.
+- `--nmi`: clean NMI-off stretches per game.
+- `--eyes [seeds]`: the guard, #51 and #52 in both arms; the first blind after a landing, as before #57.
 - `--learn [held=3] [from=0]`: crash-map learning, then held-out seeds plain vs avoid vs random control.
 - `--dump <dir>`: write raw `.bin` per target (needs a recipe and frames; used for viewer pictures).
-- Env: `CORRUPT_CODEMAP`, `CORRUPT_LEARN_VERBOSE`, `CORRUPT_INSTANT_VERBOSE`, `CORRUPT_FU_*`, `CORRUPT_PROVE_FIRST`, `CORRUPT_PROOF_DIAG`, `CORRUPT_WATCH_BYTE`, `CORRUPT_DUMP_DIR`, `CORRUPT_SHOTS_DIR`.
+- Env: `CORRUPT_CODEMAP`, `CORRUPT_LEARN_VERBOSE`, `CORRUPT_INSTANT_VERBOSE`, `CORRUPT_WATCH_BYTE` (one ROM byte's flags, value and PC each frame, the first 400), `CORRUPT_DUMP_DIR`, `CORRUPT_SHOTS_DIR`.
+
+## Tried and removed (read before building a new safety feature)
+
+Ideas that were built, measured on real games and taken out because they didn't pay. The
+code is in git history at the commits named; the plan doc's section has the full numbers.
+Don't build these again without a new reason that answers why they failed.
+
+**Test at first use (#55)**, removed 2026-11-01 (built in `b3d3b997`). When the game first
+ran a changed ROM byte, it played a second ahead from the frame's start with and without the
+byte and put it back if only the run with it crashed.
+- Result: it put back 0-2 bytes per game in 10 minutes, and rollbacks didn't go down (FE4
+  Code roulette 36 -> 42, Goof 3 -> 4, Pocky unchanged; 5 seeds each).
+- Why it fails: a corrupted byte rarely crashes the game within a second of its first use.
+  The crashes come seconds later (NMI off, a fuse lit earlier), or from several bytes
+  together, or from damage already in RAM. A short run from the first use can't see them.
+
+**Proven blame (#56)**, removed 2026-11-01 (built in `fd33b13b`, `2b256adb`; narrowing fixed
+in `1f8b1bd6`). A crash that came back after a rollback was replayed unseen from the guard's
+checkpoints, with and without the changed bytes, narrowed by halves to the few bytes that
+cause it, and only those were fixed.
+- Result: no gain over guessing that holds up. After the narrowing fix, FE4 Code roulette 42
+  -> 39 rollbacks and Pocky Code drip 9 -> 8, but FE4 Code drip 15 -> 20 (worse). Gaps that
+  small are inside seed-to-seed noise, which was never measured. Only 7 of 17 replayed
+  crashes could be proven at all. Each proof stalls the game 1-2 s.
+- Why it fails: it assumes a crash comes from a few ROM bytes a replay can find. Many come
+  from state already corrupted in RAM, from bytes read as data (unseen after a landing), or
+  from combinations; and a corrupted game is chaotic, so a replay without some bytes goes
+  somewhere else entirely. The cheap guess (the changed bytes the game ran last) already
+  gets most of what there is.
+- Trap worth remembering: its first version narrowed by "the half that crashes on its own"
+  and reported 42 of 43 crashes proven. That proved bytes the game *could* crash on if it
+  got further, not the ones that did. A proof has to test that cleaning a byte *prevents*
+  the crash. Self-reported success rates are not evidence; rollbacks and frames lost are.
+
+**Lessons for the next safety idea**
+- The guard's real gains came from #51 (instant revert: rollbacks roughly halved on all
+  three games) and, for opcode changes, #52 (test before applying). Both act on something
+  seen *right away* (a landing, a crash in the next 3 s of one change). Ideas that try to
+  explain a crash after the fact did not pay.
+- Measure the noise first: run the baseline arm over enough seeds (say 20) to see its
+  spread before trusting a gap of a few rollbacks.
+- Count what the player feels (rollbacks, frames lost, corruption kept, stalls), not what
+  the feature reports about itself.
+

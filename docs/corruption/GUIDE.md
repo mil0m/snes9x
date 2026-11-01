@@ -136,19 +136,6 @@ skip its last changes, halve its strength, turn it off, or re-roll twice then ha
 turn off. **As the recipe says** shows what the loaded recipe asks for (it's set in the
 recipe file, `crash_policy`); picking another overrides it for now. Changed ROM bytes the game ran into are put back either way.
 
-When a crash comes back and it's one it can play again without you (the game stopped, rebooted, or its
-frame interrupt went off) and changed ROM bytes are involved, it first replays the last
-few seconds unseen: once as they were, to see the crash again, and again without the
-changed bytes the game used, going further back if that isn't enough. Then it narrows
-them down and puts back only the ones that made the difference, in a single rollback. You
-feel it as a pause of a second or so; the status line says *found by replaying it*, and
-the ROM section counts *N crashes traced by replaying them*. It does this for a crash
-that came back after going back once, where guessing didn't work; it keeps more of the
-corruption, so a game that breaks easily may crash a bit more often afterwards. Untick
-**Replay a crash that comes back to find its cause** (in Crash Guard) to leave it to
-guessing. Crashes it can't play again (frozen or black screens, which need your button
-presses) are handled as below.
-
 If the same crash keeps coming back, each time it goes 5 seconds further back. After five
 crashes in a row that fixed nothing, it gives up: corruption goes off and the ROM goes
 back to clean.
@@ -290,19 +277,8 @@ re-rolled, 0 skipped)*). It can only vouch for what the game actually uses in th
 seconds: a change in code the game won't reach for a while goes through untried, and the
 instant revert and the crash guard still watch it.
 
-**Every changed byte is tried when the game first uses it.** Most changes sit in code the
-game hasn't reached yet, and a classic run makes hundreds at once. So the moment the game
-first runs or reads a changed byte, the app goes back to the start of that frame and plays
-a second ahead with it, and if the game falls over, again without it. If only the run with
-it falls over, the byte is put back (or re-rolled, if the recipe says so) and the frame
-plays again. Each changed value is tried once; first uses that come in a burst are tried
-together, at most twice a second. The status line says *Tested at first use: 1 changed
-byte crashed the game (…) where the clean ROM didn't, so reverted 1 ROM byte and played the
-frame again*, and the ROM section counts them (*40 bytes tested at first use (2 put
-back)*).
-
-Both are the panel's **Try ROM changes ahead first** (in Crash Guard). In the recipe,
-`"test_first": 0` turns both off, and a number of seconds looks further ahead (3 by
+It's the panel's **Try ROM changes ahead first** (in Crash Guard). In the recipe,
+`"test_first": 0` turns it off, and a number of seconds looks further ahead (3 by
 default).
 
 ## Survivors and pins

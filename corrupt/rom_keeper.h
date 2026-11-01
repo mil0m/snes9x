@@ -53,15 +53,6 @@ class RomKeeper : public MemoryAccess
     // undoes them, because the bytes' journal entries go too. One pass over the journal.
     void settle(const std::vector<std::pair<uint32_t, uint8_t>> &bytes);
 
-    // A value in the ROM for a moment (a run ahead trying a byte without its change): no
-    // journal entry, no notice, no count. The caller puts the old value back the same way
-    // before anything else reads or writes the ROM.
-    void borrow(uint32_t offset, uint8_t value)
-    {
-        if (loaded() && offset < clean_rom.size())
-            inner.write(Target::ROM, offset, value);
-    }
-
     void restore_clean();               // the run starts over: every edit undone, the journal emptied
     void revert_after(uint64_t frame);  // undo the edits made after `frame`, newest first
     void after_guard(const GuardOutcome &out); // a rollback reverts; giving up restores the clean ROM

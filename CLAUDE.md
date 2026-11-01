@@ -29,7 +29,8 @@ except for a few small, null-guarded hooks in the core.
 ## How work is done here
 
 1. A plan section first (in a plan doc, with the design choices spelled out), then a card on
-   the roadmap.
+   the roadmap. Before planning a safety or crash-blame idea, read FEATURES.md's *Tried and
+   removed*: some ideas were built, measured and taken out, and why is written there.
 2. Test first: unit tests with fakes, a real-core case with a test ROM, then `corrupt-smoke`
    numbers on real games (Goof Troop, Pocky & Rocky, FE4; FF6 for ROM work) against a
    baseline. Report what the numbers say, including when a feature doesn't help.

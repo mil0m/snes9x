@@ -455,19 +455,9 @@ Use a game you have never set up (a fresh library folder, so no recipes exist fo
 6. Load a save state, rewind if you use it, and fast-forward while **Code drip** runs.
    - [ ] Nothing odd: no frozen picture, no sound glitches beyond the short pauses.
 
-## 30. Test at first use
-1. Load Goof Troop (or any game) and play for a couple of minutes, so the code map knows its code.
-2. Pick **Starter: Opcode swap** (classic: code changed when the run starts) and press **Corrupt (F7)**. Play on, going somewhere new now and then.
-   - [ ] When the game reaches changed code there's a very short pause now and then (a byte tried at its first use). The picture and sound never show the future.
-   - [ ] Now and then the status line says *Tested at first use: 1 changed byte crashed the game (…) where the clean ROM didn't, so reverted 1 ROM byte and played the frame again*, and the on-screen message says *tested at first use*.
-   - [ ] The ROM section counts *N bytes tested at first use (N put back)*.
-   - [ ] Fewer *Crash caught* lines than with the switch off (step 4), though not none.
-3. Look at the crash journal (`journal.<you>.jsonl` in the library).
-   - [ ] Those are lines with `"event":"first_use"`, what the run saw in `text`, the bytes in `rom_bytes`.
-4. Untick **Try ROM changes ahead first** in Crash Guard and play the same recipe.
-   - [ ] No pauses, no *Tested at first use* lines; the same kind of changes end in crashes the guard catches.
-5. With the switch on, load a save state while the recipe runs.
-   - [ ] The game continues from the loaded state; nothing jumps back to before it.
+## 30. Test at first use (removed)
+Removed on 2026-11-01: it didn't pay off (see FEATURES.md, *Tried and removed*). Nothing to check.
+   - [ ] **Try ROM changes ahead first** has no *Tested at first use* lines and the ROM section no *at first use* count.
 
 ## 31. Remote control from a browser
 1. Load a game, pick a recipe with a hotkey rule (say **Starter: Pointer roulette**). In **Remote Control**, tick **Allow remote control from a browser**.
@@ -490,16 +480,6 @@ Use a game you have never set up (a fresh library folder, so no recipes exist fo
 7. Untick **Allow remote control**.
    - [ ] The page goes offline; nothing listens on port 8095 (`nc -z 127.0.0.1 8095` fails).
 
-## 32. Proven blame
-1. Load FE4 (or a game that crashes easily under ROM changes) and play for a couple of minutes, so the code map knows its code.
-2. Pick **Starter: Opcode swap** (classic) and press **Corrupt (F7)**. Play until a crash is caught.
-   - [ ] Some catches say *Crash caught (…): back N s, found by replaying it: reverted 1 ROM byte*, after a short pause (about a second).
-   - [ ] After such a catch the same crash doesn't come back at the same moment.
-   - [ ] The ROM section counts *N crashes traced by replaying them*.
-3. Hold a direction while playing until a frozen-screen crash is caught (if one happens).
-   - [ ] That one is handled the old way (no *found by replaying it*).
-4. Look at the crash journal.
-   - [ ] Proven catches have `"rom_action": "… (proven by replay)"`.
-5. Untick **Replay a crash that comes back to find its cause** and play the same recipe.
-   - [ ] No more *found by replaying it*; repeated crashes are guessed as before.
-
+## 32. Proven blame (removed)
+Removed on 2026-11-01: it didn't pay off (see FEATURES.md, *Tried and removed*).
+   - [ ] Crash Guard has no *Replay a crash that comes back to find its cause* switch, and no catch says *found by replaying it*.

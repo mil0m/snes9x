@@ -10,8 +10,6 @@
 #include "corrupt/crash_guard.h"
 #include "corrupt/hook.h"
 #include "corrupt/instant_revert.h"
-#include "corrupt/first_use.h"
-#include "corrupt/proven_blame.h"
 #include "corrupt/test_ahead.h"
 #include "corrupt/jump_tables.h"
 #include "corrupt/pointer_swap.h"
@@ -60,10 +58,6 @@ struct Harness
     TestAhead *ahead = nullptr;
     CodeMap *map = nullptr;
     std::vector<AheadResult> tests;
-    // Test at first use, wired like the app when set (needs the blame, the tracer, its map
-    // and the instant revert's checkpoints).
-    FirstUseTest *first_use = nullptr;
-    std::vector<FirstUseResult> first_uses;
 
     Harness(testrom::Crash crash, Recipe recipe, PolicyKind policy)
         : Harness(testrom::build(crash), std::move(recipe), policy)
@@ -106,23 +100,12 @@ struct Harness
                 starts.push_back(s);
             if (blame)
                 blame->collect(engine.current_frame());
-            if (first_use && blame && tracer && map && instant)
-            {
-                first_use->note_uses(*blame, rom, engine.current_frame());
-                AheadHooks hooks;
-                hooks.take_derail = [this] { return tracer->take_derail(); };
-                auto cp = instant->checkpoint_for(engine.current_frame());
-                auto t = first_use->test(engine, rom, *blame, access, { map->data(), map->size() }, hooks, cp.state,
-                                         cp.engine);
-                if (t.kind != FirstUseResult::Nothing)
-                    first_uses.push_back(t);
-            }
             auto out = guard.between_frames(engine, access);
             rom.after_guard(out);
             if (out.kind != GuardOutcome::Nothing)
                 outcomes.push_back(out);
             if (tracer && instant)
-                instant->keep(access, engine.current_frame(), engine.active() && tracer->tracing(), &engine);
+                instant->keep(access, engine.current_frame(), engine.active() && tracer->tracing());
             if (ahead && tracer && map)
             {
                 AheadHooks hooks;
@@ -1208,50 +1191,7 @@ TEST_SUITE("instant revert in the real core")
         return r;
     }
 
-    TEST_CASE("test at first use: a change that lights a fuse is put back before the game ever stops")
-    {
-        namespace fz = testrom::fuse;
-        Derailing d(testrom::build_fuse(), true, somewhere_new_at(60));
-        FirstUseTest first;
-        first.set_config({ .frames = 180, .settle_frames = 60, .gap = 30 });
-        d.h.first_use = &first;
-        d.h.map = &d.map;
-        d.h.rom.write(Target::ROM, fz::kLight, 20);
-        d.h.rom.write(Target::ROM, fz::kInnocent, 0x17);
-        uint32_t reboots = d.h.access.sample().reboots;
-        uint8_t innocent_count = d.h.wram(0x17);
-        d.h.run(29); // to frame 59: the routine hasn't run
-        CHECK(d.h.first_uses.empty());
-        CHECK(d.blame.used() == 0);
-        // Frame 60's rule sets $10; the main loop sees it after the next NMI and runs the
-        // routine for the first time.
-        for (int i = 0; i < 4 && d.h.first_uses.empty(); i++)
-            d.h.run(1);
-        REQUIRE(d.h.first_uses.size() == 1);
-        auto &t = d.h.first_uses[0];
-        CAPTURE(t.summary);
-        CHECK(t.kind == FirstUseResult::Fixed);
-        CHECK(t.tested.size() == 2);
-        CHECK(t.fixed == std::vector<uint32_t>{ fz::kLight });
-        CHECK(t.failure.find("CPU stopped") != std::string::npos);
-        CHECK(t.runs == 4); // both, neither, the light alone, the innocent one again
-        CHECK(d.rom(fz::kLight) == 0x00);
-        CHECK(d.rom(fz::kInnocent) == 0x17);
-        CHECK(!(CPU.Flags & HALTED_FLAG));
-
-        d.h.run(60);
-        CHECK(d.h.outcomes.empty()); // the guard never saw a crash
-        CHECK(d.h.reverts.empty());
-        CHECK(d.h.first_uses.size() == 1);
-        CHECK(d.h.wram(fz::kFuseAddr) == 0);
-        CHECK(d.h.wram(fz::kRunsAddr) == 1); // the frame played again, the routine ran once
-        CHECK(d.h.wram(0x17) == uint8_t(innocent_count + 1)); // with the innocent change in it
-        CHECK(d.h.access.sample().reboots == reboots);
-        CHECK(IPPU.RenderThisFrame);
-        CHECK(alive(d.h));
-    }
-
-    TEST_CASE("without test at first use, the fuse stops the game and the guard rolls back")
+    TEST_CASE("a lit fuse stops the game and the guard rolls back")
     {
         namespace fz = testrom::fuse;
         Derailing d(testrom::build_fuse(), true, somewhere_new_at(60));
@@ -1265,58 +1205,26 @@ TEST_SUITE("instant revert in the real core")
 
     constexpr uint32_t kNmiCounterInc = 0x0030; // INC $11 in the NMI handler (the frame counter)
 
-    // A fuse lit long before the crash (200 frames): the guard's usual window never sees it.
+    // A fuse lit long before the crash (200 frames): the guard's usual window never sees it,
+    // so guessing costs more than one rollback. A known limit: #56 tried replaying the crash
+    // to find the fuse and was removed (it didn't pay off on real games; see the safety plan).
     // The instant revert is off: the STP comes right after the NMI handler runs the DEC, so
     // it would put that innocent byte back (blaming what ran last) before the guard sees it.
     struct LongFuse
     {
         Derailing d{ testrom::build_fuse(), false, somewhere_new_at(60) };
-        ProvenBlame prover{ d.blame, d.h.rom };
-        explicit LongFuse(bool prove)
+        LongFuse()
         {
             namespace fz = testrom::fuse;
             // Made as a run's start makes them (a rollback doesn't undo those).
             d.h.rom.write_at_start(Target::ROM, fz::kLight, 200);
             d.h.rom.write_at_start(Target::ROM, kNmiCounterInc, 0xC6); // INC -> DEC in the NMI handler: harmless, runs every frame
-            if (prove)
-            {
-                prover.set_map({ d.map.data(), d.map.size() });
-                prover.set_detector(d.h.guard.detector_config());
-                AheadHooks hooks;
-                hooks.take_derail = [this] { return d.tracer.take_derail(); };
-                prover.set_hooks(hooks);
-                d.h.guard.set_prover(&prover);
-                d.h.guard.set_prove_first_crash(true);
-            }
         }
     };
 
-    TEST_CASE("proven blame: a fuse lit long before the crash is found by replaying, in one rollback")
+    TEST_CASE("a fuse lit long before the crash costs guessing more than one rollback")
     {
-        namespace fz = testrom::fuse;
-        LongFuse lf(true);
-        auto &d = lf.d;
-        d.h.run(400);
-        REQUIRE(d.h.outcomes.size() == 1);
-        auto &out = d.h.outcomes[0];
-        CAPTURE(out.summary);
-        CHECK(out.verdict.signal == CrashSignal::CpuStopped);
-        CHECK(out.proven);
-        CHECK(out.rom_blamed == std::vector<uint32_t>{ fz::kLight });
-        CHECK(out.restored_frame <= 61);
-        CHECK(d.rom(fz::kLight) == 0x00);
-        CHECK(d.rom(kNmiCounterInc) == 0xC6); // the innocent change stays
-        // The newer start: as is, without the DEC, without every change (the fuse is lit by
-        // then); the older: without both, the DEC alone, the light alone.
-        CHECK(out.proof_runs == 6);
-        CHECK(d.h.wram(fz::kRunsAddr) == 1); // the routine ran again, harmless now
-        CHECK(IPPU.RenderThisFrame);
-        CHECK(alive(d.h));
-    }
-
-    TEST_CASE("guessing, the same fuse costs more than one rollback")
-    {
-        LongFuse lf(false);
+        LongFuse lf;
         auto &d = lf.d;
         d.h.run(900);
         CHECK(d.h.outcomes.size() >= 2); // it blames the DEC first: it's what ran near the crash

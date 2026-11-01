@@ -457,18 +457,9 @@ CorruptionDock::CorruptionDock(EmuApplication &app, QWidget *parent)
     test_first_check = new QCheckBox(tr("Try ROM changes ahead first"), guard_box);
     test_first_check->setObjectName("test_first");
     test_first_check->setToolTip(tr("Before a live ROM rule changes the game, plays a few seconds ahead with the change, "
-                                    "unseen, and rolls again if the game would crash. And when the game first runs a "
-                                    "changed byte, plays a second ahead with and without it, and puts it back if only "
-                                    "the run with it crashes. Costs a short pause each time."));
+                                    "unseen, and rolls again if the game would crash. Costs a short pause each time."));
     test_first_check->setChecked(true);
     guard_layout->addLayout(ui::row(test_first_check));
-    proven_check = new QCheckBox(tr("Replay a crash that comes back to find its cause"), guard_box);
-    proven_check->setObjectName("proven");
-    proven_check->setToolTip(tr("When the same crash happens again after going back, plays the last seconds again "
-                                "unseen, with and without the changed ROM bytes, and puts back only the ones that "
-                                "cause it. Keeps more of the corruption; a pause of a second or two each time."));
-    proven_check->setChecked(true);
-    guard_layout->addLayout(ui::row(proven_check));
     auto guard_form = ui::form();
     policy_combo = new QComboBox(guard_box);
     policy_combo->setObjectName("policy");
@@ -497,7 +488,6 @@ CorruptionDock::CorruptionDock(EmuApplication &app, QWidget *parent)
 
     connect(detect_check, &QCheckBox::clicked, [](bool on) { CorruptionSession::get().setDetectionEnabled(on); });
     connect(test_first_check, &QCheckBox::clicked, [](bool on) { CorruptionSession::get().setTestFirstEnabled(on); });
-    connect(proven_check, &QCheckBox::clicked, [](bool on) { CorruptionSession::get().setProvenEnabled(on); });
     connect(policy_combo, &QComboBox::activated, [this](int index) {
         auto name = policy_combo->itemData(index).toString().toStdString();
         CorruptionSession::get().setPolicyOverride(name.empty() ? std::nullopt : parse_policy(name));
@@ -997,13 +987,6 @@ void CorruptionDock::refreshStatus()
                         .arg(plural(status.tested_first, tr("1 change"), tr("%1 changes")))
                         .arg(status.tested_rerolled)
                         .arg(status.tested_skipped);
-        if (status.first_use_tested)
-            kept << tr("%1 at first use (%2 put back)")
-                        .arg(plural(status.first_use_tested, tr("1 byte tested"), tr("%1 bytes tested")))
-                        .arg(status.first_use_fixed);
-        if (status.crashes_proven)
-            kept << plural(status.crashes_proven, tr("1 crash traced by replaying it"),
-                           tr("%1 crashes traced by replaying them"));
         if (!kept.isEmpty())
             rom_lines << kept.join(" · ");
         rom_lines << (status.code.seen

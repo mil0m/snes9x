@@ -55,28 +55,16 @@ struct AheadHooks
 };
 
 // One run ahead, unseen and unheard, and everything put back after it: the core's state, the
-// engine (and its pressed hotkeys), the ROM, the code map's flags. Shared by test before
-// applying (#52) and test at first use (#55).
+// engine (and its pressed hotkeys), the ROM, the code map's flags. Used by test before
+// applying (#52).
 struct RunSpec
 {
-    // Start from this state (a frame-start checkpoint) instead of from now, and with the
-    // engine as it was then if given (so the frame's own rules fire again in the run).
-    const std::vector<uint8_t> *from = nullptr;
-    const EngineSnapshot *engine_from = nullptr;
     // The bytes under test: their uses are seen, and a landing naming one of them is theirs.
     std::vector<uint32_t> watched;
-    // ROM values swapped in for the run only (the clean value of a byte left out of a
-    // test), with no journal entry and no change notice, and put back after.
-    std::vector<std::pair<uint32_t, uint8_t>> borrowed;
     // The engine's ROM writes after this frame are dropped during the run (unset: none).
     std::optional<uint64_t> quiet_after;
     uint32_t frames = 180;
     uint32_t settle_frames = 60; // stops early once every watched byte was used this long ago
-    // Frames of NMI off that count as a crash (0: not at all). A guess on its own, so only
-    // worth it where a control run without the change has to disagree (#55).
-    uint32_t nmi_off_frames = 0;
-    // The whole detector setup instead (definite signals plus nmi_off_frames by default).
-    std::optional<DetectorConfig> detect;
 };
 
 struct RunVerdict

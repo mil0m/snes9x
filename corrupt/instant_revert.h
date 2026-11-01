@@ -1,7 +1,6 @@
 #pragma once
 #include "crash_guard.h"
 #include "derail.h"
-#include "engine.h"
 #include "rom_blame.h"
 
 #include <optional>
@@ -49,23 +48,8 @@ class InstantRevert
     std::optional<InstantRevertResult> after_frame(std::optional<DerailWatch::Note> note, uint64_t frame,
                                                    CoreAccess &core, RomBlame &blame);
     // Last thing between frames: keeps the state the next frame starts from, while there is
-    // anything to protect (changed ROM bytes, the tracer on, the engine running). Kept even
-    // while the revert is off, for test at first use (#55), which replays from it too.
-    // With `engine`, its snapshot is kept alongside (a replay that fires the frame's rules again).
-    void keep(CoreAccess &core, uint64_t frame, bool protect, const Engine *engine = nullptr);
-    // The state the frame that just ran started from (`frame`: the engine's count now), and
-    // the engine's then if kept, or nulls if there is none: the same rule as after_frame's.
-    struct Checkpoint
-    {
-        const std::vector<uint8_t> *state = nullptr;
-        const EngineSnapshot *engine = nullptr;
-    };
-    Checkpoint checkpoint_for(uint64_t frame) const
-    {
-        if (!state_frame || frame < *state_frame || frame > *state_frame + 1)
-            return {};
-        return { &state, engine_snap ? &*engine_snap : nullptr };
-    }
+    // anything to protect (changed ROM bytes, the tracer on, the engine running).
+    void keep(CoreAccess &core, uint64_t frame, bool protect);
     void drop(); // the checkpoint no longer belongs to the frame that comes next
 
     bool has_checkpoint() const { return state_frame.has_value(); }
@@ -78,7 +62,6 @@ class InstantRevert
     bool enabled = true;
     std::vector<uint8_t> state;
     std::optional<uint64_t> state_frame;
-    std::optional<EngineSnapshot> engine_snap;
     unsigned row = 0;
     unsigned count = 0;
 };

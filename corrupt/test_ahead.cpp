@@ -37,42 +37,21 @@ RunVerdict RunAhead::play(Engine &engine, RomKeeper &rom, CoreAccess &core, std:
 {
     RunVerdict v;
     uint64_t start = engine.current_frame();
-    if (!core.save_state_into(state) || (spec.from && !core.load_state(*spec.from)))
+    if (!core.save_state_into(state))
     {
-        if (spec.from && !state.empty())
-            core.load_state(state);
         v.kind = RunVerdict::Inconclusive;
         return v;
     }
     const auto &written = spec.watched;
     auto snap = engine.snapshot();
     uint16_t hotkeys = engine.pressed_hotkeys();
-    std::vector<LoggedEvent> dropped; // what going back to the engine's earlier snapshot drops
-    if (spec.engine_from)
-    {
-        for (auto &e : engine.event_log())
-            if (e.frame > spec.engine_from->frame)
-                dropped.push_back(e);
-        engine.restore(*spec.engine_from);
-    }
     flags_before.assign(flags.begin(), flags.end());
     for (uint32_t o : written) // "used" means used in this run
         if (o < flags.size())
             flags[o] &= uint8_t(~codeflag::Touched);
-    // Borrowed values: in the ROM for this run only, and not changed as far as a landing knows.
-    std::vector<std::pair<uint32_t, uint8_t>> lent;
-    for (auto [o, value] : spec.borrowed)
-    {
-        lent.push_back({ o, rom.read(Target::ROM, o) });
-        rom.borrow(o, value);
-        if (o < flags.size())
-            flags[o] &= uint8_t(~codeflag::Changed);
-    }
 
     engine.quiet_after(spec.quiet_after, Target::ROM);
-    auto detect = definite_only();
-    detect.nmi_off_frames = spec.nmi_off_frames;
-    detector.set_config(spec.detect.value_or(detect));
+    detector.set_config(definite_only());
     if (hooks.begin)
         hooks.begin();
     core.begin_unseen();
@@ -128,14 +107,9 @@ RunVerdict RunAhead::play(Engine &engine, RomKeeper &rom, CoreAccess &core, std:
     // As it was: the core, the engine (and its pressed hotkeys), the ROM, the code map.
     engine.quiet_after(std::nullopt);
     core.load_state(state);
-    if (spec.engine_from)
-        engine.restore(*spec.engine_from); // the run's own log entries go, from its first frame on
     engine.restore(snap);
-    engine.put_back_log(dropped);
     engine.set_pressed_hotkeys(hotkeys);
     rom.revert_after(start);
-    for (auto it = lent.rbegin(); it != lent.rend(); ++it)
-        rom.borrow(it->first, it->second);
     std::copy(flags_before.begin(), flags_before.end(), flags.begin());
     return v;
 }

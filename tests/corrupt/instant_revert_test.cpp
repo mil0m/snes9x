@@ -175,16 +175,14 @@ TEST_SUITE("instant revert")
         CHECK(line.find("\"rom_bytes\":[\"0x100\"]") != std::string::npos);
     }
 
-    TEST_CASE("switched off it never acts, though it still keeps the checkpoint it's asked to")
+    TEST_CASE("switched off it never acts and keeps nothing")
     {
         Fixture f;
         f.instant.set_enabled(false);
         f.change(0x100);
         f.run();
-        CHECK(f.instant.has_checkpoint()); // test at first use (#55) replays from it
-        CHECK(!f.run(Fixture::note({ 0x100 })));
-        CHECK(f.core.loads == 0);
-        f.instant.keep(f.core, 99, false);
         CHECK(!f.instant.has_checkpoint());
+        CHECK(!f.run(Fixture::note({ 0x100 })));
+        CHECK(f.core.saves == 0);
     }
 }

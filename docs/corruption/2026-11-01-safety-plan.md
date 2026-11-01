@@ -1,6 +1,6 @@
 # Safety first: plan (roadmap phase 7, #50-#52, #55-#57)
 
-**Status (2026-11-01):** #50 done (QA.md section 27), #51 done (QA.md section 28), #52 done (QA.md section 29). #55 test at first use (the follow-up to #52) done (QA.md section 30); it works but measured little, see its "How it went". #56 proven blame done (QA.md section 32): a trade, see its "How it went". #57 eyes open after a landing done (no QA section: nothing to see in the app); it found and fixed #56's narrowing, see its "How it went". From Erik's list (sorted in
+**Status (2026-11-01):** #50 done (QA.md section 27), #51 done (QA.md section 28), #52 done (QA.md section 29). #55 test at first use and #56 proven blame were built, measured and **removed** on 2026-11-01: neither paid off (see "Removed: #55 and #56" at the end; their sections below are kept as the record). #57 eyes open after a landing done (no QA section: nothing to see in the app); it found and fixed #56's narrowing before #56 was removed, see its "How it went". From Erik's list (sorted in
 [the horizons doc](./2026-10-31-horizons.md#eriks-list-2026-11-01)): see what the game uses
 live, catch a bad change sooner, and test a change before it reaches the game.
 
@@ -636,3 +636,42 @@ now 7 of 17 are proven and the rest fall back to guessing. FE4's Code drip is st
 rollbacks against 15 without proofs: a follow-up to look at with the same diagnostics.
 Test at first use (#55) also narrows by halves, but there "does this new byte crash the
 game on its own?" is the right question, so it keeps its narrowing.
+
+## Removed: #55 and #56 (2026-11-01)
+
+**Decision (with Mikael).** Both are taken out of the app, the engine and the tests. The
+sections above stay as the record of what was built and measured; the code is in git history
+(#55: `b3d3b997`; #56: `fd33b13b`, `2b256adb`, `1f8b1bd6`). FEATURES.md's *Tried and
+removed* has the short version for whoever thinks of these ideas next.
+
+**What the numbers said** (5 seeds each, the guard, #51 and #52 on in both arms):
+
+| Feature | Best case | Worst case | Cost |
+|---|---|---|---|
+| #55 test at first use | Goof Code drip 2 -> 1 rollbacks | FE4 Code roulette 36 -> 42 | 0-2 bytes put back per game in 10 min; ~50-90 ms per test |
+| #56 proven blame (after #57's fix) | FE4 Code roulette 42 -> 39 | FE4 Code drip 15 -> 20 | 7 of 17 replayed crashes proven; 1-2 s stall each |
+
+Gaps of a few rollbacks over five seeds are within what a different seed alone would move.
+The seed-to-seed spread was never measured, and with gains this small it wasn't worth an
+hour of runs to find out (Mikael's call).
+
+**Why they didn't pay.** Both try to find the bytes behind a crash by running the game
+again with and without them. That only works if a crash comes from a few ROM bytes, soon
+after they run, the same way every time. In real corrupted games it mostly doesn't:
+- the crash comes seconds after the byte first ran (NMI off, a fuse lit earlier), past a
+  short test window (#55);
+- the damage is already in RAM, or comes from bytes read as data (unseen after a landing),
+  or needs several bytes together;
+- a corrupted game is chaotic: a replay with some bytes clean goes somewhere else, and
+  #56's first narrowing "proved" bytes the game never reached for real (42 of 43 crashes
+  "proven", rollbacks up from 42 to 64).
+
+What kept the gains: #51 (instant revert) and #52 (test before applying), which act on
+something seen right away. The cheap guess (the changed bytes the game ran last) does the
+rest about as well as the replays did.
+
+**Kept from the work.** #57 (the tracer still marks changed bytes run after a landing:
+small, correct, harmless); `RomBlame` treating a first use from a rolled-back timeline as
+no first use; the fuse test ROM and a guard test that a fuse lit long before the crash
+costs guessing more than one rollback (a known limit); corrupt-smoke `--nmi`, `--eyes` and
+`CORRUPT_WATCH_BYTE`.

@@ -148,14 +148,6 @@ class Engine
 
     EngineStatus status() const;
     const std::deque<LoggedEvent> &event_log() const { return log; }
-    // Log entries a restore to an earlier snapshot dropped, put back after a run ahead from
-    // there (#55). Appended as they are; the caller gives them in order.
-    void put_back_log(const std::vector<LoggedEvent> &events)
-    {
-        log.insert(log.end(), events.begin(), events.end());
-        while (log.size() > kEventLogLimit)
-            log.pop_front();
-    }
 
   private:
     void restart();

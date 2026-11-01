@@ -27,22 +27,6 @@ std::string join(const std::vector<std::string> &names)
 
 } // namespace
 
-bool replayable(CrashSignal s)
-{
-    switch (s)
-    {
-    case CrashSignal::CpuStopped:
-    case CrashSignal::Deadlock:
-    case CrashSignal::RunawayPc:
-    case CrashSignal::NmiOff:
-    case CrashSignal::Reboot: return true;
-    case CrashSignal::FrozenPicture:
-    case CrashSignal::BlackScreen:
-    case CrashSignal::Manual: return false;
-    }
-    return false;
-}
-
 void CrashGuard::reset()
 {
     ring.clear();
@@ -54,7 +38,6 @@ void CrashGuard::reset()
     fruitless = 0;
     total = 0;
     manual_pending = false;
-    last_verdict.reset();
 }
 
 GuardOutcome CrashGuard::between_frames(Engine &engine, CoreAccess &core)
@@ -102,7 +85,6 @@ GuardOutcome CrashGuard::between_frames(Engine &engine, CoreAccess &core)
         recovering_since.reset();
         consecutive = 0;
         fruitless = 0;
-        last_verdict.reset();
         JournalEntry e;
         e.kind = JournalEntry::Recovered;
         e.frame = frame;
@@ -158,17 +140,6 @@ GuardOutcome CrashGuard::handle(const CrashVerdict &verdict, Engine &engine, Cor
     uint64_t back = kRollbackMargin + uint64_t(consecutive) * kStepBackFrames;
     uint64_t target = verdict.since_frame > back ? verdict.since_frame - back : 0;
     uint64_t through = verdict.signal == CrashSignal::Manual ? verdict.frame : verdict.since_frame;
-
-    // A crash that came back after a rollback (the same kind, starting at about the same
-    // moment) is one guessing didn't fix: replay it to find its bytes (#56).
-    bool again = consecutive > 0 && last_verdict && last_verdict->signal == verdict.signal &&
-                 std::max(last_verdict->since_frame, verdict.since_frame) -
-                         std::min(last_verdict->since_frame, verdict.since_frame) <=
-                     kSameCrashFrames;
-    last_verdict = verdict;
-    if (again || prove_first)
-        if (auto out = proven(verdict, engine, core, target); out.kind != GuardOutcome::Nothing)
-            return out;
 
     // The newest checkpoint before the trouble that has corruption to blame after it:
     // rules' writes, or single bytes the game used (the ROM blame).
@@ -291,89 +262,6 @@ GuardOutcome CrashGuard::handle(const CrashVerdict &verdict, Engine &engine, Cor
                   (did.empty() ? std::string("no rule to blame") : join(did));
     e.kind = JournalEntry::Crash;
     e.action = suspects.empty() ? "none" : action_name(out.action);
-    journal(e, engine);
-    return out;
-}
-
-GuardOutcome CrashGuard::proven(const CrashVerdict &verdict, Engine &engine, CoreAccess &core, uint64_t target)
-{
-    if (!prover || !bytes || !replayable(verdict.signal))
-        return {};
-    // The usual rollback target, then further back: damage is often done long before.
-    std::vector<ProofStart> starts;
-    std::vector<const Checkpoint *> cps;
-    uint64_t limit = target;
-    for (unsigned k = 0; k < kProofStarts; k++)
-    {
-        const Checkpoint *found = nullptr;
-        for (auto it = ring.rbegin(); it != ring.rend(); ++it)
-            if (it->frame <= limit && (cps.empty() || it->frame < cps.back()->frame))
-            {
-                found = &*it;
-                break;
-            }
-        // Nothing that old: the oldest there is, if it's older than the last.
-        if (!found && !ring.empty() && (cps.empty() || ring.front().frame < cps.back()->frame))
-            found = &ring.front();
-        if (!found)
-            break;
-        cps.push_back(found);
-        starts.push_back({ found->frame, &found->state, &found->engine });
-        if (found == &ring.front())
-            break;
-        limit = found->frame > kProofStep ? found->frame - kProofStep : 0;
-    }
-    if (starts.empty())
-        return {};
-    auto proof = prover->prove(engine, core, verdict, starts);
-    if (!proof || proof->start >= cps.size() || proof->fixed.offsets.empty())
-        return {};
-
-    const Checkpoint &cp = *cps[proof->start];
-    consecutive++;
-    total++;
-    if (!bytes->fixes_for_good())
-        fruitless++;
-    GuardOutcome out;
-    out.verdict = verdict;
-    out.restored_frame = cp.frame;
-    out.blame_after = cp.frame;
-    out.blame_through = verdict.frame;
-    out.rom_blamed = proof->fixed.offsets;
-    out.rom_action = proof->fixed.text;
-    out.proven = true;
-    out.proof_runs = proof->runs;
-    out.proof_ms = proof->ms;
-
-    JournalEntry e;
-    e.signal = crash_signal_name(verdict.signal);
-    e.text = verdict.text;
-    e.frame = verdict.frame;
-    e.since_frame = verdict.since_frame;
-    e.restored_frame = cp.frame;
-    e.frames_lost = verdict.frame - cp.frame;
-    e.attempt = consecutive;
-    e.rom_blamed = out.rom_blamed;
-    e.rom_action = out.rom_action + " (proven by replay)";
-    e.action = "none";
-
-    restore(cp, engine, core);
-    if (fruitless > kMaxAttempts || consecutive > kMaxCrashesInRow)
-    {
-        engine.set_active(false);
-        recovering_since.reset();
-        last_frame.reset();
-        out.kind = GuardOutcome::GaveUp;
-        out.summary = "Kept crashing (" + verdict.text + "): corruption turned off";
-        e.kind = JournalEntry::GaveUp;
-        journal(e, engine);
-        return out;
-    }
-    recovering_since = cp.frame;
-    out.kind = GuardOutcome::RolledBack;
-    out.summary = "Crash caught (" + verdict.text + "): back " + seconds(verdict.frame - cp.frame) +
-                  ", found by replaying it: " + out.rom_action;
-    e.kind = JournalEntry::Crash;
     journal(e, engine);
     return out;
 }

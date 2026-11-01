@@ -87,7 +87,7 @@ constexpr uint32_t kStp = 0x006B;       // LDA $DB00's high byte
 constexpr uint32_t kRunsAddr = 0x13;    // WRAM: runs of the routine's end
 } // namespace derail
 
-// Crash::None with a fuse (test at first use, #55). Each frame the main loop ticks the fuse
+// Crash::None with a fuse (made for #55, since removed; the guard's tests still use it). Each frame the main loop ticks the fuse
 // ($7E:0015: while it's set it counts down, and STP when it reaches 0), and while $7E:0010
 // is $42 calls a rarely run routine: LDA #$00 / STA $15 (the fuse stays out), INC $16 (a
 // harmless count), INC $12, STZ $10. A changed immediate lights the fuse: the CPU stops that

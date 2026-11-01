@@ -53,21 +53,15 @@ JournalEntry journal_entry(const InstantRevertResult &r)
     return e;
 }
 
-void InstantRevert::keep(CoreAccess &core, uint64_t frame, bool protect, const Engine *engine)
+void InstantRevert::keep(CoreAccess &core, uint64_t frame, bool protect)
 {
-    if (!protect)
+    if (!enabled || !protect)
     {
         drop();
         return;
     }
     if (core.save_state_into(state))
-    {
         state_frame = frame;
-        if (engine)
-            engine_snap = engine->snapshot();
-        else
-            engine_snap.reset();
-    }
     else
         drop();
 }
@@ -75,7 +69,6 @@ void InstantRevert::keep(CoreAccess &core, uint64_t frame, bool protect, const E
 void InstantRevert::drop()
 {
     state_frame.reset();
-    engine_snap.reset();
 }
 
 } // namespace corrupt
