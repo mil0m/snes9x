@@ -39,6 +39,15 @@
 // (direct and through RAM, seen and likely entries) and the busiest ones. With a file it
 // also writes the jump log there, in the library's format.
 //
+// With --swaps [seeds=10] [count=3] it records the code map and jumps for `frames` frames,
+// finds the jump tables, then for each seed picks `count` entries and boots the game three
+// ways, unguarded, for `frames` frames each: those entries pointer-swapped, the same entries
+// given random bytes (the control), and clean. It prints how often each is still running at
+// the end (the CPU not stopped, no reboot, and the frame interrupt on or the picture changing
+// in the last 5 s), how many of those still
+// move (the picture changed in the last 5 s; a still title screen doesn't), and how many
+// read a changed entry.
+//
 // With --learn [held] it plays the recipe guarded for five seeds while learning a crash
 // map, then plays `held` other seeds three ways: plain, avoiding the learned hot blocks,
 // and avoiding as many random blocks the rules wrote (the control). `from` skips that many
@@ -49,6 +58,7 @@
 #include "corrupt/core_access.h"
 #include "corrupt/core_memory.h"
 #include "corrupt/jump_tables.h"
+#include "corrupt/pointer_swap.h"
 #include "corrupt/crash_guard.h"
 #include "corrupt/rom_blame.h"
 #include "corrupt/survivors.h"
@@ -704,6 +714,119 @@ int run_jumps(int frames, const char *file)
     return 0;
 }
 
+struct ArmResult
+{
+    int running = 0;   // the CPU not stopped, no reboot, some sign of life in the last 5 s
+    int alive = 0;     // ...and the picture still changing at the end
+    int used = 0;      // runs where the game read a changed entry
+    int differed = 0;  // runs whose last picture differs from the clean run's
+};
+
+// One unguarded run from a power cycle: is the game alive at the end, did it read `entries`.
+bool run_alive(int frames, const std::vector<uint32_t> &entries, bool &used, uint64_t &last_picture, bool &running)
+{
+    access.reset_console();
+    CodeMap seen(Memory.CalculatedSize);
+    RomTracer tracer;
+    tracer.start(seen);
+    uint64_t picture = 0;
+    int moving_late = 0, nmi_late = 0;
+    uint32_t reboots = access.sample().reboots;
+    for (int i = 0; i < frames; i++)
+    {
+        headless::run_frames(1);
+        auto signals = access.sample();
+        if (signals.picture_valid && signals.picture_hash != picture && i >= frames - 300)
+            moving_late++;
+        if (signals.nmi_enabled && i >= frames - 300)
+            nmi_late++;
+        if (signals.picture_valid)
+            picture = signals.picture_hash;
+    }
+    tracer.stop();
+    auto end = access.sample();
+    used = false;
+    for (auto o : entries)
+        used |= (seen.at(o) & (codeflag::Data | codeflag::Code)) != 0;
+    last_picture = picture;
+    // Some games (Pocky & Rocky) keep the frame interrupt off and time frames otherwise, so
+    // either sign of life in the last 5 s will do.
+    running = !end.cpu_halted && !end.emulation_stopped && end.reboots == reboots && (nmi_late || moving_late);
+    return running && moving_late >= 3;
+}
+
+int run_swaps(int frames, int seeds, int count)
+{
+    auto start = headless::save_state();
+    CodeMap map(Memory.CalculatedSize);
+    JumpLog log;
+    RomTracer tracer;
+    if (!tracer.start(map, &log))
+        return 1;
+    access.reset_console(); // learn from a boot, as the swapped runs will start
+    headless::run_frames(frames);
+    tracer.stop();
+    std::span<const uint8_t> clean(rom.clean().data(), rom.clean().size());
+    auto found = find_jump_tables(log, clean, map.flags(), SnesCoreAccess::rom_offsets());
+    auto slots = swap_slots(found.tables, 0, uint32_t(clean.size() - 1), false);
+    printf("tables   %zu found, %zu entries to swap, %d seeds of %d entries, %d frames each\n", found.tables.size(),
+           slots.size(), seeds, count, frames);
+    if (slots.empty())
+        return 1;
+
+    ArmResult swap, random, plain;
+    for (int seed = 1; seed <= seeds; seed++)
+    {
+        Rng pick_rng(uint64_t(seed) * 0x9E3779B97F4A7C15ULL);
+        std::vector<uint32_t> picks;
+        for (int i = 0; i < count && picks.size() < slots.size(); i++)
+        {
+            auto p = uint32_t(pick_rng.range(0, int64_t(slots.size()) - 1));
+            if (std::find(picks.begin(), picks.end(), p) == picks.end())
+                picks.push_back(p);
+        }
+        std::vector<uint32_t> entries;
+        for (auto p : picks)
+            for (int i = 0; i < slots[p].stride; i++)
+                entries.push_back(slots[p].offset + uint32_t(i));
+
+        uint64_t clean_picture = 0;
+        for (int arm = 2; arm >= 0; arm--) // clean first, for the picture to compare with
+        {
+            headless::load_state(start);
+            rom.restore_clean();
+            Rng rng{ uint64_t(seed) };
+            if (arm == 0)
+                apply_pointer_swap(slots, picks, false, rom, rng);
+            else if (arm == 1)
+                for (auto o : entries)
+                    rom.write(Target::ROM, o, uint8_t(rng.range(0, 255)));
+            bool used = false, running = false;
+            uint64_t picture = 0;
+            bool alive = run_alive(frames, entries, used, picture, running);
+            if (arm == 2)
+                clean_picture = picture;
+            auto &r = arm == 0 ? swap : arm == 1 ? random : plain;
+            r.alive += alive;
+            r.running += running;
+            r.used += used;
+            r.differed += picture != clean_picture;
+            if (getenv("CORRUPT_SWAPS_VERBOSE"))
+                printf("  seed %2d %-6s %s%s\n", seed, arm == 0 ? "swap" : arm == 1 ? "random" : "clean",
+                       alive ? "moving " : running ? "running" : "dead   ", used ? ", entries read" : "");
+        }
+    }
+    rom.restore_clean();
+    auto line = [&](const char *name, const ArmResult &r) {
+        printf("%-8s %2d of %d running, %2d of them moving; %2d read a changed entry, %2d ended on another picture than clean\n",
+               name, r.running, seeds, r.alive, r.used, r.differed);
+    };
+    line("swap", swap);
+    line("random", random);
+    line("clean", plain);
+    return 0;
+}
+
 } // namespace
 
 int main(int argc, char **argv)
@@ -786,6 +909,8 @@ int main(int argc, char **argv)
     }
     if (argc > 5 && std::string(argv[5]) == "--codemap")
         return run_codemap(frames, argc > 6 ? argv[6] : nullptr);
+    if (argc > 5 && std::string(argv[5]) == "--swaps")
+        return run_swaps(frames, argc > 6 ? atoi(argv[6]) : 10, argc > 7 ? atoi(argv[7]) : 3);
     if (argc > 5 && std::string(argv[5]) == "--jumps")
         return run_jumps(frames, argc > 6 ? argv[6] : nullptr);
     if (argc > 5 && std::string(argv[5]) == "--access")

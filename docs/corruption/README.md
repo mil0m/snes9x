@@ -173,7 +173,11 @@ over five seeds and then plays `held` other seeds plain, avoiding it, and avoidi
 random blocks (a control: if random does as well, the map learned nothing),
 `--codemap [file]` records the code map for `frames` frames (twice, alternating with
 plain runs) and prints the tracing cost, coverage, the banks with the most code and a few
-disassembled instructions, writing the map to `file` if given, and
+disassembled instructions, writing the map to `file` if given,
+`--jumps [file]` records the indirect jumps too and prints the jump tables found behind them
+(writing the jump log to `file`), `--swaps [seeds=10] [count=3]` boots each seed's picked
+jump table entries three ways, unguarded (pointer-swapped, random bytes, clean), and counts
+which keep running, and
 `--dump <dir>` writes every
 memory's raw bytes to `<dir>/<target>.bin`. Point `CORRUPT_DUMP_DIR` at such a folder when
 running the widget tests and they draw it through the pixel and tile views into the shots folder. With

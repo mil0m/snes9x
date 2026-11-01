@@ -10,6 +10,7 @@
 #include "corrupt/crash_guard.h"
 #include "corrupt/hook.h"
 #include "corrupt/jump_tables.h"
+#include "corrupt/pointer_swap.h"
 #include "corrupt/rom_keeper.h"
 #include "corrupt/rom_blame.h"
 #include "corrupt/survivors.h"
@@ -854,6 +855,42 @@ TEST_SUITE("jump tables in the real core")
         CHECK(through.likely() == 0);
         CHECK(found.pointer_jumps == 0);
         CHECK(found.ambiguous == 0);
+    }
+
+    TEST_CASE("a pointer swap makes the dispatcher run another real routine, both kinds")
+    {
+        REQUIRE(headless::init());
+        REQUIRE(headless::load_rom_memory(testrom::build_dispatch()));
+        CodeMap map(Memory.CalculatedSize);
+        JumpLog log;
+        RomTracer tracer;
+        REQUIRE(tracer.start(map, &log));
+        headless::run_frames(20);
+        tracer.stop();
+        std::span<const uint8_t> rom(Memory.ROM, Memory.CalculatedSize);
+        auto tables = find_jump_tables(log, rom, map.flags(), SnesCoreAccess::rom_offsets()).tables;
+
+        CoreMemory memory;
+        for (auto [table, counts, routines] : { std::tuple{ dp::kTable, dp::kCounts, dp::kRoutines },
+                                                std::tuple{ dp::kRamTable, dp::kRamCounts, dp::kRamRoutines } })
+        {
+            CAPTURE(table);
+            auto slots = swap_slots(tables, table, table + 1, false); // entry 0 only
+            REQUIRE(slots.size() == 1);
+            CHECK(slots[0].donors.size() == size_t(dp::kEntries - 1));
+            Rng rng(5);
+            CHECK(apply_pointer_swap(slots, { 0 }, false, memory, rng).size() >= 1);
+            uint16_t now = uint16_t(Memory.ROM[table] | (Memory.ROM[table + 1] << 8));
+            int k = (now - 0x8000 - int(routines)) / 0x10;
+            REQUIRE(k >= 1);
+            REQUIRE(k < dp::kEntries);
+            for (int i = 0; i < dp::kEntries; i++)
+                Memory.RAM[counts + i] = 0;
+            headless::run_frames(8); // each entry comes up twice
+            CHECK(Memory.RAM[counts] == 0);     // routine 0 no longer runs...
+            CHECK(Memory.RAM[counts + k] == 4); // ...routine k runs in its place, and for its own entry
+            CHECK(!(CPU.Flags & HALTED_FLAG));
+        }
     }
 
     TEST_CASE("without a jump log the tracer notes nothing and still records the map")

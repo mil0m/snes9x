@@ -1,6 +1,6 @@
 # Jump tables and pointer swap: plan (roadmap #25 → #32)
 
-**Status (2026-11-01):** phases 1-3 done; Mikael said go. Builds on the code map tracer from
+**Status (2026-11-01):** all four phases done, pending QA.md section 26 (FF6 needs live play); Mikael said go. Builds on the code map tracer from
 [the ROM plan](./2026-10-31-rom-corruption-plan.md) phase 3. Ideas behind it:
 [the horizons](./2026-10-31-horizons.md).
 
@@ -153,6 +153,30 @@ Jumps overlay (seen strong, sites, likely lighter) and hover ("entry 1 of 2 in a
 for the `JMP ($1100,X)` at `$C0:1050`: goes to `$C0:1200`, jumped through 12 times"), and
 the dock's ROM line ("52 jump tables found, 41 with entries to swap" on Goof Troop's
 title and demo).
+
+## Phase 4: how it went (2026-11-01)
+
+On the test ROM (`build_dispatch`), swapping entry 0 of either table makes routine 0 stop
+running and the routine its entry now names run in its place, exactly (4 runs in 8 frames:
+its own 2 and the 2 it took over), for the direct table and the one copied to RAM.
+
+On real games: `corrupt-smoke <rom> <recipe> 3600 1 --swaps 10 3` learns the tables from
+one minute after a boot, then for 10 seeds picks 3 entries and boots each three ways,
+unguarded, for a minute. *Running*: the CPU not stopped, no reboot, and the frame
+interrupt on or the picture changing in the last 5 s (Pocky & Rocky keeps the frame
+interrupt off). *Moving*: the picture still changing in the last 5 s.
+
+| Game | Pointer swap: running / moving | Random bytes, same entries | Clean |
+|---|---|---|---|
+| Goof Troop | 10 / **9** of 10 | 10 / 0 (frozen) | 10 / 10 |
+| Pocky & Rocky | 10 / **7** | 4 / 1 | 10 / 10 |
+| FE4 | 10 / **5** | 1 / 1 | 10 / 10 |
+
+Every run read a changed entry, and every swapped run that kept moving ended on another
+picture than the clean one. The wrong-but-valid idea holds: random values in the very same
+entries kill the game 9 times in 10; valid targets keep it going most of the time. The
+crash guard (which reverts entries by use, like any ROM byte) rescues more in the app.
+FF6 waits for live play: its title runs from WRAM (QA 26).
 
 ## Out of scope
 
