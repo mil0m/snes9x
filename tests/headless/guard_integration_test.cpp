@@ -11,6 +11,7 @@
 #include "corrupt/hook.h"
 #include "corrupt/instant_revert.h"
 #include "corrupt/first_use.h"
+#include "corrupt/proven_blame.h"
 #include "corrupt/test_ahead.h"
 #include "corrupt/jump_tables.h"
 #include "corrupt/pointer_swap.h"
@@ -1216,6 +1217,66 @@ TEST_SUITE("instant revert in the real core")
         CHECK(d.h.outcomes[0].verdict.signal == CrashSignal::CpuStopped);
         CHECK(d.h.reverts.empty()); // no landing: nothing for the instant revert
         CHECK(d.rom(fz::kLight) == 0x00);
+    }
+
+    constexpr uint32_t kNmiCounterInc = 0x0030; // INC $11 in the NMI handler (the frame counter)
+
+    // A fuse lit long before the crash (200 frames): the guard's usual window never sees it.
+    // The instant revert is off: the STP comes right after the NMI handler runs the DEC, so
+    // it would put that innocent byte back (blaming what ran last) before the guard sees it.
+    struct LongFuse
+    {
+        Derailing d{ testrom::build_fuse(), false, somewhere_new_at(60) };
+        ProvenBlame prover{ d.blame, d.h.rom };
+        explicit LongFuse(bool prove)
+        {
+            namespace fz = testrom::fuse;
+            // Made as a run's start makes them (a rollback doesn't undo those).
+            d.h.rom.write_at_start(Target::ROM, fz::kLight, 200);
+            d.h.rom.write_at_start(Target::ROM, kNmiCounterInc, 0xC6); // INC -> DEC in the NMI handler: harmless, runs every frame
+            if (prove)
+            {
+                prover.set_map({ d.map.data(), d.map.size() });
+                prover.set_detector(d.h.guard.detector_config());
+                AheadHooks hooks;
+                hooks.take_derail = [this] { return d.tracer.take_derail(); };
+                prover.set_hooks(hooks);
+                d.h.guard.set_prover(&prover);
+                d.h.guard.set_prove_first_crash(true);
+            }
+        }
+    };
+
+    TEST_CASE("proven blame: a fuse lit long before the crash is found by replaying, in one rollback")
+    {
+        namespace fz = testrom::fuse;
+        LongFuse lf(true);
+        auto &d = lf.d;
+        d.h.run(400);
+        REQUIRE(d.h.outcomes.size() == 1);
+        auto &out = d.h.outcomes[0];
+        CAPTURE(out.summary);
+        CHECK(out.verdict.signal == CrashSignal::CpuStopped);
+        CHECK(out.proven);
+        CHECK(out.rom_blamed == std::vector<uint32_t>{ fz::kLight });
+        CHECK(out.restored_frame <= 61);
+        CHECK(d.rom(fz::kLight) == 0x00);
+        CHECK(d.rom(kNmiCounterInc) == 0xC6); // the innocent change stays
+        // The newer start: as is, without the DEC, without every change (the fuse is lit by
+        // then); the older: without both, the DEC alone, the light alone.
+        CHECK(out.proof_runs == 6);
+        CHECK(d.h.wram(fz::kRunsAddr) == 1); // the routine ran again, harmless now
+        CHECK(IPPU.RenderThisFrame);
+        CHECK(alive(d.h));
+    }
+
+    TEST_CASE("guessing, the same fuse costs more than one rollback")
+    {
+        LongFuse lf(false);
+        auto &d = lf.d;
+        d.h.run(900);
+        CHECK(d.h.outcomes.size() >= 2); // it blames the DEC first: it's what ran near the crash
+        CHECK(alive(d.h));
     }
 
     TEST_CASE("without testing first, the same recipe needs the instant revert")

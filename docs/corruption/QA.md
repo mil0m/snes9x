@@ -490,3 +490,14 @@ Use a game you have never set up (a fresh library folder, so no recipes exist fo
 7. Untick **Allow remote control**.
    - [ ] The page goes offline; nothing listens on port 8095 (`nc -z 127.0.0.1 8095` fails).
 
+## 32. Proven blame
+1. Load FE4 (or a game that crashes easily under ROM changes) and play for a couple of minutes, so the code map knows its code.
+2. Pick **Starter: Opcode swap** (classic) and press **Corrupt (F7)**. Play until a crash is caught.
+   - [ ] Some catches say *Crash caught (…): back N s, found by replaying it: reverted 1 ROM byte*, after a short pause (about a second).
+   - [ ] After such a catch the same crash doesn't come back at the same moment.
+   - [ ] The ROM section counts *N crashes traced by replaying them*.
+3. Hold a direction while playing until a frozen-screen crash is caught (if one happens).
+   - [ ] That one is handled the old way (no *found by replaying it*).
+4. Look at the crash journal.
+   - [ ] Proven catches have `"rom_action": "… (proven by replay)"`.
+

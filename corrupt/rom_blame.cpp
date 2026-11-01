@@ -100,7 +100,9 @@ void RomBlame::collect(uint64_t now)
         {
             flags[o] &= uint8_t(~codeflag::Touched);
             just_used.push_back(o);
-            if (u.first_used == ByteUse::kNever)
+            // After a rollback the frame count goes back: a first use from the timeline that
+            // was thrown away is no first use in this one.
+            if (u.first_used == ByteUse::kNever || u.first_used > now)
                 u.first_used = now;
             u.last_used = now;
             u.frames_used++;
@@ -143,6 +145,17 @@ size_t RomBlame::suspects(uint64_t after, uint64_t through, bool only_new) const
     for (auto &u : uses)
         n += in_window(u, after, through, only_new);
     return n;
+}
+
+std::vector<uint32_t> RomBlame::used_between(uint64_t after, uint64_t through) const
+{
+    std::vector<uint32_t> out;
+    if (!flags)
+        return out;
+    for (size_t i = 0; i < uses.size(); i++)
+        if (in_window(uses[i], after, through, false))
+            out.push_back(offsets[i]);
+    return out;
 }
 
 ByteBlameResult RomBlame::act(uint64_t after, uint64_t through, unsigned attempt, bool only_new)

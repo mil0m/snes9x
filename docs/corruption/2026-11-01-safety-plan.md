@@ -1,6 +1,6 @@
 # Safety first: plan (roadmap phase 7, #50-#52, #55, #56)
 
-**Status (2026-11-01):** #50 done (QA.md section 27), #51 done (QA.md section 28), #52 done (QA.md section 29). #55 test at first use (the follow-up to #52) done (QA.md section 30); it works but measured little, see its "How it went". From Erik's list (sorted in
+**Status (2026-11-01):** #50 done (QA.md section 27), #51 done (QA.md section 28), #52 done (QA.md section 29). #55 test at first use (the follow-up to #52) done (QA.md section 30); it works but measured little, see its "How it went". #56 proven blame done (QA.md section 32): a trade, see its "How it went". From Erik's list (sorted in
 [the horizons doc](./2026-10-31-horizons.md#eriks-list-2026-11-01)): see what the game uses
 live, catch a bad change sooner, and test a change before it reaches the game.
 
@@ -496,3 +496,45 @@ fuse ROM with a long fuse: today's guard rolls back twice, the proven blame once
 `corrupt-smoke --prove [seeds]`: guard + #51 + #52 + #55 with and without it, on Goof
 Troop, Pocky & Rocky and FE4, Code roulette and Code drip: rollbacks, frames lost, how many
 crashes were proven, runs and time.
+
+**How it went.** Built as planned (`corrupt/proven_blame`, the guard's `BlameProver` hook and
+`replayable()`, `RomBlame::used_between`, `RunSpec::detect`, the session's prover with the
+re-entrant frame hook, the panel's *N crashes traced by replaying them*, `corrupt-smoke
+--prove` and `--nmi`), with these changes along the way:
+
+- **The bytes the game was seen using don't explain most crashes.** On FE4 every replayed
+  crash came back with all the changed bytes the tracer saw used put back, and went away
+  with *every* changed byte put back. The culprits are ordinary code bytes the tracer
+  knows; the likely reason is that after a landing (#51's watch) the tracer marks nothing
+  until the frame ends, and a quietly broken game derails in most frames. So the proof
+  has a second step: every changed byte clean, then narrowed by halves (a proven set over
+  8 bytes that runs out of budget falls back to guessing rather than undo most of the
+  corruption). The ordinary guess has the same blind spot; a follow-up.
+- **Only a crash that comes back.** Replaying every crash proved 74 of 81 on FE4 but fixed
+  ~1 byte each where the guess fixes several, so the corruption stayed dense and crashes
+  kept coming (rollbacks 42 → 78). Now the first crash is guessed as before, and only one
+  that comes back at the same moment (same kind, start within 2 s) after a rollback is
+  replayed: the loop guessing couldn't break. `set_prove_first_crash` keeps the other way
+  for tests and `CORRUPT_PROVE_FIRST=1` for measuring.
+- **Clean FE4 isn't the cause.** `corrupt-smoke --nmi` shows the clean game's NMI-off
+  stretches: FE4 0.9 s at boot, Pocky & Rocky 2.6 s at most, Goof Troop none; the guard's
+  5 s is safe.
+- **A first use from a thrown-away timeline.** After a rollback the frame count goes back;
+  `RomBlame` now takes a use earlier than the recorded first use as the first use.
+
+Measured with `corrupt-smoke --prove 10` (both arms with the guard, #51, #52 and #55):
+
+| Recipe | Game | guard rollbacks | frames lost | changed at the end (used) | crashes replayed, proven | ms per proof |
+|---|---|---|---|---|---|---|
+| Code roulette (30 code bytes at load) | Goof Troop | 4 → 4 | 1680 → 1677 | 237 (97) → 248 (101) | 1, 1 | 2122 |
+| | Pocky & Rocky | 12 → 12 | 6671 → 6671 | 239 (61) → 239 (61) | 0 | |
+| | FE4 | 42 → 64 | 19571 → 25347 | 46 (38) → 92 (61) | 43, 42 | 1481 |
+| Code drip (live) | Goof Troop | 1 → 1 | 419 → 419 | same | 0 | |
+| | Pocky & Rocky | 9 → 8 | 3524 → 2796 | 456 (101) → 463 (110) | 2, 2 | 1406 |
+| | FE4 | 15 → 20 | 6047 → 8623 | 473 (59) → 431 (53) | 6, 6 | 1104 |
+
+What it means: it's a trade. Where guessing loops it keeps much more of the corruption
+(FE4 Code roulette ends with twice the changed bytes, 61 in use instead of 38) at the cost
+of more rollbacks later, because what it keeps keeps breaking the game; elsewhere it's
+neutral or a little better. About 1-2 s of unseen replay per proof.
+

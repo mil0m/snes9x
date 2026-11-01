@@ -8,6 +8,7 @@
 #include "corrupt/memory_watch.h"
 #include "corrupt/rom_keeper.h"
 #include "corrupt/first_use.h"
+#include "corrupt/proven_blame.h"
 #include "corrupt/instant_revert.h"
 #include "corrupt/test_ahead.h"
 #include "corrupt/rom_blame.h"
@@ -78,6 +79,7 @@ class CorruptionSession
         unsigned tested_skipped = 0;  // ...whose every pick crashed: skipped
         unsigned first_use_tested = 0; // changed bytes played ahead at their first use (#55)
         unsigned first_use_fixed = 0;  // ...that crashed the game alone: put back or re-rolled
+        unsigned crashes_proven = 0;   // crashes whose bytes were found by replaying them (#56)
         bool instant_revert = true;   // the recipe lets it
         size_t pins = 0;        // ROM changes the recipe keeps
         size_t patched = 0;     // painted bytes kept in the recipe
@@ -206,6 +208,7 @@ class CorruptionSession
     corrupt::CoreMemory memory;
     corrupt::RomKeeper rom{ memory }; // what the engine writes through: journals ROM edits, guards the header
     corrupt::RomBlame rom_blame{ rom }; // which changed ROM bytes the game used, for the guard
+    corrupt::ProvenBlame proven{ rom_blame, rom }; // replays a crash to find its bytes (#56)
     corrupt::SnesCoreAccess access;
     corrupt::CrashGuard guard;
     corrupt::RunControl control;

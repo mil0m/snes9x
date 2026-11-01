@@ -52,6 +52,8 @@ class RomBlame : public ByteBlame
     std::vector<uint32_t> take_survivals(); // bytes that turned survivors since the last take
 
     size_t suspects(uint64_t after, uint64_t through, bool only_new = false) const override;
+    // Changed bytes the game used in frames (after, through], in no order (#56's candidates).
+    std::vector<uint32_t> used_between(uint64_t after, uint64_t through) const;
     ByteBlameResult act(uint64_t after, uint64_t through, unsigned attempt, bool only_new = false) override;
 
     // Deals with these changed bytes now, the way the policy says (revert or re-roll), for

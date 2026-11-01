@@ -75,6 +75,8 @@ struct RunSpec
     // Frames of NMI off that count as a crash (0: not at all). A guess on its own, so only
     // worth it where a control run without the change has to disagree (#55).
     uint32_t nmi_off_frames = 0;
+    // The whole detector setup instead (definite signals plus nmi_off_frames by default).
+    std::optional<DetectorConfig> detect;
 };
 
 struct RunVerdict

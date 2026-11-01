@@ -72,7 +72,7 @@ RunVerdict RunAhead::play(Engine &engine, RomKeeper &rom, CoreAccess &core, std:
     engine.quiet_after(spec.quiet_after, Target::ROM);
     auto detect = definite_only();
     detect.nmi_off_frames = spec.nmi_off_frames;
-    detector.set_config(detect);
+    detector.set_config(spec.detect.value_or(detect));
     if (hooks.begin)
         hooks.begin();
     core.begin_unseen();

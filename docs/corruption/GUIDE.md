@@ -136,6 +136,15 @@ skip its last changes, halve its strength, turn it off, or re-roll twice then ha
 turn off. **As the recipe says** shows what the loaded recipe asks for (it's set in the
 recipe file, `crash_policy`); picking another overrides it for now. Changed ROM bytes the game ran into are put back either way.
 
+When the crash is one it can play again without you (the game stopped, rebooted, or its
+frame interrupt went off) and changed ROM bytes are involved, it first replays the last
+few seconds unseen: once as they were, to see the crash again, and again without the
+changed bytes the game used, going further back if that isn't enough. Then it narrows
+them down and puts back only the ones that made the difference, in a single rollback. You
+feel it as a pause of a second or so; the status line says *found by replaying it*, and
+the ROM section counts *N crashes traced by replaying them*. Crashes it can't play again
+(frozen or black screens, which need your button presses) are handled as below.
+
 If the same crash keeps coming back, each time it goes 5 seconds further back. After five
 crashes in a row that fixed nothing, it gives up: corruption goes off and the ROM goes
 back to clean.

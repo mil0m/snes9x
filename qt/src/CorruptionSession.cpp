@@ -92,6 +92,22 @@ void CorruptionSession::configureGuard()
     guard.set_detector_config(cfg);
     guard.on_journal = [this](const JournalEntry &e) { writeJournal(e); };
     guard.set_byte_blame(&rom_blame);
+    // Proven blame (#56): a crash the replay shows again is replayed to find its bytes.
+    proven.set_detector(guard.detector_config());
+    AheadHooks proof_hooks;
+    proof_hooks.take_derail = [this]() -> std::optional<DerailWatch::Note> {
+        return watching_derails ? tracer.take_derail() : std::nullopt;
+    };
+    proof_hooks.begin = [this] {
+        running_ahead = true; // the guard calls it from betweenFrames, which holds the lock
+        tracer.note_jumps(false);
+    };
+    proof_hooks.end = [this] {
+        tracer.note_jumps(true);
+        running_ahead = false;
+    };
+    proven.set_hooks(proof_hooks);
+    guard.set_prover(&proven);
     rom_blame.set_policy(recipe.rom_policy.value_or(RomPolicy::Revert), recipe.seed);
     instant.set_enabled(recipe.instant_revert.value_or(true));
     AheadConfig ahead_config;
@@ -375,6 +391,7 @@ void CorruptionSession::gameLoaded()
     ahead.reset_counts();
     first_use.forget();
     first_use.reset_counts();
+    proven.reset_counts();
     last_crash.clear();
     configureGuard();
     last_backup_time.reset();
@@ -406,6 +423,7 @@ void CorruptionSession::gameLoaded()
 void CorruptionSession::loadCodeMap()
 {
     rom_blame.attach(nullptr, 0); // the map it reads is about to be replaced
+    proven.set_map({});
     tracer.stop();
     code_map_reload = false;
     code_map_root = library_root;
@@ -433,6 +451,7 @@ void CorruptionSession::loadCodeMap()
     else
     {
         rom_blame.attach(code_map.mine().data(), code_map.mine().size());
+        proven.set_map({ code_map.mine().data(), code_map.mine().size() });
         if (watching_derails)
             tracer.watch_derails(&derails); // a new tracer: watch again
     }
@@ -508,6 +527,7 @@ void CorruptionSession::gameClosing()
     if (jump_log.unsaved())
         saveJumpLog();
     rom_blame.attach(nullptr, 0);
+    proven.set_map({});
     tracer.stop(); // before the reset watch goes
     watching_derails = false;
     instant.drop();
@@ -570,6 +590,7 @@ std::vector<std::string> CorruptionSession::loadRecipe(const Recipe &recipe, con
     ahead.reset_counts();
     first_use.forget();
     first_use.reset_counts();
+    proven.reset_counts();
     last_crash.clear();
     configureGuard();
     note("Recipe: " + recipe.name);
@@ -808,6 +829,7 @@ void CorruptionSession::newRecipeLocked(const std::string &name)
     ahead.reset_counts();
     first_use.forget();
     first_use.reset_counts();
+    proven.reset_counts();
     last_crash.clear();
     configureGuard();
     note("New recipe: " + name);
@@ -1134,6 +1156,7 @@ CorruptionSession::Status CorruptionSession::status()
         s.tested_skipped = ahead.skipped();
         s.first_use_tested = first_use.bytes_tested();
         s.first_use_fixed = first_use.fixes();
+        s.crashes_proven = proven.proved();
         s.instant_revert = instant.is_enabled();
         s.pins = engine.recipe().pins.size();
         s.patched = patched_bytes(engine.recipe().patches);

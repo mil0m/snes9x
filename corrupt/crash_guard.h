@@ -6,6 +6,7 @@
 #include <deque>
 #include <functional>
 #include <map>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -87,6 +88,33 @@ struct ByteBlame
     virtual ~ByteBlame() = default;
 };
 
+// Proven blame (#56): before the guard acts on a crash it can replay, something that plays
+// the stretch before it again, unseen, to find which changed bytes it needs. Starts are
+// the guard's checkpoints, newest first; a proof names the one to roll back to.
+struct ProofStart
+{
+    uint64_t frame = 0;
+    const std::vector<uint8_t> *state = nullptr;
+    const EngineSnapshot *engine = nullptr;
+};
+struct Proof
+{
+    size_t start = 0;         // index into the starts given
+    ByteBlameResult fixed;    // what was fixed for good
+    unsigned runs = 0;        // replays made
+    uint64_t frames = 0;      // ...and their frames
+    double ms = 0;
+};
+struct BlameProver
+{
+    // Nothing: it couldn't show the crash again, or prove anything; the guard guesses as before.
+    virtual std::optional<Proof> prove(Engine &engine, CoreAccess &core, const CrashVerdict &verdict,
+                                       const std::vector<ProofStart> &starts) = 0;
+    virtual ~BlameProver() = default;
+};
+// Crashes a replay can show again without the player (frozen and black screens need presses).
+bool replayable(CrashSignal s);
+
 struct GuardOutcome
 {
     enum Kind
@@ -105,6 +133,9 @@ struct GuardOutcome
     uint64_t blame_through = 0;
     std::vector<uint32_t> rom_blamed; // what the byte blame acted on
     std::string rom_action;           // "reverted 2 ROM bytes"
+    bool proven = false;              // the bytes were found by replaying (#56)
+    unsigned proof_runs = 0;
+    double proof_ms = 0;
     std::string summary; // short text for an on-screen message
 };
 
@@ -124,12 +155,21 @@ class CrashGuard
     // Each crash in a row goes this much further back: damage is often written long
     // before the game trips over it, and every checkpoint after it carries it along.
     static constexpr uint64_t kStepBackFrames = 300;
+    // Proven blame (#56): checkpoints offered, each this much further back.
+    static constexpr unsigned kProofStarts = 3;
+    static constexpr uint64_t kProofStep = 300;
+    // ...only for a crash that came back: the same kind, starting within this of the last.
+    static constexpr uint64_t kSameCrashFrames = 120;
 
     GuardOutcome between_frames(Engine &engine, CoreAccess &core);
 
     void set_policy(PolicyKind p) { policy = p; }
     // Single bytes to blame besides the rules (the ROM blame); null for none.
     void set_byte_blame(ByteBlame *b) { bytes = b; }
+    // Proven blame (#56); null: the guard only guesses.
+    void set_prover(BlameProver *p) { prover = p; }
+    // Replay every crash it can, not only one that came back (measurements, tests).
+    void set_prove_first_crash(bool on) { prove_first = on; }
     PolicyKind get_policy() const { return policy; }
     void set_detector_config(const DetectorConfig &c) { detector.set_config(c); }
     const DetectorConfig &detector_config() const { return detector.get_config(); }
@@ -154,12 +194,15 @@ class CrashGuard
     };
 
     GuardOutcome handle(const CrashVerdict &verdict, Engine &engine, CoreAccess &core);
+    GuardOutcome proven(const CrashVerdict &verdict, Engine &engine, CoreAccess &core, uint64_t target);
     std::vector<uint32_t> suspects_between(const Engine &engine, uint64_t after, uint64_t through) const;
     void restore(const Checkpoint &cp, Engine &engine, CoreAccess &core);
     void journal(JournalEntry e, const Engine &engine);
 
     CrashDetector detector;
     ByteBlame *bytes = nullptr;
+    BlameProver *prover = nullptr;
+    bool prove_first = false;
     PolicyKind policy = PolicyKind::Reroll;
     std::deque<Checkpoint> ring;
     unsigned &crashes_of(const Engine &engine, uint32_t rule_index);
@@ -168,6 +211,7 @@ class CrashGuard
     std::optional<uint64_t> last_frame;
     std::optional<uint64_t> recovering_since; // frame we last rolled back to
     unsigned consecutive = 0;
+    std::optional<CrashVerdict> last_verdict; // the crash before this one, in this row
     unsigned fruitless = 0; // of those, the ones nothing was fixed for good in
     unsigned total = 0;
     bool manual_pending = false;

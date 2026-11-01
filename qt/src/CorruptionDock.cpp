@@ -993,6 +993,9 @@ void CorruptionDock::refreshStatus()
             kept << tr("%1 at first use (%2 put back)")
                         .arg(plural(status.first_use_tested, tr("1 byte tested"), tr("%1 bytes tested")))
                         .arg(status.first_use_fixed);
+        if (status.crashes_proven)
+            kept << plural(status.crashes_proven, tr("1 crash traced by replaying it"),
+                           tr("%1 crashes traced by replaying them"));
         if (!kept.isEmpty())
             rom_lines << kept.join(" · ");
         rom_lines << (status.code.seen
