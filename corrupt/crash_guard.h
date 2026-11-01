@@ -17,6 +17,13 @@ namespace corrupt
 struct CoreAccess
 {
     virtual std::vector<uint8_t> save_state() = 0;
+    // The same into a buffer kept from last time: a state saved every frame (the instant
+    // revert) mustn't pay for a fresh 800 KB allocation each time. False and empty on failure.
+    virtual bool save_state_into(std::vector<uint8_t> &state)
+    {
+        state = save_state();
+        return !state.empty();
+    }
     virtual bool load_state(const std::vector<uint8_t> &state) = 0;
     virtual FrameSignals sample() = 0;
     // A power cycle, so the game boots again (from a corrupted ROM, for classic runs).
@@ -32,6 +39,7 @@ struct JournalEntry
         Crash,
         Recovered, // a clean stretch followed the last rollback
         GaveUp,
+        InstantRevert, // a changed ROM byte sent the CPU into non-code: fixed, the frame replayed
     } kind = Crash;
 
     std::string recipe;

@@ -6,6 +6,7 @@
     <file alias="palette-drift.json">../../../docs/corruption/examples/palette-drift.json</file>
     <file alias="rom-branch-flips.json">../../../docs/corruption/examples/rom-branch-flips.json</file>
     <file alias="rom-classic-sprinkle.json">../../../docs/corruption/examples/rom-classic-sprinkle.json</file>
+    <file alias="rom-code-drip.json">../../../docs/corruption/examples/rom-code-drip.json</file>
     <file alias="rom-live-drip.json">../../../docs/corruption/examples/rom-live-drip.json</file>
     <file alias="rom-opcode-swap.json">../../../docs/corruption/examples/rom-opcode-swap.json</file>
     <file alias="rom-operand-nudge.json">../../../docs/corruption/examples/rom-operand-nudge.json</file>

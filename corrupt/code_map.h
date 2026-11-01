@@ -25,6 +25,9 @@ constexpr uint8_t Dma = 0x20;     // a DMA read it
 // Used since the crash blame last looked (corrupt/rom_blame.h), set with any of the above.
 // Never saved, never counted: it is cleared and set again all the time.
 constexpr uint8_t Touched = 0x80;
+// Differs from the clean ROM right now: kept by the crash blame for the instant revert
+// (corrupt/derail.h); pinned bytes never get it. Never saved, never counted, like Touched.
+constexpr uint8_t Changed = 0x40;
 constexpr uint8_t Code = Opcode | Operand;
 constexpr uint8_t All = 0x3F; // what the file keeps
 } // namespace codeflag

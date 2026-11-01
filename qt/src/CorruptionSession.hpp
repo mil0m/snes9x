@@ -7,6 +7,7 @@
 #include "corrupt/library.h"
 #include "corrupt/memory_watch.h"
 #include "corrupt/rom_keeper.h"
+#include "corrupt/instant_revert.h"
 #include "corrupt/rom_blame.h"
 #include "corrupt/rom_heat.h"
 #include "corrupt/survivors.h"
@@ -68,6 +69,8 @@ class CorruptionSession
         size_t rom_changed = 0; // ROM bytes that differ from the clean ROM
         size_t rom_used = 0;    // ...of which the game has run or read since they changed
         size_t survivors = 0;   // ...of which proved themselves (see survivors())
+        unsigned instant_reverts = 0; // changed bytes caught sending the CPU astray, fixed at once (#51)
+        bool instant_revert = true;   // the recipe lets it
         size_t pins = 0;        // ROM changes the recipe keeps
         size_t patched = 0;     // painted bytes kept in the recipe
         corrupt::CodeCoverage code; // the code map (everyone's), updated every few seconds
@@ -78,6 +81,8 @@ class CorruptionSession
     // Called by Snes9xController around ROM loading (emulation thread suspended).
     void gameLoaded();
     void gameClosing();
+    // The front end loaded a save state: checkpoints from before belong to another timeline.
+    void stateLoaded();
 
     void setLibraryRoot(const std::filesystem::path &root);
     std::filesystem::path libraryRoot();
@@ -197,6 +202,9 @@ class CorruptionSession
     corrupt::CrashMapKeeper crash_map;
     corrupt::CodeMapKeeper code_map;        // recorded into by the tracer whenever a game is loaded
     corrupt::RomTracer tracer;
+    corrupt::DerailWatch derails;  // the tracer notes landings on non-code in it (#51)
+    corrupt::InstantRevert instant; // and this replays such a frame without the culprits
+    bool watching_derails = false;  // the watch costs 5-10% while on: only during ROM runs
     corrupt::RomAddresses rom_where;        // for disassembly in the viewer
     std::vector<uint8_t> code_shown;        // everyone's map, copied between frames while the viewer shows the ROM
     std::vector<uint8_t> code_for_aim;      // everyone's map as aimed rules saw it when this run started

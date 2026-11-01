@@ -54,6 +54,10 @@ class RomBlame : public ByteBlame
     size_t suspects(uint64_t after, uint64_t through, bool only_new = false) const override;
     ByteBlameResult act(uint64_t after, uint64_t through, unsigned attempt, bool only_new = false) override;
 
+    // Deals with these changed bytes now, the way the policy says (revert or re-roll), for
+    // good: the instant revert's culprits. Bytes that aren't changed are left alone.
+    ByteBlameResult fix(const std::vector<uint32_t> &bytes);
+
     bool fixes_for_good() const override { return pol == RomPolicy::Revert; }
 
     size_t watched() const { return offsets.size(); } // changed bytes

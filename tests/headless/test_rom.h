@@ -68,4 +68,18 @@ constexpr uint32_t kRamCounts = 0x30;     // and $30 + i
 constexpr int kEntries = 4;
 } // namespace dispatch
 
+// Crash::None, whose main loop calls a routine every frame (instant revert, #51): it bumps
+// $7E:0014, counts down X from $50 (160 instructions, so a change it ran is long out of the
+// window), then BRA +0, LDA $DB00 (whose operand's second byte is STP), INC $13, RTS. A
+// branch offset of 2 lands on that STP: the middle of an instruction. ROM offsets.
+std::vector<uint8_t> build_derail();
+namespace derail
+{
+constexpr uint32_t kRoutine = 0x0060;   // INC $14 (E6 14)
+constexpr uint32_t kInnocent = 0x0061;  // its operand: $14 -> $15 is harmless
+constexpr uint32_t kBranch = 0x0068;    // BRA's offset byte (80 00)
+constexpr uint32_t kStp = 0x006B;       // LDA $DB00's high byte
+constexpr uint32_t kRunsAddr = 0x13;    // WRAM: runs of the routine's end
+} // namespace derail
+
 } // namespace testrom

@@ -25,6 +25,9 @@ class CrashMapKeeper
     // rom_blamed bytes, rom_survived() their survivals, and ROM writes stop counting.
     void learn_rom_by_use(bool on) { learner.skip_rom(on); }
     void rom_survived(const std::vector<uint32_t> &offsets);
+    // ROM bytes the instant revert caught sending the CPU into non-code: crashes for their
+    // blocks, with no window of rule writes to blame. True when the hot set changed.
+    bool rom_crashed(const std::vector<uint32_t> &offsets);
 
     bool save_due() const;
     bool unsaved() const { return dirty; } // anything learned since the last save, e.g. on close

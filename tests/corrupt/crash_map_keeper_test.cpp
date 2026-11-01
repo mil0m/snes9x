@@ -159,6 +159,17 @@ TEST_SUITE("crash map keeper")
         CHECK(f.keeper.unsaved());
     }
 
+    TEST_CASE("bytes the instant revert caught are crashes for their block, and nothing else is blamed")
+    {
+        Feed f;
+        f.frames(10);
+        f.keeper.rom_crashed({ 0x1234, 0x1238 });
+        CHECK(f.keeper.mine().counts(Target::ROM, 0x1230).crashes == 1);
+        CHECK(f.keeper.mine().counts(Target::WRAM, 0).crashes == 0);
+        CHECK(f.keeper.save_due());
+        CHECK_FALSE(f.keeper.rom_crashed({}));
+    }
+
     TEST_CASE("with ROM blamed by use, ROM writes in the log no longer count")
     {
         Feed f;

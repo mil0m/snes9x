@@ -11,6 +11,10 @@ RomBlame::RomBlame(RomKeeper &rom) : rom(rom)
 {
     rom.on_change = [this](uint32_t offset, bool now_changed) { changed(offset, now_changed); };
     rom.on_forget = [this] {
+        if (flags)
+            for (auto o : offsets)
+                if (o < flags_size)
+                    flags[o] &= uint8_t(~codeflag::Changed);
         offsets.clear();
         uses.clear();
         index.clear();
@@ -28,11 +32,12 @@ void RomBlame::attach(uint8_t *f, size_t size)
 {
     flags = size ? f : nullptr;
     flags_size = flags ? size : 0;
-    // Touches from before (or from a map that wasn't watched) say nothing about now.
+    // Touches from before (or from a map that wasn't watched) say nothing about now. The
+    // new map learns which bytes are changed.
     if (flags)
         for (auto o : offsets)
             if (o < flags_size)
-                flags[o] &= uint8_t(~codeflag::Touched);
+                flags[o] = uint8_t((flags[o] & ~codeflag::Touched) | codeflag::Changed);
 }
 
 void RomBlame::set_policy(RomPolicy p, uint64_t s)
@@ -53,12 +58,14 @@ void RomBlame::changed(uint32_t offset, bool now_changed)
         ByteUse u;
         u.changed_at = frame;
         uses.push_back(u);
-        if (flags && offset < flags_size)
-            flags[offset] &= uint8_t(~codeflag::Touched); // a use of the old value
+        if (flags && offset < flags_size) // a touch was a use of the old value
+            flags[offset] = uint8_t((flags[offset] & ~codeflag::Touched) | codeflag::Changed);
         return;
     }
     if (it == index.end())
         return;
+    if (flags && offset < flags_size)
+        flags[offset] &= uint8_t(~codeflag::Changed);
     size_t i = it->second, last = offsets.size() - 1;
     if (i != last)
     {
@@ -173,11 +180,21 @@ ByteBlameResult RomBlame::act(uint64_t after, uint64_t through, unsigned attempt
     if (chosen.empty())
         return out;
 
+    std::vector<uint32_t> picked;
+    for (size_t i : chosen)
+        picked.push_back(offsets[i]);
+    return fix(picked);
+}
+
+ByteBlameResult RomBlame::fix(const std::vector<uint32_t> &bytes)
+{
+    ByteBlameResult out;
     std::vector<std::pair<uint32_t, uint8_t>> writes;
     const auto &clean = rom.clean();
-    for (size_t i : chosen)
+    for (uint32_t o : bytes)
     {
-        uint32_t o = offsets[i];
+        if (!index.count(o) || o >= clean.size())
+            continue; // not changed (any more), or not ours to touch
         out.offsets.push_back(o);
         uint8_t value = clean[o];
         if (pol == RomPolicy::Reroll)
@@ -190,7 +207,9 @@ ByteBlameResult RomBlame::act(uint64_t after, uint64_t through, unsigned attempt
         }
         writes.emplace_back(o, value);
     }
-    rom.settle(writes); // reverted bytes stop being watched (`chosen` is stale from here)
+    if (writes.empty())
+        return out;
+    rom.settle(writes); // reverted bytes stop being watched
     if (pol == RomPolicy::Reroll)
         for (auto [o, value] : writes)
             if (auto it = index.find(o); it != index.end())

@@ -35,6 +35,9 @@ struct Recipe
     // Unset means "use the session's choice" (default policy, default detection).
     std::optional<PolicyKind> crash_policy;
     std::optional<RomPolicy> rom_policy; // for changed ROM bytes blamed by use
+    // The instant revert (#51), on when unset: a changed ROM byte that sends the CPU into
+    // non-code is fixed at once and the frame played again. Off: the guard catches it later.
+    std::optional<bool> instant_revert;
     std::optional<DetectorConfig> crash_detection;
 };
 

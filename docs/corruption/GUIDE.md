@@ -256,6 +256,17 @@ actually ran or read just before, and puts back only those, keeping the rest. Th
 lets a classic run with hundreds of changes keep playing. The **Changes** overlay shows
 changed bytes in orange, bright once the game has used them; hovering one says so.
 
+**Bad jumps are caught at once.** Most crashes from changed code start the same way: right
+after running a changed byte, the game jumps into the middle of an instruction, into empty
+ROM, or into nowhere. The app notices that the moment it happens, puts back the byte that
+caused it and plays that frame again, so you see at most one frame repeat instead of a
+crash and a rollback of a second or more. The status line says *Caught at $C0:1234 (jumped
+into the middle of an instruction)*, and the ROM section counts them (*12 bad jumps put
+back at once*). It only works where the code map knows the code, so it gets better the more
+you've played. Crashes that build up slowly (a wrong number that breaks things later) are
+still the crash guard's. To watch a crash happen instead, set `"instant_revert": false` in
+the recipe. Starter: **Code drip** (two bytes of code changed every two seconds).
+
 ## Survivors and pins
 
 **Survivors…** (in the ROM section) lists changes the game used in

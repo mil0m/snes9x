@@ -1,6 +1,7 @@
 #pragma once
 #include "code_map.h"
 #include "crash_guard.h"
+#include "derail.h"
 #include "jump_tables.h"
 #include "memory_map.h"
 #include "memory_watch.h"
@@ -13,6 +14,7 @@ class SnesCoreAccess : public CoreAccess
 {
   public:
     std::vector<uint8_t> save_state() override;
+    bool save_state_into(std::vector<uint8_t> &state) override;
     bool load_state(const std::vector<uint8_t> &state) override;
     FrameSignals sample() override;
     void reset_console() override; // S9xReset, then re-arms the reset watch (the ROM may have changed)
@@ -82,6 +84,13 @@ class RomTracer
     bool start(CodeMap &map, JumpLog *jumps = nullptr); // false when another records, no ROM is loaded, or the size is wrong
     void stop();
     bool tracing() const { return mine; }
+
+    // Instant revert (#51): while tracing, every instruction also goes to `watch` (null
+    // stops), which notes the CPU landing on non-code right after a changed byte ran. Once
+    // it has, the rest of the frame marks nothing. Take the note between frames, every
+    // frame: that also turns marking back on.
+    void watch_derails(DerailWatch *watch);
+    std::optional<DerailWatch::Note> take_derail();
 
     // Every entry of the CPU's six opcode tables, for tests: what the tracer and the reset
     // watch change and must put back.

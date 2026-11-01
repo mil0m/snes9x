@@ -673,6 +673,33 @@ void CorruptionDock::tour(const QString &dir)
         CorruptionSession::get().setActive(true);
         shot(memory_viewer, "05-viewer-wram-hex");
     });
+    steps->push_back([=, this] {
+        // A live ROM recipe for a while: the instant revert catches what derails (#51).
+        QFile file(":/corruption-examples/rom-code-drip.json");
+        if (file.open(QIODevice::ReadOnly))
+            if (auto parsed = parse_recipe(file.readAll().toStdString(), {}); parsed.recipe)
+            {
+                CorruptionSession::get().loadRecipe(*parsed.recipe);
+                CorruptionSession::get().setActive(true);
+            }
+    });
+    for (int i = 0; i < 8; i++)
+        steps->push_back([] {}); // 12 s of play
+    steps->push_back([=, this] {
+        refreshStatus();
+        shot(findChild<QWidget *>("panel"), "05a-panel-code-drip");
+        QFile log(dir + "/flows.txt");
+        if (log.open(QIODevice::Append | QIODevice::Text))
+        {
+            auto status = CorruptionSession::get().status();
+            log.write(QString("code drip: %1 changed, %2 used, %3 put back at once, %4 crashes\n")
+                          .arg(status.rom_changed)
+                          .arg(status.rom_used)
+                          .arg(status.instant_reverts)
+                          .arg(status.crashes)
+                          .toUtf8());
+        }
+    });
     steps->push_back([=, this] { CorruptionSession::get().backToNormal(); });
     steps->push_back([=, this] {
         refreshStatus();
@@ -858,6 +885,8 @@ void CorruptionDock::refreshStatus()
             kept << plural(status.pins, tr("1 pinned"), tr("%1 pinned"));
         if (status.patched)
             kept << plural(status.patched, tr("1 byte painted"), tr("%1 bytes painted"));
+        if (status.instant_reverts)
+            kept << plural(status.instant_reverts, tr("1 bad jump put back at once"), tr("%1 bad jumps put back at once"));
         if (!kept.isEmpty())
             rom_lines << kept.join(" · ");
         rom_lines << (status.code.seen

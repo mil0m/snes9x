@@ -84,6 +84,7 @@ void CorruptionSession::configureGuard()
     guard.on_journal = [this](const JournalEntry &e) { writeJournal(e); };
     guard.set_byte_blame(&rom_blame);
     rom_blame.set_policy(recipe.rom_policy.value_or(RomPolicy::Revert), recipe.seed);
+    instant.set_enabled(recipe.instant_revert.value_or(true));
 }
 
 void CorruptionSession::writeJournal(const JournalEntry &entry)
@@ -109,10 +110,27 @@ void CorruptionSession::betweenFrames()
         rom.restore_clean();
         bool moment = control.has_anchor() && access.load_state(control.anchor());
         guard.reset();
+        instant.drop();
         at_normal = true;
         note(moment ? "Back to normal: the clean game, at the moment the run started"
                     : "Back to normal: the clean ROM (no run to go back to)");
         S9xSetInfoString("Corruption: back to normal");
+    }
+    // The instant revert first, before anything reads the frame that ran: a changed ROM byte
+    // that sent the CPU into non-code is fixed and the frame played again (#51). The note is
+    // taken every frame, which also lets the tracer mark the map again.
+    if (auto caught = instant.after_frame(tracer.take_derail(), engine.current_frame(), access, rom_blame))
+    {
+        auto entry = journal_entry(*caught);
+        entry.recipe = engine.recipe().name;
+        entry.seed = engine.recipe().seed;
+        entry.policy = rom_policy_name(rom_blame.policy());
+        writeJournal(entry);
+        if (crash_map.rom_crashed(caught->offsets))
+            engine.set_hot_mask(crash_map.hot_mask());
+        note(caught->summary);
+        std::string shown = "Corruption: caught a bad jump, " + caught->rom_action;
+        S9xSetInfoString(shown.c_str());
     }
     auto started = control.between_frames(engine, access, &rom);
     if (started != RunControl::Started::Nothing)
@@ -128,6 +146,7 @@ void CorruptionSession::betweenFrames()
     {
     case RunControl::Started::FromAnchor:
         guard.reset(); // its checkpoints belong to the timeline we just left
+        instant.drop();
         note("Started from the recipe's saved moment");
         S9xSetInfoString("Corruption: back to the saved moment");
         break;
@@ -143,6 +162,19 @@ void CorruptionSession::betweenFrames()
     crash_map.observe(engine.event_log(), engine.current_frame());
     auto out = guard.between_frames(engine, access);
     rom.after_guard(out); // save states don't hold the ROM: undo its edits after the checkpoint
+    // The instant revert watches while a run could change the ROM (the watch costs a little on
+    // every instruction), and keeps the state the next frame starts from meanwhile.
+    bool rom_run = engine.active() && (rom.changed() > 0 || std::any_of(engine.recipe().rules.begin(),
+                                                                        engine.recipe().rules.end(), [](const Rule &r) {
+                                                                            return r.enabled && r.range.target == Target::ROM;
+                                                                        }));
+    bool watch_now = instant.is_enabled() && rom_run && tracer.tracing();
+    if (watch_now != watching_derails)
+    {
+        watching_derails = watch_now;
+        tracer.watch_derails(watch_now ? &derails : nullptr);
+    }
+    instant.keep(access, engine.current_frame(), watch_now);
     if (auto survivors = rom_blame.take_survivals(); !survivors.empty())
         crash_map.rom_survived(survivors);
     if (crash_map.crashed(out))
@@ -180,7 +212,11 @@ void CorruptionSession::betweenFrames()
     if (++code_frames % 30 == 0) // twice a second: copying a 6 MB map isn't free
     {
         if (watch.watching() && watch.target() == Target::ROM)
+        {
             code_shown = code_map.combined().flags();
+            for (auto &f : code_shown)
+                f &= codeflag::All; // the viewer tells known bytes by any flag at all
+        }
         else
             code_shown = {};
     }
@@ -199,6 +235,13 @@ void CorruptionSession::betweenFrames()
     last_crash = out.summary;
     note(out.summary);
     S9xSetInfoString(out.summary.c_str());
+}
+
+void CorruptionSession::stateLoaded()
+{
+    std::lock_guard lock(mutex);
+    guard.reset();
+    instant.drop();
 }
 
 void CorruptionSession::markCrash()
@@ -237,6 +280,8 @@ void CorruptionSession::gameLoaded()
     recipe_path.clear();
     saved_json.clear();
     guard.reset();
+    instant.drop();
+    instant.reset_counts();
     last_crash.clear();
     configureGuard();
     last_backup_time.reset();
@@ -293,7 +338,11 @@ void CorruptionSession::loadCodeMap()
     if (!tracer.start(code_map.mine(), &jump_log.mine()))
         note("The code map isn't recording (no ROM?)");
     else
+    {
         rom_blame.attach(code_map.mine().data(), code_map.mine().size());
+        if (watching_derails)
+            tracer.watch_derails(&derails); // a new tracer: watch again
+    }
     // With uses to go by, ROM crashes are learned from them, not from the writes.
     crash_map.learn_rom_by_use(rom_blame.active());
 }
@@ -367,6 +416,8 @@ void CorruptionSession::gameClosing()
         saveJumpLog();
     rom_blame.attach(nullptr, 0);
     tracer.stop(); // before the reset watch goes
+    watching_derails = false;
+    instant.drop();
     rom.game_closed();
     SnesCoreAccess::unwatch_resets();
     game_loaded = false;
@@ -421,6 +472,8 @@ std::vector<std::string> CorruptionSession::loadRecipe(const Recipe &recipe, con
     recipe_path = path;
     saved_json = path.empty() ? std::string() : recipeJson(recipe);
     guard.reset();
+    instant.drop();
+    instant.reset_counts();
     last_crash.clear();
     configureGuard();
     note("Recipe: " + recipe.name);
@@ -654,6 +707,8 @@ void CorruptionSession::newRecipeLocked(const std::string &name)
     recipe_path.clear();
     saved_json.clear();
     guard.reset();
+    instant.drop();
+    instant.reset_counts();
     last_crash.clear();
     configureGuard();
     note("New recipe: " + name);
@@ -937,6 +992,7 @@ std::string CorruptionSession::restoreBackup(const fs::path &path)
     backupNow("before-restore"); // so a restore can itself be undone
     engine.set_active(false);
     guard.reset();
+    instant.drop();
     memcpy(Memory.SRAM, bytes.data(), size);
     Memory.SaveSRAM(S9xGetFilename(".srm", SRAM_DIR).c_str()); // the .srm on disk too, right away
     last_backup_hash = sram_hash(bytes.data(), size);
@@ -973,6 +1029,8 @@ CorruptionSession::Status CorruptionSession::status()
         s.back_to_normal = at_normal && !engine.active();
         s.rom_used = rom_blame.used();
         s.survivors = rom_blame.survivor_count(kSurvivorFrames);
+        s.instant_reverts = instant.total();
+        s.instant_revert = instant.is_enabled();
         s.pins = engine.recipe().pins.size();
         s.patched = patched_bytes(engine.recipe().patches);
     }

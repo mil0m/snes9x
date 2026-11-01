@@ -46,6 +46,20 @@ bool CrashMapKeeper::crashed(const GuardOutcome &out)
     return rebuild();
 }
 
+bool CrashMapKeeper::rom_crashed(const std::vector<uint32_t> &offsets)
+{
+    std::set<uint32_t> blocks;
+    CrashMap learned;
+    for (auto o : offsets)
+        if (blocks.insert(o / CrashMap::kBlock).second)
+            learned.add_crash(Target::ROM, o);
+    if (learned.empty())
+        return false;
+    own.merge(learned);
+    dirty = crash_unsaved = true;
+    return rebuild();
+}
+
 void CrashMapKeeper::rom_survived(const std::vector<uint32_t> &offsets)
 {
     std::set<uint32_t> blocks;

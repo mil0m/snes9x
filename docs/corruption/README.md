@@ -120,6 +120,7 @@ every rule's intensity, `anchor_state`, the file name of the recipe's saved mome
 ```json
 "crash_policy": "escalate",
 "rom_policy": "revert",
+"instant_revert": true,
 "crash_detection": { "enabled": true, "cpu_stopped": true, "runaway_frames": 30,
                      "nmi_off_seconds": 5, "frozen_seconds": 5, "black_seconds": 8, "min_presses": 3,
                      "reboot": true }
@@ -127,7 +128,10 @@ every rule's intensity, `anchor_state`, the file name of the recipe's saved mome
 
 Any detection field can be left out to keep its default; `0` switches a signal off.
 `rom_policy` is what happens to changed ROM bytes blamed for a crash: `revert` (back to
-clean, the default) or `reroll` (a fresh random value).
+clean, the default) or `reroll` (a fresh random value). `instant_revert` (on by default) fixes
+a changed ROM byte the moment it sends the CPU into non-code (the middle of an instruction,
+empty ROM, open bus) and plays that frame again, the same way `rom_policy` says; `false` leaves
+those crashes to the guard.
 
 A shared recipe (`.s9xrecipe`, from **More > Share…**) is `{"format": "snes9x-shared-recipe",
 "version": 1, "recipe": {…}, "moment": "<base64 save state>"}`.

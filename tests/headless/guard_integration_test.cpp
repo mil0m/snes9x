@@ -9,6 +9,7 @@
 #include "corrupt/core_memory.h"
 #include "corrupt/crash_guard.h"
 #include "corrupt/hook.h"
+#include "corrupt/instant_revert.h"
 #include "corrupt/jump_tables.h"
 #include "corrupt/pointer_swap.h"
 #include "corrupt/rom_heat.h"
@@ -43,6 +44,10 @@ struct Harness
     std::vector<RunControl::Started> starts;
 
     RomBlame *blame = nullptr; // collects after every frame, before the guard, when set
+    // The instant revert, wired like the app when set (needs the blame and a tracer).
+    RomTracer *tracer = nullptr;
+    InstantRevert *instant = nullptr;
+    std::vector<InstantRevertResult> reverts;
 
     Harness(testrom::Crash crash, Recipe recipe, PolicyKind policy)
         : Harness(testrom::build(crash), std::move(recipe), policy)
@@ -78,6 +83,9 @@ struct Harness
         for (int i = 0; i < frames; i++)
         {
             headless::run_frames(1);
+            if (tracer && instant && blame)
+                if (auto r = instant->after_frame(tracer->take_derail(), engine.current_frame(), access, *blame))
+                    reverts.push_back(*r);
             if (auto s = control.between_frames(engine, access, &rom); s != RunControl::Started::Nothing)
                 starts.push_back(s);
             if (blame)
@@ -86,6 +94,8 @@ struct Harness
             rom.after_guard(out);
             if (out.kind != GuardOutcome::Nothing)
                 outcomes.push_back(out);
+            if (tracer && instant)
+                instant->keep(access, engine.current_frame(), engine.active() && tracer->tracing());
         }
     }
 
@@ -927,5 +937,114 @@ TEST_SUITE("jump tables in the real core")
         headless::run_frames(5);
         tracer.stop();
         CHECK((map.at(dp::kSite) & codeflag::Opcode));
+    }
+}
+
+TEST_SUITE("instant revert in the real core")
+{
+    namespace dr = testrom::derail;
+
+    // The derail ROM with its code map learned, the blame and the instant revert wired up,
+    // and corruption on with nothing in the recipe: changes are made by hand below.
+    struct Derailing
+    {
+        Harness h;
+        CodeMap map{ 0 };
+        RomTracer tracer;
+        DerailWatch watch;
+        RomBlame blame{ h.rom };
+        InstantRevert instant;
+
+        explicit Derailing(const std::vector<uint8_t> &image, bool on = true) : h(image, Recipe{}, PolicyKind::Skip)
+        {
+            map = CodeMap(Memory.CalculatedSize);
+            REQUIRE(tracer.start(map));
+            tracer.watch_derails(&watch);
+            blame.attach(map.data(), map.size());
+            h.guard.set_byte_blame(&blame);
+            h.blame = &blame;
+            h.tracer = &tracer;
+            instant.set_enabled(on);
+            h.instant = &instant;
+            REQUIRE(h.engine.active());
+            h.run(30); // the clean game: the map learns its code
+        }
+        uint8_t rom(uint32_t o) { return h.memory.read(Target::ROM, o); }
+    };
+
+    TEST_CASE("a branch into the middle of an instruction is put back within the frame")
+    {
+        Derailing d(testrom::build_derail());
+        CHECK((d.map.at(dr::kStp) & codeflag::Code) == codeflag::Operand);
+        d.h.rom.write(Target::ROM, dr::kInnocent, 0x15); // INC $15: harmless
+        d.h.rom.write(Target::ROM, dr::kBranch, 0x02);   // BRA +2: onto the STP
+        uint8_t frames = d.h.wram(testrom::kFrameCounterAddr);
+        uint8_t runs = d.h.wram(dr::kRunsAddr);
+        d.h.run(1);
+        REQUIRE(d.h.reverts.size() == 1);
+        auto &r = d.h.reverts[0];
+        CHECK(r.kind == Landing::MidInstruction);
+        CHECK(r.pc == 0x008000 + dr::kStp);
+        CHECK(r.offsets == std::vector<uint32_t>{ dr::kBranch });
+        CHECK(d.rom(dr::kBranch) == 0x00);
+        CHECK(d.rom(dr::kInnocent) == 0x15); // ran 160 instructions before: out of the window
+        // The frame never happened: the counters are where they were, the CPU isn't stopped.
+        CHECK(d.h.wram(testrom::kFrameCounterAddr) == frames);
+        CHECK(d.h.wram(dr::kRunsAddr) == runs);
+        CHECK(!(CPU.Flags & HALTED_FLAG));
+        // The STP was never marked as an opcode: the map stopped learning at the landing.
+        CHECK(!(d.map.at(dr::kStp) & codeflag::Opcode));
+
+        d.h.run(20);
+        CHECK(d.h.outcomes.empty()); // the guard never saw a crash
+        CHECK(d.h.reverts.size() == 1);
+        CHECK(uint8_t(d.h.wram(testrom::kFrameCounterAddr) - frames) == 20);
+        CHECK(uint8_t(d.h.wram(dr::kRunsAddr) - runs) == 20);
+        CHECK(d.h.rom.changed() == 1);
+        CHECK(d.instant.total() == 1);
+        CHECK(alive(d.h));
+    }
+
+    TEST_CASE("switched off, the guard catches the same crash as before")
+    {
+        Derailing d(testrom::build_derail(), false);
+        d.h.rom.write(Target::ROM, dr::kBranch, 0x02);
+        d.h.run(5);
+        CHECK(d.h.reverts.empty());
+        REQUIRE(d.h.outcomes.size() == 1);
+        CHECK(d.h.outcomes[0].verdict.signal == CrashSignal::CpuStopped);
+        CHECK(d.h.outcomes[0].rom_blamed == std::vector<uint32_t>{ dr::kBranch });
+        CHECK(d.rom(dr::kBranch) == 0x00);
+        CHECK(alive(d.h));
+    }
+
+    TEST_CASE("a changed byte that never sends the CPU astray stays")
+    {
+        Derailing d(testrom::build_derail());
+        d.h.rom.write(Target::ROM, dr::kInnocent, 0x15);
+        d.h.run(60);
+        CHECK(d.h.reverts.empty());
+        CHECK(d.h.outcomes.empty());
+        CHECK(d.rom(dr::kInnocent) == 0x15);
+        CHECK(d.h.wram(0x15) > 0);
+        CHECK(alive(d.h));
+    }
+
+    TEST_CASE("a jump table entry pointing into the middle of a routine is put back; a swapped one stays")
+    {
+        namespace dp = testrom::dispatch;
+        Derailing d(testrom::build_dispatch());
+        // Entry 1 one byte on: into routine 1's operand. Entry 2 pointing at routine 3: a swap.
+        uint32_t bad = dp::kTable + 2, swapped = dp::kTable + 4;
+        d.h.rom.write(Target::ROM, bad, uint8_t(d.rom(bad) + 1));
+        d.h.rom.write(Target::ROM, swapped, uint8_t(dp::kRoutines + 0x30));
+        d.h.run(8);
+        REQUIRE(d.h.reverts.size() == 1);
+        CHECK(d.h.reverts[0].kind == Landing::MidInstruction);
+        CHECK(d.h.reverts[0].offsets == std::vector<uint32_t>{ bad });
+        CHECK(d.rom(bad) == uint8_t(dp::kRoutines + 0x10));
+        CHECK(d.rom(swapped) == uint8_t(dp::kRoutines + 0x30));
+        CHECK(d.h.outcomes.empty());
+        CHECK(alive(d.h));
     }
 }

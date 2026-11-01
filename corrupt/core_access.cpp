@@ -1,4 +1,5 @@
 #include "core_access.h"
+#include "derail.h"
 #include "jump_tables.h"
 #include "opcodes.h"
 
@@ -62,6 +63,24 @@ void (*original[kTables][256])(void) = {};
 bool installed = false;
 uint8 *flags = nullptr;     // the map being recorded into, sized like the ROM
 JumpLog *jumps = nullptr;   // where indirect jumps are noted, if anywhere
+DerailWatch *derails = nullptr; // fed every instruction, for the instant revert, if anyone listens
+
+// A landing was noted: the rest of the frame is garbage, so stop teaching the map (the
+// core's data and DMA marks too) until the note is taken between frames.
+void derailed(Landing kind)
+{
+    derails->land(kind, (uint32_t(Registers.PB) << 16) | uint16(Registers.PCw - 1));
+    if (derails->derailed())
+        S9xRomFlags = nullptr;
+}
+
+// The changed bytes among an instruction's (or a pointer's) bytes, for the watch's window.
+inline void note_changed(uint32_t offset, int length)
+{
+    for (int i = 0; i < length; i++)
+        if (flags[offset + i] & codeflag::Changed)
+            derails->used(offset + uint32_t(i));
+}
 
 constexpr uint8_t width_flag(uint8_t op, bool m8, bool x8)
 {
@@ -108,13 +127,20 @@ void note_jump(uint8 op)
     const uint8 *p2 = op == jumpop::JmlPointer ? byte_at(base | uint16(at + 2)) : nullptr;
     if (!p0 || !p1 || (op == jumpop::JmlPointer && !p2))
         return;
+    uint32_t pointer = rom_offset_of(base | at);
+    if (derails) // a changed pointer opens the window as a changed instruction does
+        for (int i = 0; i < (op == jumpop::JmlPointer ? 3 : 2); i++)
+            if (uint32_t o = rom_offset_of(base | uint16(at + i)); o != kNoEntry)
+                note_changed(o, 1);
+    if (!jumps)
+        return;
     uint32_t bank = op == jumpop::JmlPointer ? uint32_t(*p2) << 16 : pb;
-    jumps->note(site, op, rom_offset_of(base | at), bank | uint32_t(*p1 << 8) | *p0);
+    jumps->note(site, op, pointer, bank | uint32_t(*p1 << 8) | *p0);
 }
 
 void trace_slow(uint8 op)
 {
-    if (jumps && jumpop::noted(op))
+    if ((jumps || derails) && jumpop::noted(op))
         note_jump(op);
     bool e = CheckEmulation();
     bool m8 = e || CheckMemory();
@@ -122,7 +148,30 @@ void trace_slow(uint8 op)
     int length = op_length(op, m8, x8);
     uint8 w = width_flag(op, m8, x8);
     uint16 pc = uint16(Registers.PCw - 1);
+    uint32 at = (uint32(Registers.PB) << 16) | pc;
     S9xRomFetchFrom = S9xRomFetchTo = 0;
+    if (derails)
+    {
+        derails->step();
+        const uint8 *p = byte_at(at);
+        uintptr_t o = uintptr_t(p) - uintptr_t(Memory.ROM);
+        bool in_rom = p && o < Memory.CalculatedSize;
+        if (in_rom)
+            for (int i = 0; i < length; i++)
+                if (uint32_t oi = rom_offset_of((uint32(Registers.PB) << 16) | uint16(pc + i)); oi != kNoEntry)
+                    note_changed(oi, 1);
+        if (derails->open())
+        {
+            // Only open bus and I/O aren't plain memory to run from; SRAM and the like are.
+            PcClass where = classify(at);
+            Landing l = landing(where == PcClass::Ok, in_rom, in_rom ? flags[o] : 0, op);
+            if (l != Landing::None)
+            {
+                derailed(l);
+                return;
+            }
+        }
+    }
     for (int i = 0; i < length; i++)
     {
         const uint8 *p = byte_at((uint32(Registers.PB) << 16) | uint16(pc + i));
@@ -141,8 +190,15 @@ void trace_slow(uint8 op)
 template <int T, int Op>
 void traced()
 {
+    if (derails && derails->derailed())
+    {
+        // Garbage until the frame ends: nothing marked. The core's own marks are off too.
+        S9xRomFetchFrom = S9xRomFetchTo = 0;
+        original[T][Op]();
+        return;
+    }
     if constexpr (T != kSlow && jumpop::noted(uint8_t(Op)))
-        if (jumps)
+        if (jumps || derails)
             note_jump(uint8(Op));
     if constexpr (T == kSlow)
         trace_slow(uint8(Op));
@@ -156,6 +212,23 @@ void traced()
         if (o < Memory.CalculatedSize && length <= Memory.CalculatedSize - o)
         {
             uint8 *f = flags + o;
+            if (derails)
+            {
+                derails->step();
+                uint8 any = 0;
+                for (int i = 0; i < length; i++)
+                    any |= f[i];
+                if (any & codeflag::Changed)
+                    note_changed(uint32_t(o), length);
+                if (derails->open())
+                    if (Landing l = landing(true, true, f[0], uint8_t(Op)); l != Landing::None)
+                    {
+                        derailed(l);
+                        S9xRomFetchFrom = S9xRomFetchTo = 0;
+                        original[T][Op]();
+                        return;
+                    }
+            }
             f[0] |= codeflag::Opcode | w | codeflag::Touched;
             for (int i = 1; i < length; i++)
                 f[i] |= codeflag::Operand | w | codeflag::Touched;
@@ -163,7 +236,17 @@ void traced()
             S9xRomFetchTo = uint32(o + length);
         }
         else
+        {
+            // Not the ROM (RAM, SRAM): no map, but a few opcodes no game runs on purpose.
+            if (derails)
+            {
+                derails->step();
+                if (derails->open())
+                    if (Landing l = landing(true, false, 0, uint8_t(Op)); l != Landing::None)
+                        derailed(l);
+            }
             S9xRomFetchFrom = S9xRomFetchTo = 0;
+        }
     }
     original[T][Op]();
 }
@@ -438,6 +521,14 @@ std::vector<uint8_t> SnesCoreAccess::save_state()
     return state;
 }
 
+bool SnesCoreAccess::save_state_into(std::vector<uint8_t> &state)
+{
+    state.resize(S9xFreezeSize()); // keeps its memory when the size is the same, as it always is
+    if (!S9xFreezeGameMem(state.data(), uint32(state.size())))
+        state.clear();
+    return !state.empty();
+}
+
 bool SnesCoreAccess::load_state(const std::vector<uint8_t> &state)
 {
     if (state.empty() || S9xUnfreezeGameMem(state.data(), uint32(state.size())) != SUCCESS)
@@ -518,7 +609,28 @@ void RomTracer::stop()
     S9xRomFlags = nullptr;
     rom_trace::flags = nullptr;
     rom_trace::jumps = nullptr;
+    rom_trace::derails = nullptr;
     mine = false;
+}
+
+void RomTracer::watch_derails(DerailWatch *watch)
+{
+    if (!mine)
+        return;
+    if (rom_trace::derails)
+        take_derail(); // marks back on
+    rom_trace::derails = watch;
+    if (watch)
+        watch->clear();
+}
+
+std::optional<DerailWatch::Note> RomTracer::take_derail()
+{
+    if (!mine || !rom_trace::derails)
+        return std::nullopt;
+    auto note = rom_trace::derails->take();
+    S9xRomFlags = rom_trace::flags; // the core marks data and DMA again
+    return note;
 }
 
 std::vector<uintptr_t> RomTracer::opcode_tables()

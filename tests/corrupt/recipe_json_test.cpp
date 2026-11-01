@@ -271,6 +271,20 @@ TEST_CASE("the ROM policy round-trips, and is left out when unset")
     CHECK_FALSE(parse_recipe(R"({"format":1,"rules":[],"rom_policy":"skip"})", {}).recipe);
 }
 
+TEST_CASE("the instant revert switch round-trips, and is left out when unset")
+{
+    auto r = parse_recipe(R"({"format":1,"rules":[],"instant_revert":false})", {});
+    REQUIRE_MESSAGE(r.recipe, first_error(r));
+    CHECK(r.recipe->instant_revert == false);
+    auto again = parse_recipe(write_recipe(*r.recipe), {});
+    REQUIRE(again.recipe);
+    CHECK(again.recipe->instant_revert == false);
+    auto plain = parse_recipe(R"({"format":1,"rules":[]})", {});
+    CHECK_FALSE(plain.recipe->instant_revert);
+    CHECK(write_recipe(*plain.recipe).find("instant_revert") == std::string::npos);
+    CHECK_FALSE(parse_recipe(R"({"format":1,"rules":[],"instant_revert":"yes"})", {}).recipe);
+}
+
 TEST_CASE("bad crash settings are errors")
 {
     CHECK_FALSE(parse_recipe(R"({"format":1,"rules":[],"crash_policy":"yolo"})", {}).recipe);

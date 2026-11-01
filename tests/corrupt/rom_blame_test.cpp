@@ -76,7 +76,7 @@ TEST_SUITE("rom blame")
         CHECK(f.blame.use(0x100)->frames_used == 0);
         f.run_to(2, { 0x100 });
         CHECK(f.blame.use(0x100)->frames_used == 1);
-        CHECK(f.flags[0x100] == cf::Opcode);
+        CHECK(f.flags[0x100] == (cf::Opcode | cf::Changed)); // the changed bit stays while it differs
     }
 
     TEST_CASE("each collect says which changed bytes it found used, for the live heat")
@@ -243,5 +243,68 @@ TEST_SUITE("rom blame")
         CHECK(std::string(rom_policy_name(RomPolicy::Revert)) == "revert");
         CHECK(parse_rom_policy("reroll") == RomPolicy::Reroll);
         CHECK(!parse_rom_policy("skip"));
+    }
+}
+
+TEST_SUITE("rom blame: the changed bit and fixing by hand (instant revert)")
+{
+    TEST_CASE("changed bytes carry the changed bit in the map while they differ")
+    {
+        Fixture f;
+        f.change(0x100);
+        CHECK((f.flags[0x100] & cf::Changed));
+        f.run_to(3, { 0x100 });
+        CHECK((f.flags[0x100] & cf::Changed)); // collecting leaves it
+        f.rom.write(Target::ROM, 0x100, f.clean(0x100));
+        CHECK(!(f.flags[0x100] & cf::Changed));
+
+        f.change(0x200);
+        f.blame.set_pinned({ 0x200 });
+        CHECK(!(f.flags[0x200] & cf::Changed)); // a pin is kept on purpose
+        f.change(0x201);
+        f.blame.attach(nullptr, 0);
+        std::vector<uint8_t> other(f.flags.size(), 0);
+        f.blame.attach(other.data(), other.size()); // a new map: marked again
+        CHECK((other[0x201] & cf::Changed));
+        CHECK(!(other[0x200] & cf::Changed));
+        f.rom.restore_clean();
+        CHECK(!(other[0x201] & cf::Changed));
+        f.change(0x202);
+        f.rom.game_loaded({}); // forgets: no bit left behind
+        CHECK(!(other[0x202] & cf::Changed));
+    }
+
+    TEST_CASE("fix puts the named bytes back for good under revert")
+    {
+        Fixture f;
+        f.change(0x100);
+        f.change(0x101);
+        f.frame = 10;
+        f.change(0x102); // journalled at frame 10
+        auto out = f.blame.fix({ 0x102, 0x100, 0x300 }); // 0x300 isn't changed: ignored
+        CHECK(out.offsets == std::vector<uint32_t>{ 0x102, 0x100 });
+        CHECK(out.text == "reverted 2 ROM bytes");
+        CHECK(f.now(0x100) == f.clean(0x100));
+        CHECK(f.now(0x102) == f.clean(0x102));
+        CHECK(f.blame.watched() == 1);
+        CHECK(!(f.flags[0x102] & cf::Changed));
+        f.rom.revert_after(5); // a rollback doesn't bring it back
+        CHECK(f.now(0x102) == f.clean(0x102));
+    }
+
+    TEST_CASE("fix draws new values under re-roll, and they start unproven")
+    {
+        Fixture f;
+        f.blame.set_policy(RomPolicy::Reroll, 7);
+        f.change(0x100);
+        uint8_t bad = f.now(0x100);
+        f.run_to(4, { 0x100 });
+        auto out = f.blame.fix({ 0x100 });
+        CHECK(out.text == "re-rolled 1 ROM byte");
+        CHECK(f.now(0x100) != bad);
+        CHECK(f.now(0x100) != f.clean(0x100));
+        REQUIRE(f.blame.use(0x100));
+        CHECK(f.blame.use(0x100)->frames_used == 0);
+        CHECK((f.flags[0x100] & cf::Changed));
     }
 }

@@ -1,7 +1,7 @@
 // End-to-end check of the corruption engine inside the real emulator, no window
 // needed:
 //
-//   corrupt-smoke <rom> <recipe.json> [frames=600] [warmup=600] [--guard | --learn [held=3] [from=0] | --replay | --copies | --map | --access [dir] | --codemap [file] | --jumps [file] | --dump <dir>]
+//   corrupt-smoke <rom> <recipe.json> [frames=600] [warmup=600] [--guard | --instant [seeds] | --derail-fp [learn] | --learn [held=3] [from=0] | --replay | --copies | --map | --access [dir] | --codemap [file] | --jumps [file] | --dump <dir>]
 //
 // Boots the ROM, runs `warmup` frames, saves a state, then runs `frames` twice
 // from that state: once clean, once with the recipe. Reports what the recipe
@@ -29,7 +29,8 @@
 //
 // With --codemap it records the code map for `frames` frames after the warmup (the recipe
 // is only read, not run), twice, alternating with plain runs of the same frames from the
-// same state, and prints the speed with and without tracing (best of two), the coverage,
+// same state, and prints the speed with and without tracing (best of two; and with the
+// instant revert's watch on, which on a clean ROM only counts instructions), the coverage,
 // the ROM banks with the most code, and the first instructions it found. With a file it
 // also writes the map there, in the library's format.
 //
@@ -48,6 +49,15 @@
 // move (the picture changed in the last 5 s; a still title screen doesn't), and how many
 // read a changed entry.
 //
+// With --derail-fp [learn=frames] it learns the code map from a boot for `learn` frames,
+// then plays `frames` more with the instant revert's watch held open on the clean game, so
+// every landing it notes is a false alarm, and counts them by kind (roadmap #51).
+//
+// With --instant [seeds=5] it learns the code map from a clean boot (or CORRUPT_CODEMAP),
+// then plays the recipe guarded for `frames` frames per seed twice, the guard alone and
+// with the instant revert, and compares rollbacks, frames lost, changes kept and liveness.
+// CORRUPT_INSTANT_VERBOSE=1 prints every catch.
+//
 // With --learn [held] it plays the recipe guarded for five seeds while learning a crash
 // map, then plays `held` other seeds three ways: plain, avoiding the learned hot blocks,
 // and avoiding as many random blocks the rules wrote (the control). `from` skips that many
@@ -60,6 +70,8 @@
 #include "corrupt/jump_tables.h"
 #include "corrupt/pointer_swap.h"
 #include "corrupt/crash_guard.h"
+#include "corrupt/derail.h"
+#include "corrupt/instant_revert.h"
 #include "corrupt/rom_blame.h"
 #include "corrupt/survivors.h"
 #include "corrupt/crash_map_keeper.h"
@@ -78,6 +90,7 @@
 #include <chrono>
 #include <cstdio>
 #include <fstream>
+#include <map>
 #include <random>
 #include <sstream>
 
@@ -545,21 +558,25 @@ int run_codemap(int frames, const char *file)
     auto start = headless::save_state();
     CodeMap map(Memory.CalculatedSize);
     RomTracer tracer;
-    auto timed = [&](bool traced) {
+    DerailWatch derails;
+    auto timed = [&](bool traced, bool watched = false) {
         headless::load_state(start);
         if (traced && !tracer.start(map))
             return -1.0;
+        if (watched)
+            tracer.watch_derails(&derails);
         auto t0 = std::chrono::steady_clock::now();
         headless::run_frames(frames);
         double s = std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count();
         tracer.stop();
         return frames / s;
     };
-    double plain = 0, traced = 0;
+    double plain = 0, traced = 0, watched = 0;
     for (int round = 0; round < 2; round++)
     {
         plain = std::max(plain, timed(false));
         traced = std::max(traced, timed(true));
+        watched = std::max(watched, timed(true, true));
     }
     if (traced < 0)
     {
@@ -568,6 +585,8 @@ int run_codemap(int frames, const char *file)
     }
     printf("speed    %.0f fps plain, %.0f fps traced: tracing costs %.1f%%\n", plain, traced,
            100.0 * (plain / traced - 1.0));
+    printf("         %.0f fps traced with the instant revert's watch on: %.1f%% more\n", watched,
+           100.0 * (traced / watched - 1.0));
 
     auto c = map.coverage();
     auto pct = [&](size_t n) { return 100.0 * double(n) / double(c.size); };
@@ -827,6 +846,258 @@ int run_swaps(int frames, int seeds, int count)
     return 0;
 }
 
+// A code map saved earlier (CORRUPT_CODEMAP, --codemap's file) merged into `map`.
+bool load_saved_map(CodeMap &map)
+{
+    const char *file = getenv("CORRUPT_CODEMAP");
+    if (!file)
+        return false;
+    std::ifstream in(file, std::ios::binary);
+    std::string bytes((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+    std::string error;
+    auto loaded = decode_code_map(bytes, error);
+    if (loaded && map.merge(*loaded))
+    {
+        printf("codemap  %zu code bytes known from %s\n", map.coverage().code, file);
+        return true;
+    }
+    printf("codemap  %s not used: %s\n", file, error.empty() ? "another ROM size" : error.c_str());
+    return false;
+}
+
+std::string flag_text(uint8_t f)
+{
+    std::string out;
+    if (f & codeflag::Opcode)
+        out += "opcode ";
+    if (f & codeflag::Operand)
+        out += "operand ";
+    if (f & codeflag::Data)
+        out += "data ";
+    if (f & codeflag::Dma)
+        out += "dma ";
+    return out.empty() ? "never seen" : out.substr(0, out.size() - 1);
+}
+
+// --derail-fp: on the clean game, every instruction counts as just after a changed byte,
+// so every landing the watch notes is a false alarm the game's own code would raise. The
+// map is learned from a boot for `learn` frames first, and keeps learning, as in play.
+int run_derail_fp(int frames, int learn)
+{
+    CodeMap map(Memory.CalculatedSize);
+    load_saved_map(map);
+    RomTracer tracer;
+    if (!tracer.start(map))
+        return 1;
+    access.reset_console();
+    headless::run_frames(learn);
+    DerailWatch watch;
+    watch.hold_open(true);
+    tracer.watch_derails(&watch);
+    auto offsets = SnesCoreAccess::rom_offsets();
+    std::map<Landing, int> kinds;
+    int shown = 0;
+    for (int i = 0; i < frames; i++)
+    {
+        headless::run_frames(1);
+        auto note = tracer.take_derail();
+        if (!note)
+            continue;
+        kinds[note->kind]++;
+        if (shown++ < 12)
+        {
+            auto o = offsets.offset(note->pc);
+            uint8_t f = o ? map.at(*o) : 0;
+            const uint8_t *code = o && *o < Memory.CalculatedSize ? Memory.ROM + *o : nullptr;
+            printf("  frame %6d  %s  %-40s %s, byte %s\n", learn + i + 1, describe_pc(note->pc).c_str(),
+                   landing_text(note->kind), o ? flag_text(f).c_str() : "not ROM",
+                   code ? hex(*code).c_str() : "?");
+        }
+    }
+    tracer.stop();
+    int total = 0;
+    for (auto [k, n] : kinds)
+        total += n;
+    printf("false    %d landings in %d frames after learning %d (%.1f an hour), map %zu code bytes\n", total, frames,
+           learn, total * 216000.0 / frames, map.coverage().code);
+    for (auto [k, n] : kinds)
+        printf("  %-40s %5d (%.1f an hour)\n", landing_text(k), n, n * 216000.0 / frames);
+    return 0;
+}
+
+struct InstantArm
+{
+    int caught = 0, gave_up = 0, reverts = 0, alive = 0, running = 0;
+    uint64_t lost = 0;          // frames thrown away: rollbacks' distance, one per instant revert
+    size_t changed = 0, used = 0, fixed = 0;
+    double keep_ms = 0;
+    int keeps = 0;
+    std::map<Landing, int> kinds;
+};
+
+// One guarded run of `recipe` from `start`, as the app does it, with or without the instant revert.
+void instant_arm(const Recipe &recipe, int frames, const CodeMap &learned, bool on, const std::vector<uint8_t> &start,
+                 InstantArm &a)
+{
+    headless::load_state(start);
+    rom.restore_clean();
+    CodeMap map = learned;
+    std::vector<uint8_t> aim_flags;
+    engine.set_code_flags([&] {
+        aim_flags = map.flags();
+        for (auto &f : aim_flags)
+            f &= codeflag::All;
+        return std::span<const uint8_t>(aim_flags);
+    });
+    RomTracer tracer;
+    tracer.start(map);
+    DerailWatch watch;
+    if (on)
+        tracer.watch_derails(&watch);
+    RomBlame blame(rom);
+    blame.attach(map.data(), map.size());
+    blame.set_policy(recipe.rom_policy.value_or(RomPolicy::Revert), recipe.seed);
+    CrashGuard guard;
+    guard.set_byte_blame(&blame);
+    guard.set_policy(recipe.crash_policy.value_or(PolicyKind::Reroll));
+    guard.set_detector_config(recipe.crash_detection.value_or(DetectorConfig{}));
+    InstantRevert instant;
+    instant.set_enabled(on);
+
+    engine.set_recipe(recipe);
+    start_run();
+    guard.between_frames(engine, access);
+    instant.keep(access, engine.current_frame(), on);
+    S9xCorruptFrameHook = &frame_hook;
+    bool verbose = getenv("CORRUPT_INSTANT_VERBOSE");
+    uint32_t reboots = access.sample().reboots;
+    uint64_t picture = 0;
+    int moving_late = 0, nmi_late = 0;
+    for (int i = 0; i < frames; i++)
+    {
+        headless::run_frames(1);
+        if (on)
+            if (auto r = instant.after_frame(tracer.take_derail(), engine.current_frame(), access, blame))
+            {
+                a.reverts++;
+                a.lost++;
+                a.fixed += r->offsets.size();
+                a.kinds[r->kind]++;
+                if (verbose)
+                    printf("    frame %5d  %s\n", i + 1, r->summary.c_str());
+            }
+        auto signals = access.sample();
+        bool late = i >= frames - 300;
+        if (late && signals.picture_valid && signals.picture_hash != picture)
+            moving_late++;
+        if (late && signals.nmi_enabled)
+            nmi_late++;
+        if (signals.picture_valid)
+            picture = signals.picture_hash;
+        if (late && i == frames - 300)
+            reboots = signals.reboots;
+        blame.collect(engine.current_frame());
+        auto out = guard.between_frames(engine, access);
+        rom.after_guard(out);
+        if (out.kind != GuardOutcome::Nothing)
+        {
+            a.caught++;
+            a.lost += out.verdict.frame - out.restored_frame;
+            a.fixed += out.rom_blamed.size();
+            if (verbose)
+                printf("    frame %5d  %s\n", i + 1, out.summary.c_str());
+            if (out.kind == GuardOutcome::GaveUp)
+            {
+                a.gave_up++;
+                break;
+            }
+        }
+        if (on)
+        {
+            auto t0 = std::chrono::steady_clock::now();
+            instant.keep(access, engine.current_frame(), engine.active() && tracer.tracing());
+            a.keep_ms += std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0).count();
+            a.keeps++;
+        }
+    }
+    S9xCorruptFrameHook = nullptr;
+    auto end = access.sample();
+    bool running = !end.cpu_halted && !end.emulation_stopped && end.reboots == reboots && (nmi_late || moving_late);
+    a.running += running;
+    a.alive += running && moving_late >= 3;
+    a.changed += rom.changed();
+    a.used += blame.used();
+    tracer.stop();
+    engine.set_active(false);
+    engine.set_code_flags({});
+}
+
+// --instant [seeds=5]: the recipe played guarded for `frames` frames per seed, twice: the
+// guard alone (as before #51), and the guard with the instant revert. The code map is
+// learned first from a clean boot (or CORRUPT_CODEMAP), as if the game had been played.
+int run_instant(const Recipe &recipe, int frames, int seeds)
+{
+    auto start = headless::save_state();
+    CodeMap learned(Memory.CalculatedSize);
+    if (!load_saved_map(learned))
+    {
+        RomTracer tracer;
+        if (!tracer.start(learned))
+            return 1;
+        access.reset_console();
+        headless::run_frames(frames);
+        tracer.stop();
+        printf("codemap  %zu code bytes learned from a clean boot of %d frames\n", learned.coverage().code, frames);
+    }
+    InstantArm arms[2];
+    for (int seed = 1; seed <= seeds; seed++)
+    {
+        Recipe r = recipe;
+        r.seed = recipe.seed + uint64_t(seed) - 1;
+        for (int arm = 0; arm < 2; arm++)
+        {
+            InstantArm one;
+            if (getenv("CORRUPT_INSTANT_VERBOSE"))
+                printf("  seed %llu, %s\n", (unsigned long long)r.seed, arm ? "instant revert" : "guard only");
+            instant_arm(r, frames, learned, arm == 1, start, one);
+            auto &a = arms[arm];
+            a.caught += one.caught;
+            a.gave_up += one.gave_up;
+            a.reverts += one.reverts;
+            a.alive += one.alive;
+            a.running += one.running;
+            a.lost += one.lost;
+            a.changed += one.changed;
+            a.used += one.used;
+            a.fixed += one.fixed;
+            a.keep_ms += one.keep_ms;
+            a.keeps += one.keeps;
+            for (auto [k, n] : one.kinds)
+                a.kinds[k] += n;
+            if (getenv("CORRUPT_INSTANT_VERBOSE"))
+                printf("    -> %d caught, %d instant, %llu frames lost, %zu changed at the end, %s\n", one.caught,
+                       one.reverts, (unsigned long long)one.lost, one.changed,
+                       one.alive ? "moving" : one.running ? "running" : "dead");
+        }
+    }
+    rom.restore_clean();
+    printf("seeds    %d of %d frames each\n", seeds, frames);
+    for (int arm = 0; arm < 2; arm++)
+    {
+        auto &a = arms[arm];
+        printf("%-8s %3d guard rollbacks (%d gave up), %3d instant reverts, %6llu frames lost; at the end %4zu bytes "
+               "changed (%zu used), %zu fixed; %d running, %d moving\n",
+               arm ? "instant" : "guard", a.caught, a.gave_up, a.reverts, (unsigned long long)a.lost, a.changed, a.used,
+               a.fixed, a.running, a.alive);
+    }
+    for (auto [k, n] : arms[1].kinds)
+        printf("  %-40s %4d\n", landing_text(k), n);
+    if (arms[1].keeps)
+        printf("cost     %.3f ms a frame to keep the frame-start checkpoint (%zu bytes)\n", arms[1].keep_ms / arms[1].keeps,
+               access.save_state().size());
+    return 0;
+}
+
 } // namespace
 
 int main(int argc, char **argv)
@@ -909,6 +1180,10 @@ int main(int argc, char **argv)
     }
     if (argc > 5 && std::string(argv[5]) == "--codemap")
         return run_codemap(frames, argc > 6 ? argv[6] : nullptr);
+    if (argc > 5 && std::string(argv[5]) == "--derail-fp")
+        return run_derail_fp(frames, argc > 6 ? atoi(argv[6]) : frames);
+    if (argc > 5 && std::string(argv[5]) == "--instant")
+        return run_instant(*parsed.recipe, frames, argc > 6 ? atoi(argv[6]) : 5);
     if (argc > 5 && std::string(argv[5]) == "--swaps")
         return run_swaps(frames, argc > 6 ? atoi(argv[6]) : 10, argc > 7 ? atoi(argv[7]) : 3);
     if (argc > 5 && std::string(argv[5]) == "--jumps")

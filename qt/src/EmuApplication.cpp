@@ -645,6 +645,7 @@ void EmuApplication::loadState(int slot)
 {
     emu_thread->runOnThread([&, slot] {
         core->loadState(slot);
+        CorruptionSession::get().stateLoaded();
     });
 }
 
@@ -652,6 +653,7 @@ void EmuApplication::loadState(const std::string& filename)
 {
     emu_thread->runOnThread([&, filename] {
         core->loadState(filename);
+        CorruptionSession::get().stateLoaded();
     });
 }
 

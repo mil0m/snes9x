@@ -181,4 +181,26 @@ std::vector<uint8_t> build_dispatch()
     return rom;
 }
 
+std::vector<uint8_t> build_derail()
+{
+    auto rom = build(Crash::None);
+    put(rom, 0x8011, {
+        0xCB,             // WAI
+        0x20, 0x60, 0x80, // JSR $8060
+        0x80, 0xFA,       // BRA main
+    });
+    put(rom, 0x8060, {
+        0xE6, 0x14,       // INC $14
+        0xA2, 0x50,       // LDX #$50
+        0xCA,             // DEX        ($8064)
+        0xD0, 0xFD,       // BNE $8064
+        0x80, 0x00,       // BRA +0     ($8067)
+        0xAD, 0x00, 0xDB, // LDA $DB00  ($8069)
+        0xE6, 0x13,       // INC $13
+        0x60,             // RTS
+    });
+    fix_checksum(rom);
+    return rom;
+}
+
 } // namespace testrom

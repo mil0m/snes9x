@@ -422,3 +422,19 @@ Use a game you have never set up (a fresh library folder, so no recipes exist fo
 3. With a ROM recipe running (say **Starter: Branch flips**), compare **Changes** and **Live**.
    - [ ] Changed bytes the game is using right now glow in **Live** too.
 4. The game runs as smoothly with the viewer on **Live** as on **Code**.
+
+## 28. Instant revert
+1. Load Goof Troop (or any game) and play for a couple of minutes, so the code map knows its code.
+2. Pick **Starter: Code drip** and press **Corrupt (F7)**. Play on.
+   - [ ] Now and then the status line says *Caught at $xx:xxxx (jumped into the middle of an instruction): reverted 1 ROM byte and played the frame again*, and the on-screen message says *caught a bad jump*.
+   - [ ] When that happens the game doesn't visibly stop or jump back: at most a one-frame hitch.
+   - [ ] The ROM section counts *N bad jumps put back at once*.
+   - [ ] Crashes the guard catches (*Crash caught … back 1.5 s*) are rarer than before; some still happen (slow damage).
+3. Open the memory viewer on **rom**, **Colour by: Changes**.
+   - [ ] Orange bytes stay where the game keeps running them; the ones caught are gone.
+4. Save the recipe, add `"instant_revert": false` to its file, load it again and play.
+   - [ ] No more *Caught at*; the same kind of changes now end in crashes the guard catches and rolls back.
+5. Load a save state (File > Load State) while **Code drip** is running.
+   - [ ] The game continues from the loaded state; nothing jumps back to before it.
+6. Look at the crash journal (`journal.<you>.jsonl` in the library).
+   - [ ] Instant reverts are lines with `"event":"instant_revert"`, the kind of landing in `signal` and the bytes in `rom_bytes`.

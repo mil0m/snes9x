@@ -1,0 +1,17 @@
+{
+  "format": 1,
+  "name": "Code drip",
+  "notes": "Live: every two seconds, two bytes of code the game runs get random values. Most of them would send the game off the rails at once; the instant revert puts those back the moment it happens and plays the frame again, so what stays is the changes the game can live with. Needs a code map: play the game a while first. Widen the range for bigger games.",
+  "seed": 5101,
+  "rules": [
+    {
+      "name": "drip",
+      "target": "rom",
+      "range": [ "0x0", "0x7FFFF" ],
+      "op": { "type": "random", "min": 0, "max": 255 },
+      "when": { "every_frames": 120 },
+      "count": 2,
+      "role": "code"
+    }
+  ]
+}
