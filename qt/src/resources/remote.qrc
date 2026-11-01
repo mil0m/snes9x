@@ -1,0 +1,7 @@
+<RCC>
+  <qresource prefix="/remote">
+    <file alias="index.html">remote/index.html</file>
+    <file alias="remote.js">remote/remote.js</file>
+    <file alias="remote.css">remote/remote.css</file>
+  </qresource>
+</RCC>

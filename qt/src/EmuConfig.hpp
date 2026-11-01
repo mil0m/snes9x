@@ -39,6 +39,12 @@ struct EmuConfig
     std::string corruption_library_root; // the recipe library, e.g. a clone of the shared library repo
     bool corruption_panel_visible = false;
     bool corruption_saved_moments = true; // save the moment a run starts with its recipe, and load it back
+    // Remote control from a browser (#53): off by default; listens on 127.0.0.1 only. The
+    // public address and the key are this user's, kept here and never in the code.
+    bool corruption_remote_enabled = false;
+    int corruption_remote_port = 8095;
+    std::string corruption_remote_address; // e.g. https://<your-host>, only for the copied link
+    std::string corruption_remote_token;
 
     // General
     bool fullscreen_on_open;

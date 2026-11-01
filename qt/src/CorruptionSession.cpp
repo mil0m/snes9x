@@ -1170,6 +1170,25 @@ void CorruptionSession::restoreCleanRom()
     note("The ROM is clean again");
 }
 
+std::vector<uint8_t> CorruptionSession::readMemory(Target t, uint32_t offset, uint32_t length)
+{
+    std::lock_guard lock(mutex);
+    if (!game_loaded)
+        return {};
+    size_t size = memory.size(t);
+    const uint8_t *data = memory.data(t);
+    if (!data || offset >= size)
+        return {};
+    size_t n = std::min<size_t>(length, size - offset);
+    return { data + offset, data + offset + n };
+}
+
+void CorruptionSession::remoteNote(const std::string &text)
+{
+    std::lock_guard lock(mutex);
+    note(text);
+}
+
 std::string CorruptionSession::paint(Target t, const std::vector<uint32_t> &offsets, uint8_t value)
 {
     std::vector<std::pair<uint32_t, uint8_t>> bytes;

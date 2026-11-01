@@ -503,3 +503,6 @@ MigrationBackup/
 .DS_Store
 *.lock
 profile
+
+# Private words for tools/privacy_check.sh (never committed)
+.private-words

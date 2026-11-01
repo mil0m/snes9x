@@ -112,6 +112,14 @@ class CorruptionDock : public QDockWidget
     QPushButton *remove_rule_button;
     QCheckBox *detect_check;
     QCheckBox *test_first_check;
+    // Remote control from a browser (#53).
+    class RemoteControl *remote = nullptr;
+    QCheckBox *remote_check = nullptr;
+    QLabel *remote_label = nullptr;
+    QLineEdit *remote_address = nullptr;
+    void setRemote(bool on);
+    void refreshRemote();
+    QString remoteLink() const;
     QComboBox *policy_combo;
     QLabel *crash_label;
     QLabel *status_label;

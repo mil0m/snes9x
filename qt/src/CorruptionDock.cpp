@@ -6,11 +6,13 @@
 #include "EmuConfig.hpp"
 #include "IntensitySlider.hpp"
 #include "MemoryViewer.hpp"
+#include "RemoteControl.hpp"
 #include "RuleEditor.hpp"
 #include "UiKit.hpp"
 #include "corrupt/rule_text.h"
 
 #include <QApplication>
+#include <QClipboard>
 
 #include <algorithm>
 #include <QCheckBox>
@@ -549,6 +551,60 @@ CorruptionDock::CorruptionDock(EmuApplication &app, QWidget *parent)
     connect(export_rom, &QPushButton::clicked, this, &CorruptionDock::exportRom);
 
     // Game save backups
+    // Remote control from a browser (#53).
+    auto remote_layout = section(tr("Remote Control"), "remote_section");
+    auto remote_box = remote_layout->parentWidget();
+    remote_check = new QCheckBox(tr("Allow remote control from a browser"), remote_box);
+    remote_check->setObjectName("remote");
+    remote_check->setToolTip(tr("Lets a browser with this panel's link run the corruption: on and off, Chaos, "
+                                "rules, hotkeys and painting memory. It listens on this computer only; to reach it "
+                                "from elsewhere, put it behind a tunnel with a login (see the guide)."));
+    remote_layout->addLayout(ui::row(remote_check));
+    remote_label = new QLabel(remote_box);
+    remote_label->setObjectName("remote_status");
+    remote_label->setWordWrap(true);
+    ui::setTone(remote_label, ui::Tone::Secondary);
+    remote_layout->addWidget(remote_label);
+    auto remote_form = ui::form();
+    remote_address = new QLineEdit(qs(app.config->corruption_remote_address), remote_box);
+    remote_address->setObjectName("remote_address");
+    remote_address->setPlaceholderText(tr("https://… (where others reach it)"));
+    remote_address->setToolTip(tr("The address your tunnel gives this computer, for the link. Kept in your settings "
+                                  "only. Empty: a link for this computer."));
+    remote_form->addRow(tr("Public address:"), remote_address);
+    remote_layout->addLayout(remote_form);
+    auto remote_buttons = new QHBoxLayout;
+    auto copy_link = button(tr("Copy Link"), remote_box, "copy");
+    copy_link->setObjectName("remote_copy");
+    copy_link->setToolTip(tr("Copies the link with its key. Anyone with the link (and past your tunnel's login) "
+                             "can control the corruption."));
+    auto new_key = button(tr("New Key"), remote_box, "refresh");
+    new_key->setObjectName("remote_new_key");
+    new_key->setToolTip(tr("Makes a new key: old links stop working and everyone connected is dropped."));
+    remote_buttons->addWidget(copy_link);
+    remote_buttons->addWidget(new_key);
+    remote_buttons->addStretch(1);
+    remote_layout->addLayout(remote_buttons);
+    if (app.config->corruption_remote_token.empty())
+        app.config->corruption_remote_token = corrupt::remote::new_token();
+    remote = new RemoteControl(this);
+    connect(&remote->server(), &RemoteServer::clientsChanged, this, [this] { refreshRemote(); });
+    connect(remote_check, &QCheckBox::clicked, this, [this](bool on) { setRemote(on); });
+    connect(remote_address, &QLineEdit::editingFinished, this, [this] {
+        this->app.config->corruption_remote_address = remote_address->text().trimmed().toStdString();
+    });
+    connect(copy_link, &QPushButton::clicked, this, [this] {
+        QApplication::clipboard()->setText(remoteLink());
+        remote_label->setText(tr("Link copied. Send it only to people you trust with this game."));
+    });
+    connect(new_key, &QPushButton::clicked, this, [this] {
+        this->app.config->corruption_remote_token = corrupt::remote::new_token();
+        if (remote->server().running())
+            setRemote(true); // restarts with the new key, dropping everyone
+        refreshRemote();
+    });
+    setRemote(app.config->corruption_remote_enabled);
+
     auto backup_layout = section(tr("Game Save Backups"), "backup_section");
     auto backup_box = backup_layout->parentWidget();
     auto backup_about = new QLabel(tr("Your in-game saves (the cartridge's battery save), copied automatically "
@@ -591,6 +647,47 @@ CorruptionDock::CorruptionDock(EmuApplication &app, QWidget *parent)
     connect(&timer, &QTimer::timeout, this, &CorruptionDock::refreshStatus);
     timer.start(250);
     refreshStatus();
+}
+
+void CorruptionDock::setRemote(bool on)
+{
+    app.config->corruption_remote_enabled = on;
+    remote->stop();
+    if (on && !remote->start(quint16(app.config->corruption_remote_port), app.config->corruption_remote_token))
+    {
+        app.config->corruption_remote_enabled = false;
+        remote_check->setChecked(false);
+        remote_label->setText(tr("Couldn't listen on port %1: something else uses it. Change RemotePort in the "
+                                 "settings file.")
+                                  .arg(app.config->corruption_remote_port));
+        return;
+    }
+    remote_check->setChecked(on);
+    refreshRemote();
+}
+
+void CorruptionDock::refreshRemote()
+{
+    auto &srv = remote->server();
+    if (!srv.running())
+    {
+        remote_label->setText(tr("Off. Nobody can control this from a browser."));
+        return;
+    }
+    auto who = srv.clients();
+    remote_label->setText(tr("Listening on this computer, port %1. %2")
+                              .arg(srv.port())
+                              .arg(who.isEmpty() ? tr("Nobody connected.") : tr("Connected: %1.").arg(who.join(", "))));
+}
+
+QString CorruptionDock::remoteLink() const
+{
+    QString base = remote_address->text().trimmed();
+    while (base.endsWith('/'))
+        base.chop(1);
+    if (base.isEmpty())
+        base = QString("http://127.0.0.1:%1").arg(app.config->corruption_remote_port);
+    return base + "/#" + qs(app.config->corruption_remote_token);
 }
 
 void CorruptionDock::openGuide(const QString &section)

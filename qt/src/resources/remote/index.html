@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="referrer" content="no-referrer">
+  <title>Snes9x Remote</title>
+  <link rel="stylesheet" href="remote.css">
+  <script src="remote.js" defer></script>
+</head>
+<body>
+  <main>
+    <header class="top">
+      <div>
+        <h1 id="game">Snes9x Remote</h1>
+        <p id="recipe" class="muted">Connecting…</p>
+      </div>
+      <span id="state" class="chip">offline</span>
+    </header>
+
+    <section id="nokey" class="card" hidden>
+      <h2>No key in this link</h2>
+      <p>Open the link copied from the Corruption panel (<b>Remote control</b>, <b>Copy link</b>): it carries the key that lets this page in.</p>
+    </section>
+
+    <div id="ui" hidden>
+      <section class="card">
+        <button id="toggle" class="big">Corrupt</button>
+        <label class="field">
+          <span>Chaos <output id="chaos-out">100%</output></span>
+          <input id="chaos" type="range" min="0" max="100" step="1" value="100">
+        </label>
+        <div class="row">
+          <button id="reroll">Re-roll</button>
+          <button id="crashed">It crashed: go back</button>
+          <button id="normal">Back to normal</button>
+        </div>
+        <p id="message" class="muted" aria-live="polite"></p>
+        <p id="who" class="muted small"></p>
+      </section>
+
+      <section class="card" id="hotkeys-card" hidden>
+        <h2>Hotkeys</h2>
+        <div id="hotkeys" class="row"></div>
+      </section>
+
+      <section class="card">
+        <h2>Rules</h2>
+        <ul id="rules" class="rules"></ul>
+        <p id="no-rules" class="muted" hidden>The recipe has no rules yet.</p>
+      </section>
+
+      <section class="card">
+        <h2>Memory</h2>
+        <div class="row controls">
+          <label class="field inline"><span>Memory</span><select id="memory"></select></label>
+          <label class="field inline"><span>Row</span>
+            <select id="width"><option>16</option><option>32</option><option selected>64</option><option>128</option><option>256</option></select>
+          </label>
+          <label class="field inline"><span>From</span><input id="offset" class="mono" value="0" size="7" inputmode="text" autocomplete="off"></label>
+        </div>
+        <div class="row">
+          <button id="prev" aria-label="Previous page">◀</button>
+          <button id="next" aria-label="Next page">▶</button>
+          <label class="check"><input id="paint" type="checkbox"> Paint</label>
+          <label class="field inline"><span>Value</span><input id="value" class="mono" value="00" size="3" autocomplete="off"></label>
+        </div>
+        <div class="canvas-wrap"><canvas id="picture" width="64" height="64" aria-label="Memory picture"></canvas></div>
+        <p id="hover" class="muted small mono">&nbsp;</p>
+      </section>
+    </div>
+  </main>
+</body>
+</html>

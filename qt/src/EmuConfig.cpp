@@ -233,6 +233,10 @@ bool EmuConfig::setDefaults(int section)
         corruption_library_root = (fs::path(QDir::homePath().toStdString()) / "Documents" / "Snes9x Corruptions").string();
         corruption_panel_visible = false;
         corruption_saved_moments = true;
+        corruption_remote_enabled = false;
+        corruption_remote_port = 8095;
+        corruption_remote_address.clear();
+        corruption_remote_token.clear();
     }
 
     bool restart = false;
@@ -590,6 +594,10 @@ void EmuConfig::config(const std::string &filename, bool write)
     String("LibraryRoot", corruption_library_root);
     Bool("PanelVisible", corruption_panel_visible);
     Bool("SavedMoments", corruption_saved_moments);
+    Bool("RemoteEnabled", corruption_remote_enabled);
+    Int("RemotePort", corruption_remote_port);
+    String("RemoteAddress", corruption_remote_address);
+    String("RemoteToken", corruption_remote_token);
     EndSection();
 }
 

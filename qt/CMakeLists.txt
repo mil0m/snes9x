@@ -32,8 +32,8 @@ if(${CMAKE_SYSTEM_NAME} STREQUAL "Windows")
         set(CMAKE_PREFIX_PATH ${qt6-mingw-clang-bin_SOURCE_DIR})
     endif()
 endif()
-find_package(Qt6 REQUIRED COMPONENTS Widgets Gui)
-list(APPEND LIBS Qt6::Widgets Qt6::Gui)
+find_package(Qt6 REQUIRED COMPONENTS Widgets Gui HttpServer WebSockets)
+list(APPEND LIBS Qt6::Widgets Qt6::Gui Qt6::HttpServer Qt6::WebSockets)
 
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(ZLIB REQUIRED zlib)
@@ -156,6 +156,8 @@ list(APPEND QT_GUI_SOURCES
     src/CheatsDialog.cpp
     src/CorruptionSession.cpp
     src/CorruptionDock.cpp
+    src/RemoteServer.cpp
+    src/RemoteControl.cpp
     src/RuleEditor.cpp
     src/IntensitySlider.cpp
     src/MemoryView.cpp
@@ -286,7 +288,7 @@ list(APPEND SOURCES ../external/imgui/imgui.cpp
     ../external/imgui/snes9x_imgui.cpp)
 list(APPEND INCLUDES ../external/imgui)
 
-add_executable(snes9x-qt ${QT_GUI_SOURCES} ${SOURCES} ${PLATFORM_SOURCES} src/resources/snes9x.qrc src/resources/corruption_examples.qrc src/resources/corruption_icons.qrc)
+add_executable(snes9x-qt ${QT_GUI_SOURCES} ${SOURCES} ${PLATFORM_SOURCES} src/resources/snes9x.qrc src/resources/corruption_examples.qrc src/resources/corruption_icons.qrc src/resources/remote.qrc)
 
 if(${CMAKE_SYSTEM_NAME} STREQUAL "Windows")
     set_target_properties(snes9x-qt PROPERTIES WIN32_EXECUTABLE True)

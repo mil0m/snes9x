@@ -45,9 +45,11 @@ browser ──https──▶ <your-host> (Cloudflare Access: one-time PIN, allow
   WebSocket as its first message.
 - **A check before every commit:** `tools/privacy_check.sh` fails if a tracked file holds a
   word from an untracked, git-ignored list (`.private-words`, one per line: the domain, the
-  email, the tunnel id), or anything shaped like a tunnel credential (`"TunnelSecret"`,
-  `cert.pem`, `-----BEGIN`). `tools/install-hooks.sh` makes it the repo's pre-commit hook;
-  `build-mac.sh test` runs it too. The list itself is never committed.
+  email, the tunnel id), or anything shaped like a secret (a tunnel credentials file's
+  TunnelSecret field, a PEM private key or cloudflared's tunnel cert, a `RemoteToken=` line
+  from a settings file, an ngrok token). `tools/install-hooks.sh` makes it the repo's
+  pre-commit hook; `build-mac.sh test` runs it and its own test. The list itself is never
+  committed.
 
 ## Safety (what the remote can and can't do)
 

@@ -312,6 +312,42 @@ The old Photoshop way, built in. In the memory viewer's **Pixels** view:
 - **Export PNG…** saves the selection (or the whole memory) as a greyscale picture; edit it
   in any image editor and **Import PNG…** puts the changed pixels back as paint.
 
+## Remote control from a browser
+
+A friend (or you, from your phone) can run the corruption from a web page: Corrupt and
+Stop, Chaos, Re-roll, *It crashed: go back*, *Back to normal*, each rule on or off and its
+strength, the recipe's hotkeys, and a live picture of a memory to paint in (tick
+**Paint**, choose a value, tap or drag). The game itself isn't on the page: stream it as
+you normally would.
+
+In the panel, **Remote Control**: tick **Allow remote control from a browser**. The app
+then listens on this computer only (port 8095), so on its own only a browser on this
+computer can reach it: **Copy Link** and open it here to try.
+
+**From elsewhere** it needs a way in that you control, with a login in front. One way is a
+Cloudflare Tunnel on a domain of yours, with Cloudflare Access letting in only the emails
+you choose:
+
+1. Route a hostname of yours to `http://localhost:8095` on this computer with
+   `cloudflared`.
+2. In Cloudflare Zero Trust, add an Access application for that hostname that allows only
+   your and your friend's emails. Never route it without this.
+3. Type `https://<that hostname>` into **Public address**, **Copy Link**, and send it.
+
+The link carries a key after the `#`, which browsers never send to any server; the page
+keeps it for the tab and takes it out of the address bar. **New Key** makes a new one: old
+links stop working and everyone connected is dropped. The panel says who is connected
+(the email they logged in with), and the status line says what each of them does
+(*Remote (erik@…): pressed hotkey 1*).
+
+What a remote can't do: anything with files (loading or saving recipes or ROMs, backups,
+exporting), or settings. Painting only changes the emulated SNES, which the crash guard
+looks after: the worst a remote can do is crash the game it's corrupting.
+
+If you change the code: `tools/install-hooks.sh` makes a pre-commit check that refuses
+commits containing a word from your own `.private-words` (your domain, emails; that file
+is never committed) or anything shaped like a secret.
+
 ## Tips
 
 - **Sprites and colours often bounce back.** Most games repaint the sprite table and the

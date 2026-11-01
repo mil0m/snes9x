@@ -468,3 +468,23 @@ Use a game you have never set up (a fresh library folder, so no recipes exist fo
    - [ ] No pauses, no *Tested at first use* lines; the same kind of changes end in crashes the guard catches.
 5. With the switch on, load a save state while the recipe runs.
    - [ ] The game continues from the loaded state; nothing jumps back to before it.
+
+## 31. Remote control from a browser
+1. Load a game, pick a recipe with a hotkey rule (say **Starter: Pointer roulette**). In **Remote Control**, tick **Allow remote control from a browser**.
+   - [ ] The line under it says *Listening on this computer, port 8095. Nobody connected.*
+2. **Copy Link** (Public address empty) and open it in a browser on this computer.
+   - [ ] The page shows the game and recipe; the address bar no longer shows the key.
+   - [ ] The panel says *Connected: this computer*, and the status line *Remote: this computer connected*.
+3. On the page: **Corrupt**, move **Chaos**, press hotkey **1**, turn a rule off and on, **Re-roll**.
+   - [ ] Each one happens in the app at once, and the panel's status line says what the remote did.
+   - [ ] Changes made in the panel show up on the page within a second.
+4. Memory: WRAM, tick **Paint**, value `FF`, tap the picture.
+   - [ ] The byte changes (in the app's memory viewer too); the status line says *painted 1 byte of wram with 0xFF*.
+5. **New Key** in the panel.
+   - [ ] The page goes offline, then says the key is old. Opening a freshly copied link works again.
+6. Through the tunnel, from a phone on mobile data, with **Public address** set:
+   - [ ] The access gate asks for an email login first; after it, the page works as on this computer, and the panel names the email that connected.
+   - [ ] Opening the bare address without logging in shows only the gate, never the page.
+7. Untick **Allow remote control**.
+   - [ ] The page goes offline; nothing listens on port 8095 (`nc -z 127.0.0.1 8095` fails).
+

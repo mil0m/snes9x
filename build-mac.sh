@@ -73,6 +73,11 @@ build_test() {
     # Offscreen; PNGs of the dialogs land in build/tests/shots.
     CORRUPT_SHOTS_DIR=build/tests/shots run_filtered "ERROR|FATAL|CHECK|values|test cases|Status|error" build/tests/corrupt-qt-tests
   fi
+  if [ $# -eq 0 ]; then
+    # Nothing private in the repo (your .private-words, and anything shaped like a secret).
+    run_filtered "FAIL" bash tests/remote/privacy_check_test.sh
+    tools/privacy_check.sh || tests_failed=1
+  fi
   return $tests_failed
 }
 
