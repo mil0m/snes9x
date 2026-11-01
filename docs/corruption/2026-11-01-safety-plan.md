@@ -1,6 +1,6 @@
 # Safety first: plan (roadmap phase 7, #50-#52, #55-#57)
 
-**Status (2026-11-01):** #50 done (QA.md section 27), #51 done (QA.md section 28), #52 done (QA.md section 29). #55 test at first use (the follow-up to #52) done (QA.md section 30); it works but measured little, see its "How it went". #56 proven blame done (QA.md section 32): a trade, see its "How it went". #57 eyes open after a landing: planned. From Erik's list (sorted in
+**Status (2026-11-01):** #50 done (QA.md section 27), #51 done (QA.md section 28), #52 done (QA.md section 29). #55 test at first use (the follow-up to #52) done (QA.md section 30); it works but measured little, see its "How it went". #56 proven blame done (QA.md section 32): a trade, see its "How it went". #57 eyes open after a landing done (no QA section: nothing to see in the app); it found and fixed #56's narrowing, see its "How it went". From Erik's list (sorted in
 [the horizons doc](./2026-10-31-horizons.md#eriks-list-2026-11-01)): see what the game uses
 live, catch a bad change sooner, and test a change before it reaches the game.
 
@@ -581,3 +581,58 @@ seen (today's behaviour). The fast and the slow opcode tables both. `corrupt-smo
 on Goof Troop, Pocky & Rocky and FE4 with Code roulette and Code drip: rollbacks, frames lost,
 changed bytes kept (used), proofs, first-use catches, and how many uses were seen only thanks
 to this.
+
+**Change of plan: the proof narrows the wrong way.** The first `--eyes` runs moved nothing
+(the blind arm matched #56's numbers exactly; a few to 54 uses per 10 runs were seen only
+thanks to the change), and keeping the core's data marks on after a landing changed nothing
+either. Watching one proven culprit frame by frame (FE4, Code roulette, seed 51: `$80:812F`
+STA abs turned into STY dp) showed it was **never run** in real play, and after the proof
+fixed it and rolled back, the same crash came back at the same moment; the next proof fixed
+another byte the game never ran, and so on. The proofs were false:
+
+- `narrow` keeps a half that crashes *on its own* (that half changed, every other candidate
+  clean). That finds a byte that **can** crash the game, not the one that **did**: with the
+  rest of the corruption cleaned away, FE4's boot gets further and reaches `812F`, which
+  crashes; for real it hangs before getting there.
+- So it should narrow by what **prevents** the crash: clean one half with everything else
+  as it is; if the crash goes away, the cause is in that half; if not, try the other half;
+  if neither half alone prevents it, both hold a cause and the suspects so far are the
+  answer. The set narrowed to always prevents the crash, so it's fixed even out of budget
+  (at most 8 bytes, as before).
+
+Test first (fake core): a byte that crashes the game for real and another, sorted before
+it, that would crash it only if the game got further: today's narrowing fixes the second
+and the crash comes back; narrowed by prevention, the first is fixed (with the second,
+since cleaning the first alone lets the second crash in the replay) and the game plays on
+after one rollback. Then `--eyes` again: both arms get the fix, so it's measured against
+#56's numbers.
+
+**How it went.** Both built as planned (the tracer's derailed branch, `see_changed`,
+`RomTracer::set_blind_after_landing` / `seen_after_landing`; `ProvenBlame`'s `reduce`;
+`corrupt-smoke --eyes`, `CORRUPT_PROOF_DIAG` now printing each proven byte's use record,
+`CORRUPT_WATCH_BYTE`). The slow opcode table's half of the tracer change has no real-core
+test: the core only runs that table for an instruction that crosses a bank's end, which a
+test ROM can't do cleanly.
+
+- **Eyes open after a landing is correct and nearly free, and moves nothing:** 1 to 57
+  uses per 10 runs of 10 minutes were seen only thanks to it, and every number matched the
+  blind arm within a byte or two. Broken games don't run many changed bytes after a landing.
+- **The narrowing fix is the win.** Measured with `corrupt-smoke --eyes 10` (everything in
+  both arms; the figures are the same blind or not), against #56's table:
+
+| Recipe | Game | guard rollbacks (no proof → #56 → now) | frames lost | changed at the end (used) | crashes replayed, proven |
+|---|---|---|---|---|---|
+| Code roulette | Goof Troop | 4 → 4 → 4 | 1680 → 1677 → 1677 | 237 (97) → 248 (101) → 248 (101) | 1, 1 |
+| | Pocky & Rocky | 12 → 12 → 12 | 6671 → 6671 → 6671 | 239 (61), same | 0 |
+| | FE4 | 42 → 64 → **39** | 19571 → 25347 → **17561** | 46 (38) → 92 (61) → 50 (43) | 17, 7 |
+| Code drip | Goof Troop | 1 → 1 → 1 | 419, same | same | 0 |
+| | Pocky & Rocky | 9 → 8 → 8 | 3524 → 2796 → 2856 | 456 (101) → 463 (110) → 467 (111) | 2, 1 |
+| | FE4 | 15 → 20 → 20 | 6047 → 8623 → 8623 | 473 (59) → 431 (53) → 431 (53) | 6, 6 |
+
+What it means: on FE4 with heavy code corruption, proven blame now beats guessing outright
+(fewer rollbacks and frames lost, a little more corruption kept), where #56 traded more
+rollbacks for corruption that kept crashing. #56's "42 of 43 proven" was mostly false proofs;
+now 7 of 17 are proven and the rest fall back to guessing. FE4's Code drip is still 20
+rollbacks against 15 without proofs: a follow-up to look at with the same diagnostics.
+Test at first use (#55) also narrows by halves, but there "does this new byte crash the
+game on its own?" is the right question, so it keeps its narrowing.

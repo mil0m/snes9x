@@ -221,7 +221,7 @@ Plan: `rom-corruption-plan` (six phases, each with "Phase N in detail"). QA 20-2
 - Measure: `--swaps [seeds] [count]` (swap vs random bytes vs clean).
 - Docs: `pointer-swap-plan`; QA 26.
 
-## Phase 7: safety (#50-#52, #55, #56)
+## Phase 7: safety (#50-#52, #55-#57)
 
 Plan for all: `safety-plan` (one section per item, each with "How it went").
 
@@ -252,11 +252,18 @@ Plan for all: `safety-plan` (one section per item, each with "How it went").
 - Gotchas: the frame hook fires after the frame-start checkpoint, so a run from it must restore the engine snapshot or the frame's own writes vanish. Cheap (<1% time) but catches 1-2 bytes per 10 min in attract mode.
 
 **Proven blame (#56)** - a crash that comes back after a rollback is replayed from the guard's checkpoints to find the bytes that cause it, then only those are fixed.
-- Code: `corrupt/proven_blame.cpp` (ProvenBlame; `BlameProver` in `crash_guard.h`; budget 10 runs/4000 frames; fix all at most 8 changed bytes else fall back), `RomBlame::used_between`, `RunSpec.detect`, session `configureGuard` (`proven`, `setProven...`). Panel switch "Replay a crash that comes back to find its cause" (on).
+- Code: `corrupt/proven_blame.cpp` (ProvenBlame; `BlameProver` in `crash_guard.h`; budget 10 runs/4000 frames; `reduce` narrows to a small set whose clean values *prevent* the crash, since #57; at most 8 bytes else fall back), `RomBlame::used_between`, `RunSpec.detect`, session `configureGuard` (`proven`, `setProven...`). Panel switch "Replay a crash that comes back to find its cause" (on).
 - Tests: `tests/corrupt/proven_blame_test.cpp`.
-- Measure: `--prove [seeds]` (+ `CORRUPT_PROOF_DIAG`, `CORRUPT_PROVE_FIRST`), `--nmi` (clean NMI-off stretches per game).
+- Measure: `--prove [seeds]` (+ `CORRUPT_PROOF_DIAG`: each proven byte's flags and use record; `CORRUPT_WATCH_BYTE=<hex>`: one byte each frame; `CORRUPT_PROVE_FIRST`), `--nmi` (clean NMI-off stretches per game).
 - Docs: `safety-plan` #56; QA 32.
-- Gotchas: only for a repeat crash (same signal within 120 frames). Finding: used bytes seen by the tracer never explain FE4's repeat NMI-off crashes, because the tracer stops marking after a derail landing. Net effect is a trade: keeps about 2x the corruption at more rollbacks.
+- Gotchas: only for a repeat crash (same signal within 120 frames). Finding: used bytes seen by the tracer never explained FE4's repeat NMI-off crashes, and the real reason (#57) was the narrowing: it kept a half that crashed *on its own*, which finds bytes that could crash the game if it got further, not the ones that did. Now it narrows by prevention. Since the fix, on FE4 Code roulette it beats guessing (39 rollbacks vs 42); FE4 Code drip is still worse (20 vs 15).
+
+**Eyes open after a landing (#57)** - after the derail watch notes a landing, the tracer still marks the changed bytes the game runs (Touched only), so the crash blame, #55 and #56 see them.
+- Code: `corrupt/core_access.cpp` (`traced()`'s derailed branch, `see_changed`, `see_changed_slow`), `RomTracer::set_blind_after_landing` (measuring only) and `seen_after_landing()`.
+- Tests: `guard_integration_test.cpp` ("after a landing, changed bytes run later in the frame still count as used", "blind after a landing"); `test_rom.cpp` `build_landing`.
+- Measure: `--eyes [seeds]` (everything in both arms, the first blind as before).
+- Docs: `safety-plan` #57.
+- Gotchas: the map still learns nothing after a landing (no Opcode/Operand/width, no jumps), and the core's data/DMA marks stay off, so a changed byte *read as data* after a landing is still unseen. The slow opcode table's half isn't reached by a test ROM (the core runs it only for an instruction crossing a bank's end).
 
 **Core VBlank freeze fix** - corrupted `INC $2133,X` flipped overscan so V never equalled the VBlank line and `S9xMainLoop` never returned.
 - Code: `cpuexec.cpp` static `VBlankStarted` (VBlank at 225/240, or at the latest 240, once a frame).
@@ -310,6 +317,7 @@ Plan for all: `safety-plan` (one section per item, each with "How it went").
 - `--ahead [seeds=5]`: instant revert in both arms; the second tests each live ROM firing first.
 - `--first-use [seeds=5]`: both of those in both arms; the second also tests at first use.
 - `--prove [seeds]`: proven blame on repeat crashes (see #56). `--nmi`: clean NMI-off stretches per game.
+- `--eyes [seeds]`: everything in both arms; the first blind after a landing, as before #57.
 - `--learn [held=3] [from=0]`: crash-map learning, then held-out seeds plain vs avoid vs random control.
 - `--dump <dir>`: write raw `.bin` per target (needs a recipe and frames; used for viewer pictures).
-- Env: `CORRUPT_CODEMAP`, `CORRUPT_LEARN_VERBOSE`, `CORRUPT_INSTANT_VERBOSE`, `CORRUPT_FU_*`, `CORRUPT_PROVE_FIRST`, `CORRUPT_PROOF_DIAG`, `CORRUPT_DUMP_DIR`, `CORRUPT_SHOTS_DIR`.
+- Env: `CORRUPT_CODEMAP`, `CORRUPT_LEARN_VERBOSE`, `CORRUPT_INSTANT_VERBOSE`, `CORRUPT_FU_*`, `CORRUPT_PROVE_FIRST`, `CORRUPT_PROOF_DIAG`, `CORRUPT_WATCH_BYTE`, `CORRUPT_DUMP_DIR`, `CORRUPT_SHOTS_DIR`.

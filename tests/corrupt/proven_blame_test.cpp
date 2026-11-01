@@ -23,6 +23,7 @@ struct Game : CoreAccess
     std::vector<uint8_t> &flags;
     std::map<uint32_t, uint32_t> every, once;
     std::map<uint32_t, uint32_t> hidden; // run once at that frame without the tracer seeing it
+    std::map<uint32_t, uint32_t> later;  // run once at that frame, unless a fuse is already lit
     uint32_t fuse_frames = 200;
     uint32_t frame = 0, fuse = 0;
     bool halted = false;
@@ -52,6 +53,9 @@ struct Game : CoreAccess
                 run(o);
         for (auto [o, at] : once)
             if (frame == at)
+                run(o);
+        for (auto [o, at] : later)
+            if (frame == at && !fuse)
                 run(o);
         for (auto [o, at] : hidden)
             if (frame == at && !fuse && rom.read(Target::ROM, o) == kFuse)
@@ -236,6 +240,28 @@ TEST_SUITE("proven blame")
         CHECK(f.outcomes[0].proven);
         CHECK(f.outcomes[0].rom_blamed == std::vector<uint32_t>{ 0x25 });
         CHECK(f.rom.changed() == 7);
+        CHECK(!f.game.halted);
+    }
+
+    // A byte that would crash the game only if it got further (it never runs for real: the
+    // real culprit's fuse is lit first) sorts before the real one. Narrowed by "this half
+    // crashes on its own", the proof fixed it and the crash came back (#57's finding).
+    TEST_CASE("narrowed by what prevents the crash, not by what could cause one")
+    {
+        Fixture f;
+        f.change(0x30, kFuse);
+        f.game.once[0x30] = 100; // the real culprit
+        f.change(0x20, kFuse);
+        f.game.later[0x20] = 120; // only reached when 0x30 is clean
+        f.change(0x40, 0x42);
+        f.game.every[0x40] = 50; // harmless, used all along
+        f.run(1500);
+        REQUIRE(f.outcomes.size() == 1);
+        CAPTURE(f.outcomes[0].summary);
+        CHECK(f.outcomes[0].proven);
+        // Cleaning 0x30 alone would let 0x20 crash the game later: both go, the harmless one stays.
+        CHECK(f.outcomes[0].rom_blamed == std::vector<uint32_t>{ 0x20, 0x30 });
+        CHECK(f.at(0x40) == 0x42);
         CHECK(!f.game.halted);
     }
 

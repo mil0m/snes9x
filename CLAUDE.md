@@ -70,7 +70,8 @@ tools/privacy_check.sh [--staged]            # nothing private in tracked files
   `Registers.PBPC` / `CPU.V_Counter` finds where it spins.
 - `pint` in the core is signed: use `uintptr_t` for pointer arithmetic on ROM offsets.
 - `QHttpServer::bind()` owns the `QTcpServer` it's given; don't delete it yourself.
-- After a landing (#51's watch) the tracer marks nothing for the rest of that frame, so
-  `RomBlame` misses uses in broken frames (see #56's *How it went*).
+- After a landing (#51's watch) the tracer teaches the map nothing for the rest of that
+  frame; since #57 it still sets *Touched* on changed bytes that run, so `RomBlame` sees
+  them. Changed bytes *read as data* after a landing are still unseen (the core's marks are off).
 - A run ahead from a frame-start checkpoint must restore the engine's snapshot too: the
   frame hook fires at line 1, after the checkpoint.

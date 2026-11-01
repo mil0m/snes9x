@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <chrono>
+#include <functional>
 
 namespace corrupt
 {
@@ -52,24 +53,49 @@ std::optional<Proof> ProvenBlame::prove(Engine &engine, CoreAccess &core, const 
     };
 
     tries++;
-    // Narrows `cands` (which, clean, prevent the crash from start si) down by halves, keeping
-    // a half that crashes on its own. Nothing if it runs out of budget with too many left
-    // to fix them all (better a guess than undoing most of the corruption).
-    auto narrow = [&](size_t si, const std::vector<uint32_t> &cands) -> std::optional<std::vector<uint32_t>> {
-        std::vector<uint32_t> suspects = cands;
-        bool alone = cands.size() == 1;
-        while (suspects.size() > 1 && affordable(si))
+    // Narrows `cands` (which, clean, prevent the crash from start si) to a small set that,
+    // clean with everything else as it is, still prevents it: a half that does holds the
+    // cause; when neither does, each half holds one, and each is narrowed with the other
+    // kept clean. (Not "a half that crashes on its own": with the rest clean the game may
+    // get further and crash on a byte it never reaches for real, #57.) Every step keeps a
+    // set that prevents the crash, so out of budget it stops where it is; nothing if that
+    // leaves too many to fix.
+    std::function<std::vector<uint32_t>(size_t, std::vector<uint32_t>, const std::vector<uint32_t> &)> reduce;
+    reduce = [&](size_t si, std::vector<uint32_t> cands, const std::vector<uint32_t> &kept_clean) {
+        auto with = [&](const std::vector<uint32_t> &part) {
+            std::vector<uint32_t> out = part;
+            out.insert(out.end(), kept_clean.begin(), kept_clean.end());
+            return out;
+        };
+        while (cands.size() > 1 && affordable(si))
         {
-            std::vector<uint32_t> half(suspects.begin(), suspects.begin() + std::ptrdiff_t(suspects.size() / 2));
-            alone = crashes(si, cands, half);
-            suspects = alone ? half : without(suspects, half);
+            std::vector<uint32_t> half(cands.begin(), cands.begin() + std::ptrdiff_t(cands.size() / 2));
+            auto other = without(cands, half);
+            if (!crashes(si, with(half), {}))
+            {
+                cands = std::move(half);
+                continue;
+            }
+            if (!affordable(si))
+                break;
+            if (!crashes(si, with(other), {}))
+            {
+                cands = std::move(other);
+                continue;
+            }
+            // A cause in each half.
+            auto first = reduce(si, half, with(other));
+            auto second = reduce(si, other, with(first));
+            first.insert(first.end(), second.begin(), second.end());
+            std::sort(first.begin(), first.end());
+            return first;
         }
-        if (suspects.size() == 1 && !alone && affordable(si))
-            alone = crashes(si, cands, suspects);
-        if (alone)
-            return suspects;
-        if (cands.size() <= kFixAllAtMost)
-            return cands; // proven together, not narrowed: all of them
+        return cands;
+    };
+    auto narrow = [&](size_t si, const std::vector<uint32_t> &cands) -> std::optional<std::vector<uint32_t>> {
+        auto culprits = reduce(si, cands, {});
+        if (culprits.size() <= kFixAllAtMost)
+            return culprits;
         return std::nullopt;
     };
     auto done = [&](size_t si, const std::vector<uint32_t> &culprits, bool unseen) {
