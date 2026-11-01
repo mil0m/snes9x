@@ -1,6 +1,6 @@
-# Safety first: plan (roadmap phase 7, #50-#52, #55, #56)
+# Safety first: plan (roadmap phase 7, #50-#52, #55-#57)
 
-**Status (2026-11-01):** #50 done (QA.md section 27), #51 done (QA.md section 28), #52 done (QA.md section 29). #55 test at first use (the follow-up to #52) done (QA.md section 30); it works but measured little, see its "How it went". #56 proven blame done (QA.md section 32): a trade, see its "How it went". From Erik's list (sorted in
+**Status (2026-11-01):** #50 done (QA.md section 27), #51 done (QA.md section 28), #52 done (QA.md section 29). #55 test at first use (the follow-up to #52) done (QA.md section 30); it works but measured little, see its "How it went". #56 proven blame done (QA.md section 32): a trade, see its "How it went". #57 eyes open after a landing: planned. From Erik's list (sorted in
 [the horizons doc](./2026-10-31-horizons.md#eriks-list-2026-11-01)): see what the game uses
 live, catch a bad change sooner, and test a change before it reaches the game.
 
@@ -538,3 +538,46 @@ What it means: it's a trade. Where guessing loops it keeps much more of the corr
 of more rollbacks later, because what it keeps keeps breaking the game; elsewhere it's
 neutral or a little better. About 1-2 s of unseen replay per proof.
 
+
+## #57 Eyes open after a landing
+
+**Goal.** The crash blame sees every changed ROM byte the game uses, also in a frame where
+#51's watch noted a landing. Today, after a landing, the tracer marks nothing until the frame
+ends (so garbage doesn't teach the map that data is code), and that also hides the *Touched*
+bit the ROM blame counts uses by. A quietly broken game lands in many frames that the instant
+revert doesn't play again (no culprit it knows, eight in a row, a landing outside its window),
+and every changed byte that runs after the landing in such a frame goes unseen: the guard's
+guess misses it, test at first use (#55) never queues it, and proven blame (#56) needs its
+"every changed byte" step to find it. On FE4 every replayed crash was such a case.
+
+**How.** After a landing, the tracer goes on marking only what the blame needs: each
+instruction byte with the *Changed* bit gets *Touched*, nothing else.
+
+- **Not taught:** no *Opcode*, *Operand* or width bits, no jump notes, no second landing; the
+  core's data and DMA marks stay off (they'd teach *Data*). The map learns nothing from
+  garbage, as now.
+- **Cost:** after a landing, a test of bits the tracer already loads, per instruction; nothing
+  in a clean frame.
+- **The core's reads:** a changed byte *read as data* after a landing stays unseen. It would
+  need a core change (a mark mask in `S9xMarkRom`); measured first whether the code half is
+  enough. *(Design choice: tracer only, no core change, unless the numbers ask for it.)*
+- **A switch for measuring:** `RomTracer::set_blind_after_landing(true)` brings back today's
+  behaviour; the app never sets it.
+- **A counter:** `RomTracer::seen_after_landing()`, changed bytes marked only because of this
+  (not already touched in the frame), for corrupt-smoke.
+
+**What it changes for the rest.** More uses seen means more suspects for the guard's guess
+(more bytes fixed per crash, maybe fewer repeat crashes), more first uses for #55 to test, and
+more crashes #56 proves at its first step. The risk: garbage running through innocent changed
+bytes after a real derail makes them suspects too; the guard's narrowing and the policy
+decide, so it's measured, not assumed.
+
+**Tests.** Real core: a test ROM whose routine branches (changed offset) into the middle of an
+instruction that is harmless there, and then, later in the frame, runs another routine with a
+changed, harmless operand. With the instant revert off, the second byte is used (frames_used
+counts it) and the landing byte is still not an opcode in the map; with the switch, it isn't
+seen (today's behaviour). The fast and the slow opcode tables both. `corrupt-smoke --eyes
+[seeds]`: guard, #51, #52, #55 and #56 in both arms, the first blind after a landing (today),
+on Goof Troop, Pocky & Rocky and FE4 with Code roulette and Code drip: rollbacks, frames lost,
+changed bytes kept (used), proofs, first-use catches, and how many uses were seen only thanks
+to this.
