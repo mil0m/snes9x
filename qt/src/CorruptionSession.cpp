@@ -1590,7 +1590,7 @@ std::string CorruptionSession::guardedBy(uint32_t offset) const
     if (best->address)
     {
         char cpu[16];
-        std::snprintf(cpu, sizeof cpu, "$%02X:%04X", *best->address >> 16, *best->address & 0xFFFF);
+        snprintf(cpu, sizeof cpu, "$%02X:%04X", *best->address >> 16, *best->address & 0xFFFF);
         where = cpu;
     }
     return best->label.empty() ? where : where + " (" + best->label + ")";
