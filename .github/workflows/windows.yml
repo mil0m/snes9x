@@ -1,0 +1,69 @@
+# The Windows build of the Qt app, with the corruption tools: a zip with snes9x-qt.exe and
+# everything it needs, to download from the run's page (Artifacts). Built with MSYS2's clang
+# and its Qt (upstream's prebuilt Qt has no HttpServer/WebSockets, which remote play needs).
+name: Windows build
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [master]
+    paths-ignore: ['docs/**', '**.md']
+
+concurrency:
+  group: windows-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: msys2 {0}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - uses: msys2/setup-msys2@v2
+        with:
+          msystem: CLANG64
+          update: true
+          pacboy: >-
+            toolchain:p cmake:p ninja:p pkgconf:p libpng:p zlib:p
+            qt6-base:p qt6-svg:p qt6-httpserver:p qt6-websockets:p qt6-tools:p
+
+      - name: Configure
+        run: cmake -S qt -B build/qt -G Ninja -DCMAKE_BUILD_TYPE=Release -DSNES9X_SYSTEM_QT=ON
+
+      - name: Build
+        run: cmake --build build/qt --target snes9x-qt
+
+      - name: Package
+        run: |
+          set -e
+          out=dist/snes9x-corruptions
+          mkdir -p "$out"
+          cp build/qt/snes9x-qt.exe "$out/"
+          windeployqt6 --release --no-translations --no-system-d3d-compiler "$out/snes9x-qt.exe"
+          # The rest of MSYS2's DLLs the exe and the Qt plugins load (twice: DLLs need DLLs).
+          for pass in 1 2 3; do
+            find "$out" -name '*.exe' -o -name '*.dll' | while read -r f; do
+              ldd "$f" | awk '/\/clang64\// {print $3}'
+            done | sort -u | while read -r dll; do cp -n "$dll" "$out/" || true; done
+          done
+          cp LICENSE "$out/LICENSE.txt"
+          cp docs/corruption/README.md "$out/README-corruption.md"
+          ls "$out"
+
+      - name: Check every DLL is there
+        run: |
+          cd dist/snes9x-corruptions
+          # Run outside MSYS2's PATH, so a DLL only MSYS2 has shows up as missing.
+          PATH=/usr/bin ldd ./snes9x-qt.exe | tee ldd.txt
+          if grep -E 'not found|/clang64/' ldd.txt; then exit 1; fi
+          rm ldd.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: snes9x-corruptions-windows
+          path: dist/snes9x-corruptions

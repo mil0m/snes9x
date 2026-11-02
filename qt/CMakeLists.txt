@@ -17,7 +17,10 @@ set(DEFINES SNES9X_QT)
 include(../cmake/snes9x_core.cmake)
 target_compile_definitions(snes9x-core PRIVATE ${DEFINES} ZLIB HAVE_STDINT_H HAVE_LIBPNG ALLOW_CPU_OVERCLOCK)
 
-if(${CMAKE_SYSTEM_NAME} STREQUAL "Windows")
+# SNES9X_SYSTEM_QT: on Windows, use the Qt that is installed (MSYS2's, with HttpServer and
+# WebSockets for remote play) instead of upstream's prebuilt one. The fork's Windows build does.
+option(SNES9X_SYSTEM_QT "Windows: use the installed Qt, not the prebuilt download" OFF)
+if(${CMAKE_SYSTEM_NAME} STREQUAL "Windows" AND NOT SNES9X_SYSTEM_QT)
     set(PREBUILT_QT "${PROJECT_SOURCE_DIR}/../external/qt6-mingw-clang-bin")
     if (EXISTS ${PREBUILT_QT})
         message("Using existing Qt6 build at ${PREBUILT_QT}")
@@ -43,15 +46,21 @@ list(APPEND INCLUDES ${ZLIB_INCLUDE_DIRS})
 list(APPEND FLAGS ${ZLIB_COMPILE_FLAGS})
 
 if(${CMAKE_SYSTEM_NAME} STREQUAL "Windows")
-    if (${CMAKE_CXX_COMPILER_ID} STREQUAL "Clang")
-        message("Clang compiler, using libc++.")
-        list(APPEND LIBS libc++.a)
-    elseif(${CMAKE_CXX_COMPILER_ID} STREQUAL "GNU")
-        message("GNU compiler, using libstdc++.")
-        list(APPEND LIBS libstdc++.a)
+    if (SNES9X_SYSTEM_QT)
+        # A shared Qt uses the shared C++ runtime; the exe must use the same one.
+        list(APPEND LIBS ${PNG_LINK_LIBRARIES} ${ZLIB_LINK_LIBRARIES})
+    else()
+        if (${CMAKE_CXX_COMPILER_ID} STREQUAL "Clang")
+            message("Clang compiler, using libc++.")
+            list(APPEND LIBS libc++.a)
+        elseif(${CMAKE_CXX_COMPILER_ID} STREQUAL "GNU")
+            message("GNU compiler, using libstdc++.")
+            list(APPEND LIBS libstdc++.a)
+        endif()
+        list(APPEND LIBS libz.a libpng.a)
     endif()
 
-    list(APPEND LIBS libz.a libpng.a opengl32 gdi32 winmm imm32 ole32 oleaut32 version uuid advapi32 setupapi shell32 dinput8)
+    list(APPEND LIBS opengl32 gdi32 winmm imm32 ole32 oleaut32 version uuid advapi32 setupapi shell32 dinput8)
     list(APPEND PLATFORM_SOURCES
         ../common/video/opengl/wgl_context.cpp
         ../external/glad/src/wgl.c
