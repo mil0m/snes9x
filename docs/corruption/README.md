@@ -14,7 +14,12 @@ Corruption panel. Start with its first section; it takes a minute.
 build/qt/snes9x-qt path/to/game.sfc
 ```
 
-On Linux and Windows, build `qt/` with CMake as upstream Snes9x does. The corruption code
+**Windows:** every push to `master` builds the app on GitHub (`.github/workflows/windows.yml`,
+MSYS2 clang with its Qt); the run's page has a zip (*Artifacts*) with `snes9x-qt.exe` and
+everything it needs. Unzip it anywhere and run the exe. Building it yourself: the same steps in
+an MSYS2 CLANG64 shell, with `-DSNES9X_SYSTEM_QT=ON`.
+
+On Linux, build `qt/` with CMake as upstream Snes9x does. The corruption code
 is plain C++20 with no extra dependencies.
 
 ## The library
