@@ -349,7 +349,10 @@ its first byte becomes a return, so it's called and comes straight back. Untick 
 back.
 
 The app can't know which one is gravity: try the busy ones near the top and watch what
-stops. When you find a good one, select it and give it a **Name** (*gravity*). Names are
+stops. When you find a good one, give it a **Name** (*gravity*): double-click its **Name**
+cell in the table (or select it and press Return), type, and press Return; Esc cancels, and
+an empty name removes yours. The **Name** field under the table does the same. What you did
+with a function (its button, *protected*, a timer) shows in the **In play** column. Names are
 saved in the library (*names.<you>.json*), so everyone who shares it sees yours, and you
 see theirs with who named it: *jump (erik)*. Then pick a button (**Button 1** to **9**) and **Keep in Recipe**:
 that button turns it off and on again while you play (in the panel's **Buttons**, or on

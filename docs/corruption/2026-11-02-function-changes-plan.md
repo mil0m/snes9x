@@ -263,3 +263,32 @@ inside the busiest functions / anywhere):**
 - No kind is the gentle one: which survives depends on the game (Goof's branch flips stall
   it anywhere but rarely inside its busy functions; its math swaps the other way round).
   The guide doesn't promise any kind is safe; Put Back and the crash guard are the answer.
+
+## #67 Names typed in the table
+
+Mikael: *"Let's make it so we can add names to the functions in the function table!"* The
+names (#59) could only be typed in the field under the table, and the table's Name column
+mixed names with what you did to the function ("gravity — button 3 · protected"), so it
+didn't read as the place to type.
+
+- **The Name cell is where you type.** Double-click it (or select the row and press Return),
+  type, Return. The cell shows everyone's names (yours first, then *scroll (erik)*); the
+  editor starts from yours, since that's the only one you change. An empty name on the
+  selected row shows a quiet *Double-click to name it*. Esc cancels; an empty name removes
+  yours. The field under the table stays and the two agree.
+- **What you did gets its own column**, *In play*: the button, *starts off*, the timer,
+  changes, *protected* / *guarded*. Name is the wide column; In play fits its words.
+- Nothing changes in how names are stored or shared.
+
+Tests: the table shows names and In play apart; editing a cell starts from your name,
+Return saves it through the source (and the field under the table follows), Esc doesn't,
+an emptied cell removes it; only Name cells are editable.
+
+### How it went (#67)
+
+Built in an hour, test first. Two things the pictures and tests found: table cells are
+editable by default, so with double-click editing on every column could be typed over (now
+only Name cells carry the flag); and the *In play* column, sized once per re-sort, was too
+narrow for a function protected after it ("prot…"), so it now grows when a cell outgrows
+it. The hint on an empty, selected name uses the selection's own text colour for the window's
+state (white on the Mac's grey inactive selection was hard to read).

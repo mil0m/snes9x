@@ -30,6 +30,7 @@ class FunctionsPage : public QWidget
     explicit FunctionsPage(FunctionSource &source, QWidget *parent = nullptr);
     void refresh();    // reload, busiest now first
     void updateRows(); // the same rows, their numbers and states now (the timer, twice a second)
+    void rename(int row, const QString &name); // your name for that row's function; empty removes it
 
     // Show in ROM: the memory viewer on the ROM, the Functions overlay, these bytes selected.
     std::function<void(uint32_t first, uint32_t last)> onShowInRom;
@@ -55,6 +56,7 @@ class FunctionsPage : public QWidget
 
     FunctionSource &source;
     std::vector<FunctionRow> shown;
+    bool in_play_grew = false; // an In play cell outgrew its column
     bool filling = false;
     bool selecting = false; // the controls are being set from the selected row
     QTimer *timer;

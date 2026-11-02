@@ -15,6 +15,9 @@
 #include <QLineEdit>
 #include <QLocale>
 #include <QPushButton>
+#include <QSignalBlocker>
+#include <QStyledItemDelegate>
+#include <QPainter>
 #include <QTableWidget>
 #include <QTimer>
 #include <QVBoxLayout>
@@ -36,7 +39,8 @@ enum Col
     Frames,
     Size,
     Off,
-    About,
+    About,  // the names: yours first, then others' (editable: yours)
+    InPlay, // what you did with it
     Cols
 };
 
@@ -70,7 +74,7 @@ QString how_called(const FunctionRow &r)
 }
 
 // The Name column: its names, then what you do with it.
-QString about(const FunctionRow &r)
+QString in_play(const FunctionRow &r)
 {
     QStringList parts;
     if (r.kept)
@@ -87,12 +91,51 @@ QString about(const FunctionRow &r)
         parts << (r.protect->deep ? QObject::tr("protected with what it calls") : QObject::tr("protected"));
     else if (r.guarded)
         parts << QObject::tr("guarded");
-    QString state = parts.join(" · ");
-    QString label = QString::fromStdString(r.label);
-    if (label.isEmpty())
-        return state;
-    return state.isEmpty() ? label : label + QString::fromUtf8(" — ") + state;
+    return parts.join(" · ");
 }
+
+// The Name column (#67): everyone's names, and yours to type over. The editor starts from your
+// own name (the only one you change); an empty name on the selected row says how to give one.
+class NameDelegate : public QStyledItemDelegate
+{
+  public:
+    using QStyledItemDelegate::QStyledItemDelegate;
+    std::function<void(int row, const QString &name)> onRename;
+
+    QWidget *createEditor(QWidget *parent, const QStyleOptionViewItem &option, const QModelIndex &index) const override
+    {
+        auto editor = QStyledItemDelegate::createEditor(parent, option, index);
+        if (auto line = qobject_cast<QLineEdit *>(editor))
+            line->setPlaceholderText(QObject::tr("What it does, like \"gravity\""));
+        return editor;
+    }
+    void setEditorData(QWidget *editor, const QModelIndex &index) const override
+    {
+        if (auto line = qobject_cast<QLineEdit *>(editor))
+            line->setText(index.data(Qt::UserRole).toString());
+    }
+    void setModelData(QWidget *editor, QAbstractItemModel *, const QModelIndex &index) const override
+    {
+        // The cell shows everyone's names, so it isn't written here: the rename refreshes it.
+        if (auto line = qobject_cast<QLineEdit *>(editor); line && onRename)
+            onRename(index.row(), line->text().trimmed());
+    }
+    void paint(QPainter *painter, const QStyleOptionViewItem &option, const QModelIndex &index) const override
+    {
+        QStyledItemDelegate::paint(painter, option, index);
+        if (!(option.state & QStyle::State_Selected) || !index.data(Qt::DisplayRole).toString().isEmpty())
+            return;
+        painter->save();
+        // The selection's own text colour, active or not (the Mac greys an inactive selection).
+        auto group = option.state & QStyle::State_Active ? QPalette::Active : QPalette::Inactive;
+        QColor hint = option.palette.color(group, QPalette::HighlightedText);
+        hint.setAlphaF(0.7f);
+        painter->setPen(hint);
+        painter->drawText(option.rect.adjusted(6, 0, -6, 0), Qt::AlignLeft | Qt::AlignVCenter,
+                          QObject::tr("Double-click to name it"));
+        painter->restore();
+    }
+};
 
 QString size_text(const FunctionRow &r)
 {
@@ -151,10 +194,15 @@ FunctionsPage::FunctionsPage(FunctionSource &source, QWidget *parent) : QWidget(
     table = new QTableWidget(0, Cols, this);
     table->setObjectName("functions");
     table->setAccessibleName(tr("Functions"));
-    table->setHorizontalHeaderLabels({ tr("Function"), tr("Now"), tr("Frames"), tr("Size"), tr("Off"), tr("Name") });
+    table->setHorizontalHeaderLabels(
+        { tr("Function"), tr("Now"), tr("Frames"), tr("Size"), tr("Off"), tr("Name"), tr("In play") });
     table->setSelectionBehavior(QAbstractItemView::SelectRows);
     table->setSelectionMode(QAbstractItemView::SingleSelection);
-    table->setEditTriggers(QAbstractItemView::NoEditTriggers);
+    // Only the Name cells are editable (their flags): double-click, or Return on the row (#67).
+    table->setEditTriggers(QAbstractItemView::DoubleClicked | QAbstractItemView::EditKeyPressed);
+    auto names = new NameDelegate(table);
+    names->onRename = [this](int row, const QString &text) { rename(row, text); };
+    table->setItemDelegateForColumn(About, names);
     table->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
     table->setWordWrap(true);
     table->verticalHeader()->hide();
@@ -165,8 +213,11 @@ FunctionsPage::FunctionsPage(FunctionSource &source, QWidget *parent) : QWidget(
     table->horizontalHeaderItem(Now)->setToolTip(tr("Of the last 5 seconds, how many frames it ran in"));
     table->horizontalHeaderItem(Frames)->setToolTip(tr("Frames it ran in, in all (everyone's play)"));
     table->horizontalHeaderItem(Size)->setToolTip(tr("How many bytes of its own code the code map knows"));
-    table->horizontalHeaderItem(About)->setToolTip(tr("What people called it (yours first, then others' with "
-                                                      "their names), and what you do with it"));
+    table->horizontalHeaderItem(About)->setToolTip(tr("What people called it: yours first, then others' with their "
+                                                      "names. Double-click to give it yours; everyone sharing the "
+                                                      "library sees it."));
+    table->horizontalHeaderItem(InPlay)->setToolTip(tr("What you did with it: a switch or a button, a timer, "
+                                                       "changes, protected or guarded"));
     layout->addWidget(table, 1);
 
     // The selected function.
@@ -329,6 +380,7 @@ void FunctionsPage::fill(int row, const FunctionRow &r)
         if (!it)
         {
             it = new QTableWidgetItem;
+            it->setFlags(Qt::ItemIsSelectable | Qt::ItemIsEnabled); // only names are typed in (below)
             table->setItem(row, col, it);
         }
         return it;
@@ -378,9 +430,21 @@ void FunctionsPage::fill(int row, const FunctionRow &r)
             off->setToolTip(tip);
     }
     auto *ab = item(About);
-    QString text = about(r);
-    if (ab->text() != text)
-        ab->setText(text);
+    auto name_flags = Qt::ItemIsSelectable | Qt::ItemIsEnabled | Qt::ItemIsEditable;
+    if (ab->flags() != name_flags)
+        ab->setFlags(name_flags);
+    QString label = QString::fromStdString(r.label), mine = QString::fromStdString(r.my_name);
+    if (ab->text() != label)
+        ab->setText(label);
+    if (ab->data(Qt::UserRole).toString() != mine)
+        ab->setData(Qt::UserRole, mine);
+    auto *state = item(InPlay);
+    QString text = in_play(r);
+    if (state->text() != text)
+    {
+        state->setText(text);
+        in_play_grew = in_play_grew || table->fontMetrics().horizontalAdvance(text) + 16 > table->columnWidth(InPlay);
+    }
     filling = false;
 }
 
@@ -395,7 +459,7 @@ void FunctionsPage::refresh()
     filling = false;
     for (size_t i = 0; i < shown.size(); i++)
         fill(int(i), shown[i]);
-    for (int col : { int(FunctionCol), int(Now), int(Frames), int(Size), int(Off) })
+    for (int col : { int(FunctionCol), int(Now), int(Frames), int(Size), int(Off), int(InPlay) })
         table->resizeColumnToContents(col);
     // Frames keeps counting while the page is shown: room for 46 hours of play, so the
     // numbers never outgrow the column between re-sorts.
@@ -432,6 +496,11 @@ void FunctionsPage::updateRows()
             shown[i] = *it->second;
             fill(int(i), shown[i]);
         }
+    if (in_play_grew) // a switch kept or a function protected since the last re-sort
+    {
+        in_play_grew = false;
+        table->resizeColumnToContents(InPlay);
+    }
     not_running->setVisible(!source.running());
 }
 
@@ -525,8 +594,15 @@ void FunctionsPage::nameSelected()
     int row = selectedRow();
     if (row < 0 || selecting)
         return;
+    rename(row, name->text().trimmed());
+}
+
+void FunctionsPage::rename(int row, const QString &text)
+{
+    if (row < 0 || size_t(row) >= shown.size())
+        return;
     auto &r = shown[size_t(row)];
-    std::string want = name->text().trimmed().toStdString();
+    std::string want = text.toStdString();
     if (want == r.my_name)
         return;
     auto err = source.setName(r.f.entry, want);
@@ -534,9 +610,14 @@ void FunctionsPage::nameSelected()
         say(tr("Couldn't save the name: %1").arg(QString::fromStdString(err)), int(ui::Tone::Error));
     else
         say(want.empty() ? tr("Name removed.")
-                         : tr("Named %1 \"%2\": everyone who shares the library sees it.").arg(cpu(r), name->text().trimmed()),
+                         : tr("Named %1 \"%2\": everyone who shares the library sees it.").arg(cpu(r), text),
             int(ui::Tone::Ok));
     updateRows();
+    if (row == selectedRow() && name->text().trimmed() != text)
+    {
+        QSignalBlocker block(name);
+        name->setText(text); // the field under the table agrees with the cell
+    }
     table->resizeRowsToContents();
 }
 

@@ -4,6 +4,8 @@
 #include "UiKit.hpp"
 
 #include <QApplication>
+#include <QKeyEvent>
+#include <QLineEdit>
 #include <QCheckBox>
 #include <QComboBox>
 #include <QDoubleSpinBox>
@@ -33,7 +35,8 @@ enum Col
     Frames,
     Size,
     Off,
-    About
+    About,   // the names
+    InPlay   // what you did with it
 };
 } // namespace
 
@@ -57,9 +60,14 @@ TEST_CASE("the functions window lists what runs, busiest now first, and shows wh
     CHECK(table->item(0, Off)->checkState() == Qt::Unchecked);
     CHECK(table->item(1, Off)->checkState() == Qt::Checked);
     CHECK(table->item(0, About)->text() == "scroll (erik)");
-    CHECK(table->item(1, About)->text().contains("gravity"));
-    CHECK(table->item(1, About)->text().contains("button 3"));
-    CHECK(table->item(1, About)->text().contains("protected with what it calls"));
+    CHECK(table->item(1, About)->text() == "gravity"); // names only...
+    CHECK(table->item(1, InPlay)->text().contains("button 3")); // ...and what you did, apart
+    CHECK(table->item(1, InPlay)->text().contains("protected with what it calls"));
+    CHECK(table->item(0, InPlay)->text().isEmpty());
+    // Protected later: the column grows to fit the new words.
+    src.rows[0].protect = Protect{ src.rows[0].f.entry, true };
+    d.updateRows();
+    CHECK(table->fontMetrics().horizontalAdvance(table->item(0, InPlay)->text()) <= table->columnWidth(InPlay));
     // A function reached both ways can't be skipped safely: no box to tick.
     CHECK(!(table->item(2, Off)->flags() & Qt::ItemIsUserCheckable));
     CHECK(child<QLabel>(d, "empty")->isHidden());
@@ -271,4 +279,52 @@ TEST_CASE("a game with hundreds of functions fills and updates quickly")
     d.updateRows();
     auto text = table->item(0, 2)->text();
     CHECK(table->fontMetrics().horizontalAdvance(text) + 8 <= table->columnWidth(2));
+}
+
+TEST_CASE("names are typed in the table: double-click, type, Return; Esc cancels; empty removes")
+{
+    FakeFunctions src;
+    FunctionsPage d(src);
+    d.show();
+    QApplication::processEvents();
+    auto table = child<QTableWidget>(d, "functions");
+    // Only the name cells can be edited.
+    CHECK(bool(table->item(1, About)->flags() & Qt::ItemIsEditable));
+    for (int col : { Name, Now, Frames, Size, Off, InPlay })
+        CHECK_FALSE(bool(table->item(1, col)->flags() & Qt::ItemIsEditable));
+
+    auto edit = [&](int row) -> QLineEdit * {
+        table->setCurrentCell(row, About);
+        table->editItem(table->item(row, About));
+        QApplication::processEvents();
+        return table->viewport()->findChild<QLineEdit *>();
+    };
+    auto press = [](QWidget *w, int key) {
+        QKeyEvent down(QEvent::KeyPress, key, Qt::NoModifier);
+        QApplication::sendEvent(w, &down);
+        QApplication::processEvents();
+    };
+
+    auto editor = edit(1);
+    REQUIRE(editor);
+    CHECK(editor->text() == "gravity"); // starts from your own name
+    editor->setText("falling");
+    press(editor, Qt::Key_Return);
+    REQUIRE_FALSE(src.named.empty());
+    CHECK(src.named.back() == std::pair<uint32_t, std::string>{ 0x000142, "falling" });
+    CHECK(child<QLineEdit>(d, "name")->text() == "falling"); // the field under the table follows
+
+    size_t before = src.named.size();
+    editor = edit(0); // erik's name only: yours starts empty
+    REQUIRE(editor);
+    CHECK(editor->text().isEmpty());
+    editor->setText("scroll x");
+    press(editor, Qt::Key_Escape);
+    CHECK(src.named.size() == before);
+
+    editor = edit(1);
+    REQUIRE(editor);
+    editor->clear();
+    press(editor, Qt::Key_Return);
+    CHECK(src.named.back() == std::pair<uint32_t, std::string>{ 0x000142, "" });
 }

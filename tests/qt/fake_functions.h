@@ -156,6 +156,12 @@ struct FakeFunctions : FunctionSource
     std::string setName(uint32_t entry, const std::string &name) override
     {
         named.push_back({ entry, name });
+        for (auto &r : rows)
+            if (r.f.entry == entry)
+            {
+                r.my_name = name;
+                r.label = name;
+            }
         return {};
     }
 };

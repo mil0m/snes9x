@@ -688,3 +688,17 @@ Removed on 2026-11-01: it didn't pay off (see FEATURES.md, *Tried and removed*).
    - [ ] The game doesn't start; the panel says *Paused · Emulation > Run starts it*. The Memory page shows the ROM at once. Paint and Apply, then **Emulation > Run**: the game boots with the paint (or is taken back if it crashes within ten seconds).
 11. On the remote page, paint the ROM.
    - [ ] It goes in at once and is taken back if it crashes within ten seconds.
+
+## 43. Naming functions in the table (#67)
+1. Workshop > Functions on a game with functions. Select a row with no name.
+   - [ ] Its Name cell says *Double-click to name it*, readable whether the window is in front or not.
+2. Double-click the Name cell, type `gravity`, press Return.
+   - [ ] The cell shows *gravity*; the message says everyone sharing the library sees it; the **Name** field under the table shows *gravity* too.
+3. Double-click it again: the editor starts with *gravity*. Type something else and press Esc.
+   - [ ] Nothing changes.
+4. Select another row and press Return (the Mac's edit key).
+   - [ ] The Name cell opens for typing. Double-clicking Function, Frames or In play opens nothing.
+5. Protect a function, or keep it on a button.
+   - [ ] *protected* / *button N* shows in **In play**, not in Name, and the column is wide enough for it.
+6. Empty a name and press Return.
+   - [ ] *Name removed.*; with someone else's name for it in the library, theirs still shows (*jump (erik)*).
