@@ -258,11 +258,11 @@ TEST_SUITE("workshop")
         std::optional<std::pair<WorkshopPage, QSize>> told;
         f.workshop.onClosed = [&](WorkshopPage page, QSize size) { told = { page, size }; };
         f.workshop.showPage(WorkshopPage::Safety);
-        f.workshop.resize(1100, 800);
+        f.workshop.resize(1500, 850);
         f.workshop.close();
         REQUIRE(told);
         CHECK(told->first == WorkshopPage::Safety);
-        CHECK(told->second == QSize(1100, 800));
+        CHECK(told->second == QSize(1500, 850));
     }
 
     TEST_CASE("Functions: shown again, it re-sorts busiest first and picks up new functions")
@@ -276,6 +276,86 @@ TEST_SUITE("workshop")
         f.workshop.showPage(WorkshopPage::Functions);
         REQUIRE(table->rowCount() == before + 1);
         CHECK(table->item(0, 0)->text().contains("C000")); // the busiest now is first
+        f.workshop.close();
+    }
+
+    TEST_CASE("sidebar notes: a few words per page, only when there's something to say")
+    {
+        PanelStatus s;
+        s.game_loaded = true;
+        auto notes = sidebar_notes(s, 0, false);
+        for (auto &n : notes)
+            CHECK(n.text.isEmpty()); // a fresh game: nothing to say anywhere
+        s.has_recipe = true;
+        s.rules.resize(3);
+        s.functions_off = 2;
+        s.patched = 40;
+        s.rom_changed = 14;
+        s.crashes = 1;
+        notes = sidebar_notes(s, 2, false);
+        CHECK(notes[size_t(WorkshopPage::Recipe)].text == "3 rules");
+        CHECK(notes[size_t(WorkshopPage::Functions)].text == "2 off");
+        CHECK(notes[size_t(WorkshopPage::Memory)].text == "40 painted");
+        CHECK(notes[size_t(WorkshopPage::Rom)].text == "14 changed");
+        CHECK(notes[size_t(WorkshopPage::Safety)].text == "1 crash");
+        CHECK(notes[size_t(WorkshopPage::Safety)].warning);
+        CHECK_FALSE(notes[size_t(WorkshopPage::Rom)].warning);
+        CHECK(notes[size_t(WorkshopPage::Sharing)].text == "2 here");
+        s.rules.resize(1);
+        s.edited = true;
+        s.recipe_path = "/tmp/library/recipes/x.json";
+        s.crashes = 0;
+        s.detection_enabled = false;
+        notes = sidebar_notes(s, 0, true);
+        CHECK(notes[size_t(WorkshopPage::Recipe)].text == "1 rule · unsaved");
+        CHECK(notes[size_t(WorkshopPage::Safety)].text == "guard off");
+        CHECK(notes[size_t(WorkshopPage::Safety)].warning);
+        CHECK(notes[size_t(WorkshopPage::Sharing)].text == "remote on");
+    }
+
+    TEST_CASE("the sidebar shows the notes, and they follow the session whichever page is open")
+    {
+        Fixture f;
+        f.control.running(3);
+        f.control.s.functions_off = 2;
+        f.workshop.showPage(WorkshopPage::Memory);
+        f.workshop.refresh();
+        auto sidebar = child<QListWidget>(f.workshop, "workshop_pages");
+        CHECK(sidebar->item(int(WorkshopPage::Functions))->data(Workshop::NoteRole).toString() == "2 off");
+        CHECK(sidebar->item(int(WorkshopPage::Recipe))->data(Workshop::NoteRole).toString() == "3 rules");
+        CHECK(sidebar->item(int(WorkshopPage::Functions))->text() == "Functions"); // the name stays as it was
+        CHECK(sidebar->item(int(WorkshopPage::Functions))->data(Qt::AccessibleTextRole).toString().contains("2 off"));
+        f.control.s.functions_off = 0;
+        f.workshop.refresh();
+        CHECK(sidebar->item(int(WorkshopPage::Functions))->data(Workshop::NoteRole).toString().isEmpty());
+        // Wide enough for a name and its longest note.
+        auto fm = sidebar->fontMetrics();
+        CHECK(sidebar->width() >= fm.horizontalAdvance("Functions") + fm.horizontalAdvance("1,234 off") + 18);
+        f.workshop.close();
+    }
+
+    TEST_CASE("a wide window: text pages keep a readable width, Functions and Memory fill it")
+    {
+        Fixture f;
+        f.control.running(3);
+        f.workshop.resize(1600, 800);
+        f.workshop.show();
+        for (auto page : { WorkshopPage::Recipe, WorkshopPage::Rom, WorkshopPage::Safety, WorkshopPage::Sharing })
+        {
+            f.workshop.showPage(page);
+            f.workshop.refresh();
+            QApplication::processEvents();
+            auto content = f.workshop.page() == WorkshopPage::Recipe ? static_cast<QWidget *>(f.workshop.recipePage())
+                           : page == WorkshopPage::Rom              ? static_cast<QWidget *>(f.workshop.romPage())
+                           : page == WorkshopPage::Safety           ? static_cast<QWidget *>(f.workshop.safetyPage())
+                                                                    : static_cast<QWidget *>(f.workshop.sharingPage());
+            INFO("page " << int(page));
+            CHECK(content->width() <= Workshop::readableWidth(content));
+            CHECK(content->width() < 1100);
+        }
+        f.workshop.showPage(WorkshopPage::Memory);
+        QApplication::processEvents();
+        CHECK(f.workshop.memoryPage()->width() > 1200);
         f.workshop.close();
     }
 }

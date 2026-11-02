@@ -188,3 +188,44 @@ Fusion dark. The tour script now takes `TOUR_LIBRARY=<dir>` for exactly that.
 - **Left for later** (their own plans): rules in plain words and an editor beside the list,
   Functions filters and a status column, one Careful/Balanced/Wild safety choice, a cap on
   page width, sidebar counts, fewer nouns.
+
+## The Workshop reads like a page, and its sidebar tells you things (#65)
+
+Items 9 and 10 of the same review. On a wide window the Recipe, ROM, Safety and Sharing
+pages stretched their text and tables across the whole width (*What it does* became a
+1,300 px column with one short line in it), and the sidebar was only a list of names: to
+know whether a function was off or a crash had happened you had to open the page.
+
+- **A readable width.** Recipe, ROM, Safety and Sharing keep their content at most about
+  100 characters wide (never less than the page needs), left-aligned next to the sidebar;
+  the window's spare width stays empty. Functions and Memory keep the full width: a table
+  of 500 functions and a hex view use every pixel.
+- **A sidebar that's a summary.** Each page's row carries a short note on its right, in the
+  quiet colour (the warning colour for a crash): *Recipe · 3 rules* (with *unsaved* when
+  there is something to save), *Functions · 2 off*, *Memory · 40 painted*, *ROM · 14
+  changed*, *Safety · 1 crash* (or *guard off*), *Sharing · 2 here* (others in the library)
+  or *remote on*. Nothing to say: no note. The notes follow the session twice a second while
+  the Workshop is open, whichever page shows; who's here is read every few seconds.
+- **How**: a small item delegate draws the note right-aligned in the row (selected rows in
+  the selection's text colour), so the names stay where they are; the sidebar is as wide
+  as the longest name plus the longest note it can have. The notes' words come from one
+  function, `sidebar_notes(PanelStatus, others)`, tested on its own.
+
+Tests: `sidebar_notes` cases (each note, the empty ones, the warning tone); the Workshop
+test reads the notes off the sidebar for a fake status, and checks that the Recipe page is
+no wider than its cap in a 1,600 px window while Memory fills it; the tour read again.
+
+### How it went (#65)
+
+Built the same day, test first (three new widget tests), read in the tour with the copy of
+the real library in the Mac look and Fusion dark.
+
+- **Width:** in a full-width window the Recipe page's rules table is now about 650 points
+  wide instead of 1,300, and *What it does* reads as a sentence next to its rule. A cap
+  set once at construction would have been below what the Mac's polished controls need,
+  so it's set again when the window shows.
+- **Sidebar:** with *Code drip* running, *ROM · 14 changed* and *Recipe · 1 rule* show while
+  Memory is open. The sidebar got wider by the longest note (*12 rules · unsaved*), which
+  raised the Workshop's minimum width; a test that resized to 1,100 px had to grow.
+- **Not done:** the notes don't count anything the session doesn't already count (no
+  *named areas* on Memory, no per-person detail on Sharing beyond the number).

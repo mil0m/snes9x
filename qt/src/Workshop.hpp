@@ -2,6 +2,7 @@
 #include <QWidget>
 
 #include <functional>
+#include <vector>
 
 #include "CorruptionControl.hpp"
 #include "WorkshopPage.hpp"
@@ -39,7 +40,16 @@ class Workshop : public QWidget
     SafetyPage *safetyPage() const { return safety; }
     SharingPage *sharingPage() const { return sharing; }
 
-    void refresh(); // the current page, from the session (twice a second while shown)
+    void refresh(); // the current page and the sidebar's notes, from the session (twice a second while shown)
+
+    // The sidebar's note beside a page's name (#65), and whether it's a warning.
+    enum Roles
+    {
+        NoteRole = Qt::UserRole + 1,
+        NoteWarningRole,
+    };
+    // How wide a text page may get: about 100 characters, never less than it needs.
+    static int readableWidth(const QWidget *page);
 
     // Closed: the page it was on and its size, for the dock to open it so next time.
     std::function<void(WorkshopPage page, QSize size)> onClosed;
@@ -49,7 +59,13 @@ class Workshop : public QWidget
     void hideEvent(QHideEvent *event) override;
 
   private:
+    void refreshNotes(const PanelStatus &status);
+    void capPages();
+
     CorruptionControl &control;
+    std::vector<QWidget *> text_pages; // kept to a readable width
+    size_t others = 0;             // other people in the library for this game
+    int ticks = 0;
     QListWidget *sidebar;
     QStackedWidget *stack;
     QTimer *timer;

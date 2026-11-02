@@ -690,6 +690,42 @@ void SafetyPage::refreshBackups()
     restore_backup_button->setVisible(backup_list->count() > 0);
 }
 
+// ---------------------------------------------------------------- Sidebar
+
+std::array<SidebarNote, 6> sidebar_notes(const PanelStatus &status, size_t others, bool remote_on)
+{
+    std::array<SidebarNote, 6> notes;
+    auto note = [&](WorkshopPage page) -> SidebarNote & { return notes[size_t(page)]; };
+    auto count = [](size_t n, const char *one, const char *many) {
+        return n == 1 ? QObject::tr(one) : QObject::tr(many).arg(QLocale().toString(qulonglong(n)));
+    };
+    if (status.has_recipe)
+    {
+        QString text = count(status.rules.size(), "1 rule", "%1 rules");
+        if (status.edited && !status.recipe_path.empty())
+            text += QObject::tr(" · unsaved");
+        note(WorkshopPage::Recipe).text = text;
+    }
+    if (status.game_loaded)
+    {
+        if (status.functions_off)
+            note(WorkshopPage::Functions).text = count(status.functions_off, "1 off", "%1 off");
+        if (status.patched)
+            note(WorkshopPage::Memory).text = count(status.patched, "1 painted", "%1 painted");
+        if (status.rom_changed)
+            note(WorkshopPage::Rom).text = count(status.rom_changed, "1 changed", "%1 changed");
+        if (!status.detection_enabled)
+            note(WorkshopPage::Safety) = { QObject::tr("guard off"), true };
+        else if (status.crashes)
+            note(WorkshopPage::Safety) = { count(status.crashes, "1 crash", "%1 crashes"), true };
+    }
+    if (remote_on)
+        note(WorkshopPage::Sharing).text = QObject::tr("remote on");
+    else if (others)
+        note(WorkshopPage::Sharing).text = count(others, "1 here", "%1 here");
+    return notes;
+}
+
 // ---------------------------------------------------------------- Sharing
 
 SharingPage::SharingPage(CorruptionControl &control, QWidget *parent) : QWidget(parent), control(control)

@@ -1,10 +1,12 @@
 #pragma once
 #include <QWidget>
 
+#include <array>
 #include <functional>
 #include <vector>
 
 #include "CorruptionControl.hpp"
+#include "WorkshopPage.hpp"
 
 class IntensitySlider;
 class QCheckBox;
@@ -27,6 +29,16 @@ class StatusLine;
 // The Workshop's own pages (#63); Functions and Memory are FunctionsPage and MemoryViewer.
 // Each shows a PanelStatus (refresh) and acts through CorruptionControl, so tests drive them
 // with a fake.
+
+// What the Workshop's sidebar says beside each page's name (#65): a few words, empty when
+// there's nothing to say; a warning (a crash, the guard off) in the warning colour.
+struct SidebarNote
+{
+    QString text;
+    bool warning = false;
+};
+// `others`: people other than you with files for this game in the library.
+std::array<SidebarNote, 6> sidebar_notes(const PanelStatus &status, size_t others, bool remote_on);
 
 // The recipe: its rules in full, everything else it keeps, and saving and sharing it.
 class RecipePage : public QWidget

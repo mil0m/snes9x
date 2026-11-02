@@ -636,3 +636,22 @@ Removed on 2026-11-01: it didn't pay off (see FEATURES.md, *Tried and removed*).
    - [ ] It opens on **Safety**, at the bigger size. **Corruption > Open Workshop** does the same. The panel's links still open their own page.
 17. Load Pocky & Rocky with no ROM changes made (**Restore Clean ROM** if unsure) and look at the ROM line.
    - [ ] It reads *ROM clean ›*; it doesn't claim any function is off (one-byte stubs that are only a return don't count).
+
+## 40. The Workshop's width and sidebar notes (#65)
+1. Open the Workshop and make the window as wide as the screen.
+   - [ ] Recipe, ROM, Safety and Sharing keep their text and tables about 100 characters wide, next to the list of pages; the rest of the window stays empty. Nothing is cut off at the right.
+   - [ ] Functions and Memory still use the whole width.
+2. With nothing loaded beyond a game, look at the list of pages.
+   - [ ] No words beside any name.
+3. Pick **Starter: Code drip**, press **Corrupt (F7)**, and stay on the **Memory** page.
+   - [ ] Beside *Recipe* it says *1 rule*; beside *ROM* the number of changed bytes appears and goes up, without opening the ROM page.
+4. On **Functions**, tick **Off** for one function; then paint a byte on **Memory**.
+   - [ ] *Functions* says *1 off*; *Memory* says *1 painted*.
+5. Move a rule's strength (Recipe page).
+   - [ ] *Recipe* says *1 rule · unsaved*; after **Save** it says *1 rule* again.
+6. Pick **Starter: Low WRAM roulette** and play until a crash is caught.
+   - [ ] *Safety* says *1 crash* in the warning colour (white on the selected row). Untick **Catch crashes…**: it says *guard off*.
+7. With someone else's files in the shared library for this game (or a copy of a library that has them), look at *Sharing*.
+   - [ ] It says *1 here* (or more); with remote control ticked, *remote on*.
+8. Turn on VoiceOver and move through the list of pages.
+   - [ ] Each page is read with its words (*Functions, 1 off*).

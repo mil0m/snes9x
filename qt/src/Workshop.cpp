@@ -9,6 +9,8 @@
 
 #include <QHBoxLayout>
 #include <QListWidget>
+#include <QPainter>
+#include <QStyledItemDelegate>
 #include <QScrollArea>
 #include <QScrollBar>
 #include <QStackedWidget>
@@ -16,6 +18,19 @@
 
 namespace
 {
+// A text page at a readable width, left-aligned; the window's spare width stays empty.
+QWidget *capped(QWidget *page, QWidget *parent)
+{
+    auto box = new QWidget(parent);
+    auto layout = new QHBoxLayout(box);
+    layout->setContentsMargins(0, 0, 0, 0);
+    layout->setSpacing(0);
+    layout->addWidget(page, 1);
+    layout->addStretch(0);
+    page->setMaximumWidth(Workshop::readableWidth(page));
+    return box;
+}
+
 // A page that can grow taller than the window scrolls; the wide ones (Functions, Memory)
 // fill it and scroll inside.
 QWidget *scrolling(QWidget *page, QWidget *parent)
@@ -24,10 +39,41 @@ QWidget *scrolling(QWidget *page, QWidget *parent)
     scroll->setWidgetResizable(true);
     scroll->setFrameShape(QFrame::NoFrame);
     scroll->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
-    scroll->setWidget(page);
+    scroll->setWidget(capped(page, scroll));
     return scroll;
 }
+
+// The sidebar's rows: the icon and name as usual, and the page's note right-aligned in the
+// quiet colour (the warning colour for a warning), so names stay where they are.
+class NoteDelegate : public QStyledItemDelegate
+{
+  public:
+    using QStyledItemDelegate::QStyledItemDelegate;
+    void paint(QPainter *painter, const QStyleOptionViewItem &option, const QModelIndex &index) const override
+    {
+        QStyledItemDelegate::paint(painter, option, index);
+        QString note = index.data(Workshop::NoteRole).toString();
+        if (note.isEmpty())
+            return;
+        bool selected = option.state & QStyle::State_Selected;
+        bool warning = index.data(Workshop::NoteWarningRole).toBool();
+        QColor colour = selected  ? option.palette.color(QPalette::HighlightedText)
+                        : warning ? ui::toneColor(ui::Tone::Warning, option.palette)
+                                  : ui::toneColor(ui::Tone::Secondary, option.palette);
+        painter->save();
+        painter->setPen(colour);
+        painter->setFont(option.font);
+        QRect r = option.rect.adjusted(0, 0, -10, 0);
+        painter->drawText(r, Qt::AlignRight | Qt::AlignVCenter, note);
+        painter->restore();
+    }
+};
 } // namespace
+
+int Workshop::readableWidth(const QWidget *page)
+{
+    return std::max(100 * page->fontMetrics().averageCharWidth(), page->minimumSizeHint().width());
+}
 
 Workshop::Workshop(CorruptionControl &control, RecipeActions &actions, FunctionSource &function_source,
                    SurvivorSource &survivor_source, MemorySource &memory_source, QWidget *parent)
@@ -65,7 +111,12 @@ Workshop::Workshop(CorruptionControl &control, RecipeActions &actions, FunctionS
         item->setToolTip(e.tip);
         widest = std::max(widest, sidebar->fontMetrics().horizontalAdvance(e.name));
     }
-    sidebar->setFixedWidth(widest + 18 + 48);
+    sidebar->setItemDelegate(new NoteDelegate(sidebar));
+    // A name and the longest note it can have ("1,234 off", "1 rule · unsaved" is Recipe's).
+    int note = std::max(sidebar->fontMetrics().horizontalAdvance(tr("1,234 off")),
+                        sidebar->fontMetrics().horizontalAdvance(tr("12 rules · unsaved")) -
+                            (widest - sidebar->fontMetrics().horizontalAdvance(tr("Recipe"))));
+    sidebar->setFixedWidth(widest + note + 18 + 48);
     layout->addWidget(sidebar);
 
     stack = new QStackedWidget(this);
@@ -78,9 +129,10 @@ Workshop::Workshop(CorruptionControl &control, RecipeActions &actions, FunctionS
     stack->addWidget(scrolling(recipe, stack));
     stack->addWidget(functions);
     stack->addWidget(memory);
-    stack->addWidget(rom);
+    stack->addWidget(capped(rom, stack));
     stack->addWidget(scrolling(safety, stack));
     stack->addWidget(scrolling(sharing, stack));
+    text_pages = { recipe, rom, safety, sharing };
     layout->addWidget(stack, 1);
 
     functions->onShowInRom = [this](uint32_t first, uint32_t last) {
@@ -118,6 +170,7 @@ void Workshop::showPage(WorkshopPage page)
 void Workshop::refresh()
 {
     auto status = control.status();
+    refreshNotes(status);
     switch (page())
     {
     case WorkshopPage::Recipe: recipe->refresh(status); break;
@@ -129,9 +182,41 @@ void Workshop::refresh()
     }
 }
 
+void Workshop::refreshNotes(const PanelStatus &status)
+{
+    if (ticks++ % 10 == 0) // the library's folder is read every five seconds, not every tick
+    {
+        auto me = control.me();
+        others = 0;
+        for (auto &p : control.players())
+            others += p.who != me;
+    }
+    auto notes = sidebar_notes(status, others, control.remote().enabled);
+    for (size_t i = 0; i < notes.size() && int(i) < sidebar->count(); i++)
+    {
+        auto item = sidebar->item(int(i));
+        if (item->data(NoteRole).toString() == notes[i].text && item->data(NoteWarningRole).toBool() == notes[i].warning)
+            continue;
+        item->setData(NoteRole, notes[i].text);
+        item->setData(NoteWarningRole, notes[i].warning);
+        // A screen reader hears the note with the name.
+        item->setData(Qt::AccessibleTextRole,
+                      notes[i].text.isEmpty() ? item->text() : tr("%1, %2").arg(item->text(), notes[i].text));
+    }
+}
+
+void Workshop::capPages()
+{
+    // Again once shown: the Mac's controls are bigger after polish, and a cap below what a
+    // page needs would cut it off.
+    for (auto page : text_pages)
+        page->setMaximumWidth(readableWidth(page));
+}
+
 void Workshop::showEvent(QShowEvent *event)
 {
     QWidget::showEvent(event);
+    capPages();
     refresh();
     timer->start();
 }

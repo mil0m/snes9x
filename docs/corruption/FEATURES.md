@@ -217,6 +217,11 @@ Plan: `rom-corruption-plan` (six phases, each with "Phase N in detail"). QA 20-2
 - Tests: `calls_test` (stubs), headline checks in `crash_guard_test`, `instant_revert_test`, `test_ahead_test`; `cockpit_test` (state bar words and colour, message fade without moving Corrupt, title, *(new)*, frameless seed, whole-line links), `workshop_test` (remote fields, no Refresh, onClosed, Functions re-sort), `functions_page_test` (growing counts fit).
 - Plan: [2026-11-02-cockpit-workshop-plan.md](2026-11-02-cockpit-workshop-plan.md), *Quick wins*. QA: 39.
 
+**Workshop width and sidebar notes (#65)** - Recipe, ROM, Safety and Sharing keep a readable width (about 100 characters, never less than the page needs); Functions and Memory fill the window. The page list is a summary: a note beside each name (*3 rules · unsaved*, *2 off*, *40 painted*, *14 changed*, *1 crash* / *guard off* in the warning colour, *2 here* / *remote on*), updated twice a second whichever page shows.
+- Code: `sidebar_notes()` in `qt/src/WorkshopPages.cpp`; `Workshop::readableWidth`, `capped()`/`capPages()` (again on show, after the Mac's polish), `NoteDelegate`, `NoteRole`/`NoteWarningRole`, notes also in `Qt::AccessibleTextRole`; who's here read every 5 s.
+- Tests: `tests/qt/workshop_test.cpp` (the notes, the sidebar following the session, widths in a 1,600 px window).
+- Plan: same doc, *The Workshop reads like a page*. QA: 40.
+
 ## Phases 8 and 9: game-aware (#25, #26, #32, #34, #35, #58-#61)
 
 **Jump tables (#25)** - finds tables of jump targets from indirect jumps the game ran.

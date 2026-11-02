@@ -37,6 +37,11 @@ panel, or choose **Corruption > Open Workshop**. It is one window with a list of
 left. The Workshop opens on the page it was on last, at the size it had. The links in the panel
 (*Add or change rules*, the crash guard line, the ROM line) open their own page.
 
+The list of pages is also a summary: beside each name, a few words say what's going on
+there, whichever page you're on: *3 rules*, *2 off* (functions), *40 painted*, *14 changed*
+(ROM bytes), *1 crash* or *guard off* (in the warning colour), *2 here* (other people in the
+library) or *remote on*. No words means nothing to report.
+
 - **Recipe**: name and notes, New, Save, Save As…, Share…, Import…, the rules in full, and
   what else the recipe keeps (switches, changes, protected functions, pins, paint).
 - **Functions**: turn the game's functions off, name them, change how they work. The busiest come first each time you open the page.
