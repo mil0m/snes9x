@@ -46,6 +46,7 @@ class CorruptionSession
         std::string notes;
         uint64_t recipe_generation = 0; // bumps whenever a recipe is loaded
         uint64_t rules_generation = 0;  // bumps on every rule edit too
+        uint64_t library_generation = 0; // bumps when the game's recipes change on disk (a shared library, #62)
         double intensity = 1.0;          // the recipe's (Chaos)
         bool starting = false;           // a start waits for the next frame (the game is paused)
         bool has_moment = false;         // the recipe has a saved moment on disk
@@ -262,6 +263,11 @@ class CorruptionSession
     std::vector<uint32_t> window_off;       // switched off from the Functions window: in play while off
     std::vector<corrupt::Change> window_changes; // applied from Change It…, not kept: in play while on
     bool guard_dirty = false;               // rebuild the guard between frames
+    // Playing together live (#62): what everyone else's files and the recipes looked like.
+    std::string others_seen, recipes_seen;
+    std::vector<std::string> conflicts_seen;
+    uint64_t library_generation = 0;
+    void checkLibrary(); // every 30 s between frames: reload when someone else's files changed
     std::vector<corrupt::InPlay> in_play;
     std::vector<uint8_t> function_shown;    // the overlay's marks, while the viewer shows the ROM
     std::vector<corrupt::ShownFunction> function_list;

@@ -551,3 +551,14 @@ Removed on 2026-11-01: it didn't pay off (see FEATURES.md, *Tried and removed*).
 3. **Starter: Function flicker** (or Function roulette with a trigger every 10 s and **Back on after** 5 s), Corrupt.
    - [ ] A function goes off every 10 s and comes back 5 s later (the ROM section's *off* count goes 1, 0, 1…).
 
+## 37. Playing together live (shared library)
+1. Two copies of the app on one computer: `SNES9X_PLAYER=a` and `SNES9X_PLAYER=b`, each with its own scratch config, both pointing at the same library folder; Goof Troop in both.
+2. Play a minute in **a**, open **Functions…**, name a busy function *gravity* (press Return).
+   - [ ] Within 30 s **b**'s status line says it picked up what the others learned; in **b**'s Functions window that function shows *gravity (a)*.
+3. In **b**, save a recipe.
+   - [ ] Within 30 s it shows in **a**'s recipe list, and **a**'s chosen recipe stays chosen.
+4. Copy a recipe file to `<name>.sync-conflict-20261102-201512-ABCDEFG.json` in the game's `recipes/` folder.
+   - [ ] It doesn't show in the list; within 30 s the status line says the sync kept two versions of it.
+5. With Syncthing for real (README "Playing together live"): two computers, the always-on one holding the git clone.
+   - [ ] A name set on one shows on the other within a minute; `tools/push.sh` on the always-on computer pushes a commit named *Session <date>: <games>*.
+

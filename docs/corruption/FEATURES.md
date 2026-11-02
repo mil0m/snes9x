@@ -316,6 +316,12 @@ Plan for all: `safety-plan` (one section per item, each with "How it went").
 - Tests: `tests/remote/privacy_check_test.sh`.
 - Docs: `remote-plan`.
 
+**Live shared library (#62)** - the library syncs while you play (Syncthing, through an always-on computer that holds the git clone); git gets it when someone runs `push`.
+- Code: `is_sync_leftover` (conflict copies, `.syncthing.*` / `~syncthing~` temp files, `.stfolder`) skipped by every per-person scan and `list_recipes`; `Library::conflict_copies`, `others_stamp` (everyone else's learned files: name, size, time), `recipes_stamp`; session `checkLibrary` every 30 s between frames (others changed: save ours, `loadCrashMap`, `code_map_reload`; recipes changed: `Status::library_generation` and the dock's `refreshRecipes`; conflicts: a note); `SNES9X_PLAYER` overrides the user name; `tools/library/stignore`, `tools/library/push.sh` (copied into the library repo as `tools/push.sh`).
+- Tests: `tests/corrupt/live_library_test.cpp`; `tests/library/push_test.sh` (in `./build-mac.sh test`).
+- Docs: `live-library-plan`; README "Playing together live"; QA 37.
+- Gotchas: a reload reads everyone's code maps again (a few MB): at most once per 30 s, when someone else saved. Device ids and where the server keeps the folder belong in the private homelab repo.
+
 ## Tools and scripts
 
 - `build-mac.sh qt` builds `build/qt/snes9x-qt` (prints compiler errors). `app` builds the Cocoa Snes9x.app, `libretro` the core, `all` all three.

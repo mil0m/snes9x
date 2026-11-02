@@ -47,10 +47,11 @@ GameId current_game()
     return id;
 }
 
-// Whose journal this is: one file per person in a shared library.
+// Whose journal this is: one file per person in a shared library. SNES9X_PLAYER overrides it
+// (two copies of the app on one computer, sharing a folder, for trying #62).
 std::string user_name()
 {
-    for (auto var : { "USER", "USERNAME" })
+    for (auto var : { "SNES9X_PLAYER", "USER", "USERNAME" })
         if (auto v = getenv(var); v && *v)
             return v;
     return "player";
@@ -239,6 +240,8 @@ void CorruptionSession::betweenFrames()
         else
             code_shown = {};
     }
+    if (code_frames % 1800 == 900) // every 30 s
+        checkLibrary();
     if (code_frames % 300 == 1)
     {
         auto all = code_map.combined();
@@ -408,6 +411,8 @@ void CorruptionSession::loadCodeMap()
     bodies_print = ~uint64_t(0);
     findBodies(all);
     loadNames();
+    if (!library_root.empty())
+        others_seen = Library(library_root).others_stamp(game, user_name());
     if (!tracer.start(code_map.mine(), &jump_log.mine(), &call_log.mine()))
         note("The code map isn't recording (no ROM?)");
     else
@@ -1133,6 +1138,7 @@ CorruptionSession::Status CorruptionSession::status()
             s.functions_off += ret && f.entry < memory.size(Target::ROM) && memory.read(Target::ROM, f.entry) == ret;
         }
         s.functions_guarded = in_play.size();
+        s.library_generation = library_generation;
         s.guarded_bytes = engine.guarded_mask().count(Target::ROM);
         s.instant_reverts = instant.total();
         s.tested_first = ahead.tested();
@@ -1450,6 +1456,41 @@ std::string CorruptionSession::setFunctionName(uint32_t entry, const std::string
     if (library_root.empty())
         return "Choose a library folder (More) to keep names and share them";
     return Library(library_root).save_names(game, user_name(), names.mine);
+}
+
+void CorruptionSession::checkLibrary()
+{
+    if (library_root.empty() || code_map_reload)
+        return;
+    Library lib(library_root);
+    auto others = lib.others_stamp(game, user_name());
+    if (others != others_seen)
+    {
+        // Someone else's map, crash map, calls or names changed (a shared library syncing
+        // while you play): save ours, then load everyone's again, between frames.
+        others_seen = others;
+        if (crash_map.unsaved())
+            saveCrashMap();
+        loadCrashMap();
+        code_map_reload = true; // saves ours first, then reloads maps, jumps, calls and names
+        note("Picked up what the others learned (shared library)");
+    }
+    auto recipes = lib.recipes_stamp(game);
+    if (recipes != recipes_seen)
+    {
+        if (!recipes_seen.empty())
+            library_generation++;
+        recipes_seen = recipes;
+    }
+    auto conflicts = lib.conflict_copies(game);
+    if (conflicts != conflicts_seen)
+    {
+        conflicts_seen = conflicts;
+        if (!conflicts.empty())
+            note("The sync kept two versions of " + conflicts.front() +
+                 (conflicts.size() > 1 ? " (and " + std::to_string(conflicts.size() - 1) + " more)" : std::string()) +
+                 " in the game's folder: look and delete the one you don't want");
+    }
 }
 
 void CorruptionSession::loadNames()

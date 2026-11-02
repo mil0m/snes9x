@@ -1,0 +1,9 @@
+// Syncthing: what stays on each computer when the library syncs (#62). Copy this file to
+// .stignore in the library folder on every computer (Syncthing doesn't sync it itself).
+.git
+roms
+*.sfc
+*.smc
+*.srm
+save-backups
+.DS_Store

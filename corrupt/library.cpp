@@ -2,6 +2,7 @@
 #include "rule_text.h"
 
 #include <algorithm>
+#include <functional>
 #include <cctype>
 #include <fstream>
 #include <sstream>
@@ -60,6 +61,13 @@ std::string recipe_file_stem(const std::string &recipe_name)
     while (!stem.empty() && stem.back() == '-')
         stem.pop_back();
     return stem.empty() ? "recipe" : stem;
+}
+
+bool is_sync_leftover(const std::string &file_name)
+{
+    return file_name.find(".sync-conflict-") != std::string::npos || file_name.rfind(".syncthing.", 0) == 0 ||
+           file_name.rfind("~syncthing~", 0) == 0 || file_name == ".stfolder" || file_name == ".stignore" ||
+           file_name == ".stversions";
 }
 
 std::string write_file_atomic(const fs::path &path, const std::string &contents)
@@ -128,7 +136,7 @@ CrashMaps Library::load_crash_maps(const GameId &game, const std::string &user) 
     for (auto &entry : fs::directory_iterator(game_dir(game), ec))
     {
         auto name = entry.path().filename().string();
-        if (name.rfind("crashmap.", 0) != 0 || entry.path().extension() != ".json")
+        if (name.rfind("crashmap.", 0) != 0 || entry.path().extension() != ".json" || is_sync_leftover(name))
             continue;
         std::ifstream in(entry.path());
         std::stringstream text;
@@ -166,7 +174,7 @@ CodeMaps Library::load_code_maps(const GameId &game, const std::string &user, si
     for (auto &entry : fs::directory_iterator(game_dir(game), ec))
     {
         auto name = entry.path().filename().string();
-        if (name.rfind("codemap.", 0) != 0 || entry.path().extension() != ".bin")
+        if (name.rfind("codemap.", 0) != 0 || entry.path().extension() != ".bin" || is_sync_leftover(name))
             continue;
         auto text = read_file(entry.path());
         std::string error;
@@ -205,7 +213,7 @@ JumpLogs Library::load_jump_logs(const GameId &game, const std::string &user, si
     for (auto &entry : fs::directory_iterator(game_dir(game), ec))
     {
         auto name = entry.path().filename().string();
-        if (name.rfind("jumps.", 0) != 0 || entry.path().extension() != ".json")
+        if (name.rfind("jumps.", 0) != 0 || entry.path().extension() != ".json" || is_sync_leftover(name))
             continue;
         auto text = read_file(entry.path());
         std::string error;
@@ -242,7 +250,7 @@ CallLogs Library::load_call_logs(const GameId &game, const std::string &user, si
     for (auto &entry : fs::directory_iterator(game_dir(game), ec))
     {
         auto name = entry.path().filename().string();
-        if (name.rfind("calls.", 0) != 0 || entry.path().extension() != ".json")
+        if (name.rfind("calls.", 0) != 0 || entry.path().extension() != ".json" || is_sync_leftover(name))
             continue;
         auto text = read_file(entry.path());
         std::string error;
@@ -280,7 +288,7 @@ FunctionNames Library::load_names(const GameId &game, const std::string &user) c
     for (auto &entry : fs::directory_iterator(game_dir(game), ec))
     {
         auto name = entry.path().filename().string();
-        if (name.rfind("names.", 0) == 0 && entry.path().extension() == ".json")
+        if (name.rfind("names.", 0) == 0 && entry.path().extension() == ".json" && !is_sync_leftover(name))
             files.push_back(entry.path());
     }
     std::sort(files.begin(), files.end()); // the same order on every machine
@@ -316,6 +324,65 @@ std::string Library::save_names(const GameId &game, const std::string &user, con
     return write_file_atomic(names_path(game, user), encode_names(names));
 }
 
+namespace
+{
+
+// "name:size:time;" for each file `pick` accepts in `dir`, in name order.
+std::string stamp_of(const fs::path &dir, const std::function<bool(const std::string &)> &pick)
+{
+    std::vector<std::string> parts;
+    std::error_code ec;
+    for (auto &entry : fs::directory_iterator(dir, ec))
+    {
+        auto name = entry.path().filename().string();
+        if (!entry.is_regular_file() || is_sync_leftover(name) || !pick(name))
+            continue;
+        std::error_code e2;
+        auto size = entry.file_size(e2);
+        auto time = entry.last_write_time(e2).time_since_epoch().count();
+        parts.push_back(name + ":" + std::to_string((unsigned long long)size) + ":" + std::to_string((long long)time) + ";");
+    }
+    std::sort(parts.begin(), parts.end());
+    std::string out;
+    for (auto &p : parts)
+        out += p;
+    return out;
+}
+
+} // namespace
+
+std::vector<std::string> Library::conflict_copies(const GameId &game) const
+{
+    std::vector<std::string> out;
+    std::error_code ec;
+    for (auto &entry : fs::recursive_directory_iterator(game_dir(game), ec))
+    {
+        auto name = entry.path().filename().string();
+        if (entry.is_regular_file() && name.find(".sync-conflict-") != std::string::npos)
+            out.push_back(fs::relative(entry.path(), game_dir(game)).generic_string());
+    }
+    std::sort(out.begin(), out.end());
+    return out;
+}
+
+std::string Library::others_stamp(const GameId &game, const std::string &user) const
+{
+    std::string me = "." + recipe_file_stem(user) + ".";
+    return stamp_of(game_dir(game), [&](const std::string &name) {
+        for (auto prefix : { "crashmap.", "codemap.", "jumps.", "calls.", "names." })
+            if (name.rfind(prefix, 0) == 0)
+                return name.find(me) != std::string(prefix).size() - 1;
+        return false;
+    });
+}
+
+std::string Library::recipes_stamp(const GameId &game) const
+{
+    return stamp_of(game_dir(game) / "recipes", [](const std::string &name) {
+        return name.size() > 5 && name.compare(name.size() - 5, 5, ".json") == 0;
+    });
+}
+
 std::vector<RecipeEntry> Library::list_recipes(const GameId &game) const
 {
     std::vector<RecipeEntry> entries;
@@ -329,7 +396,8 @@ std::vector<RecipeEntry> Library::list_recipes(const GameId &game) const
 
     for (auto &file : fs::directory_iterator(dir, ec))
     {
-        if (!file.is_regular_file() || file.path().extension() != ".json")
+        if (!file.is_regular_file() || file.path().extension() != ".json" ||
+            is_sync_leftover(file.path().filename().string()))
             continue;
 
         RecipeEntry entry;

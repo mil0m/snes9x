@@ -76,6 +76,7 @@ build_test() {
   if [ $# -eq 0 ]; then
     # Nothing private in the repo (your .private-words, and anything shaped like a secret).
     run_filtered "FAIL" bash tests/remote/privacy_check_test.sh
+    run_filtered "FAIL" bash tests/library/push_test.sh
     tools/privacy_check.sh || tests_failed=1
   fi
   return $tests_failed

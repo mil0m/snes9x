@@ -37,6 +37,29 @@ To play with a friend, the library can be a shared git repository (ours is
 `github.com/mil0m/snes9x-corruptions`): commit and pull like any repo; Snes9x never runs git
 itself. For a single recipe, **More > Share…** is simpler.
 
+### Playing together live (a library that syncs while you play)
+
+So nobody has to push and pull during an evening's play, the library folder can be synced
+live with [Syncthing](https://syncthing.net) (free, no account, encrypted) through a computer
+that's always on, which also holds the git clone:
+
+1. Install Syncthing on the always-on computer and on each player's computer.
+2. On the always-on computer, share the git clone of the library as a Syncthing folder;
+   add each player's computer and accept it there. Each player points Snes9x's library
+   (**More > Choose the Library Folder…**) at their synced copy.
+3. Copy [`tools/library/stignore`](../../tools/library/stignore) to `.stignore` in the folder
+   on every computer: git's own files, ROMs, battery saves and save backups stay local.
+4. While you play, each app picks up the others' learned files every 30 seconds (crash maps,
+   code maps, jump tables, functions, names) and the recipe list follows when someone saves
+   one. Every file but recipes is one per person, so nothing collides; if two people change
+   the same recipe at once, Syncthing keeps both and the panel says so.
+5. When the evening is over, run the library's `tools/push.sh` (a copy of
+   [`tools/library/push.sh`](../../tools/library/push.sh)) on the always-on computer: it
+   commits what's new and pushes it, and lists any conflict copies to look at.
+
+To try it on one computer, run two copies of the app with different `SNES9X_PLAYER` names
+and the same library folder.
+
 ## Recipe format
 
 ```json
@@ -173,6 +196,7 @@ How it was designed and built, with measurements from real games:
 [functions, deeper: bodies, guards, names, changes, timers](./2026-11-02-function-changes-plan.md) ·
 [safety: live heat, instant revert, testing ahead (and two ideas removed)](./2026-11-01-safety-plan.md) ·
 [remote control](./2026-11-01-remote-plan.md) ·
+[playing together live](./2026-11-02-live-library-plan.md) ·
 [what could come next](./2026-10-31-horizons.md).
 Manual test steps: [QA.md](./QA.md).
 

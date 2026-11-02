@@ -984,6 +984,13 @@ void CorruptionDock::refreshStatus()
         rebuildRules();
     }
 
+    if (status.library_generation != shown_library_generation)
+    {
+        // A recipe changed on disk: someone sharing the library saved one (#62).
+        shown_library_generation = status.library_generation;
+        refreshRecipes();
+    }
+
     if (status.recipe_generation != shown_choice_generation || status.recipe_path != shown_recipe_path)
     {
         shown_choice_generation = status.recipe_generation;

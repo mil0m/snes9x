@@ -22,6 +22,11 @@ std::string game_folder_name(const std::string &title, const std::string &sha256
 // "Purple Link chaos" -> "purple-link-chaos"
 std::string recipe_file_stem(const std::string &recipe_name);
 
+// What a sync program (Syncthing) leaves in a shared library (#62): conflict copies
+// ("x.sync-conflict-<date>-<id>.json"), its temporary files and its folder marker. The
+// library never reads them as anyone's file or recipe.
+bool is_sync_leftover(const std::string &file_name);
+
 struct RecipeEntry
 {
     std::filesystem::path path;
@@ -94,6 +99,15 @@ class Library
     std::filesystem::path names_path(const GameId &game, const std::string &user) const;
     FunctionNames load_names(const GameId &game, const std::string &user) const;
     std::string save_names(const GameId &game, const std::string &user, const NameList &names) const;
+
+    // Playing together live (#62). Conflict copies a sync left in the game's folder and its
+    // recipes (relative paths, sorted), for the panel to mention.
+    std::vector<std::string> conflict_copies(const GameId &game) const;
+    // A fingerprint of everyone else's learned files for the game (name, size, time): it
+    // changes when someone else's file does. Empty when there are none.
+    std::string others_stamp(const GameId &game, const std::string &user) const;
+    // The same for the game's recipes, for the panel's list.
+    std::string recipes_stamp(const GameId &game) const;
 
     Regions load_regions(const GameId &game, std::vector<std::string> &errors) const;
     std::string save_regions(const GameId &game, const Regions &regions) const; // error or empty

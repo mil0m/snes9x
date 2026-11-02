@@ -72,6 +72,7 @@ class CorruptionDock : public QDockWidget
     QTimer timer;
     std::vector<corrupt::RecipeEntry> entries;
     uint64_t shown_generation = UINT64_MAX;
+    uint64_t shown_library_generation = 0;
     uint64_t shown_rules_generation = UINT64_MAX;
     std::string shown_game;
     std::string shown_message;
