@@ -320,4 +320,24 @@ TEST_SUITE("cockpit")
         f.cockpit->refresh();
         CHECK(child<QLabel>(*f.cockpit, "state")->text() == "Paused · Emulation > Run starts it");
     }
+
+    TEST_CASE("Back to Normal, or Normal Here: corruption off and the ROM clean, but the game stays where it is")
+    {
+        Fixture f;
+        f.control.running();
+        f.cockpit->refresh();
+        auto here = child<QPushButton>(*f.cockpit, "normal_here");
+        CHECK(here->isEnabled()); // while it runs
+        CHECK(here->toolTip().contains("where you are"));
+        here->click();
+        CHECK(f.control.calls.back() == "normal here");
+        f.control.s.engine.active = false;
+        f.control.s.can_go_back = false;
+        f.control.s.back_to_normal = true;
+        f.control.s.normal_here = true;
+        f.cockpit->refresh();
+        CHECK(child<QLabel>(*f.cockpit, "state")->text() == "Not corrupting · ROM clean, playing on from here");
+        CHECK_FALSE(here->isEnabled()); // nothing left to clean
+        CHECK(ui::audit(f.cockpit.get()).isEmpty());
+    }
 }

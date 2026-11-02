@@ -263,3 +263,9 @@ What came back from playing, one line each, with what was done about it.
   other memories with a tooltip saying to choose rom, and switching memory away from the ROM
   with one of them picked moves to *Random value* and says why under the list. The "(ROM)"
   tags in their names went (the heading says it).
+- **"Back to Normal, but stay at the current place and not reset the game: one more version
+  of it next to it."** (#70) **Normal, Stay Here**, under Back to Normal in the panel and
+  on the remote page: corruption off and the ROM back to clean between two frames, without
+  loading the run's start. What rules did to RAM stays until the game overwrites it (it
+  can't be undone without going back), which its tooltip says. The state bar reads *ROM
+  clean, playing on from here*; the button greys out once there's nothing to clean.

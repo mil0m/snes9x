@@ -154,6 +154,11 @@ Connection::Reply Connection::handle(std::string_view message, Clock::time_point
         control.back_to_normal();
         return done("went back to normal");
     }
+    if (action == "normal_here")
+    {
+        control.normal_here();
+        return done("went back to normal, staying here");
+    }
     if (action == "reroll")
     {
         control.reroll();

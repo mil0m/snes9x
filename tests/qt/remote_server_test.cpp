@@ -36,6 +36,7 @@ struct FakeControl : remote::Control
         return {};
     }
     void back_to_normal() override { calls.push_back("back"); }
+    void normal_here() override { calls.push_back("here"); }
     void reroll() override { calls.push_back("reroll"); }
     void mark_crash() override { calls.push_back("crash"); }
     void set_chaos(double) override { calls.push_back("chaos"); }

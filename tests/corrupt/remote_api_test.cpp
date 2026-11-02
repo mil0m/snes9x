@@ -31,6 +31,7 @@ struct FakeControl : Control
         return active_error;
     }
     void back_to_normal() override { calls.push_back("back"); }
+    void normal_here() override { calls.push_back("here"); }
     void reroll() override { calls.push_back("reroll"); }
     void mark_crash() override { calls.push_back("crash"); }
     void set_chaos(double c) override { calls.push_back("chaos " + std::to_string(int(c * 100))); }
@@ -162,6 +163,7 @@ TEST_SUITE("remote control")
         CHECK(f.act({ { "do", "active" }, { "on", true } })["done"] == 7);
         f.act({ { "do", "active" }, { "on", false } });
         f.act({ { "do", "back_to_normal" } });
+        CHECK(f.send({ { "do", "normal_here" }, { "id", 9 } }).did == "went back to normal, staying here");
         f.act({ { "do", "reroll" } });
         f.act({ { "do", "mark_crash" } });
         f.act({ { "do", "chaos" }, { "value", 0.25 } });
@@ -169,7 +171,7 @@ TEST_SUITE("remote control")
         f.act({ { "do", "rule_strength" }, { "rule", 1 }, { "value", 0.5 } });
         auto r = f.send({ { "do", "hotkey" }, { "key", 3 }, { "id", 1 } });
         CHECK(r.did == "pressed button 3");
-        CHECK(f.control.calls == std::vector<std::string>{ "active on", "active off", "back", "reroll", "crash",
+        CHECK(f.control.calls == std::vector<std::string>{ "active on", "active off", "back", "here", "reroll", "crash",
                                                             "chaos 25", "rule 2 off", "strength 1 50", "hotkey 3" });
     }
 

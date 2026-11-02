@@ -14,6 +14,7 @@ class SessionControl : public CorruptionControl
     PanelStatus status() override;
     void setActive(bool on) override;
     void backToNormal() override;
+    void normalHere() override;
     uint64_t reroll() override;
     void setSeed(uint64_t seed) override;
     void pressButton(int key) override;

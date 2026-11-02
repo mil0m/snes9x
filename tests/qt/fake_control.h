@@ -59,6 +59,7 @@ struct FakeControl : CorruptionControl
         call(on ? "on" : "off");
     }
     void backToNormal() override { call("back to normal"); }
+    void normalHere() override { call("normal here"); }
     uint64_t reroll() override
     {
         call("reroll");

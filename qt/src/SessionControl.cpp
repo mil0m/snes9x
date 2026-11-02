@@ -29,6 +29,7 @@ PanelStatus SessionControl::status()
 }
 void SessionControl::setActive(bool on) { session().setActive(on); }
 void SessionControl::backToNormal() { session().backToNormal(); }
+void SessionControl::normalHere() { session().backToNormal(true); }
 uint64_t SessionControl::reroll() { return session().reroll(); }
 void SessionControl::setSeed(uint64_t seed) { session().setSeed(seed); }
 void SessionControl::pressButton(int key) { session().pressHotkey(key); }

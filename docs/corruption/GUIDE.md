@@ -17,6 +17,7 @@ seems to happen
 3. Press **Corrupt** (**F7**) and play. Things start going slightly wrong.
 4. **Re-roll** (next to **Seed**) for different dice: the same recipe, different glitches.
 5. **Back to Normal** puts everything back as it was when you pressed Corrupt.
+   **Normal, Stay Here** (under it) stops and cleans the ROM but keeps you where you are.
 
 That's all you need. The rest of this guide is for when you want more.
 
@@ -60,6 +61,7 @@ There are four ways to undo something. Only one of them undoes everything.
 |---|---|
 | **Stop** (Corrupt, while it runs) | Stops corrupting. What it already changed **stays**: the game keeps running, glitched. |
 | **Back to Normal** | Stops, puts the game's ROM back to clean, and takes the game back to the moment you pressed Corrupt. Everything it did is gone (and so is your play since then). |
+| **Normal, Stay Here** | Stops and puts the ROM back to clean, but the game plays on from where you are: your progress stays. What the rules did to RAM (a health value, a position) stays too, until the game writes over it. The panel says *ROM clean, playing on from here*. Also on the remote page. |
 | **Restore Clean ROM** | Puts only the ROM back. What corruption did to RAM stays. |
 | **Restore This Save…** (Game Save Backups) | Has nothing to do with corruption: it restores your **in-game save** (the cartridge's battery save) from a copy and restarts the game. |
 

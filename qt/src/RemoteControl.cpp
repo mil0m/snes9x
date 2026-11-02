@@ -24,6 +24,11 @@ std::string SessionRemote::set_active(bool on)
     return {};
 }
 
+void SessionRemote::normal_here()
+{
+    session().backToNormal(true);
+}
+
 void SessionRemote::back_to_normal()
 {
     session().backToNormal();

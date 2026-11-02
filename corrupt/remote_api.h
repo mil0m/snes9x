@@ -71,6 +71,7 @@ struct Control
 {
     virtual std::string set_active(bool on) = 0; // error ("no recipe loaded") or empty
     virtual void back_to_normal() = 0;
+    virtual void normal_here() = 0; // the same, but the game stays where it is (#70)
     virtual void reroll() = 0;
     virtual void mark_crash() = 0;
     virtual void set_chaos(double chaos) = 0;

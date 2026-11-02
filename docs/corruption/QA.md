@@ -720,3 +720,12 @@ Removed on 2026-11-01: it didn't pay off (see FEATURES.md, *Tried and removed*).
    - [ ] **What** becomes *Random value*, and a line under it says *NOP out instructions works on the game's code, which only the rom has: switched to Random value.* OK stays enabled. Picking another option hides the line.
 4. Edit an existing ROM rule that uses *Flip branches*.
    - [ ] It opens with *Flip branches* picked, and its settings page shows.
+
+## 46. Normal, Stay Here (#70)
+1. Pick **Starter: Code drip** on Pocky & Rocky, press **Corrupt (F7)**, play until the ROM line counts changed bytes, and walk somewhere new.
+2. Press **Normal, Stay Here** (under Back to Normal).
+   - [ ] Corruption stops, the ROM line says *ROM clean*, and the game carries on from exactly where you were (no jump back). The state bar says *Not corrupting · ROM clean, playing on from here*. **Normal, Stay Here** greys out; **Back to Normal** still works (back to the run's start).
+3. Corrupt again for a while, then **Back to Normal**.
+   - [ ] As before: back to the moment you pressed Corrupt.
+4. On the remote page, press **Normal, stay here**.
+   - [ ] The same happens in the app, and the page says *went back to normal, staying here*.

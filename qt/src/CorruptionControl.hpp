@@ -53,6 +53,7 @@ struct PanelStatus
 
     bool can_go_back = false; // a run started (its moment is there to go back to), or the ROM changed
     bool back_to_normal = false; // Back to normal was the last thing done (nothing has run since)
+    bool normal_here = false;    // ...the kind that stayed where the game was (#70)
     size_t rom_size = 0;
     size_t rom_changed = 0; // ROM bytes that differ from the clean ROM
     size_t rom_used = 0;    // ...of which the game has run or read since they changed
@@ -92,6 +93,7 @@ class CorruptionControl
     // Playing.
     virtual void setActive(bool on) = 0;
     virtual void backToNormal() = 0;
+    virtual void normalHere() = 0; // corruption off and the ROM clean, the game playing on from where it is (#70)
     virtual uint64_t reroll() = 0; // the new seed
     virtual void setSeed(uint64_t seed) = 0;
     virtual void pressButton(int key) = 0;

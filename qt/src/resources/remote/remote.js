@@ -270,6 +270,7 @@ function setup() {
   $("reroll").addEventListener("click", () => send({ do: "reroll" }));
   $("crashed").addEventListener("click", () => send({ do: "mark_crash" }));
   $("normal").addEventListener("click", () => send({ do: "back_to_normal" }));
+  $("normal-here").addEventListener("click", () => send({ do: "normal_here" }));
   $("chaos").addEventListener("input", (e) => {
     $("chaos-out").textContent = e.target.value + "%";
     clearTimeout(state.chaosTimer);

@@ -10,6 +10,7 @@ class SessionRemote : public corrupt::remote::Control
   public:
     std::string set_active(bool on) override;
     void back_to_normal() override;
+    void normal_here() override;
     void reroll() override;
     void mark_crash() override;
     void set_chaos(double chaos) override;

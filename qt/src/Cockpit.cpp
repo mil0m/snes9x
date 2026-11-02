@@ -8,6 +8,7 @@
 #include <QComboBox>
 #include <QEvent>
 #include <QFormLayout>
+#include <QGridLayout>
 #include <QHBoxLayout>
 #include <QHeaderView>
 #include <QLabel>
@@ -166,15 +167,25 @@ Cockpit::Cockpit(CorruptionControl &control, RecipeActions &actions, QWidget *pa
     });
 
     // Corrupt (the message area above already leaves a line of space).
-    auto run_row = new QHBoxLayout;
+    auto run_row = new QGridLayout;
     corrupt_button = button(tr("Corrupt"), this, "bolt");
     corrupt_button->setObjectName("corrupt");
     back_button = button(tr("Back to Normal"), this, "arrow-back-up");
     back_button->setObjectName("back_to_normal");
     back_button->setToolTip(tr("Turn corruption off, put the ROM back to clean, and take the game back to the "
-                               "moment the run started, so everything it changed is gone."));
-    run_row->addWidget(corrupt_button, 1);
-    run_row->addWidget(back_button, 1);
+                               "moment the run started, so everything it changed is gone. Normal, Stay Here "
+                               "keeps your place instead."));
+    // The other way back (#70): the ROM clean and corruption off, the game where it is.
+    here_button = button(tr("Normal, Stay Here"), this, "restore");
+    here_button->setObjectName("normal_here");
+    here_button->setToolTip(tr("Turn corruption off and put the ROM back to clean, but keep playing from where you "
+                               "are. What it did to RAM (health, positions) stays until the game writes over it; "
+                               "Back to Normal goes back to the run's start instead."));
+    run_row->addWidget(corrupt_button, 0, 0);
+    run_row->addWidget(back_button, 0, 1);
+    run_row->addWidget(here_button, 1, 1);
+    run_row->setColumnStretch(0, 1);
+    run_row->setColumnStretch(1, 1);
     layout->addLayout(run_row);
     moment_note = new QLabel(this);
     moment_note->setObjectName("moment_note");
@@ -211,6 +222,7 @@ Cockpit::Cockpit(CorruptionControl &control, RecipeActions &actions, QWidget *pa
         refresh();
     });
     connect(back_button, &QPushButton::clicked, this, [this] { this->control.backToNormal(); });
+    connect(here_button, &QPushButton::clicked, this, [this] { this->control.normalHere(); });
     connect(reroll_button, &QPushButton::clicked, this,
             [this] { seed_edit->setText(QString::number(this->control.reroll())); });
     connect(seed_edit, &QLineEdit::returnPressed, this, [this] {
@@ -456,6 +468,7 @@ void Cockpit::refresh()
                                         : tr("Start the recipe."));
     }
     back_button->setEnabled(status.can_go_back || status.engine.active);
+    here_button->setEnabled(status.engine.active || status.rom_changed > 0);
     if (!seed_edit->hasFocus())
         seed_edit->setText(status.has_recipe ? QString::number(status.engine.seed) : QString());
 
@@ -476,6 +489,8 @@ void Cockpit::refresh()
                                     .arg(seconds % 60, 2, 10, QChar('0'))
                                     .arg(plural(status.engine.firings, tr("1 change"), tr("%1 changes"))));
     }
+    else if (status.normal_here)
+        showState("normal", tr("Not corrupting · ROM clean, playing on from here"));
     else if (status.back_to_normal)
         showState("normal", tr("Not corrupting · back to normal"));
     else if (status.can_go_back)

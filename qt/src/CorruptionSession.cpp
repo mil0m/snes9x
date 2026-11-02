@@ -122,12 +122,12 @@ void CorruptionSession::betweenFrames()
         back_to_normal = false;
         engine.set_active(false);
         rom.restore_clean();
-        bool moment = control.has_anchor() && access.load_state(control.anchor());
+        bool moment = !stay_here && control.has_anchor() && access.load_state(control.anchor());
         guard.reset();
         instant.drop();
         at_normal = true;
         // The panel's state bar says it's back to normal; only a half-way return needs words.
-        note(moment ? std::string() : "Only the ROM went back: there was no run start to go back to");
+        note(moment || stay_here ? std::string() : "Only the ROM went back: there was no run start to go back to");
         S9xSetInfoString("Corruption: back to normal");
     }
     // Paint's own crash watch (#66), corrupting or not; a rollback here ends this frame's work.
@@ -1183,6 +1183,7 @@ CorruptionSession::Status CorruptionSession::status()
         s.rom_changed = rom.changed();
         s.can_go_back = control.has_anchor() || rom.changed() > 0;
         s.back_to_normal = at_normal && !engine.active();
+        s.normal_here = s.back_to_normal && stay_here;
         s.rom_used = rom_blame.used();
         s.rom_size = memory.size(Target::ROM);
         s.survivors = rom_blame.survivor_count(kSurvivorFrames);
@@ -1234,11 +1235,13 @@ CorruptionSession::Status CorruptionSession::status()
     return s;
 }
 
-void CorruptionSession::backToNormal()
+void CorruptionSession::backToNormal(bool stay)
 {
     std::lock_guard lock(mutex);
-    if (game_loaded)
-        back_to_normal = true;
+    if (!game_loaded)
+        return;
+    back_to_normal = true;
+    stay_here = stay;
 }
 
 void CorruptionSession::restoreCleanRom()

@@ -60,7 +60,9 @@ class CorruptionSession
     bool toggleActive(); // returns the new state
     // Back to normal: corruption off, the clean ROM back, and the game back at the moment the
     // run started, so what it did to RAM is gone too. Happens between frames.
-    void backToNormal();
+    // stay_here (#70): the same, but the game plays on from where it is; what the rules did to
+    // RAM stays until the game writes over it.
+    void backToNormal(bool stay_here = false);
     uint64_t reroll();   // returns the new seed
     void setSeed(uint64_t seed);
     void pressHotkey(int n);
@@ -264,6 +266,7 @@ class CorruptionSession
     bool code_map_reload = false;           // the library changed: reload between frames
     bool back_to_normal = false;            // asked for; done between frames
     bool at_normal = false;                 // done, and no run since
+    bool stay_here = false;                 // the asked-for or last Back to Normal stays where the game is
     uint64_t code_frames = 0;
     std::vector<corrupt::MapArea> live_map; // VRAM or ARAM layout, re-read between frames while watched
     bool saved_moments = true;

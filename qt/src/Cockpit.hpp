@@ -70,6 +70,7 @@ class Cockpit : public QWidget
     bool showing_error = false;
     QPushButton *corrupt_button;
     QPushButton *back_button;
+    QPushButton *here_button; // Normal, Stay Here (#70)
     IntensitySlider *chaos_slider;
     QLineEdit *seed_edit;
     QPushButton *reroll_button;
