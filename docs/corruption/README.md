@@ -169,6 +169,7 @@ How it was designed and built, with measurements from real games:
 [visual UI pass](./2026-10-31-ui-pass-plan.md) ·
 [jump tables and pointer swap](./2026-11-01-pointer-swap-plan.md) ·
 [functions: call graph and kill switches](./2026-11-01-functions-plan.md) ·
+[functions, deeper: bodies, guards, names, changes, timers](./2026-11-02-function-changes-plan.md) ·
 [safety: live heat, instant revert, testing ahead (and two ideas removed)](./2026-11-01-safety-plan.md) ·
 [remote control](./2026-11-01-remote-plan.md) ·
 [what could come next](./2026-10-31-horizons.md).
