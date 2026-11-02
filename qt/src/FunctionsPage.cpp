@@ -17,6 +17,8 @@
 #include <QTimer>
 #include <QVBoxLayout>
 
+#include <unordered_map>
+
 #include <cmath>
 
 using namespace corrupt;
@@ -153,7 +155,9 @@ FunctionsPage::FunctionsPage(FunctionSource &source, QWidget *parent) : QWidget(
     table->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
     table->setWordWrap(true);
     table->verticalHeader()->hide();
-    table->horizontalHeader()->setSectionResizeMode(QHeaderView::ResizeToContents);
+    // Sized once per refresh, not per cell: ResizeToContents measures every row again on each
+    // change, which froze the app for a minute on a game with 545 functions.
+    table->horizontalHeader()->setSectionResizeMode(QHeaderView::Interactive);
     table->horizontalHeader()->setSectionResizeMode(About, QHeaderView::Stretch);
     table->horizontalHeaderItem(Now)->setToolTip(tr("Of the last 5 seconds, how many frames it ran in"));
     table->horizontalHeaderItem(Frames)->setToolTip(tr("Frames it ran in, in all (everyone's play)"));
@@ -283,7 +287,7 @@ FunctionsPage::FunctionsPage(FunctionSource &source, QWidget *parent) : QWidget(
 
     timer = new QTimer(this);
     timer->setInterval(500);
-    connect(timer, &QTimer::timeout, this, &FunctionsPage::update);
+    connect(timer, &QTimer::timeout, this, &FunctionsPage::updateRows);
     connect(refresh_button, &QPushButton::clicked, this, &FunctionsPage::refresh);
     connect(table, &QTableWidget::itemChanged, this, &FunctionsPage::offChanged);
     connect(table, &QTableWidget::itemSelectionChanged, this, &FunctionsPage::selectionChanged);
@@ -333,22 +337,30 @@ void FunctionsPage::fill(int row, const FunctionRow &r)
         }
         return it;
     };
-    QFont fixed = QFontDatabase::systemFont(QFontDatabase::FixedFont);
+    // Only what changed: every set is a repaint, and this runs twice a second for every row.
+    auto set = [](QTableWidgetItem *it, const QString &text, const QString &tip) {
+        if (it->text() != text)
+            it->setText(text);
+        if (it->toolTip() != tip)
+            it->setToolTip(tip);
+    };
     auto *fn = item(FunctionCol);
-    fn->setText(cpu(r));
-    fn->setFont(fixed);
-    fn->setToolTip(how_called(r));
+    if (fn->text().isEmpty())
+        fn->setFont(QFontDatabase::systemFont(QFontDatabase::FixedFont));
+    set(fn, cpu(r), how_called(r));
     auto *now = item(Now);
-    now->setText(QString("%1%").arg(r.f.now * 100 / CallKeeper::kNowFrames));
-    now->setTextAlignment(Qt::AlignRight | Qt::AlignVCenter);
+    if (now->text().isEmpty())
+        now->setTextAlignment(Qt::AlignRight | Qt::AlignVCenter);
+    set(now, QString("%1%").arg(r.f.now * 100 / CallKeeper::kNowFrames), {});
     auto *frames = item(Frames);
-    frames->setText(QLocale().toString(qulonglong(r.f.frames)));
-    frames->setTextAlignment(Qt::AlignRight | Qt::AlignVCenter);
-    frames->setToolTip(r.f.callers == 1 ? tr("Called from 1 place") : tr("Called from %1 places").arg(r.f.callers));
+    if (frames->text().isEmpty())
+        frames->setTextAlignment(Qt::AlignRight | Qt::AlignVCenter);
+    set(frames, QLocale().toString(qulonglong(r.f.frames)),
+        r.f.callers == 1 ? tr("Called from 1 place") : tr("Called from %1 places").arg(r.f.callers));
     auto *size = item(Size);
-    size->setText(size_text(r));
-    size->setTextAlignment(Qt::AlignRight | Qt::AlignVCenter);
-    size->setToolTip(size_tip(r));
+    if (size->text().isEmpty())
+        size->setTextAlignment(Qt::AlignRight | Qt::AlignVCenter);
+    set(size, size_text(r), size_tip(r));
     auto *off = item(Off);
     if (r.f.type == CallType::Mixed)
     {
@@ -358,10 +370,16 @@ void FunctionsPage::fill(int row, const FunctionRow &r)
     }
     else
     {
-        off->setFlags(Qt::ItemIsSelectable | Qt::ItemIsEnabled | Qt::ItemIsUserCheckable);
-        off->setCheckState(r.off ? Qt::Checked : Qt::Unchecked);
-        off->setToolTip(r.off ? tr("Off: the game skips it. Untick to put it back.")
-                              : tr("Tick to turn it off: the game skips it"));
+        auto flags = Qt::ItemIsSelectable | Qt::ItemIsEnabled | Qt::ItemIsUserCheckable;
+        if (off->flags() != flags)
+            off->setFlags(flags);
+        auto state = r.off ? Qt::Checked : Qt::Unchecked;
+        if (off->data(Qt::CheckStateRole).isNull() || off->checkState() != state)
+            off->setCheckState(state);
+        QString tip = r.off ? tr("Off: the game skips it. Untick to put it back.")
+                            : tr("Tick to turn it off: the game skips it");
+        if (off->toolTip() != tip)
+            off->setToolTip(tip);
     }
     auto *ab = item(About);
     QString text = about(r);
@@ -378,6 +396,8 @@ void FunctionsPage::refresh()
     filling = false;
     for (size_t i = 0; i < shown.size(); i++)
         fill(int(i), shown[i]);
+    for (int col : { int(FunctionCol), int(Now), int(Frames), int(Size), int(Off) })
+        table->resizeColumnToContents(col);
     table->resizeRowsToContents();
     bool any = !shown.empty();
     table->setVisible(any);
@@ -388,17 +408,18 @@ void FunctionsPage::refresh()
     selectionChanged();
 }
 
-void FunctionsPage::update()
+void FunctionsPage::updateRows()
 {
     auto now = source.functions();
+    std::unordered_map<uint32_t, const FunctionRow *> by_entry;
+    for (auto &r : now)
+        by_entry[r.f.entry] = &r;
     for (size_t i = 0; i < shown.size(); i++)
-        for (auto &r : now)
-            if (r.f.entry == shown[i].f.entry)
-            {
-                shown[i] = r;
-                fill(int(i), r);
-                break;
-            }
+        if (auto it = by_entry.find(shown[i].f.entry); it != by_entry.end())
+        {
+            shown[i] = *it->second;
+            fill(int(i), shown[i]);
+        }
     not_running->setVisible(!source.running());
 }
 
@@ -503,7 +524,7 @@ void FunctionsPage::nameSelected()
         say(want.empty() ? tr("Name removed.")
                          : tr("Named %1 \"%2\": everyone who shares the library sees it.").arg(cpu(r), name->text().trimmed()),
             int(ui::Tone::Ok));
-    update();
+    updateRows();
     table->resizeRowsToContents();
 }
 
@@ -527,7 +548,7 @@ void FunctionsPage::protectChanged()
     say(on ? tr("Protected: no rule and no paint changes its code now. Save the recipe to keep it.")
            : tr("Not protected any more."),
         int(ui::Tone::Ok));
-    update();
+    updateRows();
 }
 
 void FunctionsPage::keepSelected()
@@ -558,7 +579,7 @@ void FunctionsPage::keepSelected()
                 ? tr("Kept in the recipe on button %1. Save the recipe to keep it.").arg(hotkey->currentIndex())
                 : tr("Kept in the recipe. Save the recipe to keep it."),
             int(ui::Tone::Ok));
-    update();
+    updateRows();
     selectionChanged();
 }
 
@@ -569,7 +590,7 @@ void FunctionsPage::forgetSelected()
         return;
     source.forget(shown[size_t(row)].f.entry);
     say(tr("Removed from the recipe. The function stays as it is now."));
-    update();
+    updateRows();
     selectionChanged();
 }
 

@@ -28,7 +28,8 @@ class FunctionsPage : public QWidget
 {
   public:
     explicit FunctionsPage(FunctionSource &source, QWidget *parent = nullptr);
-    void refresh(); // reload, busiest now first
+    void refresh();    // reload, busiest now first
+    void updateRows(); // the same rows, their numbers and states now (the timer, twice a second)
 
     // Show in ROM: the memory viewer on the ROM, the Functions overlay, these bytes selected.
     std::function<void(uint32_t first, uint32_t last)> onShowInRom;
@@ -37,8 +38,8 @@ class FunctionsPage : public QWidget
     void showEvent(QShowEvent *event) override;
     void hideEvent(QHideEvent *event) override;
 
+
   private:
-    void update(); // the same rows, their numbers and states now
     void fill(int row, const FunctionRow &r);
     void offChanged(QTableWidgetItem *item);
     void selectionChanged();

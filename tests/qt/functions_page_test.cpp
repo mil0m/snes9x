@@ -8,6 +8,7 @@
 #include <QComboBox>
 #include <QDoubleSpinBox>
 #include <QDir>
+#include <QElapsedTimer>
 #include <QLabel>
 #include <QLineEdit>
 #include <QPushButton>
@@ -237,4 +238,32 @@ TEST_CASE("a switch kept with a timer: off for a while, every so often")
     child<QDoubleSpinBox>(d, "timer_every")->setValue(10);
     child<QPushButton>(d, "keep")->click();
     CHECK(src.kept.size() == 1); // off as long as the cycle: refused
+}
+
+TEST_CASE("a game with hundreds of functions fills and updates quickly")
+{
+    FakeFunctions src;
+    auto base = src.rows[0];
+    src.rows.clear();
+    for (uint32_t i = 0; i < 600; i++)
+    {
+        auto r = base;
+        r.f.entry = 0x1000 + i * 0x20;
+        r.f.frames = 600 - i;
+        r.label.clear();
+        src.rows.push_back(r);
+    }
+    QElapsedTimer clock;
+    clock.start();
+    FunctionsPage d(src);
+    d.resize(900, 640);
+    d.show();
+    auto built = clock.restart();
+    CHECK(built < 1500);
+    for (int i = 0; i < 4; i++) // two seconds of updates while it's open
+        d.updateRows();
+    CHECK(clock.elapsed() < 400);
+    auto table = d.findChild<QTableWidget *>("functions");
+    REQUIRE(table);
+    CHECK(table->rowCount() == 600);
 }
