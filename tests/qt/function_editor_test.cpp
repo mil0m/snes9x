@@ -67,6 +67,12 @@ TEST_CASE("Change It lists the lines that can change and what each can become")
     CHECK(t->item(3, 2)->text() == "DEC");
     CHECK(t->item(4, 2)->text().contains("another function"));
     CHECK(t->item(0, 3)->text().isEmpty()); // as the game has it
+    // Hovering says what it means (#71): the instruction, its operand, and the change.
+    CHECK(t->item(0, 1)->toolTip().contains("Loads a value into A"));
+    CHECK(t->item(0, 1)->toolTip().contains("#$04 is the number itself: 4"));
+    CHECK(t->item(2, 1)->toolTip().contains("Jumps if"));
+    CHECK(t->item(2, 2)->toolTip().contains("decision"));
+    CHECK(t->item(4, 2)->toolTip().contains("call"));
     CHECK_FALSE(child<QWidget>(*e.editor, "number")->isVisible()); // nothing selected
     CHECK(child<QLabel>(*e.editor, "empty")->isHidden());
     if (auto dir = getenv("CORRUPT_SHOTS_DIR"))

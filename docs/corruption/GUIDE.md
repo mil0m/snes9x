@@ -397,7 +397,9 @@ trigger every 10 s and 5 s here a different function is missing half the time. S
 
 Turning gravity off is one thing; changing it is more fun. Select a function and **Change
 It…**: its code, line by line, and what each line can become without breaking the shape of
-the code:
+the code. Don't read assembly? **Hover an instruction** and it says what it does in plain
+words (*Adds a number to A… / #$04 is the number itself: 4*); hover **Can Become** for what
+that kind of change does to the game:
 
 - **a number**: `LDA #$04` becomes `LDA #$01` (gravity 4 → 1), or `ADC` becomes `SBC`;
 - **a decision**: a branch becomes its opposite (*if on the ground* becomes *if in the air*),

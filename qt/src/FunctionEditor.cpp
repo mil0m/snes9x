@@ -1,5 +1,6 @@
 #include "FunctionEditor.hpp"
 #include "UiKit.hpp"
+#include "corrupt/instruction_help.h"
 
 #include "corrupt/code_aim.h"
 
@@ -131,6 +132,8 @@ FunctionEditor::FunctionEditor(FunctionSource &source, const FunctionRow &row, Q
     table->verticalHeader()->hide();
     table->horizontalHeader()->setSectionResizeMode(QHeaderView::ResizeToContents);
     table->horizontalHeader()->setSectionResizeMode(Now, QHeaderView::Stretch);
+    table->horizontalHeaderItem(InstructionCol)->setToolTip(tr("Hover an instruction to see what it does, in plain words"));
+    table->horizontalHeaderItem(Becomes)->setToolTip(tr("Hover to see what that kind of change does to the game"));
     layout->addWidget(table, 1);
 
     // What the selected line becomes.
@@ -326,6 +329,9 @@ void FunctionEditor::refresh()
         set(Address, cpu(o.address, o.at), true);
         set(InstructionCol, QString::fromStdString(o.text), true);
         set(Becomes, becomes(o), false);
+        // What it means, for players who don't read assembly (#71).
+        table->item(int(i), InstructionCol)->setToolTip(QString::fromStdString(explain_instruction(o.opcode, o.text)));
+        table->item(int(i), Becomes)->setToolTip(QString::fromStdString(explain_change(o.kind)));
         set(Now, QString(), false);
     }
     bool any = !options.empty();

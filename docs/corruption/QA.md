@@ -729,3 +729,10 @@ Removed on 2026-11-01: it didn't pay off (see FEATURES.md, *Tried and removed*).
    - [ ] As before: back to the moment you pressed Corrupt.
 4. On the remote page, press **Normal, stay here**.
    - [ ] The same happens in the app, and the page says *went back to normal, staying here*.
+
+## 47. What the instructions mean, on hover (#71)
+1. Workshop > Functions, select a busy function, **Change It…**.
+2. Hover a few instructions: a number (`LDA #$..`), a branch (`BNE …`), a call (`JSR`/`JSL`), one with `,X`.
+   - [ ] Each tooltip says what the instruction does in plain words, then what its operand is: *#$04 is the number itself: 4*, *…where it jumps to*, *…the function it calls*, *…X picks the entry*.
+3. Hover the **Can Become** cells.
+   - [ ] Each says what that kind of change does to the game (a number, a decision, a sum, a call).

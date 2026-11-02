@@ -292,3 +292,30 @@ only Name cells carry the flag); and the *In play* column, sized once per re-sor
 narrow for a function protected after it ("prot…"), so it now grows when a cell outgrows
 it. The hint on an empty, selected name uses the selection's own text colour for the window's
 state (white on the Mac's grey inactive selection was hard to read).
+
+## #71 What the instructions mean, on hover
+
+Mikael: *"In the change in a function where one can see all operations, please add so one
+can hover on operations to understand what they mean."* Change It… lists the function's
+instructions as assembly (`ADC #$01`, `BNE $9012`, `JSL $C30006`): readable for someone who
+knows the 65816, not for a player.
+
+- **Hover an instruction** and a tooltip says what it does in plain words, then what its
+  operand is: *Adds a number to A, the main register, plus the carry. Health, scores and
+  positions often go through it.* / *#$01 is the number itself: 1.* Every one of the 92
+  mnemonics has a line; every addressing mode explains its operand (a number, a fast
+  variable, a table entry picked by X, a pointer, a jump table, where a branch goes).
+- **Hover Can Become** and it says what that kind of change does to the game (a number, a
+  decision, a sum, a call).
+- The words live in `corrupt/instruction_help` (no Qt), so a test can check none is
+  missing; the memory viewer's ROM hover can use them later.
+
+Tests: every mnemonic in the opcode table has an explanation; each addressing mode's
+operand is explained (immediates with their decimal value); each change kind has words;
+the Change It… cells carry them as tooltips.
+
+### How it went (#71)
+
+Built the same evening, test first. The test that every one of the 92 mnemonics has words
+(and that the opcode table really has 92) is what keeps it complete. Not done: the memory
+viewer's ROM hover still shows bare assembly; it can take the same words.
