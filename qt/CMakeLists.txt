@@ -60,7 +60,7 @@ if(${CMAKE_SYSTEM_NAME} STREQUAL "Windows")
         list(APPEND LIBS libz.a libpng.a)
     endif()
 
-    list(APPEND LIBS opengl32 gdi32 winmm imm32 ole32 oleaut32 version uuid advapi32 setupapi shell32 dinput8)
+    list(APPEND LIBS opengl32 dwmapi gdi32 winmm imm32 ole32 oleaut32 version uuid advapi32 setupapi shell32 dinput8)
     list(APPEND PLATFORM_SOURCES
         ../common/video/opengl/wgl_context.cpp
         ../external/glad/src/wgl.c
