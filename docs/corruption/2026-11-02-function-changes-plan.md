@@ -1,6 +1,6 @@
 # Functions, deeper: bodies, guards, names, changes and timers (plan, roadmap #58-#61 and #35)
 
-**Status (2026-11-02):** #58 and #59 done (QA.md 34); #60, #35 and #61 in progress. Follows [the functions plan](./2026-11-01-functions-plan.md)
+**Status (2026-11-02):** done (QA.md 34-36); see *How it went*. Follows [the functions plan](./2026-11-01-functions-plan.md)
 (#26 call graph, #34 kill switches). Asked for by Mikael: "Set what type of changes should
 happen every x second", "corrupt the actual functions as well? To make them behave
 differently?", "guard the related ROM parts so we don't touch them with other corrupt
@@ -211,3 +211,55 @@ name, *Protect* and *And what it calls*, the switch, *Show in ROM*), a *Size* co
 - **The guard works on the real core:** with the test ROM's function guarded with what it
   calls, a rule writing 32 random bytes a frame over all of its code for 30 frames changed
   none of its bytes, logged no write in it, and it kept counting every frame.
+
+### #60 change a function, #35 redirection, #61 timers
+
+Built as planned, in one window: *Change It…* (from the Functions window) lists the
+function's lines that can change and what each can become; *Apply* / *Put Back* act at the
+next frame, *Keep in Recipe* keeps a change on a hotkey, starting on or not, with an
+optional timer. Redirection (#35) is one of a call's choices there. Flips became general
+byte toggles (a switch is a one-byte one). A starter, **Function flicker**, shows #61's
+*Back on after*.
+
+**Changes inside the busiest functions vs anywhere (`--change`, unguarded, one change every
+~8.5 s, 6 in a minute: a new number, the opposite branch, or the other half of a math pair):**
+
+| Game | Inside the 64 busiest: running / moving / picture differs | Anywhere in code: running / moving / differs | Clean |
+|---|---|---|---|
+| Goof Troop (10 seeds) | 10 / 5 / 10 | 10 / 7 / 10 | 10 / 10 |
+| Pocky & Rocky (10) | 9 / 7 / 10 | 10 / 9 / 10 | 10 / 10 |
+| FE4 (10) | 10 / 5 / 10 | 8 / 8 / 9 | 10 / 10 |
+| FF6 (5, 5 minutes) | 5 / 5 / 3 | 5 / 3 / 2 | 5 / 5 |
+
+- Every change in both arms was run by the game ("ran a changed byte" in all runs), so the
+  difference isn't dormant code.
+- Inside the busy functions the game nearly always keeps *running* (29 of 30 on the first
+  three games, against 28 of 30 anywhere) but more often stops *moving* (17 against 24): a
+  change in code that runs every frame tends to stall the picture (a menu that no longer
+  advances, a demo stuck on a frame) rather than crash. FF6 goes the other way, on 5 seeds.
+- So the *inside busy functions* aim is the stronger option for chaos, not a gentler one.
+  The point of #60 is the hand-picked change in Change It…, with the guard keeping the
+  rest of the function clean, where a stall is put back with one click.
+- **A measuring bug found on the way:** `headless::load_state` didn't clear the core's stop
+  switch after a CPU deadlock (the app's `SnesCoreAccess::load_state` does), so in the first
+  Pocky run every run after a deadlocked one looked dead, clean ones included. Fixed; the
+  earlier `--kill` and `--swaps` numbers had no deadlock (their clean arms all ran), so they
+  stand.
+- **Two bugs found by tests:** a window flip's return byte was in its own guarded body, so
+  the guard's cleanup would have turned the function straight back on (now what the window
+  did counts as your own bytes); and a timer wrote its bytes even over a ROM version that
+  holds something else there (timer flips now only touch bytes holding their own on or off).
+
+**One kind at a time (`CORRUPT_CHANGE_KIND`, 10 seeds each; still moving after a minute,
+inside the busiest functions / anywhere):**
+
+| Game | Numbers | Branches (opposite) | Math pairs |
+|---|---|---|---|
+| Goof Troop | 5 / 6 | 7 / 1 | 1 / 7 |
+| Pocky & Rocky | 2 / 5 | 7 / 9 | 10 / 10 |
+| FE4 | 7 / 6 | 4 / 4 | 3 / 0 |
+| All three | 14 / 17 of 30 | 18 / 14 | 14 / 17 |
+
+- No kind is the gentle one: which survives depends on the game (Goof's branch flips stall
+  it anywhere but rarely inside its busy functions; its math swaps the other way round).
+  The guide doesn't promise any kind is safe; Put Back and the crash guard are the answer.
