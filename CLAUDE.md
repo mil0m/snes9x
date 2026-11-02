@@ -55,6 +55,10 @@ tools/privacy_check.sh [--staged]            # nothing private in tracked files
 
 ## Rules and gotchas
 
+- **No feature may need an LLM to work.** The fork must stand on its own for anyone who
+  builds it: per-game knowledge comes from the tracer, from measurements and from what
+  players name and share in the library, never from Claude or another model. (Using
+  Claude to *write* the code is fine.)
 - **Never put private things in the repo**: domains, emails, tokens, tunnel ids. The public
   repo only ever has placeholders (`<your-host>`). `tools/privacy_check.sh` checks against
   an untracked `.private-words` list.

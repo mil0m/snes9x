@@ -28,6 +28,7 @@ ROM title and the first 8 hex digits of its SHA-256, like `FF6 T-Edition 2016 [6
 | `recipes/*.json` | Recipes, and `*.anchor.frz` next to them: their start moments |
 | `regions.json` | Named areas |
 | `crashmap.<you>.json`, `codemap.<you>.bin` | What the crash guard and the code map learned; one file per person, everyone's added up when the game loads |
+| `jumps.<you>.json`, `calls.<you>.json` | The jump tables and the functions (call graph) the tracer learned; one file per person, everyone's merged when the game loads |
 | `journal.<you>.jsonl` | Every crash, recovery and give-up, one JSON line each |
 | `save-backups/` | Copies of the game's battery save (git-ignored) |
 
