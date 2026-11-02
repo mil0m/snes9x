@@ -1,6 +1,6 @@
 ---
 name: qt-widgets-ui
-description: Use when building or changing any Qt Widgets window, panel, dialog or control in this repo's corruption UI (qt/src: CorruptionDock, RuleEditor, MemoryViewer, SurvivorsDialog, GuideWindow, or a new one) — layout, spacing, colours, icons, light/dark, empty states, screenshots. Triggers include "new dialog", "add a panel", "make it look right", "dark mode", "the UI looks off", "visual pass", "screenshot the windows". Gives the house rules (KDE HIG + Apple HIG + Qt's own advice), the UiKit helpers that implement them, the Mac-style pitfalls already hit, and how to verify with the UI tour.
+description: Use when building or changing any Qt Widgets window, panel, dialog or control in this repo's corruption UI (qt/src: CorruptionDock, RuleEditor, MemoryViewer, SurvivorsPanel, GuideWindow, or a new one) — layout, spacing, colours, icons, light/dark, empty states, screenshots. Triggers include "new dialog", "add a panel", "make it look right", "dark mode", "the UI looks off", "visual pass", "screenshot the windows". Gives the house rules (KDE HIG + Apple HIG + Qt's own advice), the UiKit helpers that implement them, the Mac-style pitfalls already hit, and how to verify with the UI tour.
 ---
 
 # Qt Widgets UI, the house way

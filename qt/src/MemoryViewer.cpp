@@ -390,7 +390,11 @@ MemoryViewer::MemoryViewer(MemorySource &source, QWidget *parent)
             selection_label->setText(tr("Couldn't paint: %1").arg(QString::fromStdString(err)));
     };
     pixels->onPick = [this](uint8_t v) { paint_value->setValue(v); };
-    connect(paint_button, &QPushButton::toggled, this, [this](bool on) { pixels->setPaintMode(on); });
+    connect(paint_button, &QPushButton::toggled, this, [this](bool on) {
+        pixels->setPaintMode(on);
+        paint_value->setVisible(on); // the paint tools only while painting
+        brush_spin->setVisible(on);
+    });
     connect(export_png_button, &QPushButton::clicked, this, [this] {
         auto path = QFileDialog::getSaveFileName(this, tr("Export PNG"),
                                                  QDir::home().filePath(QString("%1.png").arg(target_name(target()))),
@@ -475,10 +479,11 @@ void MemoryViewer::modeChanged()
     view_options->setVisible(m != "hex");
     hover_label->setVisible(m != "hex");
     row_width->setVisible(m == "pixels");
-    for (QWidget *w : { static_cast<QWidget *>(paint_button), static_cast<QWidget *>(paint_value),
-                        static_cast<QWidget *>(brush_spin), static_cast<QWidget *>(export_png_button),
+    for (QWidget *w : { static_cast<QWidget *>(paint_button), static_cast<QWidget *>(export_png_button),
                         static_cast<QWidget *>(import_png_button) })
         w->setVisible(m == "pixels");
+    paint_value->setVisible(m == "pixels" && paint_button->isChecked());
+    brush_spin->setVisible(m == "pixels" && paint_button->isChecked());
     if (m != "pixels" && paint_button->isChecked())
         paint_button->click(); // painting only works in the pixel view
     for (QWidget *w : { static_cast<QWidget *>(format_combo), static_cast<QWidget *>(palette_spin),

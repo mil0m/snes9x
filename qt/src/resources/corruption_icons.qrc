@@ -34,5 +34,9 @@
     <file alias="trash.svg">corruption-icons/trash.svg</file>
     <file alias="zoom-in.svg">corruption-icons/zoom-in.svg</file>
     <file alias="zoom-out.svg">corruption-icons/zoom-out.svg</file>
+    <file alias="tool.svg">corruption-icons/tool.svg</file>
+    <file alias="list-details.svg">corruption-icons/list-details.svg</file>
+    <file alias="cpu.svg">corruption-icons/cpu.svg</file>
+    <file alias="users.svg">corruption-icons/users.svg</file>
   </qresource>
 </RCC>

@@ -20,7 +20,7 @@ except for a few small, null-guarded hooks in the core.
 - `corrupt/`: the engine and everything that can be tested without Qt or the emulator.
   Unit tests in `tests/corrupt/` use fakes (`FakeMemory`, fake `CoreAccess` games).
 - `qt/src/`: the app. `CorruptionSession` is the hub; it lives on the emulation thread,
-  and `betweenFrames()` runs everything between frames. `CorruptionDock` is the panel.
+  and `betweenFrames()` runs everything between frames. `CorruptionDock` holds the panel (`Cockpit`) and the `Workshop` window; both act through `CorruptionControl`.
 - The core: `S9xCorruptFrameHook` and a few counters and flags (`S9xRomFlags`,
   `S9xMarkRom`, `S9xWramReads/Writes`). Keep core changes tiny and null-guarded.
 - Real-core tests: `tests/headless/` boots tiny hand-assembled test ROMs (`test_rom.cpp`).

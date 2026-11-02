@@ -172,10 +172,15 @@ list(APPEND QT_GUI_SOURCES
     src/IntensitySlider.cpp
     src/MemoryView.cpp
     src/MemoryViewer.cpp
-    src/SurvivorsDialog.cpp
-    src/FunctionsDialog.cpp
+    src/SurvivorsPanel.cpp
+    src/FunctionsPage.cpp
     src/FunctionEditor.cpp
     src/ButtonsBar.cpp
+    src/Cockpit.cpp
+    src/RecipeActions.cpp
+    src/SessionControl.cpp
+    src/Workshop.cpp
+    src/WorkshopPages.cpp
     src/GuideWindow.cpp
     src/UiKit.cpp
     src/PixelView.cpp

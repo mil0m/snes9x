@@ -1,5 +1,5 @@
 #include "doctest/doctest.h"
-#include "FunctionsDialog.hpp"
+#include "FunctionsPage.hpp"
 #include "fake_functions.h"
 #include "UiKit.hpp"
 
@@ -39,7 +39,7 @@ enum Col
 TEST_CASE("the functions window lists what runs, busiest now first, and shows which are off and kept")
 {
     FakeFunctions src;
-    FunctionsDialog d(src);
+    FunctionsPage d(src);
     d.show();
     QApplication::processEvents();
     auto table = child<QTableWidget>(d, "functions");
@@ -73,7 +73,7 @@ TEST_CASE("the functions window lists what runs, busiest now first, and shows wh
 TEST_CASE("ticking Off flips it; while corruption is off it says what to do instead")
 {
     FakeFunctions src;
-    FunctionsDialog d(src);
+    FunctionsPage d(src);
     d.show();
     auto table = child<QTableWidget>(d, "functions");
     table->item(0, Off)->setCheckState(Qt::Checked);
@@ -91,7 +91,7 @@ TEST_CASE("ticking Off flips it; while corruption is off it says what to do inst
 TEST_CASE("a switch is kept in the recipe with its hotkey, start and note, and forgotten again")
 {
     FakeFunctions src;
-    FunctionsDialog d(src);
+    FunctionsPage d(src);
     d.show();
     auto table = child<QTableWidget>(d, "functions");
     auto keep = child<QPushButton>(d, "keep");
@@ -124,7 +124,7 @@ TEST_CASE("a switch is kept in the recipe with its hotkey, start and note, and f
 TEST_CASE("the filter finds a function by its address or its note")
 {
     FakeFunctions src;
-    FunctionsDialog d(src);
+    FunctionsPage d(src);
     d.show();
     auto table = child<QTableWidget>(d, "functions");
     auto filter = child<QLineEdit>(d, "filter");
@@ -147,7 +147,7 @@ TEST_CASE("with nothing learned yet it says how to fill it")
 {
     FakeFunctions src;
     src.rows.clear();
-    FunctionsDialog d(src);
+    FunctionsPage d(src);
     d.show();
     CHECK(child<QLabel>(d, "empty")->isVisible());
     CHECK(child<QLabel>(d, "empty")->isEnabled());
@@ -160,7 +160,7 @@ TEST_CASE("with nothing learned yet it says how to fill it")
 TEST_CASE("nothing in the functions window is unnamed for a screen reader")
 {
     FakeFunctions src;
-    FunctionsDialog d(src);
+    FunctionsPage d(src);
     auto issues = ui::audit(&d);
     CAPTURE(issues.join("\n").toStdString());
     CHECK(issues.isEmpty());
@@ -169,7 +169,7 @@ TEST_CASE("nothing in the functions window is unnamed for a screen reader")
 TEST_CASE("the selected function: your name is saved, Protect guards it, Show in ROM selects its code")
 {
     FakeFunctions src;
-    FunctionsDialog d(src);
+    FunctionsPage d(src);
     d.show();
     auto table = child<QTableWidget>(d, "functions");
     auto details = child<QWidget>(d, "selected")->parentWidget();
@@ -222,7 +222,7 @@ TEST_CASE("the selected function: your name is saved, Protect guards it, Show in
 TEST_CASE("a switch kept with a timer: off for a while, every so often")
 {
     FakeFunctions src;
-    FunctionsDialog d(src);
+    FunctionsPage d(src);
     d.show();
     child<QTableWidget>(d, "functions")->selectRow(0);
     child<QCheckBox>(d, "timer")->setChecked(true);

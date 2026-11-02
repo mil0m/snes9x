@@ -1,4 +1,6 @@
 #include "library.h"
+
+#include <map>
 #include "rule_text.h"
 
 #include <algorithm>
@@ -381,6 +383,39 @@ std::string Library::recipes_stamp(const GameId &game) const
     return stamp_of(game_dir(game) / "recipes", [](const std::string &name) {
         return name.size() > 5 && name.compare(name.size() - 5, 5, ".json") == 0;
     });
+}
+
+std::vector<Library::Player> Library::players(const GameId &game) const
+{
+    std::map<std::string, Player> by_name;
+    std::error_code ec;
+    for (auto &file : fs::directory_iterator(game_dir(game), ec))
+    {
+        if (!file.is_regular_file(ec))
+            continue;
+        auto name = file.path().filename().string();
+        if (is_sync_leftover(name))
+            continue;
+        for (auto prefix : { "crashmap.", "codemap.", "jumps.", "calls.", "names.", "journal." })
+        {
+            std::string pre = prefix;
+            auto last_dot = name.rfind('.');
+            if (name.rfind(pre, 0) != 0 || last_dot == std::string::npos || last_dot <= pre.size())
+                continue;
+            auto who = name.substr(pre.size(), last_dot - pre.size());
+            auto &p = by_name[who];
+            p.who = who;
+            p.files++;
+            auto time = file.last_write_time(ec);
+            if (!ec && time > p.newest)
+                p.newest = time;
+            break;
+        }
+    }
+    std::vector<Player> out;
+    for (auto &[name, p] : by_name)
+        out.push_back(p);
+    return out;
 }
 
 std::vector<RecipeEntry> Library::list_recipes(const GameId &game) const

@@ -1,6 +1,6 @@
 # Cockpit and Workshop: a panel for playing, one window for the rest (plan, roadmap #63)
 
-**Status (2026-11-02):** planned. Asked for by Mikael after a Pocky & Rocky session: the
+**Status (2026-11-02):** done. Asked for by Mikael after a Pocky & Rocky session: the
 corruption UI works but is "VERY messy". **Decided with Mikael:** no corruption hotkeys
 except one (start and stop corrupting); the side panel becomes a *cockpit* with only what
 you touch while playing, and everything else moves into **one Workshop window** with a
@@ -72,8 +72,7 @@ Top to bottom, no scrolling at a normal window height:
 | **Sharing** | library folder (with a sync note: whose files are here, last change, conflict copies), open folder, look for new recipes; remote control |
 
 Cross-links become page switches: Functions' *Show in ROM* opens the Memory page;
-the viewer's *New Rule from Selection* lands on the Recipe page. The Workshop remembers
-its size and last page.
+the viewer's *New Rule from Selection* lands on the Recipe page.
 
 ### The Corruption menu
 
@@ -82,7 +81,7 @@ ROM… · Restore Clean ROM · Choose the Library Folder… · Guide.
 
 ## How it's built (Qt only; the engine doesn't change)
 
-- `FunctionsDialog` and `SurvivorsDialog` become plain widgets (`QWidget`) that can be
+- `FunctionsDialog` and `SurvivorsDialog` become plain widgets (`FunctionsPage`, `SurvivorsPanel`) (`QWidget`) that can be
   a page; `MemoryViewer` already is one. Their tests keep working (they construct them).
 - `Workshop` (new): `QListWidget` sidebar + `QStackedWidget`; `showPage(Page)`; owns the
   pages and the sources (`SessionFunctions`, `SessionSurvivors`, `SessionMemorySource`
@@ -107,4 +106,25 @@ ROM… · Restore Clean ROM · Choose the Library Folder… · Guide.
 
 ## How it went
 
-(Filled in when it's built.)
+Built the same day, in two commits: the buttons first (one hotkey, named slots in the panel
+and on the remote page), then the cockpit and the Workshop.
+
+- **What came out of it.** The panel went from seven sections and a scroll to one screen: in
+  the tour on Pocky & Rocky, a running recipe with a rule, the run line, Chaos, the seed and
+  the guard and ROM lines fit in about 640 px. The Workshop's six pages replaced four
+  windows (Memory Viewer, Functions, Survivors, and the panel's lower half). The instant
+  revert (#51) got a switch on the Safety page; until now only a recipe file could turn it off.
+  *Also in This Recipe* is the first place that lists a recipe's switches, changes, protects,
+  pins and paint together, and can take one out.
+- **The interface paid off at once.** `CorruptionControl` with a fake made the cockpit and
+  every page testable without a game (15 new widget tests); the dock used to have none.
+- **Found by the pictures, not the tests:** the Workshop opened narrower than its Memory
+  page needs (a page cut off at the right), the empty *Also in This Recipe* still showed its
+  table header (visibility only updated when the list changed), the save-backups list filled
+  the Safety page when empty, and the panel greyed Chaos and Seed instead of hiding them.
+- **Words.** "Hotkey" is gone from what you see (rule editor *When I press a button*,
+  Functions and Change It… *Button N*, rule summaries *button 1*); starters' notes too, and
+  *Stat swap on hotkey* is now *Stat swap on a button*. Recipe files keep `"hotkey"`.
+- **Not done:** the Workshop doesn't remember its size or last page between launches (the
+  app's settings would be the place); the viewer's New Rule from Selection doesn't jump to
+  the Recipe page (the rule shows up in the panel at once, which was enough in the tour).

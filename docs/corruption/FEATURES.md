@@ -3,7 +3,7 @@
 This fork of Snes9x adds live RAM and ROM corruption for fun, with tooling that keeps the game alive. Three layers:
 
 - `corrupt/` is the Qt-free engine and logic. It is unit-tested against fake memory (`tests/corrupt/fake_memory.h`).
-- `qt/src/` is the app glue. `CorruptionSession` is the hub and lives on the emulation thread. `CorruptionDock` is the panel.
+- `qt/src/` is the app glue. `CorruptionSession` is the hub and lives on the emulation thread. `CorruptionDock` holds the panel (`Cockpit`) and opens the `Workshop`; both act through `CorruptionControl` (the app's `SessionControl`, a fake in tests).
 - The core has a few tiny hooks, so upstream merges stay easy.
 
 Ideas that were built and then removed are listed at the end, under *Tried and removed*: check there before building a new safety feature.
@@ -42,23 +42,23 @@ Between frames, `CorruptionSession::betweenFrames()` (`qt/src/CorruptionSession.
 - Tests: `tests/headless/guard_integration_test.cpp`, `tests/headless/headless_core.cpp` (core without a window).
 - Docs: `phase1-engine-recipes-plan`.
 
-**Panel, starters, library path (#4)** - dock with Start here card, recipe list, status lines.
-- Code: `qt/src/CorruptionDock.cpp`, `CorruptionSession.cpp`, `Starters.cpp` (13+ bundled starters, shared by panel and remote), `qt/src/resources/corruption_examples.qrc` (+ `docs/corruption/examples/*.json`).
-- Tests: `tests/corrupt/examples_test.cpp` (checks the qrc too). The dock itself has no automated test; use the UI tour.
+**Panel, starters, library path (#4)** - the cockpit (since #63) with a Start here card, the recipe list, status lines.
+- Code: `qt/src/Cockpit.cpp`, `RecipeActions.cpp` (load, new, save, share, import, the rule editor; shared by the cockpit, the Workshop and the menu), `CorruptionSession.cpp`, `Starters.cpp` (13+ bundled starters, shared by panel and remote), `qt/src/resources/corruption_examples.qrc` (+ `docs/corruption/examples/*.json`).
+- Tests: `tests/corrupt/examples_test.cpp` (checks the qrc too), `tests/qt/cockpit_test.cpp`.
 - Docs: `phase1-engine-recipes-plan`, `ux-pass-plan`; QA 0, 1; GUIDE "Start here".
 
 **Intensity and Chaos (#15)** - a live strength slider per rule and one for the whole recipe. Below 1 it thins firings rather than shrinking values.
-- Code: `Engine::set_intensity`, `set_rule_intensity` (`corrupt/engine.cpp`), `qt/src/IntensitySlider.cpp`, dock Chaos slider.
+- Code: `Engine::set_intensity`, `set_rule_intensity` (`corrupt/engine.cpp`), `qt/src/IntensitySlider.cpp`, the cockpit's Chaos slider.
 - Tests: `tests/corrupt/engine_test.cpp`, `tests/qt/intensity_slider_test.cpp`.
 - Docs: `phase3-live-panel-plan` "#15"; QA 9; GUIDE "The words".
 
-**Hotkeys (#4)** - Corrupt (F7), Back to Normal (Shift+F7), re-roll, save recipe, fire hotkey rules 1-9, mark crash, more/less.
-- Code: `qt/src/EmuConfig.hpp` (`eCorruptionToggle` ... `eCorruptionBackToNormal`, num_shortcuts 71), `ShortcutsPanel`, `EmuApplication::handleCorruptionBinding`, `Engine::press_hotkey`.
-- Tests: `tests/corrupt/trigger_test.cpp`, `engine_test.cpp`.
-- Docs: QA 3; GUIDE "Hotkeys".
+**One key and the Buttons (#4, #63)** - one corruption shortcut, Corrupt/Stop (F7). The recipe's slots 1-9 (`"hotkey"` in the JSON) are named **Buttons** in the cockpit and on the remote page: a rule on a slot fires each press; a slot with only switches and changes is a toggle that shows whether it's on.
+- Code: `qt/src/EmuConfig.hpp` (`eCorruptionToggle` only, num_shortcuts 56), `EmuApplication::handleCorruptionBinding`; `corrupt/buttons.cpp` (`recipe_buttons`: labels, toggles, on; `recipe_kept`), `qt/src/ButtonsBar.cpp`, `Engine::press_hotkey`; `status_json`'s `buttons`.
+- Tests: `tests/corrupt/{buttons,trigger,engine,remote_api}_test.cpp`, `tests/qt/buttons_bar_test.cpp`.
+- Docs: `cockpit-workshop-plan`; QA 3; GUIDE "The F7 key and the buttons".
 
 **Live rule editor (#14)** - add, change and remove rules while the game runs; only the edited rule restarts.
-- Code: `qt/src/RuleEditor.cpp`, `Engine::replace_rule`, dock rule list.
+- Code: `qt/src/RuleEditor.cpp`, `Engine::replace_rule`, the cockpit's rules and the Workshop's Recipe page.
 - Tests: `tests/qt/rule_editor_test.cpp` (offscreen, writes PNGs).
 - Docs: `phase3-live-panel-plan`; QA 8; GUIDE "Recipes and rules".
 
@@ -70,12 +70,12 @@ Between frames, `CorruptionSession::betweenFrames()` (`qt/src/CorruptionSession.
 - Gotchas: a moment is about 800 KB uncompressed.
 
 **Save backups (#5)** - automatic continuous SRAM backups, so SRAM is allowed freely.
-- Code: `corrupt/save_backup.cpp`, `CorruptionSession::backupDir/backups`, dock "Game Save Backups".
+- Code: `corrupt/save_backup.cpp`, `CorruptionSession::backupDir/backups`, the Workshop's Safety page.
 - Tests: `tests/corrupt/save_backup_test.cpp`.
 - Docs: `phase1-engine-recipes-plan`; QA 5.
 
 **Library and sharing, .s9xrecipe (#3)** - any folder as library (aimed at a shared repo); Share/Import one file with the saved moment inside.
-- Code: `corrupt/library.cpp` (Library: recipes, regions, rename/delete region, crash maps, code maps, jump logs, journal paths), `corrupt/share.cpp` (SharedRecipe, base64 moment, regions flattened), dock "More" menu.
+- Code: `corrupt/library.cpp` (Library: recipes, regions, rename/delete region, crash maps, code maps, jump logs, journal paths), `corrupt/share.cpp` (SharedRecipe, base64 moment, regions flattened), the Workshop's Recipe page and the Corruption menu (Share, Import); its Sharing page picks the library.
 - Tests: `tests/corrupt/library_test.cpp`, `share_test.cpp`.
 - Docs: `ux-pass-plan`; QA 1, 4; GUIDE "Sharing with a friend".
 
@@ -181,18 +181,18 @@ Plan: `rom-corruption-plan` (six phases, each with "Phase N in detail"). QA 20-2
 - Docs: `rom-corruption-plan` Phase 5; QA 24.
 
 **Survivors and pins (phase 6)** - changes that proved themselves can be pinned and re-applied at every run.
-- Code: `corrupt/survivors.cpp` (`find_survivors`: survived and used >= 100 frames), `Pin` in `corrupt/patches.h` (`Recipe.pins`), `Engine::apply_pins/add_pins/remove_pins`, `RomBlame::set_pinned`, `qt/src/SurvivorsDialog.cpp` (dock "Survivors..."), session `pin/unpin`.
-- Tests: `tests/corrupt/pins_test.cpp`, `tests/qt/survivors_dialog_test.cpp`; `guard_integration_test.cpp` ("survivors and pins").
+- Code: `corrupt/survivors.cpp` (`find_survivors`: survived and used >= 100 frames), `Pin` in `corrupt/patches.h` (`Recipe.pins`), `Engine::apply_pins/add_pins/remove_pins`, `RomBlame::set_pinned`, `qt/src/SurvivorsPanel.cpp` (on the Workshop's ROM page), session `pin/unpin`.
+- Tests: `tests/corrupt/pins_test.cpp`, `tests/qt/survivors_panel_test.cpp`; `guard_integration_test.cpp` ("survivors and pins").
 - Docs: `rom-corruption-plan` Phase 6; QA 25; GUIDE "Survivors and pins".
 - Gotchas: a pin made on another ROM version is skipped and counted.
 
 **Export ROM** - writes the corrupted ROM with a fixed checksum.
-- Code: `SnesCoreAccess::rom_image` in `corrupt/core_access.cpp`; dock ROM section.
+- Code: `SnesCoreAccess::rom_image` in `corrupt/core_access.cpp`; the Workshop's ROM page.
 - Tests: `guard_integration_test.cpp` ("Export ROM").
 - Docs: `rom-corruption-plan` Phase 1; QA 20.
 
-**Back to normal** - one button or Shift+F7: engine off, clean ROM, back to the run's starting moment.
-- Code: `CorruptionSession::backToNormal` and the first block of `betweenFrames`; dock button.
+**Back to normal** - one button: engine off, clean ROM, back to the run's starting moment.
+- Code: `CorruptionSession::backToNormal` and the first block of `betweenFrames`; the cockpit's button.
 - Docs: `ux-pass-plan`; QA 0; GUIDE "Getting back to normal".
 
 ## Phase 3: UX and UI pass (#49)
@@ -207,10 +207,15 @@ Plan: `rom-corruption-plan` (six phases, each with "Phase N in detail"). QA 20-2
 - Docs: `ui-pass-plan`; project skill `.claude/skills/qt-widgets-ui`.
 - Gotchas: offscreen cannot paint the macOS style (blank controls). A hand-written scratch config needs `[%General]` or `PauseEmulationWhenUnfocused` is ignored and the game pauses when another window takes focus.
 
+**Cockpit and Workshop (#63)** - the panel keeps what you touch while playing (recipe, Corrupt/Stop, Back to Normal, Chaos, seed, Buttons, rules on and strength, one line each about the guard and the ROM, linking to the Workshop); everything else is one Workshop window with pages: Recipe (rules in full, *Also in This Recipe*: kept switches, changes, protects, pins, paint, with Remove), Functions, Memory (paint tools only while painting), ROM (status, what's learned, Export/Restore/Clear Paint, survivors), Safety (guard switches, now with the instant revert, crash status, save backups), Sharing (library, *Who's Here*, conflicts, remote control). The Corruption menu has New/Save As/Share/Import and the ROM and Sharing pages.
+- Code: `qt/src/CorruptionControl.hpp` (`PanelStatus`, which `CorruptionSession::Status` now is, and the interface), `SessionControl.cpp`, `Cockpit.cpp`, `Workshop.cpp`, `WorkshopPages.cpp` (RecipePage, RomPage, SafetyPage, SharingPage), `RecipeActions.cpp`, `FunctionsPage.cpp` and `SurvivorsPanel.cpp` (were the Functions and Survivors dialogs), `EmuMainWindow.cpp` (menu); session `setInstantEnabled`, `removeKept`, `playerName`; `Library::players`.
+- Tests: `tests/qt/{cockpit,workshop,buttons_bar}_test.cpp` (with `fake_control.h`), `tests/corrupt/{buttons,live_library}_test.cpp`; the UI tour photographs the cockpit and every page.
+- Docs: `cockpit-workshop-plan`; QA 38; GUIDE "The panel and the Workshop".
+
 ## Phases 8 and 9: game-aware (#25, #26, #32, #34, #35, #58-#61)
 
 **Jump tables (#25)** - finds tables of jump targets from indirect jumps the game ran.
-- Code: `corrupt/jump_tables.cpp` (JumpLog noted by `RomTracer` for opcodes 7C/FC/6C/DC; `find_jump_tables`; JumpLogKeeper; Library `jumps.<user>.json`), `SnesCoreAccess::rom_offsets`, viewer Jumps overlay and hover, dock line.
+- Code: `corrupt/jump_tables.cpp` (JumpLog noted by `RomTracer` for opcodes 7C/FC/6C/DC; `find_jump_tables`; JumpLogKeeper; Library `jumps.<user>.json`), `SnesCoreAccess::rom_offsets`, viewer Jumps overlay and hover, the ROM page's line.
 - Tests: `tests/corrupt/jump_tables_test.cpp`; `guard_integration_test.cpp` (tracer notes both dispatch kinds).
 - Measure: `--jumps [file]`.
 - Docs: `pointer-swap-plan`; QA 26.
@@ -230,22 +235,22 @@ Plan: `rom-corruption-plan` (six phases, each with "Phase N in detail"). QA 20-2
 - Gotchas: counts frames, not calls (a loading loop calls one function hundreds of times in a frame). Mixed functions (called both ways) can't be switched off; none turned up in Goof, Pocky, FE4 or FF6. FF6's title screen runs from WRAM, so nothing is learned there (#30).
 
 **Kill switches (#34)** - turn a function off live: a return (RTS/RTL, as it's called) at its entry. The switch's state is the ROM byte, so rollbacks, the crash blame, the instant revert and Back to Normal keep it honest.
-- Code: `Switch` in `corrupt/patches.h` and `Recipe::switches` (`"switches"`: entry, return, was, hotkey, start_off, note), `Engine::flip_function` / hotkey flips at the start of `on_frame` (through the ROM keeper, not logged as a rule's write; kept through runs ahead via `pending_flips`), `apply_switches` at run start after the pins, `OpType::Kill` (`"kill"`, `"pick": "any"`; `AimedBytes.functions`, busiest 64 per run, `Engine::set_functions`); `qt/src/FunctionsDialog.cpp` + `FunctionSource.hpp`, session `functions/flipFunction/keepSwitch/forgetSwitch`, dock *Functions…* and the ROM line's count; rule editor *Turn functions off (ROM)*; starter `rom-function-roulette`. Starter ROM ranges are fitted to the game on load.
-- Tests: `tests/corrupt/kill_switch_test.cpp`; `guard_integration_test.cpp` suite "kill switches" (near, long via a recipe hotkey, rollback, inline data caught by the instant revert); `tests/qt/functions_dialog_test.cpp`.
+- Code: `Switch` in `corrupt/patches.h` and `Recipe::switches` (`"switches"`: entry, return, was, hotkey, start_off, note), `Engine::flip_function` / hotkey flips at the start of `on_frame` (through the ROM keeper, not logged as a rule's write; kept through runs ahead via `pending_flips`), `apply_switches` at run start after the pins, `OpType::Kill` (`"kill"`, `"pick": "any"`; `AimedBytes.functions`, busiest 64 per run, `Engine::set_functions`); `qt/src/FunctionsPage.cpp` + `FunctionSource.hpp`, session `functions/flipFunction/keepSwitch/forgetSwitch`, the Workshop's Functions page and the cockpit's ROM line; rule editor *Turn functions off (ROM)*; starter `rom-function-roulette`. Starter ROM ranges are fitted to the game on load.
+- Tests: `tests/corrupt/kill_switch_test.cpp`; `guard_integration_test.cpp` suite "kill switches" (near, long via a recipe hotkey, rollback, inline data caught by the instant revert); `tests/qt/functions_page_test.cpp`.
 - Measure: `--kill [seeds] [count]` (busiest functions off vs random opcodes vs clean, unguarded): 6 off in a minute left the game running and moving in 31 of 35 runs (Goof, Pocky, FE4, FF6), against 7 of 35 for random code bytes.
 - Docs: `functions-plan`; GUIDE "Turning the game's functions off"; QA 33.
 - Gotchas: switches only flip while corruption is on (the engine is the only writer during a run). The Functions window keeps its row order until Refresh, so nothing moves under the mouse.
 
 **Function bodies and guards (#58)** - where each function's code ends, walked from its entry over the code map (no tracer cost), and guards: the bodies of functions in play (a switch, a protect, or switched off from the window) are skipped by every rule and by paint.
 - Code: `corrupt/function_body.cpp` (`function_body`/`function_bodies`: opcodes the map knows only, branches both ways, `BRA`/`BRL`, `JMP $abs` in its bank via `RomAddresses`, past calls when what follows ran, stops at returns, indirect and long jumps, 4 KB cap); `corrupt/function_guard.cpp` (`functions_in_play`, `guard_mask` with deep = callees through the call log, `guard_cleanup`, `own_bytes`, overlay `function_marks`/`function_at`); `Protect` and `Recipe::protects` (`"protect"`: entry, deep); `Engine::set_guarded` (rules and patches skip it via `rules_locked`; switches, pins don't); `HotMask::add`/`count`. Session: `findBodies` (every 5 s when the call log or map grew, on the clean ROM), `rebuildGuard` (when dirty and every 5 s; cleans guarded bytes with `rom.settle`), paint's "Kept N bytes as they were: guarded by …", `window_off`; Functions window *Size* column, *Protect* / *And what it calls*, *Show in ROM*; viewer overlay *Functions* (`MemoryPane::Overlay::Functions`, `snap.functions`, `snap.function_list`) and hover "in function …"; `MemoryViewer::showRange`; the ROM line's "(N off, M guarded)".
-- Tests: `tests/corrupt/function_body_test.cpp`, `tests/corrupt/function_guard_test.cpp`; `guard_integration_test.cpp` suite "function bodies and guards" (test ROM `build_bodies`: the body exact; guarded with what it calls, a random rule over all of it leaves it alone and it keeps counting); `tests/qt/functions_dialog_test.cpp`.
+- Tests: `tests/corrupt/function_body_test.cpp`, `tests/corrupt/function_guard_test.cpp`; `guard_integration_test.cpp` suite "function bodies and guards" (test ROM `build_bodies`: the body exact; guarded with what it calls, a random rule over all of it leaves it alone and it keeps counting); `tests/qt/functions_page_test.cpp`.
 - Measure: `--bodies` (functions with a body, sizes, how much of the code they cover, time, guard sizes): median body 35-54 B, 58-85% of known code in a body (Goof/Pocky/FE4/FF6).
 - Docs: `function-changes-plan`; GUIDE "Turning the game's functions off"; QA 34.
 - Gotchas: bodies are walked on the clean ROM, so corruption doesn't move them. Kill-rule offs aren't guarded (chaos, not a choice). Data tables a function reads aren't in its body.
 
 **Shared names (#59)** - name a function once and everyone sharing the library sees it: `names.<user>.json` per game, everyone's loaded, only yours written.
 - Code: `corrupt/function_names.cpp` (`encode_names`/`decode_names`, `FunctionNames::label`: "gravity · jump (erik)"), Library `names_path/load_names/save_names`; session `setFunctionName`, `loadNames` (with the code map); the window's *Name* field and *Name* column (a kept switch takes the name as its note).
-- Tests: `tests/corrupt/function_names_test.cpp`; `tests/qt/functions_dialog_test.cpp`.
+- Tests: `tests/corrupt/function_names_test.cpp`; `tests/qt/functions_page_test.cpp`.
 - Docs: `function-changes-plan`; QA 34.
 
 **Change a function (#60, with #35 redirection)** - change how a function works instead of turning it off: a number (`LDA/ADC/CMP… #`), a branch (opposite, always, never), a math pair (ADC/SBC, INC/DEC, INX/DEX, INY/DEY, ASL/LSR, ROL/ROR, CLC/SEC, AND/ORA), a call skipped or sent to another function of the same kind (near: same bank). Live, on hotkeys, kept in the recipe. Code rules can aim *inside busy functions*.
@@ -306,7 +311,7 @@ Plan for all: `safety-plan` (one section per item, each with "How it went").
 ## Phase 12: remote control (#53)
 
 **Remote control** - a phone or browser page that drives the live run. Only the owner and one friend connect; no game picture (they stream). The public hostname lives in the owner's tunnel setup, never in this repo.
-- Code: `corrupt/remote_api.cpp` (Control interface, Gate lock-out 5/min, Connection hello+token, actions active/back_to_normal/reroll/mark_crash/chaos/rule_enabled/rule_strength/hotkey/watch/paint/starter, `status_json`, binary `S9XM` memory messages), `qt/src/RemoteServer.cpp` (QHttpServer + QWebSocket, 127.0.0.1 only), `qt/src/RemoteControl.cpp` (SessionRemote), page `qt/src/resources/remote/{index.html,remote.css,remote.js}` (`remote.qrc`), panel section Remote Control (EmuConfig `RemoteEnabled`, `RemotePort` 8095, `RemoteAddress`, `RemoteToken`). The page remembers the key in localStorage; a wrong key forgets it. Starter picker shares `Starters.cpp`.
+- Code: `corrupt/remote_api.cpp` (Control interface, Gate lock-out 5/min, Connection hello+token, actions active/back_to_normal/reroll/mark_crash/chaos/rule_enabled/rule_strength/hotkey/watch/paint/starter, `status_json`, binary `S9XM` memory messages), `qt/src/RemoteServer.cpp` (QHttpServer + QWebSocket, 127.0.0.1 only), `qt/src/RemoteControl.cpp` (SessionRemote), page `qt/src/resources/remote/{index.html,remote.css,remote.js}` (`remote.qrc`), the Workshop's Sharing page (EmuConfig `RemoteEnabled`, `RemotePort` 8095, `RemoteAddress`, `RemoteToken`). The page remembers the key in localStorage; a wrong key forgets it. Starter picker shares `Starters.cpp`.
 - Tests: `tests/corrupt/remote_api_test.cpp`, `tests/qt/remote_server_test.cpp`, `tests/remote/remote_e2e.sh` + `remote_e2e.mjs`.
 - Docs: `remote-plan`; QA 31; GUIDE "Remote control from a browser".
 - Gotchas: `http->bind(tcp)` owns the QTcpServer; do not delete it. Never put the hostname, a token or an email in the repo.
@@ -317,7 +322,7 @@ Plan for all: `safety-plan` (one section per item, each with "How it went").
 - Docs: `remote-plan`.
 
 **Live shared library (#62)** - the library syncs while you play (Syncthing, through an always-on computer that holds the git clone); git gets it when someone runs `push`.
-- Code: `is_sync_leftover` (conflict copies, `.syncthing.*` / `~syncthing~` temp files, `.stfolder`) skipped by every per-person scan and `list_recipes`; `Library::conflict_copies`, `others_stamp` (everyone else's learned files: name, size, time), `recipes_stamp`; session `checkLibrary` every 30 s between frames (others changed: save ours, `loadCrashMap`, `code_map_reload`; recipes changed: `Status::library_generation` and the dock's `refreshRecipes`; conflicts: a note); `SNES9X_PLAYER` overrides the user name; `tools/library/stignore`, `tools/library/push.sh` (copied into the library repo as `tools/push.sh`).
+- Code: `is_sync_leftover` (conflict copies, `.syncthing.*` / `~syncthing~` temp files, `.stfolder`) skipped by every per-person scan and `list_recipes`; `Library::conflict_copies`, `others_stamp` (everyone else's learned files: name, size, time), `recipes_stamp`; session `checkLibrary` every 30 s between frames (others changed: save ours, `loadCrashMap`, `code_map_reload`; recipes changed: `Status::library_generation` and the cockpit's `refreshRecipes`; conflicts: a note); `SNES9X_PLAYER` overrides the user name; `tools/library/stignore`, `tools/library/push.sh` (copied into the library repo as `tools/push.sh`).
 - Tests: `tests/corrupt/live_library_test.cpp`; `tests/library/push_test.sh` (in `./build-mac.sh test`).
 - Docs: `live-library-plan`; README "Playing together live"; QA 37.
 - Gotchas: a reload reads everyone's code maps again (a few MB): at most once per 30 s, when someone else saved. Device ids and where the server keeps the folder belong in the private homelab repo.

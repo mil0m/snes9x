@@ -1,5 +1,5 @@
 #pragma once
-#include "corrupt/buttons.h"
+#include "CorruptionControl.hpp"
 #include "corrupt/core_access.h"
 #include "corrupt/core_memory.h"
 #include "corrupt/crash_guard.h"
@@ -37,60 +37,7 @@ class CorruptionSession
   public:
     static CorruptionSession &get();
 
-    struct Status
-    {
-        std::vector<corrupt::ButtonSlot> buttons; // the recipe's buttons 1-9, named (#63)
-        bool game_loaded = false;
-        corrupt::GameId game;
-        corrupt::EngineStatus engine;
-        bool has_recipe = false;
-        std::vector<corrupt::Rule> rules;
-        std::string notes;
-        uint64_t recipe_generation = 0; // bumps whenever a recipe is loaded
-        uint64_t rules_generation = 0;  // bumps on every rule edit too
-        uint64_t library_generation = 0; // bumps when the game's recipes change on disk (a shared library, #62)
-        double intensity = 1.0;          // the recipe's (Chaos)
-        bool starting = false;           // a start waits for the next frame (the game is paused)
-        bool has_moment = false;         // the recipe has a saved moment on disk
-        bool moment_pending = false;     // the next start jumps to that moment
-        bool new_moment = false;         // the current run began somewhere Save hasn't written yet
-        bool saved_moments = true;
-        std::filesystem::path recipe_path; // the file it came from; empty for a new recipe
-        bool edited = false;               // differs from that file (rules, seed, name...)
-        std::array<size_t, corrupt::kTargetCount> sizes{}; // the loaded game's memory sizes
-        std::string message;             // last notable event, for the panel
-
-        // Crash guard.
-        corrupt::PolicyKind policy = corrupt::PolicyKind::Reroll;
-        bool policy_overridden = false;
-        bool detection_enabled = true;
-        bool test_first_enabled = true;
-        unsigned crashes = 0;
-        std::string last_crash;
-        std::vector<unsigned> rule_crashes;
-        size_t hot_blocks = 0; // crash map: 16-byte blocks rules with avoid_hot stay out of
-
-        bool can_go_back = false; // a run started (its moment is there to go back to), or the ROM changed
-        bool back_to_normal = false; // Back to normal was the last thing done (nothing has run since)
-        size_t rom_size = 0;
-        size_t rom_changed = 0; // ROM bytes that differ from the clean ROM
-        size_t rom_used = 0;    // ...of which the game has run or read since they changed
-        size_t functions = 0;     // the call graph's functions (#26)
-        size_t functions_off = 0; // of them, switched off now (#34)
-        size_t functions_guarded = 0; // in play, their bodies guarded (#58)
-        size_t guarded_bytes = 0;
-        size_t survivors = 0;   // ...of which proved themselves (see survivors())
-        unsigned instant_reverts = 0; // changed bytes caught sending the CPU astray, fixed at once (#51)
-        unsigned tested_first = 0;    // live ROM firings played ahead before they landed (#52)
-        unsigned tested_rerolled = 0; // ...that crashed and rolled again
-        unsigned tested_skipped = 0;  // ...whose every pick crashed: skipped
-        bool instant_revert = true;   // the recipe lets it
-        size_t pins = 0;        // ROM changes the recipe keeps
-        size_t patched = 0;     // painted bytes kept in the recipe
-        corrupt::CodeCoverage code; // the code map (everyone's), updated every few seconds
-        size_t jump_tables = 0;     // jump tables found (everyone's), updated with it
-        size_t jump_swappable = 0;  // ...of which have another entry to swap with
-    };
+    using Status = PanelStatus;
 
     // Called by Snes9xController around ROM loading (emulation thread suspended).
     void gameLoaded();
@@ -135,6 +82,10 @@ class CorruptionSession
     void setPolicyOverride(std::optional<corrupt::PolicyKind> policy); // nullopt: the recipe's choice
     void setDetectionEnabled(bool enabled);
     void setTestFirstEnabled(bool enabled); // #52 for every recipe; a recipe's own "test_first" sets how far
+    void setInstantEnabled(bool enabled);   // #51 for every recipe; a recipe's "instant_revert": false still turns it off
+    // Takes something the recipe keeps (a switch, change, protect, the pins or the paint) out of it.
+    std::string removeKept(const corrupt::KeptItem &item);
+    static std::string playerName(); // whose files are ours in the library
 
     // Saved moments: Save writes the moment the current run started next to the recipe,
     // and loading a recipe that has one jumps back to it when the run starts.
@@ -288,6 +239,7 @@ class CorruptionSession
     std::optional<corrupt::PolicyKind> policy_override;
     bool detection_enabled = true;
     bool test_first_enabled = true;
+    bool instant_enabled = true; // the Safety page's switch for #51, over every recipe
     std::string last_crash;
     std::filesystem::path library_root;
     bool game_loaded = false;

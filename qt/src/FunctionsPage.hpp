@@ -1,5 +1,5 @@
 #pragma once
-#include <QDialog>
+#include <QWidget>
 
 #include "FunctionSource.hpp"
 
@@ -24,10 +24,10 @@ class StatusLine;
 // it from other corruption; put it on a hotkey and keep it in the recipe; see its code in the
 // ROM. While open it updates twice a second in place (rows keep their order until Refresh, so
 // nothing moves under the mouse).
-class FunctionsDialog : public QDialog
+class FunctionsPage : public QWidget
 {
   public:
-    explicit FunctionsDialog(FunctionSource &source, QWidget *parent = nullptr);
+    explicit FunctionsPage(FunctionSource &source, QWidget *parent = nullptr);
     void refresh(); // reload, busiest now first
 
     // Show in ROM: the memory viewer on the ROM, the Functions overlay, these bytes selected.

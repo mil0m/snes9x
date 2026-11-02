@@ -100,7 +100,7 @@ const QStringList kIcons = { "alert-circle", "alert-triangle", "arrow-back-up", 
                              "device-floppy", "dice-5", "eraser", "file-export", "file-plus", "folder-open",
                              "grid-dots", "help-circle", "history", "info-circle", "pencil", "pin", "pinned-off", "power", "shield", "eye", "adjustments-horizontal", "clock",
                              "player-stop", "plus", "refresh", "restore", "search", "tag", "trash", "zoom-in",
-                             "zoom-out" };
+                             "zoom-out", "tool", "list-details", "cpu", "users" };
 
 QByteArray svg_source(const QString &name)
 {

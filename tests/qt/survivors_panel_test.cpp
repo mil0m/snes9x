@@ -1,5 +1,5 @@
 #include "doctest/doctest.h"
-#include "SurvivorsDialog.hpp"
+#include "SurvivorsPanel.hpp"
 #include "UiKit.hpp"
 #include "corrupt/code_map.h"
 
@@ -64,7 +64,7 @@ W *child(QWidget &w, const char *name)
 TEST_CASE("the survivors dialog lists what proved itself, pins it with a note, and unpins")
 {
     FakeSurvivors src;
-    SurvivorsDialog d(src);
+    SurvivorsPanel d(src);
     d.show();
     QApplication::processEvents();
     auto table = child<QTableWidget>(d, "survivors");
@@ -119,7 +119,7 @@ TEST_CASE("the survivors dialog lists what proved itself, pins it with a note, a
 TEST_CASE("nothing in it is unnamed for a screen reader")
 {
     FakeSurvivors src;
-    SurvivorsDialog d(src);
+    SurvivorsPanel d(src);
     auto issues = ui::audit(&d);
     CAPTURE(issues.join("\n").toStdString());
     CHECK(issues.isEmpty());

@@ -2,10 +2,10 @@
 
 Snes9x can corrupt the game you're playing: change bits of its memory, or of the game
 itself, while it runs, for glitches you'd never see otherwise. This guide is also in the
-app: **Guide** at the top of the Corruption panel.
+app: the **?** button at the top of the Corruption panel, or **Corruption > Guide…**.
 
-**Contents:** Start here · Getting back to normal · Keeping a good one · The words · Hotkeys ·
-Recipes and rules · When the game crashes · Sharing with a friend · The memory viewer ·
+**Contents:** Start here · The panel and the Workshop · Getting back to normal · Keeping a good
+one · The words · The F7 key and the buttons · Recipes and rules · When the game crashes · Sharing with a friend · The memory viewer ·
 Corrupting the ROM · Survivors and pins · Editing memory like a picture · Tips · When nothing
 seems to happen
 
@@ -15,11 +15,32 @@ seems to happen
 2. In the **Recipe** list, pick a starter, say **Starter: Gentle WRAM noise**. Starters come
    with the app.
 3. Press **Corrupt** (**F7**) and play. Things start going slightly wrong.
-4. **Re-roll** (**F8**) for different dice: the same recipe, different glitches.
-5. **Back to Normal** (**Shift+F7**) puts everything back as it was when you pressed
-   Corrupt.
+4. **Re-roll** (next to **Seed**) for different dice: the same recipe, different glitches.
+5. **Back to Normal** puts everything back as it was when you pressed Corrupt.
 
 That's all you need. The rest of this guide is for when you want more.
+
+## The panel and the Workshop
+
+The **panel** (**Corruption > Show Panel**) holds what you use while you play: the recipe list
+and **Save**, **Corrupt (F7)** / **Stop (F7)** and **Back to Normal**, **Chaos** and **Seed**
+with **Re-roll**, the **Buttons** of the recipe, and the **Rules** (on or off, and strength).
+Below them, one line about the crash guard (with an **It Crashed** button) and one about the
+ROM. Double-click a rule to edit it. Until a recipe is loaded, a *Start here* card shows
+what to do first.
+
+Everything else is in the **Workshop**: press the **Workshop** button at the top of the
+panel, or choose **Corruption > Open Workshop**. It is one window with a list of pages on the
+left. The links in the panel (*Add or change rules*, *Safety*, *ROM*) open the right page.
+
+- **Recipe**: name and notes, New, Save, Save As…, Share…, Import…, the rules in full, and
+  what else the recipe keeps (switches, changes, protected functions, pins, paint).
+- **Functions**: turn the game's functions off, name them, change how they work.
+- **Memory**: the memory viewer, with paint.
+- **ROM**: what changed, what the app has learned, Export ROM…, Restore Clean ROM, Survivors
+  and pins.
+- **Safety**: the crash guard's switches and policy, and the game save backups.
+- **Sharing**: the library folder, who is here, and remote control.
 
 ## Getting back to normal
 
@@ -38,7 +59,7 @@ There are four ways to undo something. Only one of them undoes everything.
 |---|---|
 | A glitch you just saw | **Save**, right away, while it's still on. The recipe is saved with this run's dice (the seed) and the moment the run started, so loading it plays the same run again, as long as you press the same buttons. The status line says *Save to replay this run from its start* until you do. |
 | The recipe, to play again | **Save**. With *Remember where each run starts*, it comes back to the same spot with the same dice. |
-| One exact ROM change you liked | **Survivors…** then **Pin Selected**, then **Save**. See *Survivors and pins*. |
+| One exact ROM change you liked | Workshop, **ROM** page: **Survivors and pins**, **Pin Selected**, then **Save**. See *Survivors and pins*. |
 | Bytes you set by hand | They're kept in the recipe already (*paint*); **Save**. |
 | The corrupted game, to play anywhere | **Export ROM…**: a .sfc file of the ROM as it is right now (pins, paint and whatever the rules changed), for other emulators or a flash cart. |
 
@@ -57,7 +78,7 @@ There are four ways to undo something. Only one of them undoes everything.
 | **Code map** | What the app has learned about the ROM while you played: which bytes are code, which are data, which are graphics. |
 | **Survivor** | A ROM change the game kept using for a long time without crashing. |
 | **Pin** | A ROM change kept in a recipe on purpose. |
-| **Paint** | Bytes you set by hand in the memory viewer. |
+| **Paint** | Bytes you set by hand in the Workshop's Memory page. |
 
 **The memories:**
 
@@ -71,41 +92,49 @@ There are four ways to undo something. Only one of them undoes everything.
 | **sram** (save) | The battery save | Changes your save file (it's backed up automatically). |
 | **rom** (the game) | The game itself: its code, data and graphics | The classic corruption. See *Corrupting the ROM*. |
 
-## Hotkeys
+## The F7 key and the buttons
 
-| Key | Does |
-|---|---|
-| **F7** | Corrupt on or off |
-| **Shift+F7** | Back to Normal |
-| **F8** | Re-roll |
-| **F9** | Fire hotkey 1 (rules whose *When* is *Hotkey 1*) |
-| *(none)* | Fire hotkeys 2-9, More / Less Chaos, Mark Crash, Save Recipe |
+There is one corruption key: **Corrupt / Stop (F7)**. It starts and stops a run. Change it
+under **Options > Shortcuts…** (the line *Corruption: Corrupt / Stop*). Everything else
+(Back to Normal, Re-roll, More / Less Chaos, Mark Crash, Save Recipe) is a button.
 
-Change or add keys under **Options > Shortcuts…** (the *Corruption:* lines). The panel's
-buttons always show the keys they're bound to.
+A recipe can also have **buttons**: its slots 1-9. The panel's **Buttons** section shows one
+button for each slot in use, named after what it does (*gravity off*, *jump +3*, a rule's
+name; if a slot holds several things, *Burst + 2 more*). It only shows when the recipe has
+some. What a press does:
+
+- A rule whose *When* is *When I press a button* fires once on each press.
+- A kept switch or change (see *Turning the game's functions off*) is a toggle. It stays lit
+  while it is on.
+
+The remote page shows the same named buttons. To put something on a button, pick **Button 1**
+to **Button 9** in the Functions page or in **Change It…**, or in the rule editor's *When*.
+(Recipe files still call them `hotkey`.)
 
 ## Recipes and rules
 
 **The Recipe list** has your recipes for this game first, then the starters. Choosing one
 loads it. **New** starts an empty one. **Save** keeps it in your library (a starter becomes
-your own copy, so it asks for a name). **More** has Save As, Share, Import, and the
-library folder.
+your own copy, so it asks for a name). The Workshop's **Recipe** page also has Save As,
+Share and Import (they're in the **Corruption** menu too), and the library folder is on the
+**Sharing** page.
 
 **Remember where each run starts**: saving a recipe also saves its start moment, and
 loading it goes back there, so the same seed plays out the same way. Untick it to load and
 save recipes without touching where the game is.
 
-**Rules** are listed under the run controls. Tick **On** to switch one off for a while,
-drag **Strength** to tone it down, double-click to edit, and see how often the crash guard
-blamed it under **Crashes**. **Add Rule…** adds one; the small pencil, copy and bin buttons
+**Rules** are listed in the panel: tick **On** to switch one off for a while, drag
+**Strength** to tone it down, double-click to edit. The Workshop's **Recipe** page lists them
+in full, and shows how often the crash guard blamed each under **Crashes**. **Add Rule…**
+is there too; the small pencil, copy and bin buttons
 beside it edit, duplicate and remove the selected rule. Edits apply on the next frame, to
 that rule only.
 
 **The rule editor**, top to bottom:
 
 - **Where**: the **Memory**, then a range **From**/**to** (offsets like `0x1A00`), or a
-  **Region** you named in the memory viewer. **Shape: a rectangle** comes from drawing one
-  in the viewer's pixel view.
+  **Region** you named in the Memory page. **Shape: a rectangle** comes from drawing one
+  in the Memory page's pixel view.
 - **What**: what happens to each picked byte. *Random value*, *Add / subtract* (−2..2 is a
   gentle nudge), *Flip bits*, *Swap bytes*, *Copy a block*, *Freeze* (stuck timers,
   infinite health), *Shuffle a window*; the whole-area ones (*Shift*, *Flip*, *Levels*,
@@ -113,7 +142,7 @@ that rule only.
   opcodes*, *Flip branches*, *NOP out* (see *Corrupting the ROM*).
 - **Aim** (ROM only): pick bytes by what they are. See *Corrupting the ROM*.
 - **When**: every N frames (60 is about a second), a chance per frame, once at a frame,
-  on a hotkey, or once when the run starts (for the ROM: the classic way, see below).
+  when I press a button, or once when the run starts (for the ROM: the classic way, see below).
   **Only between frames** limits it to part of the run.
 - **How Much**: **Bytes each time**, **Which bytes** (different ones each time, or the same
   ones every time), **Strength**, **Enabled**, and **Avoid dangerous bytes** (skip the
@@ -140,29 +169,37 @@ If the same crash keeps coming back, each time it goes 5 seconds further back. A
 crashes in a row that fixed nothing, it gives up: corruption goes off and the ROM goes
 back to clean.
 
-**It Crashed: Go Back** is for a crash it missed (the game is stuck but the picture
+The crash guard's switches and **Then** live on the Workshop's **Safety** page. The panel
+keeps one line about it and the **It Crashed** button.
+
+**It Crashed: Go Back** (also on the Safety page) is for a crash it missed (the game is stuck but the picture
 still moves): it goes back about two seconds and blames what changed.
 
 It also learns, per game, which bytes crash it (**the crash map**): rules with *Avoid
-dangerous bytes* skip those, and the memory viewer shows them in red. What it learned is
+dangerous bytes* skip those, and the Memory page shows them in red. What it learned is
 kept in your library, and adds up with your friend's.
 
 ## Sharing with a friend
 
-**More > Share…** writes one `.s9xrecipe` file: the recipe, its pins and its start moment.
-Send it any way you like. Your friend opens the same game and chooses **More > Import a
-Shared Recipe…**; it lands in their recipes and loads. (Named areas travel as plain
+**Share…** (Workshop, **Recipe** page, or **Corruption > Share Recipe…**) writes one
+`.s9xrecipe` file: the recipe, its pins and its start moment. Send it any way you like. Your
+friend opens the same game and chooses **Import…** (or **Corruption > Import a Shared
+Recipe…**); it lands in their recipes and loads. (Named areas travel as plain
 ranges.) If their copy of the game is a different version, the recipe still loads but may
 hit different things, the start moment is skipped (it starts where they are), and pins
 made for the other version are left out.
 
 You can also share a whole library folder, for example as a git repository: each game has
 a folder with its recipes, named areas, code map and crash map, and the maps of everyone
-who plays add up. **More > Choose the Library Folder…** picks it.
+who plays add up. **Choose…** on the Workshop's **Sharing** page picks the folder. **Open
+This Game's Folder** shows it, and **Look for New Recipes** picks up files your friend's sync
+just brought in. **Who's Here** lists everyone who has learned files for this game and when
+they last changed something (you are marked *(you)*); it warns if your sync tool left
+conflict copies.
 
 ## The memory viewer
 
-**Memory Viewer…** (under the rules) shows what's inside the game while it runs.
+The Workshop's **Memory** page shows what's inside the game while it runs.
 
 - **Memory** picks which one. **Show as**: **Hex** (the numbers), **Pixels** (one dot per
   byte, so a whole memory fits on screen; brighter is a bigger value) or **Tiles** (the
@@ -193,6 +230,7 @@ who plays add up. **More > Choose the Library Folder…** picks it.
   pick the format (*bpp*, bits per pixel: how many colours a tile can have, 2 bpp = 4
 colours, 4 bpp = 16, 8 bpp = 256), palette and tiles per row, or just click a tile area in
 *What's where*.
+- The paint value and brush only show while **Paint Mode** is on.
 
 ## Corrupting the ROM
 
@@ -208,8 +246,8 @@ console where the game starts are never changed.
 
 **The code map.** While you play, the app notes what the game does with every ROM byte:
 runs it as code, reads it as data, or copies it to the screen as graphics. The panel's
-ROM section says how much it knows. It only knows what it has seen, so **play a while
-first**; it's saved in your library and adds up with your friend's. In the memory viewer,
+ROM line says how much it knows, and the Workshop's **ROM** page has the details. It only knows what it has seen, so **play a while
+first**; it's saved in your library and adds up with your friend's. In the Memory page,
 **Code** shows it (teal), **Data** (pink), **DMA** (graphics, yellow-green). **Live**
 (yellow) shows what the game runs and reads *right now*: bright this frame, fading over a
 second and a half. Watch which code and tables a scene uses, or whether a corrupted spot
@@ -236,7 +274,7 @@ Starters: **Branch flips**, **Operand nudge**, **Opcode swap**.
 **Pointer swaps.** Games pick what to do next from **jump tables**: lists of routine
 addresses (one per enemy type, menu screen or cutscene step) that the code jumps through.
 While you play, the app notes every such jump and finds the tables behind them; the ROM
-section says how many (*52 jump tables found, 41 with entries to swap*), and the viewer's
+page says how many (*52 jump tables found, 41 with entries to swap*), and the viewer's
 **Jumps** overlay shows them (blue): entries the game used strong, likely ones lighter,
 the jumping instruction in between. Hovering an entry says whose table it is and where it
 goes.
@@ -248,7 +286,7 @@ another enemy's behaviour, a menu opens the wrong screen. **Entries each time** 
 many. **Also use entries nobody has jumped through yet** adds more variety (a bit less
 safe); **Both ways** makes two entries trade routines.
 
-Starters: **Pointer swap** (3 at the start, classic), **Pointer roulette** (hotkey 1: one
+Starters: **Pointer swap** (3 at the start, classic), **Pointer roulette** (button 1: one
 more each press, live).
 
 **When the ROM crashes the game**, the crash guard looks at which changed bytes the game
@@ -261,29 +299,30 @@ after running a changed byte, the game jumps into the middle of an instruction, 
 ROM, or into nowhere. The app notices that the moment it happens, puts back the byte that
 caused it and plays that frame again, so you see at most one frame repeat instead of a
 crash and a rollback of a second or more. The status line says *Caught at $C0:1234 (jumped
-into the middle of an instruction)*, and the ROM section counts them (*12 bad jumps put
+into the middle of an instruction)*, and the ROM page counts them (*12 bad jumps put
 back at once*). It only works where the code map knows the code, so it gets better the more
 you've played. Crashes that build up slowly (a wrong number that breaks things later) are
-still the crash guard's. To watch a crash happen instead, set `"instant_revert": false` in
-the recipe. Starter: **Code drip** (two bytes of code changed every two seconds).
+still the crash guard's. To watch a crash happen instead, untick **Put back a ROM change
+that sends the game astray, at once** on the Safety page (or set `"instant_revert": false`
+in the recipe). Starter: **Code drip** (two bytes of code changed every two seconds).
 
 **Live ROM changes are tried before they land.** When a live ROM rule is about to change
 the game, the app first plays a few seconds ahead with that change, unseen and silent, and
 comes back. If the game would have crashed, the rule rolls again and the new pick is tried
 instead; after three tries that firing is skipped. You feel it as a short pause when a live
 ROM rule fires (around a tenth of a second), the status line says when something was
-re-rolled or skipped, and the ROM section counts them (*30 changes tested first (3
+re-rolled or skipped, and the ROM page counts them (*30 changes tested first (3
 re-rolled, 0 skipped)*). It can only vouch for what the game actually uses in those
 seconds: a change in code the game won't reach for a while goes through untried, and the
 instant revert and the crash guard still watch it.
 
-It's the panel's **Try ROM changes ahead first** (in Crash Guard). In the recipe,
+It's **Try ROM changes ahead first** on the Safety page. In the recipe,
 `"test_first": 0` turns it off, and a number of seconds looks further ahead (3 by
 default).
 
 ## Survivors and pins
 
-**Survivors…** (in the ROM section) lists changes the game used in
+**Survivors and pins** (on the Workshop's **ROM** page) lists changes the game used in
 at least 100 frames with no crash afterwards, newest first: where, what changed, and the
 instruction before and after (`BNE → BEQ`). Select the ones you like and **Pin Selected**,
 with a note if you want. A pin is part of the recipe: it's applied every time a run
@@ -293,7 +332,7 @@ game. **Save** to keep pins. A recipe with only pins is a hand-made ROM hack.
 ## Turning the game's functions off
 
 Games are made of functions: one moves the player, one runs gravity, one checks collisions,
-one thinks for each enemy, one scrolls the screen. **Functions…** (in the ROM section)
+one thinks for each enemy, one scrolls the screen. The Workshop's **Functions** page
 lists the ones the game has called, busiest right now first, with how many of the last 5
 seconds they ran in. Tick **Off** and the game skips that function from the next frame on:
 its first byte becomes a return, so it's called and comes straight back. Untick to put it
@@ -302,9 +341,9 @@ back.
 The app can't know which one is gravity: try the busy ones near the top and watch what
 stops. When you find a good one, select it and give it a **Name** (*gravity*). Names are
 saved in the library (*names.<you>.json*), so everyone who shares it sees yours, and you
-see theirs with who named it: *jump (erik)*. Then pick a hotkey and **Keep in Recipe**:
-that key turns it off and on again while you play (the panel's 1-9, the keyboard shortcuts,
-or the remote page). **Starts off** has it off from the start of every run. **Save** to
+see theirs with who named it: *jump (erik)*. Then pick a button (**Button 1** to **9**) and **Keep in Recipe**:
+that button turns it off and on again while you play (in the panel's **Buttons**, or on
+the remote page). **Starts off** has it off from the start of every run. **Save** to
 keep it.
 
 **Keeping it safe from other corruption.** A function you play with is *guarded*: its code
@@ -314,7 +353,7 @@ or kept as a switch; tick **Protect it from other corruption** to guard one with
 changing it, and **And what it calls** to guard the functions it calls too. When a guard
 goes up, bytes other corruption had already changed in it are put back. Paint stops at
 guarded bytes and the status line says which function kept them. **Show in ROM** opens the
-memory viewer on its code with the **Functions** colours: function code light, guarded code
+Memory page on its code with the **Functions** colours: function code light, guarded code
 stronger, the first byte of a function that's off strongest; hover a byte to see whose code
 it is.
 
@@ -333,7 +372,7 @@ off and on by itself, counted from the start of the run. Short times make it fli
 For chaos instead of picking: the rule type **Turn functions off (ROM)** turns random busy
 functions off when it fires; **Back on after** puts each one back after a while, so with a
 trigger every 10 s and 5 s here a different function is missing half the time. Starters:
-**Function roulette** (each press of hotkey 1 turns one more off) and **Function flicker**
+**Function roulette** (each press of button 1 turns one more off) and **Function flicker**
 (one off every 10 s, back 5 s later).
 
 ## Changing how a function works
@@ -350,7 +389,7 @@ the code:
   movement.
 
 **Apply** changes it at the next frame (corruption on); **Put Back** undoes it. **Keep in
-Recipe** keeps it, on a hotkey that toggles it if you like, starting on or not, and with a
+Recipe** keeps it, on a button that toggles it if you like, starting on or not, and with a
 timer (*on for 1 s every 4 s*). Nothing else corrupts a function while you change it (its
 code is guarded), and if a change breaks the game the crash guard puts it back.
 
@@ -360,12 +399,12 @@ game is running all the time.
 
 ## Editing memory like a picture
 
-The old Photoshop way, built in. In the memory viewer's **Pixels** view:
+The old Photoshop way, built in. In the Memory page's **Pixels** view:
 
 - **Alt-drag** draws a rectangle; **New Rule from Selection…** makes a rule for it, and the
   whole-area ops (*Shift*, *Flip*, *Levels*, *Filter*, *Stamp*, *Fill*) act on all of it.
 - **Paint Mode**: drag to set bytes to **Value** with a **Brush**; Alt-click picks a byte's
-  value. Painted bytes go into the recipe; **Clear Paint** in the panel forgets them.
+  value. Painted bytes go into the recipe; **Clear Paint** on the ROM page forgets them.
 - **Export PNG…** saves the selection (or the whole memory) as a greyscale picture; edit it
   in any image editor and **Import PNG…** puts the changed pixels back as paint.
 
@@ -373,11 +412,11 @@ The old Photoshop way, built in. In the memory viewer's **Pixels** view:
 
 A friend (or you, from your phone) can run the corruption from a web page: load one of
 the starter recipes that come with the app, Corrupt and Stop, Chaos, Re-roll, *It crashed: go back*, *Back to normal*, each rule on or off and its
-strength, the recipe's hotkeys, and a live picture of a memory to paint in (tick
+strength, the recipe's buttons, and a live picture of a memory to paint in (tick
 **Paint**, choose a value, tap or drag). The game itself isn't on the page: stream it as
 you normally would.
 
-In the panel, **Remote Control**: tick **Allow remote control from a browser**. The app
+On the Workshop's **Sharing** page, **Remote Control**: tick **Allow remote control from a browser**. The app
 then listens on this computer only (port 8095), so on its own only a browser on this
 computer can reach it: **Copy Link** and open it here to try.
 
@@ -396,7 +435,7 @@ takes it out of the address bar and remembers it in that browser, so next time t
 address is enough. **New Key** makes a new one: old links stop working, everyone connected
 is dropped, and browsers that remembered the old key forget it. The panel says who is connected
 (the email they logged in with), and the status line says what each of them does
-(*Remote (erik@…): pressed hotkey 1*).
+(*Remote (erik@…): pressed button 1*).
 
 What a remote can't do: anything with files (your own recipes, saving, ROMs, backups,
 exporting), or settings; the starters it can load are built into the app. Painting only changes the emulated SNES, which the crash guard
@@ -424,7 +463,7 @@ is never committed) or anything shaped like a secret.
 - **Some memories bounce back.** Sprites and colours are often repainted every frame; see
   Tips.
 - **Gentle recipes are gentle.** Turn **Chaos** up, or a rule's **Strength**.
-- **An aimed ROM rule needs a code map.** If the ROM section says nothing is known about
+- **An aimed ROM rule needs a code map.** If the ROM line says nothing is known about
   its code yet, play the game a while first.
 - **The game must be running.** A start waits for the next frame, so nothing happens while
   the game is paused.

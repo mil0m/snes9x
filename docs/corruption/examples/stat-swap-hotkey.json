@@ -1,7 +1,7 @@
 {
   "format": 1,
-  "name": "Stat swap on hotkey",
-  "notes": "Each press of corruption hotkey 1 swaps two random bytes in low work RAM, where many games keep player stats. Riskier than the others.",
+  "name": "Stat swap on a button",
+  "notes": "Each press of button 1 (in the panel) swaps two random bytes in low work RAM, where many games keep player stats. Riskier than the others.",
   "seed": 1006,
   "rules": [
     {

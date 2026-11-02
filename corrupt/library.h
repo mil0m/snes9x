@@ -108,6 +108,16 @@ class Library
     std::string others_stamp(const GameId &game, const std::string &user) const;
     // The same for the game's recipes, for the panel's list.
     std::string recipes_stamp(const GameId &game) const;
+    // Everyone whose learned files are in the game's folder (crash maps, code maps, jumps,
+    // calls, names, journals), with when their newest file changed; by name. Sync
+    // leftovers don't count (#63's Sharing page).
+    struct Player
+    {
+        std::string who;
+        std::filesystem::file_time_type newest{};
+        size_t files = 0;
+    };
+    std::vector<Player> players(const GameId &game) const;
 
     Regions load_regions(const GameId &game, std::vector<std::string> &errors) const;
     std::string save_regions(const GameId &game, const Regions &regions) const; // error or empty

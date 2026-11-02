@@ -11,6 +11,7 @@
 
 #include "CheatsDialog.hpp"
 #include "CorruptionDock.hpp"
+#include "RecipeActions.hpp"
 #include "EmuApplication.hpp"
 #include "EmuBinding.hpp"
 #include "EmuCanvasOpenGL.hpp"
@@ -285,6 +286,25 @@ void EmuMainWindow::createWidgets()
     auto panel_item = corruption_dock->toggleViewAction();
     panel_item->setText(tr("Show &Panel"));
     corruption_menu->addAction(panel_item);
+    auto workshop_item = corruption_menu->addAction(tr("Open &Workshop"));
+    connect(workshop_item, &QAction::triggered, [this] { corruption_dock->openWorkshop(WorkshopPage::Recipe); });
+    corruption_menu->addSeparator();
+    auto recipe_item = [&](const QString &text, void (RecipeActions::*act)()) {
+        connect(corruption_menu->addAction(text), &QAction::triggered,
+                [this, act] { (corruption_dock->recipeActions().*act)(); });
+    };
+    recipe_item(tr("&New Recipe…"), &RecipeActions::newRecipe);
+    recipe_item(tr("Save Recipe &As…"), &RecipeActions::saveAs);
+    recipe_item(tr("&Share Recipe…"), &RecipeActions::share);
+    recipe_item(tr("&Import a Shared Recipe…"), &RecipeActions::import);
+    corruption_menu->addSeparator();
+    auto page_item = [&](const QString &text, WorkshopPage page) {
+        connect(corruption_menu->addAction(text), &QAction::triggered,
+                [this, page] { corruption_dock->openWorkshop(page); });
+    };
+    page_item(tr("The &ROM (Export, Restore Clean)…"), WorkshopPage::Rom);
+    page_item(tr("&Library and Remote Control…"), WorkshopPage::Sharing);
+    corruption_menu->addSeparator();
     auto guide_item = corruption_menu->addAction(tr("&Guide…"));
     connect(guide_item, &QAction::triggered, [this] {
         corruption_dock->setVisible(true);

@@ -1,5 +1,5 @@
 #pragma once
-#include <QDialog>
+#include <QWidget>
 
 #include "corrupt/survivors.h"
 #include "corrupt/patches.h"
@@ -25,10 +25,10 @@ struct SurvivorSource
 
 // Survivors (ROM changes the game used often, with no crash after) and the recipe's pins:
 // keep the good ones, let go of others.
-class SurvivorsDialog : public QDialog
+class SurvivorsPanel : public QWidget
 {
   public:
-    explicit SurvivorsDialog(SurvivorSource &source, QWidget *parent = nullptr);
+    explicit SurvivorsPanel(SurvivorSource &source, QWidget *parent = nullptr);
     void refresh();
 
   private:

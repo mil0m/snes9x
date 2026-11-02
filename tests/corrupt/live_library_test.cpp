@@ -109,3 +109,26 @@ TEST_SUITE("live library")
         CHECK(t.lib.recipes_stamp(t.game) != recipes);
     }
 }
+
+TEST_SUITE("live library")
+{
+    TEST_CASE("who is in the library: everyone with learned files, by name, with their newest file")
+    {
+        TempLibrary t;
+        CHECK(t.lib.players(t.game).empty());
+        t.write("calls.mikael.json", "{}");
+        t.write("codemap.mikael.bin", "x");
+        t.write("names.erik.json", "{}");
+        t.write("journal.erik.jsonl", "");
+        t.write("calls.erik.sync-conflict-20261102-201512-ABCDEFG.json", "{}"); // not a third person
+        t.write("regions.json", "{}");                                          // shared, nobody's
+        t.write("recipes/moon-jump.json", "{}");
+        auto players = t.lib.players(t.game);
+        REQUIRE(players.size() == 2);
+        CHECK(players[0].who == "erik");
+        CHECK(players[0].files == 2);
+        CHECK(players[1].who == "mikael");
+        CHECK(players[1].files == 2);
+        CHECK(players[1].newest > std::filesystem::file_time_type{});
+    }
+}

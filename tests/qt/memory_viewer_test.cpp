@@ -494,8 +494,12 @@ TEST_SUITE("the pixel view in the viewer")
         auto pixels = child<PixelView>(v, "pixels");
         auto paint = child<QPushButton>(v, "paint");
         CHECK(paint->isVisible());
+        CHECK_FALSE(child<QSpinBox>(v, "paint_value")->isVisible()); // the paint tools show while painting
+        CHECK_FALSE(child<QSpinBox>(v, "brush")->isVisible());
         paint->click();
         CHECK(pixels->paintMode());
+        CHECK(child<QSpinBox>(v, "paint_value")->isVisible());
+        CHECK(child<QSpinBox>(v, "brush")->isVisible());
         child<QSpinBox>(v, "paint_value")->setValue(0xEA);
         child<QSpinBox>(v, "brush")->setValue(2);
         pixels->setRowWidth(64);
@@ -515,6 +519,7 @@ TEST_SUITE("the pixel view in the viewer")
         CHECK(child<QSpinBox>(v, "paint_value")->value() == 0x33);
         paint->click();
         CHECK_FALSE(pixels->paintMode());
+        CHECK_FALSE(child<QSpinBox>(v, "brush")->isVisible());
         choose(v, "mode", "hex");
         CHECK_FALSE(paint->isVisible());
     }

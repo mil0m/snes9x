@@ -1,4 +1,4 @@
-#include "SurvivorsDialog.hpp"
+#include "SurvivorsPanel.hpp"
 #include "UiKit.hpp"
 
 #include <QFontDatabase>
@@ -63,10 +63,9 @@ std::vector<int> selected_rows(QTableWidget *t)
 
 } // namespace
 
-SurvivorsDialog::SurvivorsDialog(SurvivorSource &source, QWidget *parent) : QDialog(parent), source(source)
+SurvivorsPanel::SurvivorsPanel(SurvivorSource &source, QWidget *parent) : QWidget(parent), source(source)
 {
     setWindowTitle(tr("Survivors and Pins"));
-    resize(640, 520);
     auto layout = new QVBoxLayout(this);
 
     layout->addWidget(ui::heading(tr("Survivors"), this));
@@ -131,24 +130,20 @@ SurvivorsDialog::SurvivorsDialog(SurvivorSource &source, QWidget *parent) : QDia
     auto refresh_button = new QPushButton(ui::icon("refresh"), tr("Refresh"), this);
     refresh_button->setObjectName("refresh");
     refresh_button->setAutoDefault(false);
-    auto close_button = new QPushButton(tr("Close"), this);
-    close_button->setAutoDefault(false);
     bottom->addWidget(unpin_button);
     bottom->addStretch(1);
     bottom->addWidget(refresh_button);
-    bottom->addWidget(close_button);
     layout->addLayout(bottom);
 
-    connect(pin_button, &QPushButton::clicked, this, &SurvivorsDialog::pinSelected);
-    connect(unpin_button, &QPushButton::clicked, this, &SurvivorsDialog::unpinSelected);
-    connect(refresh_button, &QPushButton::clicked, this, &SurvivorsDialog::refresh);
-    connect(close_button, &QPushButton::clicked, this, &QDialog::close);
-    connect(table, &QTableWidget::itemSelectionChanged, this, &SurvivorsDialog::selectionChanged);
-    connect(pins_table, &QTableWidget::itemSelectionChanged, this, &SurvivorsDialog::selectionChanged);
+    connect(pin_button, &QPushButton::clicked, this, &SurvivorsPanel::pinSelected);
+    connect(unpin_button, &QPushButton::clicked, this, &SurvivorsPanel::unpinSelected);
+    connect(refresh_button, &QPushButton::clicked, this, &SurvivorsPanel::refresh);
+    connect(table, &QTableWidget::itemSelectionChanged, this, &SurvivorsPanel::selectionChanged);
+    connect(pins_table, &QTableWidget::itemSelectionChanged, this, &SurvivorsPanel::selectionChanged);
     refresh();
 }
 
-void SurvivorsDialog::refresh()
+void SurvivorsPanel::refresh()
 {
     shown = source.survivors();
     shown_pins = source.pins();
@@ -196,13 +191,13 @@ void SurvivorsDialog::refresh()
     selectionChanged();
 }
 
-void SurvivorsDialog::selectionChanged()
+void SurvivorsPanel::selectionChanged()
 {
     pin_button->setEnabled(!selected_rows(table).empty());
     unpin_button->setEnabled(!selected_rows(pins_table).empty());
 }
 
-void SurvivorsDialog::pinSelected()
+void SurvivorsPanel::pinSelected()
 {
     std::vector<uint32_t> offsets;
     for (int row : selected_rows(table))
@@ -220,7 +215,7 @@ void SurvivorsDialog::pinSelected()
     refresh();
 }
 
-void SurvivorsDialog::unpinSelected()
+void SurvivorsPanel::unpinSelected()
 {
     std::vector<uint32_t> offsets;
     for (int row : selected_rows(pins_table))

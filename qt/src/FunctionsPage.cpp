@@ -1,4 +1,4 @@
-#include "FunctionsDialog.hpp"
+#include "FunctionsPage.hpp"
 #include "FunctionEditor.hpp"
 #include "UiKit.hpp"
 
@@ -109,10 +109,9 @@ QString size_tip(const FunctionRow &r)
 
 } // namespace
 
-FunctionsDialog::FunctionsDialog(FunctionSource &source, QWidget *parent) : QDialog(parent), source(source)
+FunctionsPage::FunctionsPage(FunctionSource &source, QWidget *parent) : QWidget(parent), source(source)
 {
     setWindowTitle(tr("Functions"));
-    resize(720, 640);
     auto layout = new QVBoxLayout(this);
 
     layout->addWidget(ui::heading(tr("Functions"), this));
@@ -278,55 +277,51 @@ FunctionsDialog::FunctionsDialog(FunctionSource &source, QWidget *parent) : QDia
     refresh_button->setObjectName("refresh");
     refresh_button->setAutoDefault(false);
     refresh_button->setToolTip(tr("Busiest right now first again, with any new functions"));
-    auto close_button = new QPushButton(tr("Close"), this);
-    close_button->setAutoDefault(false);
     bottom->addStretch(1);
     bottom->addWidget(refresh_button);
-    bottom->addWidget(close_button);
     layout->addLayout(bottom);
 
     timer = new QTimer(this);
     timer->setInterval(500);
-    connect(timer, &QTimer::timeout, this, &FunctionsDialog::update);
-    connect(refresh_button, &QPushButton::clicked, this, &FunctionsDialog::refresh);
-    connect(close_button, &QPushButton::clicked, this, &QDialog::close);
-    connect(table, &QTableWidget::itemChanged, this, &FunctionsDialog::offChanged);
-    connect(table, &QTableWidget::itemSelectionChanged, this, &FunctionsDialog::selectionChanged);
+    connect(timer, &QTimer::timeout, this, &FunctionsPage::update);
+    connect(refresh_button, &QPushButton::clicked, this, &FunctionsPage::refresh);
+    connect(table, &QTableWidget::itemChanged, this, &FunctionsPage::offChanged);
+    connect(table, &QTableWidget::itemSelectionChanged, this, &FunctionsPage::selectionChanged);
     connect(table->horizontalHeader(), &QHeaderView::sectionResized, table, [this](int col) {
         if (col == About)
             table->resizeRowsToContents();
     });
-    connect(filter, &QLineEdit::textChanged, this, &FunctionsDialog::applyFilter);
-    connect(keep_button, &QPushButton::clicked, this, &FunctionsDialog::keepSelected);
-    connect(forget_button, &QPushButton::clicked, this, &FunctionsDialog::forgetSelected);
-    connect(name, &QLineEdit::editingFinished, this, &FunctionsDialog::nameSelected);
-    connect(protect, &QCheckBox::toggled, this, &FunctionsDialog::protectChanged);
-    connect(deep, &QCheckBox::toggled, this, &FunctionsDialog::protectChanged);
-    connect(show_button, &QPushButton::clicked, this, &FunctionsDialog::showSelected);
-    connect(change_button, &QPushButton::clicked, this, &FunctionsDialog::changeSelected);
+    connect(filter, &QLineEdit::textChanged, this, &FunctionsPage::applyFilter);
+    connect(keep_button, &QPushButton::clicked, this, &FunctionsPage::keepSelected);
+    connect(forget_button, &QPushButton::clicked, this, &FunctionsPage::forgetSelected);
+    connect(name, &QLineEdit::editingFinished, this, &FunctionsPage::nameSelected);
+    connect(protect, &QCheckBox::toggled, this, &FunctionsPage::protectChanged);
+    connect(deep, &QCheckBox::toggled, this, &FunctionsPage::protectChanged);
+    connect(show_button, &QPushButton::clicked, this, &FunctionsPage::showSelected);
+    connect(change_button, &QPushButton::clicked, this, &FunctionsPage::changeSelected);
     message->hide();
     refresh();
 }
 
-void FunctionsDialog::showEvent(QShowEvent *event)
+void FunctionsPage::showEvent(QShowEvent *event)
 {
-    QDialog::showEvent(event);
+    QWidget::showEvent(event);
     timer->start();
 }
 
-void FunctionsDialog::hideEvent(QHideEvent *event)
+void FunctionsPage::hideEvent(QHideEvent *event)
 {
     timer->stop();
-    QDialog::hideEvent(event);
+    QWidget::hideEvent(event);
 }
 
-void FunctionsDialog::say(const QString &text, int tone)
+void FunctionsPage::say(const QString &text, int tone)
 {
     message->setMessage(text, ui::Tone(tone));
     message->show();
 }
 
-void FunctionsDialog::fill(int row, const FunctionRow &r)
+void FunctionsPage::fill(int row, const FunctionRow &r)
 {
     filling = true;
     auto item = [&](int col) {
@@ -375,7 +370,7 @@ void FunctionsDialog::fill(int row, const FunctionRow &r)
     filling = false;
 }
 
-void FunctionsDialog::refresh()
+void FunctionsPage::refresh()
 {
     shown = source.functions();
     filling = true;
@@ -393,7 +388,7 @@ void FunctionsDialog::refresh()
     selectionChanged();
 }
 
-void FunctionsDialog::update()
+void FunctionsPage::update()
 {
     auto now = source.functions();
     for (size_t i = 0; i < shown.size(); i++)
@@ -407,7 +402,7 @@ void FunctionsDialog::update()
     not_running->setVisible(!source.running());
 }
 
-int FunctionsDialog::selectedRow() const
+int FunctionsPage::selectedRow() const
 {
     auto rows = table->selectionModel() ? table->selectionModel()->selectedRows() : QModelIndexList{};
     if (rows.isEmpty() || size_t(rows.front().row()) >= shown.size())
@@ -415,7 +410,7 @@ int FunctionsDialog::selectedRow() const
     return rows.front().row();
 }
 
-void FunctionsDialog::offChanged(QTableWidgetItem *item)
+void FunctionsPage::offChanged(QTableWidgetItem *item)
 {
     if (filling || item->column() != Off || size_t(item->row()) >= shown.size())
         return;
@@ -445,7 +440,7 @@ void FunctionsDialog::offChanged(QTableWidgetItem *item)
     }
 }
 
-void FunctionsDialog::selectionChanged()
+void FunctionsPage::selectionChanged()
 {
     int row = selectedRow();
     details->setVisible(row >= 0);
@@ -476,7 +471,7 @@ void FunctionsDialog::selectionChanged()
     selecting = false;
 }
 
-void FunctionsDialog::applyFilter()
+void FunctionsPage::applyFilter()
 {
     QString want = filter->text().trimmed().toLower().remove('$').remove(':');
     for (size_t i = 0; i < shown.size(); i++)
@@ -492,7 +487,7 @@ void FunctionsDialog::applyFilter()
     }
 }
 
-void FunctionsDialog::nameSelected()
+void FunctionsPage::nameSelected()
 {
     int row = selectedRow();
     if (row < 0 || selecting)
@@ -512,7 +507,7 @@ void FunctionsDialog::nameSelected()
     table->resizeRowsToContents();
 }
 
-void FunctionsDialog::protectChanged()
+void FunctionsPage::protectChanged()
 {
     int row = selectedRow();
     if (row < 0 || selecting)
@@ -535,7 +530,7 @@ void FunctionsDialog::protectChanged()
     update();
 }
 
-void FunctionsDialog::keepSelected()
+void FunctionsPage::keepSelected()
 {
     int row = selectedRow();
     if (row < 0)
@@ -567,7 +562,7 @@ void FunctionsDialog::keepSelected()
     selectionChanged();
 }
 
-void FunctionsDialog::forgetSelected()
+void FunctionsPage::forgetSelected()
 {
     int row = selectedRow();
     if (row < 0)
@@ -578,7 +573,7 @@ void FunctionsDialog::forgetSelected()
     selectionChanged();
 }
 
-void FunctionsDialog::changeSelected()
+void FunctionsPage::changeSelected()
 {
     int row = selectedRow();
     if (row < 0)
@@ -588,7 +583,7 @@ void FunctionsDialog::changeSelected()
     editor->show();
 }
 
-void FunctionsDialog::showSelected()
+void FunctionsPage::showSelected()
 {
     int row = selectedRow();
     if (row < 0 || shown[size_t(row)].runs.empty())

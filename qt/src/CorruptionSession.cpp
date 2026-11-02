@@ -95,7 +95,7 @@ void CorruptionSession::configureGuard()
     guard.on_journal = [this](const JournalEntry &e) { writeJournal(e); };
     guard.set_byte_blame(&rom_blame);
     rom_blame.set_policy(recipe.rom_policy.value_or(RomPolicy::Revert), recipe.seed);
-    instant.set_enabled(recipe.instant_revert.value_or(true));
+    instant.set_enabled(recipe.instant_revert.value_or(true) && instant_enabled);
     AheadConfig ahead_config;
     ahead_config.frames = test_first_enabled ? uint32_t(std::lround(recipe.test_first.value_or(3.0) * 60)) : 0u;
     ahead.set_config(ahead_config);
@@ -310,6 +310,38 @@ void CorruptionSession::setTestFirstEnabled(bool enabled)
     std::lock_guard lock(mutex);
     test_first_enabled = enabled;
     configureGuard();
+}
+
+void CorruptionSession::setInstantEnabled(bool enabled)
+{
+    std::lock_guard lock(mutex);
+    instant_enabled = enabled;
+    configureGuard();
+}
+
+std::string CorruptionSession::playerName()
+{
+    return user_name();
+}
+
+std::string CorruptionSession::removeKept(const KeptItem &item)
+{
+    switch (item.kind)
+    {
+    case KeptItem::Kind::Switch: forgetSwitch(item.at); return {};
+    case KeptItem::Kind::Change: forgetChange(item.at); return {};
+    case KeptItem::Kind::Protect: return protectFunction(item.at, false, false);
+    case KeptItem::Kind::Pins:
+    {
+        std::vector<uint32_t> offsets;
+        for (auto &p : pins())
+            offsets.push_back(p.offset);
+        unpin(offsets);
+        return {};
+    }
+    case KeptItem::Kind::Paint: clearPatches(); return {};
+    }
+    return {};
 }
 
 void CorruptionSession::setDetectionEnabled(bool enabled)
@@ -1158,11 +1190,13 @@ CorruptionSession::Status CorruptionSession::status()
         bs.switch_off = [this](const Switch &sw) { return switch_off(sw, memory); };
         bs.change_on = [this](const Change &c) { return corrupt::change_on(c, memory); };
         s.buttons = recipe_buttons(engine.recipe(), bs);
+        s.kept = recipe_kept(engine.recipe(), bs);
     }
     s.policy = guard.get_policy();
     s.policy_overridden = policy_override.has_value();
     s.detection_enabled = detection_enabled;
     s.test_first_enabled = test_first_enabled;
+    s.instant_enabled = instant_enabled;
     s.crashes = guard.total_crashes();
     s.last_crash = last_crash;
     s.rule_crashes = guard.rule_crashes(engine);
