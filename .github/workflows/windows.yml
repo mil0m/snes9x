@@ -24,7 +24,25 @@ jobs:
         with:
           submodules: recursive
 
-      - uses: msys2/setup-msys2@v2
+      # MSYS2's mirror sometimes stalls ("Operation too slow"); one more try after a pause
+      # instead of a failed build that never reached our code.
+      - id: msys2
+        uses: msys2/setup-msys2@v2
+        continue-on-error: true
+        with:
+          msystem: CLANG64
+          update: true
+          pacboy: >-
+            toolchain:p cmake:p ninja:p pkgconf:p libpng:p zlib:p
+            qt6-base:p qt6-svg:p qt6-httpserver:p qt6-websockets:p qt6-tools:p
+
+      - name: Wait before trying MSYS2 again
+        if: steps.msys2.outcome == 'failure'
+        shell: pwsh
+        run: Start-Sleep -Seconds 60
+
+      - if: steps.msys2.outcome == 'failure'
+        uses: msys2/setup-msys2@v2
         with:
           msystem: CLANG64
           update: true
