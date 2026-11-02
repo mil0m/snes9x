@@ -78,6 +78,10 @@ UiKit.cpp (the test renders every name). The SVG keeps `stroke="currentColor"`.
 - **Size a dialog in `showEvent` too** (and once more one event-loop turn later): the Mac's
   controls are taller after polish. Cap height by the screen less the dialog's own chrome,
   not a fraction of the screen.
+- **A table that can grow to hundreds of rows never uses `ResizeToContents` columns** while
+  it fills or updates: each cell set re-measures every row (O(n²); the Functions page froze
+  the app for a minute at 545 functions). Use `Interactive` + `resizeColumnToContents` once
+  per refresh, set a cell only when its text changed, and test with a few hundred fake rows.
 - **Overlay scrollbars hide that something scrolls**: a clipped last row looks like a bug.
 - Default `QFormLayout` on the Mac keeps fields at their size hint and centres the form:
   always `ui::form()`.
