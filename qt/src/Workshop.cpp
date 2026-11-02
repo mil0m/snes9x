@@ -33,6 +33,26 @@ QWidget *capped(QWidget *page, QWidget *parent)
 
 // A page that can grow taller than the window scrolls; the wide ones (Functions, Memory)
 // fill it and scroll inside.
+// A scroll area hides its content's minimum width (it would let the window cut a page off
+// at the right): it gets the page's, plus room for its scroll bar.
+void fitWidth(QScrollArea *scroll, QWidget *page)
+{
+    scroll->setMinimumWidth(page->minimumSizeHint().width() + scroll->verticalScrollBar()->sizeHint().width());
+}
+
+// The Memory page: its picture keeps a usable height and the page scrolls in a short
+// window, instead of the view shrinking to a sliver under the sections below it.
+QWidget *scrollingTall(QWidget *page, QWidget *parent)
+{
+    auto scroll = new QScrollArea(parent);
+    scroll->setWidgetResizable(true);
+    scroll->setFrameShape(QFrame::NoFrame);
+    scroll->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    scroll->setWidget(page);
+    fitWidth(scroll, page);
+    return scroll;
+}
+
 QWidget *scrolling(QWidget *page, QWidget *parent)
 {
     auto scroll = new QScrollArea(parent);
@@ -40,6 +60,7 @@ QWidget *scrolling(QWidget *page, QWidget *parent)
     scroll->setFrameShape(QFrame::NoFrame);
     scroll->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
     scroll->setWidget(capped(page, scroll));
+    fitWidth(scroll, scroll->widget());
     return scroll;
 }
 
@@ -128,7 +149,7 @@ Workshop::Workshop(CorruptionControl &control, RecipeActions &actions, FunctionS
     sharing = new SharingPage(control);
     stack->addWidget(scrolling(recipe, stack));
     stack->addWidget(functions);
-    stack->addWidget(memory);
+    stack->addWidget(scrollingTall(memory, stack));
     stack->addWidget(capped(rom, stack));
     stack->addWidget(scrolling(safety, stack));
     stack->addWidget(scrolling(sharing, stack));
@@ -207,6 +228,10 @@ void Workshop::refreshNotes(const PanelStatus &status)
 
 void Workshop::capPages()
 {
+    // Again once shown (the Mac's controls are bigger after polish): no page cut off at the right.
+    for (auto scroll : stack->findChildren<QScrollArea *>(QString(), Qt::FindDirectChildrenOnly))
+        if (scroll->widget())
+            fitWidth(scroll, scroll->widget());
     // Again once shown: the Mac's controls are bigger after polish, and a cap below what a
     // page needs would cut it off.
     for (auto page : text_pages)

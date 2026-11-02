@@ -402,3 +402,29 @@ TEST_SUITE("workshop")
         CHECK(f.control.calls.back() == "new Fresh");
     }
 }
+
+
+TEST_CASE("the Workshop can be made narrow: no page needs more than about 900 px")
+{
+    Fixture f;
+    f.control.running(3);
+    f.workshop.show();
+    for (auto page : { WorkshopPage::Recipe, WorkshopPage::Functions, WorkshopPage::Memory, WorkshopPage::Rom,
+                       WorkshopPage::Safety, WorkshopPage::Sharing })
+    {
+        f.workshop.showPage(page);
+        QApplication::processEvents();
+        INFO("page " << int(page));
+        CHECK(f.workshop.minimumSizeHint().width() <= 900); // was 1,107 (Memory's toolbar and list)
+        CHECK(f.workshop.minimumSizeHint().height() <= 520);
+        // At its smallest, nothing is cut off at the right: every page gets what it needs.
+        f.workshop.resize(f.workshop.minimumSizeHint());
+        QApplication::processEvents();
+        for (QWidget *content : { static_cast<QWidget *>(f.workshop.recipePage()), static_cast<QWidget *>(f.workshop.functionsPage()),
+                                  static_cast<QWidget *>(f.workshop.memoryPage()), static_cast<QWidget *>(f.workshop.romPage()),
+                                  static_cast<QWidget *>(f.workshop.safetyPage()), static_cast<QWidget *>(f.workshop.sharingPage()) })
+            if (content->isVisible())
+                CHECK(content->width() >= content->minimumSizeHint().width());
+    }
+    f.workshop.close();
+}

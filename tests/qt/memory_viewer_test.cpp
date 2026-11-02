@@ -691,7 +691,9 @@ TEST_SUITE("the pixel view in the viewer")
         v.refresh();
         choose(v, "mode", "pixels");
         auto pixels = child<PixelView>(v, "pixels");
-        CHECK(child<QPushButton>(v, "export_png")->isVisible());
+        CHECK(child<QPushButton>(v, "picture")->isVisible()); // Export and Import PNG, in its menu
+        CHECK(v.findChild<QAction *>("export_png"));
+        CHECK(v.findChild<QAction *>("import_png"));
         pixels->setRowWidth(32);
         pixels->selectRect(0x400, 8, 4);
         QString path = dir.filePath("rect.png");

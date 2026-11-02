@@ -245,3 +245,13 @@ What came back from playing, one line each, with what was done about it.
   is watched for ten seconds (corrupting or not) and taken back into the draft on a crash;
   every stroke undoes and redoes, with a history; *Start Games Paused* to paint before the
   first frame.
+- **"Can the Workshop window be made smaller? It has a very large minimum size."** (#68) It
+  couldn't go under 1,107 px (Fusion; about 1,250 points on the Mac): the Memory page's
+  *Colour by* box was as wide as its longest choice (400 px), its toolbar held Go to and
+  Clear Hits, *What's where* insisted on 190 px, and Export and Import PNG were two buttons.
+  Now the boxes may be shorter than their longest choice (the list shows them whole), Go to
+  and Clear Hits start the second row, Export/Import are one **Picture** menu, the list
+  goes down to 130 px, and the Memory page scrolls in a short window with its picture at
+  least 260 px tall. Smallest Workshop: 869 × 450 px in Fusion, 894 × 324 points on the Mac.
+  The scroll areas take their page's minimum width, so a narrow window never cuts a page off
+  (a test checks every page at the smallest size).

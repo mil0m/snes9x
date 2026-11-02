@@ -320,6 +320,15 @@ void CorruptionDock::tour(const QString &dir)
         choose(workshop->memoryPage(), "overlay", "code");
     });
     steps->push_back([=, this] { shot(workshop, "10-workshop-memory-rom-code"); });
+    // The Workshop as narrow as it goes (#68): nothing cut off.
+    steps->push_back([=, this] {
+        workshop->resize(workshop->minimumSizeHint());
+    });
+    steps->push_back([=, this] {
+        shot(workshop, "10a-workshop-memory-narrow");
+        log(QString("narrowest Workshop: %1 x %2").arg(workshop->width()).arg(workshop->height()));
+        workshop->resize(std::max(1000, workshop->minimumSizeHint().width()), 720);
+    });
     // Paint (#66): a stroke of STP over the first 1 KB of the ROM, drafted, then applied: the
     // game runs into it, the watch rolls back and the stroke is back in the draft.
     steps->push_back([=, this] {

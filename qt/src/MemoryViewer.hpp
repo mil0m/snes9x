@@ -136,8 +136,7 @@ class MemoryViewer : public QWidget
     QLabel *zoom_label;
     QSpinBox *row_width;
     QPushButton *paint_button;
-    QPushButton *export_png_button;
-    QPushButton *import_png_button;
+    QPushButton *picture_button; // Export PNG… and Import PNG…, in a menu
     QSpinBox *paint_value;
     QSpinBox *brush_spin;
     std::array<int, corrupt::kTargetCount> row_widths{}; // chosen per memory, 0 = auto

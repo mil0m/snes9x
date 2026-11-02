@@ -14,6 +14,7 @@
 #include <QFileDialog>
 #include <QFontDatabase>
 #include <QInputDialog>
+#include <QMenu>
 #include <QMessageBox>
 #include <QToolButton>
 #include <QHBoxLayout>
@@ -149,6 +150,12 @@ MemoryViewer::MemoryViewer(MemorySource &source, QWidget *parent)
                                 "timers), vram graphics, cgram colours, oam sprites, aram sound, sram the battery "
                                 "save, rom the game itself"));
     overlay_combo->setToolTip(tr("What the colours on top of the bytes show; the line under the view explains them"));
+    // Their choices are long; the boxes may be shorter than the longest (the list shows them
+    // whole), so the Workshop can be made narrow.
+    overlay_combo->setSizeAdjustPolicy(QComboBox::AdjustToMinimumContentsLengthWithIcon);
+    overlay_combo->setMinimumContentsLength(14);
+    target_combo->setSizeAdjustPolicy(QComboBox::AdjustToMinimumContentsLengthWithIcon);
+    target_combo->setMinimumContentsLength(10);
     goto_edit->setToolTip(tr("Type an offset like 0x1A00 and press Enter"));
     // Each label names its control for screen readers and moves focus there on its mnemonic.
     auto labelled = [&](const QString &text, QWidget *control, int stretch = 0) {
@@ -160,9 +167,12 @@ MemoryViewer::MemoryViewer(MemorySource &source, QWidget *parent)
     labelled(tr("&Memory"), target_combo);
     labelled(tr("&Show as"), mode_combo);
     labelled(tr("&Colour by"), overlay_combo, 1);
-    top->addWidget(goto_edit);
-    top->addWidget(clear);
     layout->addLayout(top);
+    // Go to and Clear Hits start the second row, so the first stays short and the Workshop
+    // can be narrow; zoom, paint and the tile settings follow them in Pixels and Tiles.
+    auto second = new QHBoxLayout;
+    second->addWidget(goto_edit);
+    second->addWidget(clear);
 
     // How Pixels and Tiles draw, on a row of its own that Hex doesn't need.
     view_options = new QWidget(this);
@@ -194,25 +204,38 @@ MemoryViewer::MemoryViewer(MemorySource &source, QWidget *parent)
     brush_spin->setPrefix(tr("Brush "));
     brush_spin->setAccessibleName(tr("Brush size"));
     brush_spin->setToolTip(tr("Brush size in bytes, square"));
-    export_png_button = new QPushButton(tr("Export PNG…"), view_options);
-    export_png_button->setObjectName("export_png");
-    export_png_button->setToolTip(tr("Save the selection (or all of this memory) as a greyscale picture, one pixel a "
-                                     "byte in the current row width, to edit in any image editor"));
-    import_png_button = new QPushButton(tr("Import PNG…"), view_options);
-    import_png_button->setObjectName("import_png");
-    import_png_button->setToolTip(tr("Put an edited picture back where it was exported from: the pixels that "
-                                     "changed become painted bytes in the recipe"));
+    // The picture round trip, in one menu button (two buttons made the Workshop too wide).
+    picture_button = new QPushButton(ui::icon("chevron-down"), tr("Picture"), view_options);
+    picture_button->setObjectName("picture");
+    picture_button->setLayoutDirection(Qt::RightToLeft); // the chevron after the word
+    picture_button->setAutoDefault(false);
+    picture_button->setToolTip(tr("Edit this memory in any image editor: export it as a greyscale picture, one "
+                                  "pixel a byte, and import the edited copy back as paint"));
+    auto picture_menu = new QMenu(picture_button);
+    auto export_png = picture_menu->addAction(tr("Export PNG…"));
+    export_png->setObjectName("export_png");
+    export_png->setToolTip(tr("Save the selection (or all of this memory) as a greyscale picture, one pixel a "
+                              "byte in the current row width"));
+    auto import_png = picture_menu->addAction(tr("Import PNG…"));
+    import_png->setObjectName("import_png");
+    import_png->setToolTip(tr("Put an edited picture back where it was exported from: the pixels that changed "
+                              "become paint (a draft, on the ROM)"));
+    picture_menu->setToolTipsVisible(true);
+    connect(picture_button, &QPushButton::clicked, this, [this, picture_menu] {
+        picture_menu->popup(picture_button->mapToGlobal(QPoint(0, picture_button->height())));
+    });
     options->addSpacing(12);
     options->addWidget(paint_button);
     options->addWidget(paint_value);
     options->addWidget(brush_spin);
-    options->addWidget(export_png_button);
-    options->addWidget(import_png_button);
+    options->addWidget(picture_button);
     options->addWidget(format_combo);
     options->addWidget(palette_spin);
     options->addWidget(per_row_spin);
     options->addStretch(1);
-    layout->addWidget(view_options);
+    second->addWidget(view_options, 1);
+    second->addStretch(0);
+    layout->addLayout(second);
 
     // While painting: undo and redo, and for the ROM the draft and Apply Paint (#66).
     paint_bar = new QWidget(this);
@@ -284,7 +307,7 @@ MemoryViewer::MemoryViewer(MemorySource &source, QWidget *parent)
     auto middle = new QHBoxLayout;
     map_list = new QListWidget(this);
     map_list->setObjectName("map");
-    map_list->setMinimumWidth(190);
+    map_list->setMinimumWidth(130); // names wrap; narrow so the Workshop can be
     map_list->setMaximumWidth(340);
     // Whole names, wrapped: cutting them in the middle hid the useful part.
     map_list->setWordWrap(true);
@@ -294,6 +317,7 @@ MemoryViewer::MemoryViewer(MemorySource &source, QWidget *parent)
     map_list->setToolTip(tr("What lives where in this memory. Click an area to select it; italic ones are read "
                             "from the game right now and can move."));
     stack = new QStackedWidget(this);
+    stack->setMinimumHeight(260); // the picture stays usable; a short Workshop scrolls the page
     view = new MemoryView(stack);
     view->setObjectName("view");
     pixels = new PixelView(stack);
@@ -337,6 +361,7 @@ MemoryViewer::MemoryViewer(MemorySource &source, QWidget *parent)
     auto bottom = new QHBoxLayout;
     selection_label = new QLabel(tr("Drag across bytes to select them (Alt-drag in Pixels: a rectangle)"), this);
     selection_label->setObjectName("selection");
+    selection_label->setWordWrap(true);
     hover_label = new QLabel(this);
     hover_label->setObjectName("hover");
     hover_label->setFont(QFontDatabase::systemFont(QFontDatabase::FixedFont));
@@ -489,14 +514,14 @@ MemoryViewer::MemoryViewer(MemorySource &source, QWidget *parent)
         brush_spin->setVisible(on);
         paintToolsShown();
     });
-    connect(export_png_button, &QPushButton::clicked, this, [this] {
+    connect(export_png, &QAction::triggered, this, [this] {
         auto path = QFileDialog::getSaveFileName(this, tr("Export PNG"),
                                                  QDir::home().filePath(QString("%1.png").arg(target_name(target()))),
                                                  tr("PNG picture (*.png)"));
         if (!path.isEmpty())
             exportPng(path);
     });
-    connect(import_png_button, &QPushButton::clicked, this, [this] {
+    connect(import_png, &QAction::triggered, this, [this] {
         auto path = QFileDialog::getOpenFileName(this, tr("Import PNG"), QDir::homePath(), tr("PNG picture (*.png)"));
         if (!path.isEmpty())
             importPng(path);
@@ -573,8 +598,7 @@ void MemoryViewer::modeChanged()
     view_options->setVisible(m != "hex");
     hover_label->setVisible(m != "hex");
     row_width->setVisible(m == "pixels");
-    for (QWidget *w : { static_cast<QWidget *>(paint_button), static_cast<QWidget *>(export_png_button),
-                        static_cast<QWidget *>(import_png_button) })
+    for (QWidget *w : { static_cast<QWidget *>(paint_button), static_cast<QWidget *>(picture_button) })
         w->setVisible(m == "pixels");
     paint_value->setVisible(m == "pixels" && paint_button->isChecked());
     brush_spin->setVisible(m == "pixels" && paint_button->isChecked());

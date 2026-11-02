@@ -329,7 +329,7 @@ Use a game you have never set up (a fresh library folder, so no recipes exist fo
    - [ ] The dots turn black as you drag; Alt-click puts that dot's value in the value box. The ROM page says *N bytes painted* (in *N survivors · N pinned · N bytes painted*).
 6. **Save** the recipe, press **Corrupt (F7)** off and on.
    - [ ] The paint is still there after the restart (it's in the recipe as patches). **Clear Paint** (ROM page) empties the count; the next start is clean.
-7. Select a rectangle, **Export PNG…**, open it in an image editor, draw on it, save it (same size, greyscale), and **Import PNG…**.
+7. Select a rectangle, **Picture ▾ > Export PNG…**, open it in an image editor, draw on it, save it (same size, greyscale), and **Picture ▾ > Import PNG…**.
    - [ ] The drawing appears on the Memory page and counts as painted bytes.
 
 ## 22. The code map
@@ -702,3 +702,11 @@ Removed on 2026-11-01: it didn't pay off (see FEATURES.md, *Tried and removed*).
    - [ ] *protected* / *button N* shows in **In play**, not in Name, and the column is wide enough for it.
 6. Empty a name and press Return.
    - [ ] *Name removed.*; with someone else's name for it in the library, theirs still shows (*jump (erik)*).
+
+## 44. A small Workshop (#68)
+1. Open the Workshop on **Memory** (rom, Pixels) and drag the window as small as it goes.
+   - [ ] It gets to about 900 × 330 points. Nothing is cut off at the right; *Colour by* may be shortened (its list shows the whole choices). The picture stays tall enough to paint in, and the page scrolls to *Named areas*.
+2. Open **Picture ▾**.
+   - [ ] **Export PNG…** and **Import PNG…** are in it and work as before.
+3. Visit every page at that size.
+   - [ ] Each fits its width (Recipe, ROM, Safety and Sharing scroll vertically if they need to).

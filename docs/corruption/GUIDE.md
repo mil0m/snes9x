@@ -419,8 +419,9 @@ The old Photoshop way, built in. In the Memory page's **Pixels** view:
 - **Paint Mode**: drag to set bytes to **Value** with a **Brush**; Alt-click picks a byte's
   value. Each drag is one **stroke**. Painted bytes go into the recipe; **Clear Paint** on
   the ROM page forgets them.
-- **Export PNG…** saves the selection (or the whole memory) as a greyscale picture; edit it
-  in any image editor and **Import PNG…** puts the changed pixels back as paint (one stroke).
+- **Picture ▾ > Export PNG…** saves the selection (or the whole memory) as a greyscale
+  picture; edit it in any image editor and **Picture ▾ > Import PNG…** puts the changed
+  pixels back as paint (one stroke).
 
 ### Painting the ROM: draw first, then Apply
 
