@@ -180,12 +180,20 @@ class CorruptionSession
     std::vector<FunctionRow> functions();
     bool corruptionOn();
     std::string flipFunction(uint32_t entry);
-    std::string keepSwitch(uint32_t entry, int hotkey, bool start_off, const std::string &note);
+    std::string keepSwitch(uint32_t entry, int hotkey, bool start_off, const std::string &note, uint32_t every = 0,
+                           uint32_t for_frames = 0);
     void forgetSwitch(uint32_t entry);
     // Guards and names (#58, #59). Protect guards a function's body (deep: and what it
     // calls) without changing it; setName writes your name for it to the library.
     std::string protectFunction(uint32_t entry, bool on, bool deep);
     std::string setFunctionName(uint32_t entry, const std::string &name);
+    // Change a function (#60): see FunctionSource. Applying needs corruption on, like a flip.
+    std::vector<corrupt::ChangeOption> changeOptions(uint32_t entry);
+    std::vector<uint8_t> romBytes(uint32_t at, size_t n, bool clean);
+    std::optional<std::vector<uint8_t>> redirectBytes(const corrupt::ChangeOption &o, uint32_t entry);
+    std::string applyChange(const corrupt::Change &c, bool on);
+    std::string keepChange(const corrupt::Change &c);
+    void forgetChange(uint32_t at);
 
     // Save backups.
     std::filesystem::path backupDir();
@@ -252,6 +260,7 @@ class CorruptionSession
     uint64_t bodies_print = ~uint64_t(0);
     corrupt::FunctionNames names;           // everyone's names for the functions (#59)
     std::vector<uint32_t> window_off;       // switched off from the Functions window: in play while off
+    std::vector<corrupt::Change> window_changes; // applied from Change It…, not kept: in play while on
     bool guard_dirty = false;               // rebuild the guard between frames
     std::vector<corrupt::InPlay> in_play;
     std::vector<uint8_t> function_shown;    // the overlay's marks, while the viewer shows the ROM

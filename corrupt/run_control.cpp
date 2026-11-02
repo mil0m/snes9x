@@ -14,6 +14,7 @@ RunControl::Started RunControl::between_frames(Engine &engine, CoreAccess &core,
         rom->restore_clean();
         pins = engine.apply_pins(*rom); // before the rules, onto the clean ROM
         engine.apply_switches(*rom);     // kill switches that start off (#34)
+        engine.apply_changes(*rom);      // changes in functions that start on (#60)
         auto is_rom = [](Target t) { return t == Target::ROM; };
         engine.fire_at_load(*rom, is_rom);
         engine.apply_patches(*rom, is_rom);

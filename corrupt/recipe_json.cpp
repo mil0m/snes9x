@@ -1,5 +1,7 @@
 #include "recipe_json.h"
 
+#include "function_change.h"
+
 #include "nlohmann/json.hpp"
 
 #include <cmath>
@@ -163,7 +165,8 @@ void parse_op_json(Ctx &ctx, const json &o, const std::string &path, Op &op, con
     if (!require_object(ctx, o, path))
         return;
     check_keys(ctx, o, path, { "type", "min", "max", "mode", "bits", "mask", "width", "a", "b", "from", "length", "value",
-                               "window", "dx", "dy", "wrap", "axis", "curve", "amount", "kernel", "reach", "mutual", "pick" });
+                               "window", "dx", "dy", "wrap", "axis", "curve", "amount", "kernel", "reach", "mutual", "pick",
+                               "put_back" });
 
     if (!o.contains("type") || !o["type"].is_string() || !parse_op(o["type"].get<std::string>()))
     {
@@ -220,6 +223,11 @@ void parse_op_json(Ctx &ctx, const json &o, const std::string &path, Op &op, con
             op.any = true;
         else if (pick != "busiest")
             ctx.fail(path + ".pick", "expected \"busiest\" or \"any\"");
+    }
+    if (o.contains("put_back"))
+    {
+        if (auto n = get_int_in(ctx, o["put_back"], path + ".put_back", 0, 3600000))
+            op.put_back = uint32_t(*n);
     }
     if (o.contains("mutual"))
     {
@@ -361,7 +369,7 @@ std::optional<Rule> parse_rule(Ctx &ctx, const json &r, size_t index, const Regi
 
     size_t errors_before = ctx.errors.size();
     check_keys(ctx, r, path, { "name", "target", "range", "rect", "op", "when", "count", "pick", "enabled", "intensity",
-                               "avoid_hot", "salt", "role", "classes", "except" });
+                               "avoid_hot", "salt", "role", "classes", "except", "within" });
 
     Rule rule;
     rule.name = r.contains("name") && r["name"].is_string() ? r["name"].get<std::string>() : "rule " + std::to_string(index + 1);
@@ -439,6 +447,13 @@ std::optional<Rule> parse_rule(Ctx &ctx, const json &r, size_t index, const Regi
             rule.aim.role = *role;
         else
             ctx.fail(path + ".role", "expected one of any, opcode, operand, code, data, dma, used");
+    }
+    if (r.contains("within"))
+    {
+        if (r["within"].is_string() && r["within"].get<std::string>() == "busy_functions")
+            rule.aim.in_busy_functions = true;
+        else
+            ctx.fail(path + ".within", "expected \"busy_functions\"");
     }
     for (auto [key, out] : { std::pair{ "classes", &rule.aim.classes }, std::pair{ "except", &rule.aim.except } })
         if (r.contains(key))
@@ -597,6 +612,8 @@ ojson op_json(const Op &op)
     case OpType::Kill:
         if (op.any)
             o["pick"] = "any";
+        if (op.put_back)
+            o["put_back"] = op.put_back;
         break;
     }
     return o;
@@ -750,7 +767,7 @@ ParseResult parse_recipe(std::string_view json_text, const Regions &regions)
         return result;
     }
     check_keys(ctx, doc, "recipe", { "format", "name", "notes", "game", "seed", "intensity", "anchor_state", "rules",
-                                     "patches", "pins", "switches", "protect", "crash_policy", "rom_policy", "instant_revert", "test_first",
+                                     "patches", "pins", "switches", "changes", "protect", "crash_policy", "rom_policy", "instant_revert", "test_first",
                                      "crash_detection" });
 
     if (!doc.contains("format") || !doc["format"].is_number_integer() || doc["format"].get<int>() != Recipe::kFormat)
@@ -894,7 +911,7 @@ ParseResult parse_recipe(std::string_view json_text, const Regions &regions)
                 const json &j = ss[i];
                 if (!require_object(ctx, j, path))
                     continue;
-                check_keys(ctx, j, path, { "entry", "return", "was", "hotkey", "start_off", "note" });
+                check_keys(ctx, j, path, { "entry", "return", "was", "hotkey", "start_off", "note", "every", "for" });
                 if (!j.contains("entry") || !j.contains("return") || !j.contains("was"))
                 {
                     ctx.fail(path, "needs entry (the offset), return (0x60 or 0x6B) and was (the clean value)");
@@ -929,7 +946,128 @@ ParseResult parse_recipe(std::string_view json_text, const Regions &regions)
                 }
                 if (j.contains("note") && j["note"].is_string())
                     s.note = j["note"].get<std::string>();
+                if (j.contains("every") || j.contains("for"))
+                {
+                    auto every = j.contains("every") ? get_int_in(ctx, j["every"], path + ".every", 2, 3600000) : std::nullopt;
+                    auto for_frames = j.contains("for") ? get_int_in(ctx, j["for"], path + ".for", 1, 3600000) : std::nullopt;
+                    if (!every || !for_frames)
+                    {
+                        if (!j.contains("every") || !j.contains("for"))
+                            ctx.fail(path, "a timer needs both every and for (frames)");
+                        continue;
+                    }
+                    if (*for_frames >= *every)
+                    {
+                        ctx.fail(path + ".for", "must be shorter than every");
+                        continue;
+                    }
+                    s.every = uint32_t(*every);
+                    s.for_frames = uint32_t(*for_frames);
+                }
                 recipe.switches.push_back(s);
+            }
+    }
+
+    if (doc.contains("changes"))
+    {
+        const json &cs = doc["changes"];
+        if (!cs.is_array())
+            ctx.fail("recipe.changes", "expected a list");
+        else
+            for (size_t i = 0; i < cs.size(); i++)
+            {
+                std::string path = "changes[" + std::to_string(i) + "]";
+                const json &j = cs[i];
+                if (!require_object(ctx, j, path))
+                    continue;
+                check_keys(ctx, j, path, { "function", "at", "kind", "value", "was", "hotkey", "start_on", "note", "every", "for" });
+                if (!j.contains("function") || !j.contains("at") || !j.contains("kind") || !j.contains("value") ||
+                    !j.contains("was"))
+                {
+                    ctx.fail(path, "needs function, at, kind, value and was");
+                    continue;
+                }
+                auto function = get_int_in(ctx, j["function"], path + ".function", 0, 0xFFFFFF);
+                auto at = get_int_in(ctx, j["at"], path + ".at", 0, 0xFFFFFF);
+                if (!function || !at)
+                    continue;
+                auto kind = j["kind"].is_string() ? parse_change_kind(j["kind"].get<std::string>()) : std::nullopt;
+                if (!kind)
+                {
+                    ctx.fail(path + ".kind", "expected number, branch, math, skip or redirect");
+                    continue;
+                }
+                auto hex_bytes = [&](const char *key) -> std::optional<std::vector<uint8_t>> {
+                    std::string hexs = j[key].is_string() ? j[key].get<std::string>() : "";
+                    std::vector<uint8_t> bytes;
+                    bool good = !hexs.empty() && hexs.size() % 2 == 0 && hexs.size() <= 8;
+                    for (size_t k = 0; good && k < hexs.size(); k += 2)
+                    {
+                        char *end = nullptr;
+                        std::string two = hexs.substr(k, 2);
+                        long v = std::strtol(two.c_str(), &end, 16);
+                        good = end == two.c_str() + 2;
+                        bytes.push_back(uint8_t(v));
+                    }
+                    if (!good)
+                    {
+                        ctx.fail(path + "." + key, "expected 1 to 4 bytes as pairs of hex digits, like \"6903\"");
+                        return std::nullopt;
+                    }
+                    return bytes;
+                };
+                auto value = hex_bytes("value");
+                auto was = hex_bytes("was");
+                if (!value || !was)
+                    continue;
+                if (value->size() != was->size())
+                {
+                    ctx.fail(path, "value and was need the same number of bytes");
+                    continue;
+                }
+                Change c;
+                c.function = uint32_t(*function);
+                c.at = uint32_t(*at);
+                c.kind = *kind;
+                c.value = *value;
+                c.was = *was;
+                if (j.contains("hotkey"))
+                {
+                    auto key = get_int_in(ctx, j["hotkey"], path + ".hotkey", 0, 9);
+                    if (!key)
+                        continue;
+                    c.hotkey = int(*key);
+                }
+                if (j.contains("start_on"))
+                {
+                    if (!j["start_on"].is_boolean())
+                    {
+                        ctx.fail(path + ".start_on", "expected true or false");
+                        continue;
+                    }
+                    c.start_on = j["start_on"].get<bool>();
+                }
+                if (j.contains("note") && j["note"].is_string())
+                    c.note = j["note"].get<std::string>();
+                if (j.contains("every") || j.contains("for"))
+                {
+                    auto every = j.contains("every") ? get_int_in(ctx, j["every"], path + ".every", 2, 3600000) : std::nullopt;
+                    auto for_frames = j.contains("for") ? get_int_in(ctx, j["for"], path + ".for", 1, 3600000) : std::nullopt;
+                    if (!every || !for_frames)
+                    {
+                        if (!j.contains("every") || !j.contains("for"))
+                            ctx.fail(path, "a timer needs both every and for (frames)");
+                        continue;
+                    }
+                    if (*for_frames >= *every)
+                    {
+                        ctx.fail(path + ".for", "must be shorter than every");
+                        continue;
+                    }
+                    c.every = uint32_t(*every);
+                    c.for_frames = uint32_t(*for_frames);
+                }
+                recipe.changes.push_back(c);
             }
     }
 
@@ -1082,9 +1220,49 @@ std::string write_recipe(const Recipe &recipe)
                 j["start_off"] = true;
             if (!s.note.empty())
                 j["note"] = s.note;
+            if (s.every && s.for_frames)
+            {
+                j["every"] = s.every;
+                j["for"] = s.for_frames;
+            }
             ss.push_back(j);
         }
         doc["switches"] = ss;
+    }
+    if (!recipe.changes.empty())
+    {
+        auto hexs = [](const std::vector<uint8_t> &bytes) {
+            std::string out;
+            char two[4];
+            for (auto b : bytes)
+            {
+                snprintf(two, sizeof two, "%02X", b);
+                out += two;
+            }
+            return out;
+        };
+        ojson cs = ojson::array();
+        for (auto &c : recipe.changes)
+        {
+            ojson j = { { "function", hex_addr(c.function) },
+                        { "at", hex_addr(c.at) },
+                        { "kind", change_kind_name(c.kind) },
+                        { "value", hexs(c.value) },
+                        { "was", hexs(c.was) } };
+            if (c.hotkey)
+                j["hotkey"] = c.hotkey;
+            if (!c.start_on)
+                j["start_on"] = false;
+            if (!c.note.empty())
+                j["note"] = c.note;
+            if (c.every && c.for_frames)
+            {
+                j["every"] = c.every;
+                j["for"] = c.for_frames;
+            }
+            cs.push_back(j);
+        }
+        doc["changes"] = cs;
     }
     if (!recipe.protects.empty())
     {
@@ -1135,6 +1313,8 @@ std::string write_recipe(const Recipe &recipe)
             j["avoid_hot"] = true;
         if (r.aim.role != Role::Any)
             j["role"] = role_name(r.aim.role);
+        if (r.aim.in_busy_functions)
+            j["within"] = "busy_functions";
         for (auto [key, list] : { std::pair{ "classes", &r.aim.classes }, std::pair{ "except", &r.aim.except } })
             if (!list->empty())
             {

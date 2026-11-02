@@ -12,6 +12,8 @@ std::vector<InPlay> functions_in_play(const Recipe &recipe, const std::vector<ui
     std::map<uint32_t, bool> deep;
     for (auto &s : recipe.switches)
         deep.try_emplace(s.entry, false);
+    for (auto &c : recipe.changes)
+        deep.try_emplace(c.function, false);
     for (auto &p : recipe.protects)
         deep[p.entry] = deep[p.entry] || p.deep;
     for (auto e : window_off)
@@ -67,13 +69,20 @@ HotMask guard_mask(const std::vector<InPlay> &in_play, const FunctionBodies &bod
     return mask;
 }
 
-HotMask own_bytes(const Recipe &recipe)
+HotMask own_bytes(const Recipe &recipe, const std::vector<uint32_t> &window_off,
+                  const std::vector<Change> &window_changes)
 {
     HotMask own;
     for (auto &p : recipe.pins)
         own.add(Target::ROM, p.offset);
     for (auto &s : recipe.switches)
         own.add(Target::ROM, s.entry);
+    for (auto e : window_off)
+        own.add(Target::ROM, e);
+    for (auto *list : { &recipe.changes, &window_changes })
+        for (auto &c : *list)
+            for (size_t i = 0; i < c.value.size(); i++)
+                own.add(Target::ROM, uint32_t(c.at + i));
     return own;
 }
 

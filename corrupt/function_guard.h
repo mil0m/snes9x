@@ -31,8 +31,10 @@ HotMask guard_mask(const std::vector<InPlay> &in_play, const FunctionBodies &bod
                    size_t deep_limit = 32);
 
 // The bytes your own play wrote, which a guard never cleans: pins, switches' entries and
-// changes' bytes.
-HotMask own_bytes(const Recipe &recipe);
+// changes' bytes, and what the Functions window did without keeping it (entries switched
+// off, changes applied).
+HotMask own_bytes(const Recipe &recipe, const std::vector<uint32_t> &window_off = {},
+                  const std::vector<Change> &window_changes = {});
 
 // What going up cleans: guarded bytes that differ from the clean ROM and aren't your own,
 // as (offset, clean value).

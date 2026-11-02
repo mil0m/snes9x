@@ -85,6 +85,7 @@ class RuleEditor : public QDialog
     QCheckBox *swap_likely;
     QCheckBox *swap_mutual;
     QCheckBox *kill_any;
+    QDoubleSpinBox *kill_back;
     QLineEdit *shift_fill;
     QComboBox *flip_axis;
     QComboBox *levels_curve;
@@ -114,6 +115,7 @@ class RuleEditor : public QDialog
     QLabel *no_aim_hint;
     int shown_page = -1, shown_when_page = -1;
     QComboBox *role_combo;
+    QCheckBox *in_functions;
     QComboBox *class_mode;
     std::vector<std::pair<corrupt::OpClass, QCheckBox *>> class_checks;
 

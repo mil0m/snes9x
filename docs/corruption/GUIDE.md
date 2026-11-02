@@ -327,9 +327,36 @@ The list grows as you play: the busiest functions show up in the first second of
 rarer ones (a boss, a menu) when you get there. What everyone has learned is saved in the
 library (*calls.<you>.json*), like the code map, so it carries over.
 
+**On a timer.** Tick **Timer** before **Keep in Recipe**: *off for 2 s every 10 s* turns it
+off and on by itself, counted from the start of the run. Short times make it flicker.
+
 For chaos instead of picking: the rule type **Turn functions off (ROM)** turns random busy
-functions off when it fires. Starter: **Function roulette** (each press of hotkey 1 turns
-one more off).
+functions off when it fires; **Back on after** puts each one back after a while, so with a
+trigger every 10 s and 5 s here a different function is missing half the time. Starters:
+**Function roulette** (each press of hotkey 1 turns one more off) and **Function flicker**
+(one off every 10 s, back 5 s later).
+
+## Changing how a function works
+
+Turning gravity off is one thing; changing it is more fun. Select a function and **Change
+It…**: its code, line by line, and what each line can become without breaking the shape of
+the code:
+
+- **a number**: `LDA #$04` becomes `LDA #$01` (gravity 4 → 1), or `ADC` becomes `SBC`;
+- **a decision**: a branch becomes its opposite (*if on the ground* becomes *if in the air*),
+  or *always*, or *never*;
+- **a sum**: `ADC` ⇄ `SBC`, `INC` ⇄ `DEC`, `ASL` ⇄ `LSR`…: the speed goes the other way;
+- **a call**: skipped, or sent to another function of the game: the enemy runs the player's
+  movement.
+
+**Apply** changes it at the next frame (corruption on); **Put Back** undoes it. **Keep in
+Recipe** keeps it, on a hotkey that toggles it if you like, starting on or not, and with a
+timer (*on for 1 s every 4 s*). Nothing else corrupts a function while you change it (its
+code is guarded), and if a change breaks the game the crash guard puts it back.
+
+For chaos: the code rules (*Swap opcodes*, *Flip branches*, *NOP out*) and the aimed byte
+rules can tick **Only inside the busiest functions**, so their changes land in the code the
+game is running all the time.
 
 ## Editing memory like a picture
 

@@ -332,6 +332,7 @@ void CorruptionSession::gameLoaded()
     recipe_path.clear();
     saved_json.clear();
     window_off.clear();
+    window_changes.clear();
     guard_dirty = true;
     guard.reset();
     instant.drop();
@@ -357,6 +358,13 @@ void CorruptionSession::gameLoaded()
     // Pointer swaps pick from the jump tables found so far (everyone's), as a run starts.
     engine.set_jump_tables([this] { return jump_tables; });
     engine.set_functions([this] { return call_log.functions(); }); // what kill ops pick from (#34)
+    // What rules aimed inside busy functions pick from (#60): the busiest functions' bodies.
+    engine.set_busy_code([this] {
+        std::vector<InPlay> busy;
+        for (auto &f : busiest(call_log.functions(), Engine::kBusiestFunctions))
+            busy.push_back({ f.entry, false });
+        return guard_mask(busy, bodies, nullptr);
+    });
 
     backupNow("load"); // before the first frame runs
     message = "Loaded " + game_folder_name(game.title, game.sha256);
@@ -556,6 +564,7 @@ std::vector<std::string> CorruptionSession::loadRecipe(const Recipe &recipe, con
     last_crash.clear();
     configureGuard();
     window_off.clear();
+    window_changes.clear();
     guard_dirty = true;
     note("Recipe: " + recipe.name);
 
@@ -790,6 +799,7 @@ void CorruptionSession::newRecipeLocked(const std::string &name)
     recipe_path.clear();
     saved_json.clear();
     window_off.clear();
+    window_changes.clear();
     guard_dirty = true;
     guard.reset();
     instant.drop();
@@ -1254,6 +1264,9 @@ std::vector<FunctionRow> CorruptionSession::functions()
         for (auto &p : engine.recipe().protects)
             if (p.entry == f.entry)
                 r.protect = p;
+        for (auto &c : engine.recipe().changes)
+            if (c.function == f.entry)
+                r.changes.push_back(c);
         r.label = names.label(f.entry);
         if (auto n = names.mine.find(f.entry); n != names.mine.end())
             r.my_name = n->second;
@@ -1297,7 +1310,8 @@ std::string CorruptionSession::flipFunction(uint32_t entry)
     return "no such function";
 }
 
-std::string CorruptionSession::keepSwitch(uint32_t entry, int hotkey, bool start_off, const std::string &note_text)
+std::string CorruptionSession::keepSwitch(uint32_t entry, int hotkey, bool start_off, const std::string &note_text,
+                                          uint32_t every, uint32_t for_frames)
 {
     std::lock_guard lock(mutex);
     if (!game_loaded)
@@ -1319,6 +1333,11 @@ std::string CorruptionSession::keepSwitch(uint32_t entry, int hotkey, bool start
             s.hotkey = std::clamp(hotkey, 0, 9);
             s.start_off = start_off;
             s.note = note_text;
+            if (every > 1 && for_frames && for_frames < every)
+            {
+                s.every = every;
+                s.for_frames = for_frames;
+            }
             engine.add_switch(s);
             guard_dirty = true;
             return {};
@@ -1330,6 +1349,74 @@ void CorruptionSession::forgetSwitch(uint32_t entry)
 {
     std::lock_guard lock(mutex);
     engine.remove_switch(entry);
+    guard_dirty = true;
+}
+
+std::vector<ChangeOption> CorruptionSession::changeOptions(uint32_t entry)
+{
+    std::lock_guard lock(mutex);
+    auto it = bodies.find(entry);
+    if (!game_loaded || it == bodies.end())
+        return {};
+    auto flags = code_map.combined().flags();
+    return change_options(it->second, rom.clean(), flags, rom_where);
+}
+
+std::vector<uint8_t> CorruptionSession::romBytes(uint32_t at, size_t n, bool clean)
+{
+    std::lock_guard lock(mutex);
+    std::vector<uint8_t> out;
+    if (!game_loaded)
+        return out;
+    for (size_t i = 0; i < n && at + i < rom.clean().size(); i++)
+        out.push_back(clean ? rom.clean()[at + i] : memory.read(Target::ROM, uint32_t(at + i)));
+    return out;
+}
+
+std::optional<std::vector<uint8_t>> CorruptionSession::redirectBytes(const ChangeOption &o, uint32_t entry)
+{
+    std::lock_guard lock(mutex);
+    return redirect_bytes(o, entry, rom_where);
+}
+
+std::string CorruptionSession::applyChange(const Change &c, bool on)
+{
+    std::lock_guard lock(mutex);
+    if (!game_loaded || !engine.active())
+        return "corruption is off";
+    if (c.value.empty() || c.value.size() != c.was.size() || c.at + c.value.size() > rom.clean().size())
+        return "that change doesn't fit the ROM";
+    for (size_t i = 0; i < c.was.size(); i++)
+        if (rom.clean()[c.at + i] != c.was[i] || rom.locked_mask().is_hot(Target::ROM, uint32_t(c.at + i)))
+            return "those bytes can't be changed";
+    engine.flip_bytes({ c.at, c.value, c.was, on ? Engine::Flip::How::On : Engine::Flip::How::Off });
+    std::erase_if(window_changes, [&](const Change &w) { return w.at == c.at; });
+    if (on)
+        window_changes.push_back(c); // in play while it's on (#58)
+    guard_dirty = true;
+    return {};
+}
+
+std::string CorruptionSession::keepChange(const Change &c)
+{
+    std::lock_guard lock(mutex);
+    if (!game_loaded)
+        return "No game loaded";
+    if (c.value.empty() || c.value.size() != c.was.size() || c.at + c.value.size() > rom.clean().size())
+        return "that change doesn't fit the ROM";
+    if (!has_recipe)
+        newRecipeLocked("Changes");
+    Change kept = c;
+    kept.hotkey = std::clamp(kept.hotkey, 0, 9);
+    engine.add_change(kept);
+    guard_dirty = true;
+    return {};
+}
+
+void CorruptionSession::forgetChange(uint32_t at)
+{
+    std::lock_guard lock(mutex);
+    engine.remove_change(at);
     guard_dirty = true;
 }
 
@@ -1402,12 +1489,18 @@ void CorruptionSession::rebuildGuard()
     std::erase_if(window_off, [&](uint32_t e) {
         return e >= size || e >= rom.clean().size() || memory.read(Target::ROM, e) == rom.clean()[e];
     });
-    in_play = functions_in_play(engine.recipe(), window_off);
+    std::erase_if(window_changes, [&](const Change &c) { return !change_on(c, memory); });
+    auto playing = window_off;
+    for (auto &c : window_changes)
+        playing.push_back(c.function);
+    in_play = functions_in_play(engine.recipe(), playing);
     auto calls = call_log.combined();
     HotMask mask = guard_mask(in_play, bodies, &calls);
+    // Your own bytes stay as you made them: the recipe's, and what the window did.
+    HotMask own = own_bytes(engine.recipe(), window_off, window_changes);
     if (const uint8_t *now = memory.data(Target::ROM))
     {
-        auto fix = guard_cleanup(mask, own_bytes(engine.recipe()), rom.clean(), { now, size });
+        auto fix = guard_cleanup(mask, own, rom.clean(), { now, size });
         if (!fix.empty())
         {
             rom.settle(fix);

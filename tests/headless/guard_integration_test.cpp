@@ -20,6 +20,7 @@
 #include "corrupt/run_control.h"
 #include "corrupt/memory_watch.h"
 #include "corrupt/function_guard.h"
+#include "corrupt/function_change.h"
 
 #include "snes9x.h"
 #include "memmap.h"
@@ -1420,6 +1421,25 @@ TEST_SUITE("kill switches")
         CHECK(s.runs(1) != long_runs);
     }
 
+    TEST_CASE("a switch on a timer (#61): off 3 frames of every 10, the counter misses exactly those")
+    {
+        Switching s;
+        REQUIRE(s.h.engine.current_frame() == 30);
+        Switch sw;
+        sw.entry = cl::kNear;
+        sw.ret = kRts;
+        sw.was = 0xE6;
+        sw.every = 10;
+        sw.for_frames = 3;
+        s.h.engine.add_switch(sw);
+        uint8_t near = s.runs(0), others = s.runs(1);
+        s.h.run(30); // frames 31-60: off in 31-33, 41-43 and 51-53
+        CHECK(s.runs(0) == uint8_t(near + 21));
+        CHECK(s.runs(1) == uint8_t(others + 30));
+        CHECK(s.rom(cl::kNear) == 0xE6);
+        CHECK(alive(s.h));
+    }
+
     TEST_CASE("a rollback to before the flip turns it back on")
     {
         Switching s;
@@ -1522,5 +1542,139 @@ TEST_SUITE("function bodies and guards")
         CHECK(l.h.wram(bd::kCounter) == uint8_t(counter + 30));
         CHECK(l.h.wram(bd::kHelperRuns) == uint8_t(helper + 30));
         CHECK(alive(l.h));
+    }
+}
+
+TEST_SUITE("function changes")
+{
+    namespace bd = testrom::bodies;
+
+    // The bodies ROM learned for 30 frames, and its step function's change options.
+    struct Changing
+    {
+        Harness h{ testrom::build_bodies(), Recipe{}, PolicyKind::Skip };
+        CodeMap map{ 0 };
+        CallKeeper calls;
+        RomTracer tracer;
+        RomAddresses where;
+        std::vector<ChangeOption> options;
+
+        Changing()
+        {
+            map = CodeMap(Memory.CalculatedSize);
+            REQUIRE(tracer.start(map, nullptr, &calls.mine()));
+            for (int i = 0; i < 30; i++)
+            {
+                h.run(1);
+                calls.end_frame();
+            }
+            where = SnesCoreAccess::rom_addresses();
+            auto body = function_body(h.rom.clean(), map.flags(), bd::kStep, where);
+            options = change_options(body, h.rom.clean(), map.flags(), where);
+        }
+        const ChangeOption &at(uint32_t offset)
+        {
+            for (auto &o : options)
+                if (o.at == offset)
+                    return o;
+            FAIL("no option at " << offset);
+            return options.front();
+        }
+        void apply(const ChangeOption &o, ChangeKind kind, std::vector<uint8_t> value)
+        {
+            auto c = make_change(bd::kStep, o, kind, std::move(value), h.rom.clean());
+            h.engine.flip_bytes({ c.at, c.value, c.was, Engine::Flip::How::On });
+            h.run(1); // the flip lands at the start of this frame
+        }
+        uint8_t ram(uint32_t a) { return h.wram(a); }
+    };
+
+    TEST_CASE("the step function's options: two numbers, CLC and INC to swap, its branch and its call")
+    {
+        Changing c;
+        REQUIRE(c.options.size() == 6);
+        CHECK(c.at(0x62).kind == ChangeKind::Math); // CLC -> SEC
+        CHECK(c.at(0x67).kind == ChangeKind::Number); // AND #$01
+        CHECK(c.at(0x6B).kind == ChangeKind::Math); // INC $22 -> DEC
+        CHECK(c.at(bd::kAdc).kind == ChangeKind::Number);
+        CHECK(c.at(bd::kAdc).value == 1);
+        CHECK(c.at(bd::kAdc).other == 0xE9);
+        CHECK(c.at(bd::kBeq).kind == ChangeKind::Branch);
+        CHECK(c.at(bd::kCall).kind == ChangeKind::Skip);
+        CHECK(c.at(bd::kCall).target == bd::kHelper);
+    }
+
+    TEST_CASE("its number changed, the counter goes up by 3 a frame; as SBC it goes down")
+    {
+        Changing c;
+        auto &adc = c.at(bd::kAdc);
+        c.apply(adc, ChangeKind::Number, number_bytes(adc, 3));
+        uint8_t before = c.ram(bd::kCounter);
+        c.h.run(10);
+        CHECK(c.ram(bd::kCounter) == uint8_t(before + 30));
+        auto sbc = number_bytes(adc, 1);
+        sbc[0] = adc.other;
+        c.h.engine.flip_bytes({ adc.at, sbc, { 0x69, 0x01 }, Engine::Flip::How::On });
+        c.h.run(1);
+        before = c.ram(bd::kCounter);
+        c.h.run(10);
+        // SBC with the carry clear takes one more: 2 a frame.
+        CHECK(c.ram(bd::kCounter) == uint8_t(before - 20));
+        CHECK(alive(c.h));
+        CHECK(c.h.engine.event_log().empty()); // not a rule's write
+    }
+
+    TEST_CASE("its call skipped, the helper stops; sent to the other function, that one runs twice a frame")
+    {
+        Changing c;
+        auto &call = c.at(bd::kCall);
+        c.apply(call, ChangeKind::Skip, skip_bytes(call));
+        uint8_t helper = c.ram(bd::kHelperRuns), counter = c.ram(bd::kCounter);
+        c.h.run(10);
+        CHECK(c.ram(bd::kHelperRuns) == helper);
+        CHECK(c.ram(bd::kCounter) == uint8_t(counter + 10));
+
+        auto to = redirect_bytes(call, bd::kOther, c.where);
+        REQUIRE(to);
+        c.h.engine.flip_bytes({ call.at, *to, { 0x20, 0xA0, 0x80 }, Engine::Flip::How::On });
+        c.h.run(1);
+        uint8_t other = c.ram(bd::kOtherRuns);
+        helper = c.ram(bd::kHelperRuns);
+        c.h.run(10);
+        CHECK(c.ram(bd::kOtherRuns) == uint8_t(other + 20)); // from main and from step
+        CHECK(c.ram(bd::kHelperRuns) == helper);
+        CHECK(alive(c.h));
+    }
+
+    TEST_CASE("its branch made always, the every-other-frame count stops; never, it counts every frame")
+    {
+        Changing c;
+        auto &beq = c.at(bd::kBeq);
+        c.apply(beq, ChangeKind::Branch, branch_bytes(beq, BranchTo::Always));
+        uint8_t n = c.ram(bd::kBranchRuns);
+        c.h.run(10);
+        CHECK(c.ram(bd::kBranchRuns) == n);
+        c.h.engine.flip_bytes({ beq.at, branch_bytes(beq, BranchTo::Never), { 0xF0, 0x02 }, Engine::Flip::How::On });
+        c.h.run(1);
+        n = c.ram(bd::kBranchRuns);
+        c.h.run(10);
+        CHECK(c.ram(bd::kBranchRuns) == uint8_t(n + 10));
+        CHECK(alive(c.h));
+    }
+
+    TEST_CASE("a kept change on a hotkey toggles; a rollback to before it puts the game's code back")
+    {
+        Changing c;
+        auto &adc = c.at(bd::kAdc);
+        auto change = make_change(bd::kStep, adc, ChangeKind::Number, number_bytes(adc, 5), c.h.rom.clean());
+        change.hotkey = 6;
+        c.h.engine.add_change(change);
+        uint64_t before = c.h.engine.current_frame();
+        c.h.engine.press_hotkey(6);
+        c.h.run(2);
+        CHECK(change_on(change, c.h.memory));
+        c.h.rom.revert_after(before);
+        CHECK_FALSE(change_on(change, c.h.memory));
+        CHECK(c.h.memory.read(Target::ROM, adc.at + 1) == 0x01);
     }
 }

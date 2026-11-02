@@ -76,7 +76,15 @@ std::string describe_op(const Rule &rule)
     case OpType::PointerSwap:
         text = std::string("swap pointers") + (op.mutual ? " both ways" : "") + (op.likely ? " (unused entries too)" : "");
         break;
-    case OpType::Kill: text = op.any ? "turn functions off (any)" : "turn busy functions off"; break;
+    case OpType::Kill:
+        text = op.any ? "turn functions off (any)" : "turn busy functions off";
+        if (op.put_back)
+        {
+            char back[48];
+            std::snprintf(back, sizeof back, ", back on after %g s", op.put_back / 60.0);
+            text += back;
+        }
+        break;
     }
     return text + " x" + std::to_string(rule.count);
 }
@@ -139,6 +147,8 @@ std::string describe_aim(const Aim &aim)
         text = role.empty() ? "only " + names(aim.classes) : role + " of " + names(aim.classes);
     if (!aim.except.empty())
         text = (text.empty() ? std::string("code") : text) + " except " + names(aim.except);
+    if (aim.in_busy_functions)
+        text = (text.empty() ? std::string("bytes") : text) + " inside busy functions";
     return text;
 }
 

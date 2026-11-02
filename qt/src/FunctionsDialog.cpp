@@ -1,8 +1,10 @@
 #include "FunctionsDialog.hpp"
+#include "FunctionEditor.hpp"
 #include "UiKit.hpp"
 
 #include <QCheckBox>
 #include <QComboBox>
+#include <QDoubleSpinBox>
 #include <QFontDatabase>
 #include <QFormLayout>
 #include <QHBoxLayout>
@@ -14,6 +16,8 @@
 #include <QTableWidget>
 #include <QTimer>
 #include <QVBoxLayout>
+
+#include <cmath>
 
 using namespace corrupt;
 
@@ -69,7 +73,11 @@ QString about(const FunctionRow &r)
         parts << (r.kept->hotkey ? QObject::tr("key %1").arg(r.kept->hotkey) : QObject::tr("switch in the recipe"));
         if (r.kept->start_off)
             parts << QObject::tr("starts off");
+        if (r.kept->every)
+            parts << QObject::tr("off %1 s every %2 s").arg(r.kept->for_frames / 60.0).arg(r.kept->every / 60.0);
     }
+    if (!r.changes.empty())
+        parts << (r.changes.size() == 1 ? QObject::tr("1 change") : QObject::tr("%1 changes").arg(r.changes.size()));
     if (r.protect)
         parts << (r.protect->deep ? QObject::tr("protected with what it calls") : QObject::tr("protected"));
     else if (r.guarded)
@@ -216,11 +224,45 @@ FunctionsDialog::FunctionsDialog(FunctionSource &source, QWidget *parent) : QDia
     switch_layout->addWidget(forget_button);
     form->addRow(tr("Switch"), switch_row);
 
+    // A timer (#61): off for a while, again and again.
+    auto timer_row = new QWidget(details);
+    auto timer_layout = new QHBoxLayout(timer_row);
+    timer_layout->setContentsMargins(0, 0, 0, 0);
+    timer_check = new QCheckBox(tr("Off for"), timer_row);
+    timer_check->setObjectName("timer");
+    timer_check->setToolTip(tr("Kept with the switch: it turns off and on by itself, counted from the start of the "
+                               "run. Short times make it flicker."));
+    auto seconds = [&](const char *name, double value, const QString &what) {
+        auto s = new QDoubleSpinBox(timer_row);
+        s->setObjectName(name);
+        s->setRange(0.1, 600);
+        s->setDecimals(1);
+        s->setSingleStep(0.5);
+        s->setSuffix(tr(" s"));
+        s->setValue(value);
+        s->setAccessibleName(what);
+        return s;
+    };
+    timer_for = seconds("timer_for", 2, tr("Off for how long"));
+    timer_every = seconds("timer_every", 10, tr("Every how long"));
+    timer_layout->addWidget(timer_check);
+    timer_layout->addWidget(timer_for);
+    timer_layout->addWidget(new QLabel(tr("every"), timer_row));
+    timer_layout->addWidget(timer_every);
+    timer_layout->addStretch(1);
+    form->addRow(tr("Timer"), timer_row);
+
     auto actions = new QHBoxLayout;
     show_button = new QPushButton(ui::icon("eye"), tr("Show in ROM"), details);
     show_button->setObjectName("show");
     show_button->setAutoDefault(false);
     show_button->setToolTip(tr("Open the memory viewer on the ROM with its code selected and the Functions colours"));
+    change_button = new QPushButton(ui::icon("adjustments-horizontal"), tr("Change It…"), details);
+    change_button->setObjectName("change");
+    change_button->setAutoDefault(false);
+    change_button->setToolTip(tr("Change how it works instead of turning it off: its numbers, its decisions, its "
+                                 "sums, the functions it calls"));
+    actions->addWidget(change_button);
     actions->addWidget(show_button);
     actions->addStretch(1);
     details_layout->addLayout(actions);
@@ -261,6 +303,7 @@ FunctionsDialog::FunctionsDialog(FunctionSource &source, QWidget *parent) : QDia
     connect(protect, &QCheckBox::toggled, this, &FunctionsDialog::protectChanged);
     connect(deep, &QCheckBox::toggled, this, &FunctionsDialog::protectChanged);
     connect(show_button, &QPushButton::clicked, this, &FunctionsDialog::showSelected);
+    connect(change_button, &QPushButton::clicked, this, &FunctionsDialog::changeSelected);
     message->hide();
     refresh();
 }
@@ -422,7 +465,14 @@ void FunctionsDialog::selectionChanged()
     forget_button->setEnabled(r.kept.has_value());
     hotkey->setCurrentIndex(r.kept ? r.kept->hotkey : 0);
     start_off->setChecked(r.kept && r.kept->start_off);
+    timer_check->setChecked(r.kept && r.kept->every);
+    if (r.kept && r.kept->every)
+    {
+        timer_for->setValue(r.kept->for_frames / 60.0);
+        timer_every->setValue(r.kept->every / 60.0);
+    }
     show_button->setEnabled(!r.runs.empty());
+    change_button->setEnabled(r.body_bytes > 0);
     selecting = false;
 }
 
@@ -494,7 +544,18 @@ void FunctionsDialog::keepSelected()
     std::string note = name->text().trimmed().toStdString();
     if (note.empty())
         note = r.label;
-    auto err = source.keep(r.f.entry, hotkey->currentIndex(), start_off->isChecked(), note);
+    uint32_t every = 0, for_frames = 0;
+    if (timer_check->isChecked())
+    {
+        every = uint32_t(std::lround(timer_every->value() * 60));
+        for_frames = uint32_t(std::lround(timer_for->value() * 60));
+        if (for_frames >= every)
+        {
+            say(tr("The timer's off time has to be shorter than its cycle."), int(ui::Tone::Warning));
+            return;
+        }
+    }
+    auto err = source.keep(r.f.entry, hotkey->currentIndex(), start_off->isChecked(), note, every, for_frames);
     if (!err.empty())
         say(tr("Couldn't keep it: %1").arg(QString::fromStdString(err)), int(ui::Tone::Error));
     else
@@ -515,6 +576,16 @@ void FunctionsDialog::forgetSelected()
     say(tr("Removed from the recipe. The function stays as it is now."));
     update();
     selectionChanged();
+}
+
+void FunctionsDialog::changeSelected()
+{
+    int row = selectedRow();
+    if (row < 0)
+        return;
+    auto editor = new FunctionEditor(source, shown[size_t(row)], this);
+    editor->setAttribute(Qt::WA_DeleteOnClose);
+    editor->show();
 }
 
 void FunctionsDialog::showSelected()

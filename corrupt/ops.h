@@ -121,6 +121,8 @@ struct Op
     bool mutual = false; // both ways: the donor's entry gets this entry's target
     // Kill: pick from any function learned, not only the 64 that ran in the most frames.
     bool any = false;
+    // Kill: put each function back on after this many frames (#61); 0: it stays off.
+    uint32_t put_back = 0;
 };
 
 // Per-rule state that has to survive between firings.

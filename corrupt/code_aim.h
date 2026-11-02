@@ -31,8 +31,11 @@ struct Aim
     Role role = Role::Any;
     std::vector<OpClass> classes; // only bytes of instructions of these classes (implies code)
     std::vector<OpClass> except;  // never these
+    // Only bytes in the bodies of the game's busiest functions (#60): changes that land in
+    // code the game is running all the time, inside functions.
+    bool in_busy_functions = false;
 
-    bool active() const { return role != Role::Any || !classes.empty() || !except.empty(); }
+    bool active() const { return role != Role::Any || !classes.empty() || !except.empty() || in_busy_functions; }
 };
 
 // The opcodes `op` may be swapped with, itself included, in opcode order: the same

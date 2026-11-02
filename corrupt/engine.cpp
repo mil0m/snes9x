@@ -127,6 +127,8 @@ void Engine::restart()
     run_jumps.clear();
     kills.clear();
     run_functions.clear();
+    run_busy = {};
+    run_busy_taken = false;
     flips.clear();
     frame = 0;
     pending_hotkeys = 0;
@@ -238,8 +240,59 @@ void Engine::add_pins(const std::vector<Pin> &pins)
 
 void Engine::flip_function(uint32_t entry, uint8_t ret, uint8_t clean)
 {
-    if (is_active)
-        flips.push_back({ entry, ret, clean });
+    flip_bytes({ entry, { ret }, { clean } });
+}
+
+void Engine::flip_bytes(Flip f)
+{
+    if (is_active && !f.on.empty() && f.on.size() == f.off.size())
+        flips.push_back(std::move(f));
+}
+
+void Engine::add_change(const Change &c)
+{
+    auto it = std::find_if(current.changes.begin(), current.changes.end(), [&](const Change &o) { return o.at == c.at; });
+    if (it != current.changes.end())
+        *it = c;
+    else
+        current.changes.push_back(c);
+    std::sort(current.changes.begin(), current.changes.end(), [](const Change &a, const Change &b) { return a.at < b.at; });
+}
+
+void Engine::remove_change(uint32_t at)
+{
+    std::erase_if(current.changes, [&](const Change &c) { return c.at == at; });
+}
+
+Engine::PinsApplied Engine::apply_changes(MemoryAccess &mem)
+{
+    PinsApplied out;
+    size_t size = mem.size(Target::ROM);
+    for (auto &c : current.changes)
+    {
+        if (!c.start_on || c.value.empty() || c.value.size() != c.was.size() || c.at + c.value.size() > size)
+            continue;
+        bool locked_byte = false, is_value = true, is_was = true;
+        for (size_t i = 0; i < c.value.size(); i++)
+        {
+            uint32_t o = uint32_t(c.at + i);
+            locked_byte |= locked.is_hot(Target::ROM, o);
+            uint8_t now = mem.read(Target::ROM, o);
+            is_value &= now == c.value[i];
+            is_was &= now == c.was[i];
+        }
+        if (locked_byte || is_value)
+            continue;
+        if (!is_was)
+        {
+            out.mismatched++;
+            continue;
+        }
+        for (size_t i = 0; i < c.value.size(); i++)
+            mem.write_at_start(Target::ROM, uint32_t(c.at + i), c.value[i]);
+        out.written++;
+    }
+    return out;
 }
 
 void Engine::add_switch(const Switch &s)
@@ -389,7 +442,24 @@ void Engine::on_frame(MemoryAccess &real)
     flipping.swap(flips);
     for (auto &s : current.switches)
         if (s.hotkey >= 1 && s.hotkey <= 9 && (hotkeys & hotkey_bit(s.hotkey)))
-            flipping.push_back({ s.entry, s.ret, s.was });
+            flipping.push_back({ s.entry, { s.ret }, { s.was } });
+    for (auto &c : current.changes)
+        if (c.hotkey >= 1 && c.hotkey <= 9 && (hotkeys & hotkey_bit(c.hotkey)))
+            flipping.push_back({ c.at, c.value, c.was });
+    // Timers (#61), from the run's start: at the start of each cycle, then after `for_frames`.
+    auto timed = [&](uint32_t at, std::vector<uint8_t> on, std::vector<uint8_t> off, uint32_t every, uint32_t for_frames) {
+        if (!every || !for_frames || for_frames >= every)
+            return;
+        uint64_t phase = (frame - 1) % every;
+        if (phase == 0)
+            flipping.push_back({ at, std::move(on), std::move(off), Flip::How::On, true });
+        else if (phase == for_frames)
+            flipping.push_back({ at, std::move(on), std::move(off), Flip::How::Off, true });
+    };
+    for (auto &s : current.switches)
+        timed(s.entry, { s.ret }, { s.was }, s.every, s.for_frames);
+    for (auto &c : current.changes)
+        timed(c.at, c.value, c.was, c.every, c.for_frames);
 
     bool quiet = quiet_from && frame > *quiet_from;
     bool vetoes_now = quiet || std::any_of(vetoed.begin(), vetoed.end(), [&](const Veto &v) { return v.frame == frame; });
@@ -401,28 +471,55 @@ void Engine::on_frame(MemoryAccess &real)
     FilteredMemory filtered(real, is_vetoed);
     MemoryAccess &mem = vetoes_now ? static_cast<MemoryAccess &>(filtered) : real;
 
-    // Kill switches first: the frame runs with them as asked.
+    // Kill switches and changes first: the frame runs with them as asked.
     for (auto &f : flipping)
     {
-        if (f.entry >= mem.size(Target::ROM) || locked.is_hot(Target::ROM, f.entry) || f.ret == f.clean)
+        size_t n = f.on.size();
+        if (!n || n != f.off.size() || f.on == f.off || f.at + n > mem.size(Target::ROM))
             continue;
-        uint8_t now = mem.read(Target::ROM, f.entry);
-        if (now == f.ret)
-            mem.write(Target::ROM, f.entry, f.clean);
-        else if (now == f.clean)
-            mem.write(Target::ROM, f.entry, f.ret);
+        bool locked_byte = false, is_on = true, is_off = true;
+        for (size_t i = 0; i < n; i++)
+        {
+            locked_byte |= locked.is_hot(Target::ROM, uint32_t(f.at + i));
+            uint8_t now = mem.read(Target::ROM, uint32_t(f.at + i));
+            is_on &= now == f.on[i];
+            is_off &= now == f.off[i];
+        }
+        if (locked_byte || (f.ours_only && !is_on && !is_off))
+            continue;
+        const std::vector<uint8_t> *to = nullptr;
+        switch (f.how)
+        {
+        case Flip::How::Toggle: to = is_on ? &f.off : is_off ? &f.on : nullptr; break;
+        case Flip::How::On: to = &f.on; break;
+        case Flip::How::Off: to = &f.off; break;
+        }
+        if (to)
+            for (size_t i = 0; i < n; i++)
+                mem.write(Target::ROM, uint32_t(f.at + i), (*to)[i]);
     }
 
     for (uint32_t i = 0; i < current.rules.size(); i++)
     {
+        auto &rule = current.rules[i];
+        // A kill's functions put back on when their time is up (#61): not a rule's write.
+        auto &backs = runtimes[i].put_backs;
+        for (auto &b : backs)
+            if (b.frame <= frame && b.write.offset < mem.size(b.write.target) &&
+                mem.read(b.write.target, b.write.offset) == b.write.new_value)
+                mem.write(b.write.target, b.write.offset, b.write.old_value);
+        std::erase_if(backs, [&](const RuleRuntime::PutBack &b) { return b.frame <= frame; });
         if (frame <= mutes[i])
             continue;
-        auto &rule = current.rules[i];
         auto events = tick_rule(rule, runtimes[i], mem, Rng::rule_seed(current.seed, rule.salt), i, frame, hotkeys,
                                 current.intensity, &hot_and_locked, &rules_locked, aim_for(i, mem));
         for (auto &e : events)
             if (!vetoes_now || !is_vetoed(e.target, e.offset))
+            {
                 log.push_back({ frame, i, e });
+                if (is_function_op(rule.op.type) && rule.op.put_back)
+                    backs.push_back({ frame + rule.op.put_back, e });
+            }
     }
 
     while (log.size() > kEventLogLimit)
@@ -452,6 +549,16 @@ const AimedBytes *Engine::aim_for(uint32_t index, MemoryAccess &mem)
                     in_range.push_back(f);
             found = kills.emplace(ids[index], busiest(std::move(in_range), rule.op.any ? 0 : kBusiestFunctions)).first;
         }
+        else if (!rule.op.any && found->second.size() < kBusiestFunctions && learned_functions && frame % 300 == 0)
+        {
+            // Still learning (a game's first play): take the list again every 5 s until it's full (#61).
+            run_functions = learned_functions();
+            std::vector<Function> in_range;
+            for (auto &f : run_functions)
+                if (f.entry >= rule.range.first && f.entry <= rule.range.last)
+                    in_range.push_back(f);
+            found->second = busiest(std::move(in_range), kBusiestFunctions);
+        }
         aimed_now = { nullptr, {}, nullptr, &found->second };
         return &aimed_now;
     }
@@ -480,18 +587,28 @@ const AimedBytes *Engine::aim_for(uint32_t index, MemoryAccess &mem)
         aimed_now = { nullptr, flags }; // nothing known yet: try again next time
         return &aimed_now;
     }
+    if (rule.aim.in_busy_functions && !run_busy_taken && busy_code)
+    {
+        run_busy = busy_code();
+        run_busy_taken = !run_busy.empty(); // nothing learned yet: ask again next time
+    }
+    if (rule.aim.in_busy_functions && run_busy.empty() && !aimed.count(ids[index]))
+    {
+        aimed_now = { nullptr, flags };
+        return &aimed_now;
+    }
     auto [it, fresh] = aimed.try_emplace(ids[index]);
     if (fresh)
     {
         size_t size = mem.size(Target::ROM);
         if (const uint8_t *raw = mem.data(Target::ROM))
-            it->second = aim_rule(rule, { raw, size }, flags);
+            it->second = aim_rule(rule, { raw, size }, flags, &run_busy);
         else
         {
             std::vector<uint8_t> rom(size);
             for (size_t i = 0; i < size; i++)
                 rom[i] = mem.read(Target::ROM, uint32_t(i));
-            it->second = aim_rule(rule, rom, flags);
+            it->second = aim_rule(rule, rom, flags, &run_busy);
         }
     }
     aimed_now = { &it->second, flags };

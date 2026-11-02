@@ -100,13 +100,24 @@ struct SessionFunctions : FunctionSource
     std::vector<FunctionRow> functions() override { return s.functions(); }
     bool running() override { return s.corruptionOn(); }
     std::string flip(uint32_t entry) override { return s.flipFunction(entry); }
-    std::string keep(uint32_t entry, int hotkey, bool start_off, const std::string &note) override
+    std::string keep(uint32_t entry, int hotkey, bool start_off, const std::string &note, uint32_t every,
+                     uint32_t for_frames) override
     {
-        return s.keepSwitch(entry, hotkey, start_off, note);
+        return s.keepSwitch(entry, hotkey, start_off, note, every, for_frames);
     }
     void forget(uint32_t entry) override { s.forgetSwitch(entry); }
     std::string protect(uint32_t entry, bool on, bool deep) override { return s.protectFunction(entry, on, deep); }
     std::string setName(uint32_t entry, const std::string &name) override { return s.setFunctionName(entry, name); }
+    std::vector<ChangeOption> changeOptions(uint32_t entry) override { return s.changeOptions(entry); }
+    std::vector<uint8_t> romNow(uint32_t at, size_t n) override { return s.romBytes(at, n, false); }
+    std::vector<uint8_t> romClean(uint32_t at, size_t n) override { return s.romBytes(at, n, true); }
+    std::optional<std::vector<uint8_t>> redirectBytes(const ChangeOption &o, uint32_t entry) override
+    {
+        return s.redirectBytes(o, entry);
+    }
+    std::string applyChange(const Change &c, bool on) override { return s.applyChange(c, on); }
+    std::string keepChange(const Change &c) override { return s.keepChange(c); }
+    void forgetChange(uint32_t at) override { s.forgetChange(at); }
 };
 
 QPushButton *button(const QString &text, QWidget *parent, const char *icon = nullptr)
@@ -881,9 +892,26 @@ void CorruptionDock::tour(const QString &dir)
         if (functions_dialog)
         {
             shot(functions_dialog, "09c-functions-selected");
-            if (auto show = functions_dialog->findChild<QPushButton *>("show"); show && show->isEnabled())
-                show->click();
+            if (auto change = functions_dialog->findChild<QPushButton *>("change"); change && change->isEnabled())
+                change->click();
         }
+    });
+    steps->push_back([=, this] {
+        if (!functions_dialog)
+            return;
+        if (auto editor = functions_dialog->findChild<QDialog *>("function_editor"))
+        {
+            if (auto lines = editor->findChild<QTableWidget *>("lines"); lines && lines->rowCount())
+                lines->selectRow(0);
+            QApplication::processEvents();
+            shot(editor, "09e-function-editor");
+            if (QFile audit(dir + "/audit-editor.txt"); audit.open(QIODevice::WriteOnly | QIODevice::Text))
+                for (auto &issue : ui::audit(editor))
+                    audit.write(QString("change it: %1\n").arg(issue).toUtf8());
+            editor->close();
+        }
+        if (auto show = functions_dialog->findChild<QPushButton *>("show"); show && show->isEnabled())
+            show->click();
     });
     steps->push_back([=, this] {
         if (memory_viewer && memory_viewer->isVisible())

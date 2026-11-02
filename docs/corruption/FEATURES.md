@@ -207,7 +207,7 @@ Plan: `rom-corruption-plan` (six phases, each with "Phase N in detail"). QA 20-2
 - Docs: `ui-pass-plan`; project skill `.claude/skills/qt-widgets-ui`.
 - Gotchas: offscreen cannot paint the macOS style (blank controls). A hand-written scratch config needs `[%General]` or `PauseEmulationWhenUnfocused` is ignored and the game pauses when another window takes focus.
 
-## Phases 8 and 9: game-aware (#25, #26, #32, #34, #58, #59)
+## Phases 8 and 9: game-aware (#25, #26, #32, #34, #35, #58-#61)
 
 **Jump tables (#25)** - finds tables of jump targets from indirect jumps the game ran.
 - Code: `corrupt/jump_tables.cpp` (JumpLog noted by `RomTracer` for opcodes 7C/FC/6C/DC; `find_jump_tables`; JumpLogKeeper; Library `jumps.<user>.json`), `SnesCoreAccess::rom_offsets`, viewer Jumps overlay and hover, dock line.
@@ -247,6 +247,18 @@ Plan: `rom-corruption-plan` (six phases, each with "Phase N in detail"). QA 20-2
 - Code: `corrupt/function_names.cpp` (`encode_names`/`decode_names`, `FunctionNames::label`: "gravity · jump (erik)"), Library `names_path/load_names/save_names`; session `setFunctionName`, `loadNames` (with the code map); the window's *Name* field and *Name* column (a kept switch takes the name as its note).
 - Tests: `tests/corrupt/function_names_test.cpp`; `tests/qt/functions_dialog_test.cpp`.
 - Docs: `function-changes-plan`; QA 34.
+
+**Change a function (#60, with #35 redirection)** - change how a function works instead of turning it off: a number (`LDA/ADC/CMP… #`), a branch (opposite, always, never), a math pair (ADC/SBC, INC/DEC, INX/DEX, INY/DEY, ASL/LSR, ROL/ROR, CLC/SEC, AND/ORA), a call skipped or sent to another function of the same kind (near: same bank). Live, on hotkeys, kept in the recipe. Code rules can aim *inside busy functions*.
+- Code: `corrupt/function_change.cpp` (`change_options` over a body on the clean ROM, `math_partner`, `number_bytes`/`branch_bytes`/`math_bytes`/`skip_bytes`/`redirect_bytes`, `make_change`, `change_on`); `Change`/`ChangeKind` in `patches.h`, `Recipe::changes` (`"changes"`: function, at, kind, value, was, hotkey, start_on, note); `Engine::Flip` is general (`at`, `on`/`off` bytes, Toggle/On/Off; a switch is a one-byte flip), `flip_bytes`, `add_change`/`remove_change`, `apply_changes` at run start after the switches (`RunControl`), changes on hotkeys; a change puts its function in play (guarded, its bytes your own, `own_bytes(recipe, window_off, window_changes)`). `Aim::in_busy_functions` (`"within": "busy_functions"`), `aim_rule(..., busy)`, `Engine::set_busy_code` (the 64 busiest bodies, once a run). App: `qt/src/FunctionEditor.cpp` (*Change It…* from the Functions window: lines, what each can become, Apply / Put Back / Keep in Recipe / Remove, hotkey, starts on), session `changeOptions/romBytes/redirectBytes/applyChange/keepChange/forgetChange`, rule editor *Only inside the busiest functions*.
+- Tests: `tests/corrupt/function_change_test.cpp`; `guard_integration_test.cpp` suite "function changes" (test ROM `build_bodies`: a number adds 3, SBC counts down, a skipped call, a redirected call, a branch always/never, a kept change on a hotkey and a rollback); `tests/qt/function_editor_test.cpp`.
+- Measure: `--change [seeds] [count]` (changes inside the 64 busiest functions vs the same kinds anywhere in code vs clean, unguarded).
+- Docs: `function-changes-plan`; GUIDE "Changing how a function works"; QA 35.
+- Gotchas: changes, like switches, happen while corruption is on. An immediate the map saw at both widths isn't offered (its length isn't fixed). Put Back writes the whole instruction's clean bytes.
+
+**Timed switches (#61)** - a switch off for a while every so often, a change on for a while; a kill rule that puts its functions back; the kill rule keeps learning.
+- Code: `Switch::every/for_frames`, `Change::every/for_frames` (`"every"`, `"for"`, in frames), timer flips at the start of `on_frame` from `(frame - 1) % every`; `Op::put_back` (`"put_back"`, frames) with `RuleRuntime::put_backs` (in the snapshot, so rollbacks keep them; not logged as writes); the kill list taken again every 300 frames while it has fewer than 64. App: the Functions window's *Timer* row, Change It…'s *Kept with a timer*, the rule editor's *Back on after*.
+- Tests: `tests/corrupt/timed_switch_test.cpp`; `guard_integration_test.cpp` ("a switch on a timer").
+- Docs: `function-changes-plan`; GUIDE; QA 36.
 
 ## Phase 7: safety (#50-#52, #57; #55 and #56 tried and removed)
 

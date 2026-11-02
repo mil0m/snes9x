@@ -1,10 +1,12 @@
 #include "doctest/doctest.h"
 #include "FunctionsDialog.hpp"
+#include "fake_functions.h"
 #include "UiKit.hpp"
 
 #include <QApplication>
 #include <QCheckBox>
 #include <QComboBox>
+#include <QDoubleSpinBox>
 #include <QDir>
 #include <QLabel>
 #include <QLineEdit>
@@ -15,81 +17,6 @@ using namespace corrupt;
 
 namespace
 {
-struct FakeFunctions : FunctionSource
-{
-    std::vector<FunctionRow> rows;
-    bool on = true;
-    std::vector<uint32_t> flipped, forgotten;
-    struct Kept
-    {
-        uint32_t entry;
-        int hotkey;
-        bool start_off;
-        std::string note;
-    };
-    std::vector<Kept> kept;
-    std::vector<std::pair<uint32_t, std::string>> named;
-    struct Protected
-    {
-        uint32_t entry;
-        bool on, deep;
-    };
-    std::vector<Protected> protects;
-
-    FakeFunctions()
-    {
-        FunctionRow busy;
-        busy.f = { .entry = 0x0019EE, .type = CallType::Near, .calls = 17972, .callers = 1, .frames = 17972, .now = 300 };
-        busy.address = 0x8099EE;
-        busy.body_bytes = 46;
-        busy.runs = { { 0x0019EE, 0x001A0F }, { 0x001A40, 0x001A4C } };
-        busy.label = "scroll (erik)";
-        FunctionRow lng;
-        lng.f = { .entry = 0x000142, .type = CallType::Long, .calls = 31043, .callers = 8, .frames = 17779, .now = 150 };
-        lng.address = 0x808142;
-        lng.off = true;
-        Switch s;
-        s.entry = 0x000142;
-        s.ret = kRtl;
-        s.hotkey = 3;
-        s.note = "gravity?";
-        lng.kept = s;
-        lng.label = "gravity";
-        lng.my_name = "gravity";
-        lng.body_bytes = 12;
-        lng.runs = { { 0x000142, 0x00014D } };
-        lng.guarded = true;
-        lng.protect = Protect{ 0x000142, true };
-        FunctionRow mixed;
-        mixed.f = { .entry = 0x002000, .type = CallType::Mixed, .calls = 10, .callers = 2, .frames = 5, .now = 0 };
-        mixed.address = 0x80A000;
-        rows = { busy, lng, mixed };
-    }
-    std::vector<FunctionRow> functions() override { return rows; }
-    bool running() override { return on; }
-    std::string flip(uint32_t entry) override
-    {
-        flipped.push_back(entry);
-        return {};
-    }
-    std::string keep(uint32_t entry, int hotkey, bool start_off, const std::string &note) override
-    {
-        kept.push_back({ entry, hotkey, start_off, note });
-        return {};
-    }
-    void forget(uint32_t entry) override { forgotten.push_back(entry); }
-    std::string protect(uint32_t entry, bool on, bool deep) override
-    {
-        protects.push_back({ entry, on, deep });
-        return {};
-    }
-    std::string setName(uint32_t entry, const std::string &name) override
-    {
-        named.push_back({ entry, name });
-        return {};
-    }
-};
-
 template <typename W>
 W *child(QWidget &w, const char *name)
 {
@@ -290,4 +217,24 @@ TEST_CASE("the selected function: your name is saved, Protect guards it, Show in
         QApplication::processEvents();
         d.grab().save(QString("%1/functions-dialog-selected.png").arg(dir));
     }
+}
+
+TEST_CASE("a switch kept with a timer: off for a while, every so often")
+{
+    FakeFunctions src;
+    FunctionsDialog d(src);
+    d.show();
+    child<QTableWidget>(d, "functions")->selectRow(0);
+    child<QCheckBox>(d, "timer")->setChecked(true);
+    child<QDoubleSpinBox>(d, "timer_for")->setValue(2);
+    child<QDoubleSpinBox>(d, "timer_every")->setValue(10);
+    child<QPushButton>(d, "keep")->click();
+    REQUIRE(src.kept.size() == 1);
+    CHECK(src.kept[0].for_frames == 120);
+    CHECK(src.kept[0].every == 600);
+    child<QCheckBox>(d, "timer")->setChecked(true); // (the fake doesn't keep the switch in its rows)
+    child<QDoubleSpinBox>(d, "timer_for")->setValue(10);
+    child<QDoubleSpinBox>(d, "timer_every")->setValue(10);
+    child<QPushButton>(d, "keep")->click();
+    CHECK(src.kept.size() == 1); // off as long as the cycle: refused
 }

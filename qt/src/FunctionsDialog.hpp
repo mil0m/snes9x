@@ -7,6 +7,7 @@
 
 class QCheckBox;
 class QComboBox;
+class QDoubleSpinBox;
 class QLabel;
 class QLineEdit;
 class QPushButton;
@@ -47,6 +48,7 @@ class FunctionsDialog : public QDialog
     void nameSelected();
     void protectChanged();
     void showSelected();
+    void changeSelected();
     int selectedRow() const;
     void say(const QString &text, int tone = 0); // ui::Tone as int, to keep UiKit out of here
 
@@ -66,8 +68,12 @@ class FunctionsDialog : public QDialog
     QCheckBox *deep;
     QComboBox *hotkey;
     QCheckBox *start_off;
+    QCheckBox *timer_check;
+    QDoubleSpinBox *timer_for;
+    QDoubleSpinBox *timer_every;
     QPushButton *keep_button;
     QPushButton *forget_button;
     QPushButton *show_button;
+    QPushButton *change_button;
     ui::StatusLine *message;
 };

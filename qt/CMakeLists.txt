@@ -165,6 +165,7 @@ list(APPEND QT_GUI_SOURCES
     src/MemoryViewer.cpp
     src/SurvivorsDialog.cpp
     src/FunctionsDialog.cpp
+    src/FunctionEditor.cpp
     src/GuideWindow.cpp
     src/UiKit.cpp
     src/PixelView.cpp

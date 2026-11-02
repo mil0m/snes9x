@@ -525,3 +525,29 @@ Removed on 2026-11-01: it didn't pay off (see FEATURES.md, *Tried and removed*).
 8. Untick **Protect**, **Save** with Protect on, reload the recipe.
    - [ ] Protect comes back with the recipe (`"protect"` in the file).
 
+## 35. Changing how a function works
+1. Goof Troop, a recipe on, Corrupt. **Functions…**, select a busy function, **Change It…**.
+   - [ ] Its lines show (address, instruction, *Can Become*); a function with nothing to change says so.
+2. Select a number line (`LDA #$..`), set another value, **Apply**.
+   - [ ] *Now* says *now LDA #$..*; something in the game behaves differently (or nothing visible: try another).
+   - [ ] **Put Back** undoes it; *Now* is empty again.
+3. A branch line: **The opposite**, then **Always**, then **Never**, each with Apply.
+   - [ ] The game keeps running or the crash guard catches it and puts it back.
+4. A math line (`INC`, `ADC`…): Apply.
+5. A call line: **Skip the call**, Apply; then **Call … instead**, Apply.
+   - [ ] Near calls only list functions in the same bank.
+6. Pick **Key 3**, untick **Starts on**, **Keep in Recipe**; press 3 twice.
+   - [ ] *Now* says *kept, key 3*; the key toggles it; the Functions window's *Name* column says *1 change*.
+7. **Save**, **Back to Normal**, reload, Corrupt.
+   - [ ] The change is back (`"changes"` in the file), off until you press 3 (on from the start with Starts on).
+8. A code rule (Starter: Branch flips), edit it, tick **Only inside the busiest functions**.
+   - [ ] Its changes land only in function code (viewer: **Functions** and **Changes**).
+
+## 36. Timed switches
+1. Functions…, select a busy function, tick **Timer**: off for 1 s every 3 s, **Keep in Recipe**, Corrupt.
+   - [ ] It goes off and on by itself, every 3 s; the *Name* column says *off 1 s every 3 s*.
+2. Change It…: a change **Kept with a timer** on for 0.5 s every 1 s.
+   - [ ] It flickers.
+3. **Starter: Function flicker** (or Function roulette with a trigger every 10 s and **Back on after** 5 s), Corrupt.
+   - [ ] A function goes off every 10 s and comes back 5 s later (the ROM section's *off* count goes 1, 0, 1…).
+

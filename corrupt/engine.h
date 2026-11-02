@@ -77,6 +77,9 @@ class Engine
     // Where function ops learn the game's functions (the call graph, everyone's). Called when
     // one first fires in a run, and again while it returns none.
     void set_functions(std::function<std::vector<Function>()> functions) { learned_functions = std::move(functions); }
+    // Where rules aimed inside busy functions (#60) learn which bytes those are: the bodies of
+    // the busiest functions, taken once per run when such a rule first aims.
+    void set_busy_code(std::function<HotMask()> busy) { busy_code = std::move(busy); }
     // How many bytes an aimed rule picks from this run, or entries a pointer swap may change
     // (0 until it first fires).
     size_t aimed_count(size_t index) const;
@@ -113,18 +116,34 @@ class Engine
     // back; an entry holding neither (another version of the ROM) is left alone. Through the
     // memory given to on_frame (the ROM keeper: a rollback undoes it), never logged as a
     // rule's write. The recipe's switches flip on their hotkeys the same way.
+    // A flip is general (#60): bytes at `at` between `on` (changed) and `off` (clean). Toggle
+    // swaps them, and leaves bytes holding neither alone; On and Off write theirs.
     struct Flip
     {
-        uint32_t entry = 0;
-        uint8_t ret = 0;
-        uint8_t clean = 0;
+        enum class How : uint8_t
+        {
+            Toggle,
+            On,
+            Off,
+        };
+        uint32_t at = 0;
+        std::vector<uint8_t> on;
+        std::vector<uint8_t> off;
+        How how = How::Toggle;
+        bool ours_only = false; // On/Off only over bytes holding `on` or `off` (a timer's flips)
     };
     void flip_function(uint32_t entry, uint8_t ret, uint8_t clean);
+    void flip_bytes(Flip f); // a change (#60): queued like a switch's flip
     // Flips asked for and not done yet (a snapshot doesn't hold them; a run ahead must).
     std::vector<Flip> pending_flips() const { return flips; }
     void set_pending_flips(std::vector<Flip> f) { flips = std::move(f); }
     void add_switch(const Switch &s);      // one on the same entry is replaced; no restart
     void remove_switch(uint32_t entry);    // no restart
+    void add_change(const Change &c);      // one at the same offset is replaced; no restart
+    void remove_change(uint32_t at);       // no restart
+    // The changes that start on, as the run starts (after the switches); skipped like a pin
+    // when `was` isn't what the ROM holds there.
+    PinsApplied apply_changes(MemoryAccess &mem);
     void add_protect(const Protect &p);    // one on the same entry is replaced; no restart
     void remove_protect(uint32_t entry);   // no restart
     // The start-off switches, as the run starts (after the pins); skipped like a pin when
@@ -214,6 +233,9 @@ class Engine
     std::span<const uint8_t> run_flags; // the code map this run aims with
     std::function<std::vector<JumpTable>()> jump_tables;
     std::function<std::vector<Function>()> learned_functions;
+    std::function<HotMask()> busy_code;
+    HotMask run_busy;      // the busy functions' bodies this run aims inside
+    bool run_busy_taken = false;
     std::vector<Function> run_functions;                           // the functions this run may turn off
     std::unordered_map<uint64_t, std::vector<Function>> kills;     // by rule id, for this run
     std::vector<Flip> flips;

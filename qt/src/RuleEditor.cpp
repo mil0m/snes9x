@@ -6,6 +6,8 @@
 #include <QComboBox>
 #include <QDialogButtonBox>
 #include <QDoubleSpinBox>
+
+#include <cmath>
 #include <QFontDatabase>
 #include <QFormLayout>
 #include <QGridLayout>
@@ -461,6 +463,16 @@ void RuleEditor::buildForm()
     kill_any->setObjectName("kill_any");
     kill_any->setToolTip(tr("Rarely run functions too: a menu, a boss, an ending. Less often visible."));
     f->addRow(ui::row(kill_any));
+    kill_back = new CompactSpinBox(kill_page);
+    kill_back->setObjectName("kill_back");
+    kill_back->setRange(0, 600);
+    kill_back->setDecimals(1);
+    kill_back->setSingleStep(1);
+    kill_back->setSuffix(tr(" s"));
+    kill_back->setSpecialValueText(tr("Never: they stay off"));
+    kill_back->setToolTip(tr("Each function comes back on after this long. With a trigger every 10 s and 5 s here, "
+                             "a different function is missing half the time."));
+    f->addRow(tr("Back on after"), kill_back);
     layout->addWidget(what_box);
 
     // Aim (ROM only): which bytes, by what the code map knows about them.
@@ -500,6 +512,11 @@ void RuleEditor::buildForm()
         class_checks.push_back({ c, check });
     }
     aim->addRow(grid);
+    in_functions = new QCheckBox(tr("Only inside the busiest functions"), aim_group);
+    in_functions->setObjectName("in_functions");
+    in_functions->setToolTip(tr("Only the code of the 64 functions the game runs most (Functions… lists them): "
+                                "changes land where the game is busy, inside its own functions"));
+    aim->addRow(tr("Where"), ui::row(in_functions));
     aim->addRow(hint_label(tr("Only bytes the code map knows: play first, and the map grows. Width (REP, SEP, "
                               "XCE) and stack instructions almost always crash at once."),
                            aim_group));
@@ -766,6 +783,7 @@ void RuleEditor::load(const Rule &r)
         break;
     case OpType::Kill:
         kill_any->setChecked(op.any);
+        kill_back->setValue(op.put_back / 60.0);
         break;
     }
 
@@ -780,6 +798,7 @@ void RuleEditor::load(const Rule &r)
     window_end->setValue(t.window ? int(std::min<uint64_t>(t.window->end, INT_MAX)) : 3600);
 
     select(role_combo, role_name(r.aim.role));
+    in_functions->setChecked(r.aim.in_busy_functions);
     {
         QSignalBlocker quiet(class_mode); // no suggestion while loading
         select(class_mode, !r.aim.classes.empty() ? "only" : !r.aim.except.empty() ? "except" : "all");
@@ -926,6 +945,7 @@ RuleEditor::Built RuleEditor::build() const
         break;
     case OpType::Kill:
         op.any = kill_any->isChecked();
+        op.put_back = uint32_t(std::lround(kill_back->value() * 60.0));
         break;
     }
     r.op = op;
@@ -969,6 +989,7 @@ RuleEditor::Built RuleEditor::build() const
         }
         else if (class_mode->currentData() == "except")
             r.aim.except = ticked;
+        r.aim.in_busy_functions = in_functions->isChecked();
     }
 
     if (err.isEmpty())

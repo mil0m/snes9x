@@ -111,7 +111,12 @@ std::vector<uint8_t> save_state()
 
 bool load_state(const std::vector<uint8_t> &state)
 {
-    return S9xUnfreezeGameMem(state.data(), uint32(state.size())) == SUCCESS;
+    if (S9xUnfreezeGameMem(state.data(), uint32(state.size())) != SUCCESS)
+        return false;
+    // The CPU flags come back from the state; the core's own stop switch (set by a deadlock)
+    // doesn't. Left set, every run after a deadlocked one looked dead.
+    Settings.StopEmulation = FALSE;
+    return true;
 }
 
 } // namespace headless

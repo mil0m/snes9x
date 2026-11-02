@@ -45,6 +45,13 @@ struct RuleRuntime
     OpState op_state;
     std::vector<uint32_t> sticky;
     uint64_t firings = 0;
+    // A kill with put_back (#61): writes to undo at a frame, if the byte still holds them.
+    struct PutBack
+    {
+        uint64_t frame;
+        WriteEvent write;
+    };
+    std::vector<PutBack> put_backs;
 };
 
 // Whether the rule picks from what the game was seen doing: the code map (an aim, or a code
@@ -65,8 +72,10 @@ struct AimedBytes
     const std::vector<Function> *functions = nullptr;
 };
 
-// The offsets the rule may pick from the ROM and code map as they are now.
-std::vector<uint32_t> aim_rule(const Rule &rule, std::span<const uint8_t> rom, std::span<const uint8_t> flags);
+// The offsets the rule may pick from the ROM and code map as they are now. With
+// aim.in_busy_functions, only those `busy` marks (none when it's null).
+std::vector<uint32_t> aim_rule(const Rule &rule, std::span<const uint8_t> rom, std::span<const uint8_t> flags,
+                               const HotMask *busy = nullptr);
 
 // Runs one rule for one frame. `frame` counts from activation, starting at 1.
 // `scale` multiplies the rule's intensity (the recipe's intensity). With rule.avoid_hot,

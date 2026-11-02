@@ -1,0 +1,16 @@
+{
+  "format": 1,
+  "name": "Function flicker",
+  "notes": "Live: every 10 seconds one of the game's busiest functions turns off, and comes back on 5 seconds later, so something different is missing half the time: gravity for a moment, then the scroll, then an enemy's brain. Needs the functions the game calls: play a moment first. Edit the rule to change the times (Back on after).",
+  "seed": 3402,
+  "rules": [
+    {
+      "name": "one off for a while",
+      "target": "rom",
+      "range": [ "0x0", "0x7FFFFF" ],
+      "op": { "type": "kill", "put_back": 300 },
+      "when": { "every_frames": 600 },
+      "count": 1
+    }
+  ]
+}

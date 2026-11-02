@@ -1,7 +1,7 @@
 // End-to-end check of the corruption engine inside the real emulator, no window
 // needed:
 //
-//   corrupt-smoke <rom> <recipe.json> [frames=600] [warmup=600] [--guard | --instant [seeds] | --ahead [seeds] | --eyes [seeds] | --derail-fp [learn] | --learn [held=3] [from=0] | --replay | --copies | --map | --access [dir] | --codemap [file] | --jumps [file] | --calls | --bodies | --kill [seeds] [count] | --dump <dir>]
+//   corrupt-smoke <rom> <recipe.json> [frames=600] [warmup=600] [--guard | --instant [seeds] | --ahead [seeds] | --eyes [seeds] | --derail-fp [learn] | --learn [held=3] [from=0] | --replay | --copies | --map | --access [dir] | --codemap [file] | --jumps [file] | --calls | --bodies | --kill [seeds] [count] | --change [seeds] [count] | --dump <dir>]
 //
 // Boots the ROM, runs `warmup` frames, saves a state, then runs `frames` twice
 // from that state: once clean, once with the recipe. Reports what the recipe
@@ -72,6 +72,7 @@
 #include "corrupt/core_memory.h"
 #include "corrupt/calls.h"
 #include "corrupt/function_guard.h"
+#include "corrupt/function_change.h"
 #include "corrupt/jump_tables.h"
 #include "corrupt/pointer_swap.h"
 #include "corrupt/crash_guard.h"
@@ -1132,6 +1133,162 @@ int run_kill(int frames, int seeds, int count)
     return 0;
 }
 
+// --change [seeds] [count]: like --kill, but changing how functions work (#60): every
+// frames/(count+1) frames one change (a new number, the opposite branch, or the other half of
+// a math pair) in the body of one of the 64 busiest functions, against the same kinds of change
+// anywhere in the code the map knows, and a clean run. Unguarded.
+int run_change(int frames, int seeds, int count)
+{
+    auto start = headless::save_state();
+    CodeMap map(Memory.CalculatedSize);
+    CallKeeper calls;
+    RomTracer tracer;
+    if (!tracer.start(map, nullptr, &calls.mine()))
+        return 1;
+    for (int i = 0; i < frames; i++)
+    {
+        headless::run_frames(1);
+        calls.end_frame();
+    }
+    tracer.stop();
+    auto where = SnesCoreAccess::rom_addresses();
+    const auto &clean = rom.clean();
+    // CORRUPT_CHANGE_KIND=number|branch|math: only that kind, to see which keeps a game going.
+    const char *only_kind = getenv("CORRUPT_CHANGE_KIND");
+    auto wanted_kind = only_kind ? parse_change_kind(only_kind) : std::nullopt;
+    auto changeable = [&](std::vector<ChangeOption> os) {
+        std::erase_if(os, [&](const ChangeOption &o) {
+            if (o.kind != ChangeKind::Number && o.kind != ChangeKind::Branch && o.kind != ChangeKind::Math)
+                return true;
+            if (wanted_kind && o.kind != *wanted_kind)
+                return true;
+            for (uint32_t i = 0; i < o.length; i++)
+                if (rom.locked_mask().is_hot(Target::ROM, o.at + i))
+                    return true;
+            return false;
+        });
+        return os;
+    };
+    // Inside: the busiest functions' bodies. Anywhere: every instruction the map knows.
+    std::vector<ChangeOption> inside, anywhere;
+    for (auto &f : busiest(calls.functions(), 64))
+    {
+        auto os = changeable(change_options(function_body(clean, map.flags(), f.entry, where), clean, map.flags(), where));
+        inside.insert(inside.end(), os.begin(), os.end());
+    }
+    std::sort(inside.begin(), inside.end(), [](auto &a, auto &b) { return a.at < b.at; });
+    inside.erase(std::unique(inside.begin(), inside.end(), [](auto &a, auto &b) { return a.at == b.at; }), inside.end());
+    FunctionBody all;
+    for (uint32_t o = 0; o < map.size(); o++)
+        if (map.at(o) & codeflag::Opcode)
+            if (auto in = instruction_at(clean, map.flags(), o, where); in && in->start == o)
+                all.code.push_back({ o, uint8_t(in->length), in->both_widths });
+    anywhere = changeable(change_options(all, clean, map.flags(), where));
+    auto kinds = [](const std::vector<ChangeOption> &os) {
+        size_t n[3] = {};
+        for (auto &o : os)
+            n[o.kind == ChangeKind::Number ? 0 : o.kind == ChangeKind::Branch ? 1 : 2]++;
+        return std::to_string(n[0]) + " numbers, " + std::to_string(n[1]) + " branches, " + std::to_string(n[2]) + " math";
+    };
+    printf("learned  %zu functions; inside the 64 busiest: %s; anywhere: %s; %d seeds, %d changes each, %d frames\n",
+           calls.functions().size(), kinds(inside).c_str(), kinds(anywhere).c_str(), seeds, count, frames);
+    if (inside.empty() || anywhere.empty())
+        return 1;
+    int every = frames / (count + 1);
+    auto bytes_for = [](const ChangeOption &o, Rng &rng) {
+        switch (o.kind)
+        {
+        case ChangeKind::Number: {
+            uint32_t v;
+            do
+                v = uint32_t(rng.range(0, o.width == 2 ? 0xFFFF : 0xFF));
+            while (v == o.value);
+            return number_bytes(o, v);
+        }
+        case ChangeKind::Branch: return branch_bytes(o, BranchTo::Opposite);
+        default: return math_bytes(o);
+        }
+    };
+
+    ArmResult in_arm, any_arm, plain;
+    for (int seed = 1; seed <= seeds; seed++)
+    {
+        Rng pick_rng(uint64_t(seed) * 0x9E3779B97F4A7C15ULL);
+        std::vector<ChangeOption> in_picks, any_picks;
+        for (int i = 0; i < count; i++)
+        {
+            in_picks.push_back(inside[size_t(pick_rng.range(0, int64_t(inside.size()) - 1))]);
+            any_picks.push_back(anywhere[size_t(pick_rng.range(0, int64_t(anywhere.size()) - 1))]);
+        }
+        uint64_t clean_picture = 0;
+        for (int arm = 2; arm >= 0; arm--) // clean first, for the picture to compare with
+        {
+            headless::load_state(start);
+            rom.restore_clean();
+            Rng rng{ uint64_t(seed) };
+            CodeMap seen(Memory.CalculatedSize);
+            RomTracer watch;
+            watch.start(seen);
+            uint64_t picture = 0;
+            int moving_late = 0, nmi_late = 0;
+            uint32_t reboots = access.sample().reboots;
+            std::vector<uint32_t> changed;
+            for (int i = 0; i < frames; i++)
+            {
+                if (i && i % every == 0 && changed.size() < size_t(count))
+                {
+                    size_t k = changed.size();
+                    if (arm < 2)
+                    {
+                        auto &o = arm == 0 ? in_picks[k] : any_picks[k];
+                        auto b = bytes_for(o, rng);
+                        for (size_t j = 0; j < b.size(); j++)
+                            rom.write(Target::ROM, uint32_t(o.at + j), b[j]);
+                        changed.push_back(o.at);
+                        seen.data()[o.at] &= uint8_t(~codeflag::Touched); // "ran" means since its change
+                    }
+                    else
+                        changed.push_back(kNoEntry);
+                }
+                headless::run_frames(1);
+                auto signals = access.sample();
+                if (signals.picture_valid && signals.picture_hash != picture && i >= frames - 300)
+                    moving_late++;
+                if (signals.nmi_enabled && i >= frames - 300)
+                    nmi_late++;
+                if (signals.picture_valid)
+                    picture = signals.picture_hash;
+            }
+            watch.stop();
+            auto end = access.sample();
+            bool used = false;
+            for (uint32_t o : changed)
+                used |= o != kNoEntry && (seen.at(o) & codeflag::Touched);
+            bool running = !end.cpu_halted && !end.emulation_stopped && end.reboots == reboots && (nmi_late || moving_late);
+            bool alive = running && moving_late >= 3;
+            if (arm == 2)
+                clean_picture = picture;
+            auto &r = arm == 0 ? in_arm : arm == 1 ? any_arm : plain;
+            r.alive += alive;
+            r.running += running;
+            r.used += used;
+            r.differed += picture != clean_picture;
+            if (getenv("CORRUPT_KILL_VERBOSE"))
+                printf("  seed %2d %-8s %s%s\n", seed, arm == 0 ? "inside" : arm == 1 ? "anywhere" : "clean",
+                       alive ? "moving " : running ? "running" : "dead   ", used ? ", ran a changed byte" : "");
+        }
+    }
+    rom.restore_clean();
+    auto line = [&](const char *name, const ArmResult &r) {
+        printf("%-8s %2d of %d running, %2d of them moving; %2d ran a changed byte, %2d ended on another picture than clean\n",
+               name, r.running, seeds, r.alive, r.used, r.differed);
+    };
+    line("inside", in_arm);
+    line("anywhere", any_arm);
+    line("clean", plain);
+    return 0;
+}
+
 // A code map saved earlier (CORRUPT_CODEMAP, --codemap's file) merged into `map`.
 bool load_saved_map(CodeMap &map)
 {
@@ -1666,6 +1823,8 @@ int main(int argc, char **argv)
         return run_kill(frames, argc > 6 ? atoi(argv[6]) : 10, argc > 7 ? atoi(argv[7]) : 6);
     if (argc > 5 && std::string(argv[5]) == "--calls")
         return run_calls(frames);
+    if (argc > 5 && std::string(argv[5]) == "--change")
+        return run_change(frames, argc > 6 ? atoi(argv[6]) : 10, argc > 7 ? atoi(argv[7]) : 6);
     if (argc > 5 && std::string(argv[5]) == "--bodies")
         return run_bodies(frames);
     if (argc > 5 && std::string(argv[5]) == "--jumps")

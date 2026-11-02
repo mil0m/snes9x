@@ -177,13 +177,16 @@ std::vector<WriteEvent> tick_rule(const Rule &rule, RuleRuntime &rt, MemoryAcces
     return apply_op(scaled_op(rule.op, intensity), rt.op_state, mem, rule.range, addresses, rng, skip);
 }
 
-std::vector<uint32_t> aim_rule(const Rule &rule, std::span<const uint8_t> rom, std::span<const uint8_t> flags)
+std::vector<uint32_t> aim_rule(const Rule &rule, std::span<const uint8_t> rom, std::span<const uint8_t> flags,
+                               const HotMask *busy)
 {
     if (rule.range.target != Target::ROM || flags.empty() || is_jump_op(rule.op.type) || is_function_op(rule.op.type))
         return {};
-    if (is_code_op(rule.op.type))
-        return code_op_targets(rule.op.type, rom, flags, rule.range.first, rule.range.last, rule.aim);
-    return aimed_bytes(rom, flags, rule.range.first, rule.range.last, rule.aim);
+    auto out = is_code_op(rule.op.type) ? code_op_targets(rule.op.type, rom, flags, rule.range.first, rule.range.last, rule.aim)
+                                        : aimed_bytes(rom, flags, rule.range.first, rule.range.last, rule.aim);
+    if (rule.aim.in_busy_functions)
+        std::erase_if(out, [&](uint32_t o) { return !busy || !busy->is_hot(Target::ROM, o); });
+    return out;
 }
 
 std::optional<std::string> validate_rule(const Rule &rule, const MemoryAccess &mem)

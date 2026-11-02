@@ -44,11 +44,42 @@ struct Switch
     int hotkey = 0; // 0: none
     bool start_off = false;
     std::string note;
+    // A timer (#61): off for `for_frames` out of every `every` frames, counted from the run's
+    // start (so a run replays the same). 0: no timer.
+    uint32_t every = 0;
+    uint32_t for_frames = 0;
 };
 inline bool switch_off(const Switch &s, const MemoryAccess &mem)
 {
     return s.entry < mem.size(Target::ROM) && mem.read(Target::ROM, s.entry) == s.ret;
 }
+
+// A change in a function (#60): bytes at `at` that toggle between `value` (changed) and `was`
+// (the clean ROM). Like a switch, its state is the ROM: on while the bytes hold `value`. With a
+// hotkey a press toggles it; start_on writes it as every run starts. `was` skips it on
+// another version of the ROM. `function` is the entry of the function it's in, which a guard
+// keeps clean of other corruption (#58).
+enum class ChangeKind : uint8_t
+{
+    Number,   // an immediate value
+    Branch,   // a conditional branch: opposite, always or never
+    Math,     // ADC <-> SBC and the other pairs
+    Skip,     // a call becomes NOPs
+    Redirect, // a call goes to another function (#35)
+};
+struct Change
+{
+    uint32_t function = 0;
+    uint32_t at = 0;
+    ChangeKind kind = ChangeKind::Number;
+    std::vector<uint8_t> value;
+    std::vector<uint8_t> was;
+    int hotkey = 0; // 0: none
+    bool start_on = true;
+    std::string note;
+    uint32_t every = 0;      // a timer (#61): on for `for_frames` out of every `every` frames
+    uint32_t for_frames = 0;
+};
 
 // A function kept clean on purpose (#58): its body is guarded, so no rule and no paint
 // changes it. Deep: the functions it calls are guarded too.
