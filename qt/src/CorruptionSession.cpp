@@ -126,8 +126,8 @@ void CorruptionSession::betweenFrames()
         guard.reset();
         instant.drop();
         at_normal = true;
-        note(moment ? "Back to normal: the clean game, at the moment the run started"
-                    : "Back to normal: the clean ROM (no run to go back to)");
+        // The panel's state bar says it's back to normal; only a half-way return needs words.
+        note(moment ? std::string() : "Only the ROM went back: there was no run start to go back to");
         S9xSetInfoString("Corruption: back to normal");
     }
     // The instant revert first, before anything reads the frame that ran: a changed ROM byte
@@ -143,7 +143,7 @@ void CorruptionSession::betweenFrames()
         writeJournal(entry);
         if (crash_map.rom_crashed(caught->offsets))
             engine.set_hot_mask(crash_map.hot_mask());
-        note(caught->summary);
+        note(caught->headline, caught->summary);
         std::string shown = "Corruption: caught a bad jump, " + caught->rom_action;
         S9xSetInfoString(shown.c_str());
     }
@@ -259,7 +259,7 @@ void CorruptionSession::betweenFrames()
     if (out.kind != GuardOutcome::Nothing)
     {
         last_crash = out.summary;
-        note(out.summary);
+        note(out.headline.empty() ? out.summary : out.headline, out.summary);
         S9xSetInfoString(out.summary.c_str());
     }
     testAhead(); // last: it plays the next frame's ROM changes ahead from exactly here
@@ -278,7 +278,7 @@ void CorruptionSession::testAhead()
     running_ahead = false;
     if (tested.summary.empty())
         return;
-    note(tested.summary);
+    note(tested.headline.empty() ? tested.summary : tested.headline, tested.summary);
     std::string shown = tested.kind == AheadResult::Skipped ? "Corruption: tested ahead, a change skipped"
                                                             : "Corruption: tested ahead, a change re-rolled";
     S9xSetInfoString(shown.c_str());
@@ -356,6 +356,7 @@ void CorruptionSession::gameLoaded()
     std::lock_guard lock(mutex);
     game_loaded = true;
     game = current_game();
+    rom_name = std::filesystem::path(Memory.ROMFilename).stem().string();
     engine.hold_starts(true);
     engine.set_active(false);
     control = RunControl{};
@@ -402,7 +403,7 @@ void CorruptionSession::gameLoaded()
     });
 
     backupNow("load"); // before the first frame runs
-    message = "Loaded " + game_folder_name(game.title, game.sha256);
+    note({}); // the panel's title names the game
     loadCrashMap();
     rom_where = SnesCoreAccess::rom_addresses();
     rom_offsets = SnesCoreAccess::rom_offsets();
@@ -603,7 +604,7 @@ std::vector<std::string> CorruptionSession::loadRecipe(const Recipe &recipe, con
     window_off.clear();
     window_changes.clear();
     guard_dirty = true;
-    note("Recipe: " + recipe.name);
+    note({}); // the recipe list shows it; only a saved moment has more to say
 
     // Its saved moment: jump there and start, if the switch is on and it's this ROM.
     control.forget_anchor();
@@ -612,15 +613,16 @@ std::vector<std::string> CorruptionSession::loadRecipe(const Recipe &recipe, con
     {
         std::string error;
         if (!recipe.game.sha256.empty() && recipe.game.sha256 != game.sha256)
-            note("Recipe: " + recipe.name + " (its saved moment is from another ROM version, so it starts here)");
+            note("Its saved moment is from another version of this ROM, so it starts here");
         else if (auto state = load_anchor(path.parent_path() / recipe.anchor_state, error))
         {
             control.request_start_from(std::move(*state));
             engine.set_active(true);
-            note("Recipe: " + recipe.name + ", starting from its saved moment");
+            note("Starting from its saved moment");
         }
         else
-            note("Recipe: " + recipe.name + " (" + error + ", so it starts here)");
+            note("Its saved moment didn't load, so it starts here", "Its saved moment didn't load (" + error +
+                 "), so it starts here");
     }
     return problems;
 }
@@ -1166,8 +1168,8 @@ CorruptionSession::Status CorruptionSession::status()
         for (auto &f : call_log.functions())
         {
             s.functions++;
-            uint8_t ret = return_byte(f.type);
-            s.functions_off += ret && f.entry < memory.size(Target::ROM) && memory.read(Target::ROM, f.entry) == ret;
+            s.functions_off += f.entry < rom.clean().size() &&
+                               function_off(f.type, memory.read(Target::ROM, f.entry), rom.clean()[f.entry]);
         }
         s.functions_guarded = in_play.size();
         s.library_generation = library_generation;
@@ -1206,6 +1208,8 @@ CorruptionSession::Status CorruptionSession::status()
     for (auto &t : jump_tables)
         s.jump_swappable += t.swappable();
     s.message = message;
+    s.message_detail = message_detail;
+    s.rom_name = rom_name;
     return s;
 }
 
@@ -1307,8 +1311,8 @@ std::vector<FunctionRow> CorruptionSession::functions()
         FunctionRow r;
         r.f = f;
         r.address = rom_where.cpu_address(f.entry);
-        uint8_t ret = return_byte(f.type);
-        r.off = ret && f.entry < size && memory.read(Target::ROM, f.entry) == ret;
+        r.off = f.entry < size && f.entry < rom.clean().size() &&
+                function_off(f.type, memory.read(Target::ROM, f.entry), rom.clean()[f.entry]);
         for (auto &s : engine.recipe().switches)
             if (s.entry == f.entry)
                 r.kept = s;
@@ -1756,7 +1760,8 @@ void CorruptionSession::backupNow(const char *reason)
     prune_backups(dir, now);
 }
 
-void CorruptionSession::note(const std::string &text)
+void CorruptionSession::note(const std::string &text, const std::string &detail)
 {
     message = text;
+    message_detail = detail == text ? std::string() : detail;
 }

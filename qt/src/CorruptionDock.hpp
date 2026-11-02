@@ -29,6 +29,7 @@ class CorruptionDock : public QDockWidget
 
     void openGuide(const QString &section); // a "## heading" of the guide, or empty for the top
     void openWorkshop(WorkshopPage page);
+    void openWorkshopAgain(); // on the page it was on when last closed
     RecipeActions &recipeActions() { return *actions; }
     void refreshRecipes();
 

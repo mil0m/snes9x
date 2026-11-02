@@ -4,6 +4,8 @@
 
 #include <QCheckBox>
 #include <QComboBox>
+#include <QShowEvent>
+#include <QStyle>
 #include <QDoubleSpinBox>
 #include <QFontDatabase>
 #include <QFormLayout>
@@ -17,6 +19,7 @@
 #include <QTimer>
 #include <QVBoxLayout>
 
+#include <optional>
 #include <unordered_map>
 
 #include <cmath>
@@ -276,19 +279,10 @@ FunctionsPage::FunctionsPage(FunctionSource &source, QWidget *parent) : QWidget(
     layout->addWidget(message);
     layout->addStretch(0); // takes the slack only when the table is hidden
 
-    auto bottom = new QHBoxLayout;
-    auto refresh_button = new QPushButton(ui::icon("refresh"), tr("Refresh"), this);
-    refresh_button->setObjectName("refresh");
-    refresh_button->setAutoDefault(false);
-    refresh_button->setToolTip(tr("Busiest right now first again, with any new functions"));
-    bottom->addStretch(1);
-    bottom->addWidget(refresh_button);
-    layout->addLayout(bottom);
 
     timer = new QTimer(this);
     timer->setInterval(500);
     connect(timer, &QTimer::timeout, this, &FunctionsPage::updateRows);
-    connect(refresh_button, &QPushButton::clicked, this, &FunctionsPage::refresh);
     connect(table, &QTableWidget::itemChanged, this, &FunctionsPage::offChanged);
     connect(table, &QTableWidget::itemSelectionChanged, this, &FunctionsPage::selectionChanged);
     connect(table->horizontalHeader(), &QHeaderView::sectionResized, table, [this](int col) {
@@ -310,6 +304,8 @@ FunctionsPage::FunctionsPage(FunctionSource &source, QWidget *parent) : QWidget(
 void FunctionsPage::showEvent(QShowEvent *event)
 {
     QWidget::showEvent(event);
+    if (!event->spontaneous())
+        refresh(); // busiest right now first again, with any new functions; never under the mouse
     timer->start();
 }
 
@@ -390,6 +386,9 @@ void FunctionsPage::fill(int row, const FunctionRow &r)
 
 void FunctionsPage::refresh()
 {
+    std::optional<uint32_t> selected;
+    if (int row = selectedRow(); row >= 0)
+        selected = shown[size_t(row)].f.entry; // still selected after the re-sort
     shown = source.functions();
     filling = true;
     table->setRowCount(int(shown.size()));
@@ -398,6 +397,12 @@ void FunctionsPage::refresh()
         fill(int(i), shown[i]);
     for (int col : { int(FunctionCol), int(Now), int(Frames), int(Size), int(Off) })
         table->resizeColumnToContents(col);
+    // Frames keeps counting while the page is shown: room for 46 hours of play, so the
+    // numbers never outgrow the column between re-sorts.
+    int frames_room = table->fontMetrics().horizontalAdvance(QLocale().toString(9999999)) +
+                      2 * table->style()->pixelMetric(QStyle::PM_FocusFrameHMargin) + 12;
+    if (table->columnWidth(Frames) < frames_room)
+        table->setColumnWidth(Frames, frames_room);
     table->resizeRowsToContents();
     bool any = !shown.empty();
     table->setVisible(any);
@@ -405,6 +410,13 @@ void FunctionsPage::refresh()
     empty_label->setVisible(!any);
     not_running->setVisible(!source.running());
     applyFilter();
+    if (selected)
+        for (size_t i = 0; i < shown.size(); i++)
+            if (shown[i].f.entry == *selected)
+            {
+                table->selectRow(int(i));
+                table->scrollToItem(table->item(int(i), 0));
+            }
     selectionChanged();
 }
 

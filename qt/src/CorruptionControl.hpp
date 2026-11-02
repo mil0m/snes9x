@@ -36,7 +36,9 @@ struct PanelStatus
     std::filesystem::path recipe_path; // the file it came from; empty for a new recipe
     bool edited = false;               // differs from that file (rules, seed, name...)
     std::array<size_t, corrupt::kTargetCount> sizes{}; // the loaded game's memory sizes
-    std::string message;             // last notable event, for the panel
+    std::string message;             // last notable event, for the panel: a few words
+    std::string message_detail;      // the same in full (on hover), or empty
+    std::string rom_name;            // the game's file name without its extension ("Pocky & Rocky (USA)")
 
     // Crash guard.
     corrupt::PolicyKind policy = corrupt::PolicyKind::Reroll;

@@ -87,6 +87,7 @@ TEST_SUITE("instant revert")
         CHECK(f.mem.of(Target::ROM)[0x200] == 0x5A); // the innocent change stays
         CHECK(out->summary == "Caught at $80:ABCD (jumped into the middle of an instruction): reverted 1 ROM byte and "
                               "played the frame again");
+        CHECK(out->headline == "Caught a bad jump: reverted 1 ROM byte"); // what the panel shows
         CHECK(f.instant.total() == 1);
         // The next checkpoint is the replayed start, so the engine's count goes on.
         f.run();

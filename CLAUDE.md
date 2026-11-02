@@ -49,6 +49,7 @@ except for a few small, null-guarded hooks in the core.
 ./build-mac.sh qt         # the app: build/qt/snes9x-qt
 build/tests/corrupt-smoke <rom> <recipe.json> <frames> <warmup> [--mode ...]   # see FEATURES.md
 tests/qt/ui_tour.sh <out dir> <rom>          # screenshots of every window, offscreen
+TOUR_LIBRARY=<dir> tests/qt/ui_tour.sh ...  # the same with a copy of a real library (real data)
 tests/remote/remote_e2e.sh <out dir> <rom>   # the remote page in a headless browser
 tools/privacy_check.sh [--staged]            # nothing private in tracked files
 ```

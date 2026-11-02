@@ -163,7 +163,7 @@ class CorruptionSession
     void onFrame();
     void backupNow(const char *reason);
     void maybeBackup();
-    void note(const std::string &message);
+    void note(const std::string &message, const std::string &detail = {});
     std::filesystem::path backupDirLocked() const;
     void configureGuard();
     void pinChanged(); // the blame leaves the recipe's pins alone
@@ -250,6 +250,8 @@ class CorruptionSession
     std::string saved_json; // the recipe as last loaded or saved, to tell whether it was edited
     corrupt::GameId game;
     std::string message;
+    std::string message_detail;
+    std::string rom_name;
 
     uint64_t frames_since_check = 0;
     std::optional<corrupt::BackupClock::time_point> last_backup_time;

@@ -244,11 +244,13 @@ AheadResult TestAhead::before_frame(Engine &engine, RomKeeper &rom, CoreAccess &
                       (out.written.empty()                     ? ""
                        : out.untried.size() < out.written.size() ? " and the new pick holds up"
                                                                  : " (the new pick isn't used yet, so it goes in untried)");
+        out.headline = "Tested ahead: " + bad_names + " would crash, so it picked again";
         break;
     case AheadResult::Skipped:
         firings_skipped++;
         out.summary = "Tested ahead: every pick of " + bad_names + " crashed the game (the last " + out.failure +
                       "), so it's skipped this time";
+        out.headline = "Tested ahead: " + bad_names + " would crash every time, so it's skipped this time";
         break;
     default:
         break;

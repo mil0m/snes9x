@@ -564,6 +564,9 @@ void EmuConfig::config(const std::string &filename, bool write)
     String("LibraryRoot", corruption_library_root);
     Bool("PanelVisible", corruption_panel_visible);
     Bool("SavedMoments", corruption_saved_moments);
+    Int("WorkshopPage", corruption_workshop_page);
+    Int("WorkshopWidth", corruption_workshop_width);
+    Int("WorkshopHeight", corruption_workshop_height);
     Bool("RemoteEnabled", corruption_remote_enabled);
     Int("RemotePort", corruption_remote_port);
     String("RemoteAddress", corruption_remote_address);

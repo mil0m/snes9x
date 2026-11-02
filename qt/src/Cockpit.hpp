@@ -19,6 +19,7 @@ class RecipeActions;
 namespace ui
 {
 class StatusLine;
+enum class Tone;
 }
 
 // The corruption panel while you play (#63): the recipe, Corrupt and Back to Normal, Chaos
@@ -29,18 +30,27 @@ class Cockpit : public QWidget
   public:
     Cockpit(CorruptionControl &control, RecipeActions &actions, QWidget *parent = nullptr);
 
-    std::function<void(WorkshopPage page)> openWorkshop;
+    std::function<void(WorkshopPage page)> openWorkshop; // a link to one page
+    std::function<void()> openWorkshopAgain;             // the Workshop button: where it was last
     std::function<void()> openGuide;
     void setToggleKey(const QString &key); // the Corrupt/Stop shortcut's name ("F7"), or empty
     void refresh();                        // runs four times a second while shown
     void refreshRecipes();                 // the recipe list, read again
     void showMessage(const QString &text, bool error = false);
+    void setMessageFade(int ms) { fade_ms = ms; } // how long a message stays (12 s; tests use less)
+
+  protected:
+    void changeEvent(QEvent *event) override;
 
   private:
     void rebuildRules(const PanelStatus &status);
     void syncRecipeChoice(const PanelStatus &status);
     void recipeChosen(int index);
     void fitRulesTable();
+    void showState(const QString &state, const QString &text);
+    void setLink(QLabel *label, QLabel *icon, const char *icon_name, const QString &page, const QString &text,
+                 const QString &where, ui::Tone tone);
+    void startFade();
 
     CorruptionControl &control;
     RecipeActions &actions;
@@ -48,14 +58,18 @@ class Cockpit : public QWidget
     QString toggle_key;
 
     QLabel *game_label;
+    QLabel *state_label;
+    QString shown_state;
+    QLabel *moment_note;
     QLabel *start_card;
     QComboBox *recipe_combo;
     QPushButton *save_button;
     ui::StatusLine *message_line;
+    QTimer *fade_timer;
+    int fade_ms = 12000;
     bool showing_error = false;
     QPushButton *corrupt_button;
     QPushButton *back_button;
-    QLabel *run_label;
     IntensitySlider *chaos_slider;
     QLineEdit *seed_edit;
     QPushButton *reroll_button;
@@ -68,7 +82,9 @@ class Cockpit : public QWidget
     std::vector<IntensitySlider *> rule_sliders;
     QLabel *rules_empty;
     QLabel *guard_label;
+    QLabel *guard_icon;
     QLabel *rom_label;
+    QLabel *rom_icon;
 
     std::string shown_game = "-";
     std::string shown_message;

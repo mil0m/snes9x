@@ -39,6 +39,7 @@ class SurvivorsPanel : public QWidget
     SurvivorSource &source;
     std::vector<corrupt::Survivor> shown;
     std::vector<corrupt::Pin> shown_pins;
+    bool filled = false; // the tables show `shown` and `shown_pins`
     QLabel *empty_label;
     ui::StatusLine *message;
     QLabel *pins_empty;

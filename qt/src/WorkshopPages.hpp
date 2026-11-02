@@ -86,6 +86,7 @@ class RomPage : public QWidget
     QPushButton *clear_paint_button;
     ui::StatusLine *message;
     SurvivorsPanel *survivors_panel;
+    int ticks = 0;
 };
 
 // Safety: the crash guard's switches, what happened, and the game's save backups.
@@ -131,5 +132,6 @@ class SharingPage : public QWidget
     QCheckBox *remote_check;
     QLabel *remote_label;
     QLineEdit *remote_address;
+    QWidget *remote_details;
     int ticks = 0;
 };

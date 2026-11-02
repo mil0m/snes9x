@@ -10,6 +10,8 @@
 # Offscreen draws Fusion (what Linux and Windows get). For the real Mac look:
 #   TOUR_PLATFORM=cocoa SNES9X_COLOR_SCHEME=light|dark tests/qt/ui_tour.sh <out dir>
 # which shows the windows on screen for about 30 seconds (muted).
+# TOUR_LIBRARY=<dir> tours with a COPY of that library (its recipes, maps and names), to see
+# the windows with real data; the copy is made in the scratch folder, the original is never used.
 set -u
 here="$(cd "$(dirname "$0")/../.." && pwd)"
 out=""; rom=""; dark=""; scale=1
@@ -30,6 +32,10 @@ mkdir -p "$out"
 out="$(cd "$out" && pwd)"
 scratch="$(mktemp -d "${TMPDIR:-/tmp}/snes9x-tour.XXXXXX")"
 mkdir -p "$scratch/config/snes9x" "$scratch/library" "$scratch/rom"
+if [ -n "${TOUR_LIBRARY:-}" ]; then
+    rsync -a --exclude roms --exclude .git --exclude .stfolder "$TOUR_LIBRARY/" "$scratch/library/" ||
+        { echo "couldn't copy $TOUR_LIBRARY"; exit 2; }
+fi
 # QSettings writes a group named General as [%General]; a plain [General] is ignored.
 cat > "$scratch/config/snes9x/snes9x-qt.conf" <<EOF
 [%General]

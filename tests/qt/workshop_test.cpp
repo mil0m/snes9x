@@ -9,6 +9,7 @@
 #include "fake_functions.h"
 
 #include <QApplication>
+#include <optional>
 #include <QCheckBox>
 #include <QComboBox>
 #include <QDir>
@@ -215,8 +216,13 @@ TEST_SUITE("workshop")
         child<QPushButton>(page, "choose_library")->click();
         CHECK(f.control.calls.back() == "library /tmp/shared");
         CHECK(changed);
+        // Off: only the switch and what it means; the address and the link come with it on.
+        CHECK(child<QWidget>(page, "remote_details")->isHidden());
         child<QCheckBox>(page, "remote")->click();
         CHECK(f.control.calls.back() == "remote on");
+        f.control.remote_state.enabled = true;
+        page.refresh(f.control.status());
+        CHECK_FALSE(child<QWidget>(page, "remote_details")->isHidden());
         auto address = child<QLineEdit>(page, "remote_address");
         address->setText("https://example.invalid");
         address->editingFinished();
@@ -237,6 +243,39 @@ TEST_SUITE("workshop")
             f.workshop.refresh();
         }
         CHECK(ui::audit(&f.workshop).isEmpty());
+        f.workshop.close();
+    }
+
+    TEST_CASE("no Refresh buttons: every page keeps itself fresh")
+    {
+        Fixture f;
+        CHECK(f.workshop.findChildren<QPushButton *>("refresh").isEmpty());
+    }
+
+    TEST_CASE("closing it tells the dock which page it was on and how big it was, to open it so again")
+    {
+        Fixture f;
+        std::optional<std::pair<WorkshopPage, QSize>> told;
+        f.workshop.onClosed = [&](WorkshopPage page, QSize size) { told = { page, size }; };
+        f.workshop.showPage(WorkshopPage::Safety);
+        f.workshop.resize(1100, 800);
+        f.workshop.close();
+        REQUIRE(told);
+        CHECK(told->first == WorkshopPage::Safety);
+        CHECK(told->second == QSize(1100, 800));
+    }
+
+    TEST_CASE("Functions: shown again, it re-sorts busiest first and picks up new functions")
+    {
+        Fixture f;
+        f.workshop.showPage(WorkshopPage::Functions);
+        auto table = child<QTableWidget>(*f.workshop.functionsPage(), "functions");
+        int before = table->rowCount();
+        f.functions.add_busy(0xC000);
+        f.workshop.showPage(WorkshopPage::Safety);
+        f.workshop.showPage(WorkshopPage::Functions);
+        REQUIRE(table->rowCount() == before + 1);
+        CHECK(table->item(0, 0)->text().contains("C000")); // the busiest now is first
         f.workshop.close();
     }
 }

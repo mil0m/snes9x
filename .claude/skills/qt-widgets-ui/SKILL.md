@@ -90,6 +90,7 @@ UiKit.cpp (the test renders every name). The SVG keeps `stroke="currentColor"`.
 
 - Widget tests: `build/tests/corrupt-qt-tests`, PNGs with `CORRUPT_SHOTS_DIR=build/tests/shots`.
 - The whole app: `tests/qt/ui_tour.sh <out> [rom] [--dark] [--scale 2]` (offscreen = Fusion),
+  (`TOUR_LIBRARY=<dir>` tours with a copy of a real library: the bugs that only real data shows),
   and `tests/qt/ui_tour_matrix.sh <out> --mac` for all six looks (Fusion light/dark × 1x/2x,
   real Mac light/dark). Read the PNGs; `audit.txt` in each look should be empty.
 - **Offscreen can't draw the Mac style** (it paints nothing without NSViews). The real look

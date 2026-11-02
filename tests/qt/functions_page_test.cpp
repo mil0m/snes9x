@@ -266,4 +266,9 @@ TEST_CASE("a game with hundreds of functions fills and updates quickly")
     auto table = d.findChild<QTableWidget *>("functions");
     REQUIRE(table);
     CHECK(table->rowCount() == 600);
+    // The counts grow while it's open (600 to 1,234,567): they still fit their column.
+    src.rows[0].f.frames = 1234567;
+    d.updateRows();
+    auto text = table->item(0, 2)->text();
+    CHECK(table->fontMetrics().horizontalAdvance(text) + 8 <= table->columnWidth(2));
 }

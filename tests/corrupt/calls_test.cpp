@@ -241,3 +241,20 @@ TEST_SUITE("call graph")
         fs::remove_all(dir);
     }
 }
+
+TEST_SUITE("call graph")
+{
+    TEST_CASE("a function is off when its first byte became a return, not when it always was one")
+    {
+        // Switched off: the clean ROM starts with LDA, now it returns at once.
+        CHECK(function_off(CallType::Near, 0x60, 0xA9));
+        CHECK(function_off(CallType::Long, 0x6B, 0x8B));
+        // A stub that only returns (Pocky & Rocky's $82:E010, 1 byte) was never switched off.
+        CHECK_FALSE(function_off(CallType::Near, 0x60, 0x60));
+        CHECK_FALSE(function_off(CallType::Long, 0x6B, 0x6B));
+        // The wrong return for how it's called, untouched code, and mixed calls aren't off.
+        CHECK_FALSE(function_off(CallType::Near, 0x6B, 0xA9));
+        CHECK_FALSE(function_off(CallType::Near, 0xA9, 0xA9));
+        CHECK_FALSE(function_off(CallType::Mixed, 0x60, 0xA9));
+    }
+}

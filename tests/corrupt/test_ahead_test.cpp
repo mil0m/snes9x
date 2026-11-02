@@ -176,6 +176,8 @@ TEST_SUITE("test before applying")
         CHECK(out.skipped == std::vector<uint32_t>{ 0x10 });
         CHECK(out.failure.find("CPU stopped") != std::string::npos);
         CHECK(out.summary.find("skipped this time") != std::string::npos);
+        CHECK(out.headline.find("would crash every time") != std::string::npos);
+        CHECK(out.headline.find("CPU") == std::string::npos); // short: the why is in the summary
         // The real frame didn't make it, and the game runs on.
         CHECK(f.mem.of(Target::ROM)[0x10] == 0);
         CHECK(!f.game.halted);
@@ -210,6 +212,7 @@ TEST_SUITE("test before applying")
             CHECK(f.mem.of(Target::ROM)[out.written[0]] == kPoison); // harmless there
             CHECK(!f.game.halted);
             CHECK(out.summary.find("rolled again") != std::string::npos);
+            CHECK(out.headline.find("would crash, so it picked again") != std::string::npos);
             CHECK(f.ahead.rerolled() == 1);
         }
         CHECK(found);

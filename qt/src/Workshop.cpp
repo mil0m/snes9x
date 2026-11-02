@@ -1,4 +1,6 @@
 #include "Workshop.hpp"
+
+#include <QHideEvent>
 #include "FunctionsPage.hpp"
 #include "MemoryViewer.hpp"
 #include "SurvivorsPanel.hpp"
@@ -137,5 +139,7 @@ void Workshop::showEvent(QShowEvent *event)
 void Workshop::hideEvent(QHideEvent *event)
 {
     timer->stop();
+    if (onClosed && !event->spontaneous()) // not when the app is hidden or minimised
+        onClosed(page(), size());
     QWidget::hideEvent(event);
 }

@@ -105,7 +105,8 @@ struct GuardOutcome
     uint64_t blame_through = 0;
     std::vector<uint32_t> rom_blamed; // what the byte blame acted on
     std::string rom_action;           // "reverted 2 ROM bytes"
-    std::string summary; // short text for an on-screen message
+    std::string summary;  // what happened, in full (the panel's tooltip, the info string)
+    std::string headline; // the same in a few words, for the panel's message line
 };
 
 // Catches crashes and rolls back. Call between_frames() after every emulated

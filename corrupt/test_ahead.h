@@ -40,7 +40,8 @@ struct AheadResult
     std::vector<uint32_t> skipped; // ROM offsets vetoed
     std::vector<uint32_t> untried; // of `written`, those the game didn't use in the window: untested
     std::string failure;  // what the last failed pick did ("stopped the CPU (STP at $00:806B) 0.2 s in")
-    std::string summary;  // for the status line; empty for Nothing and a plain Kept
+    std::string summary;  // in full; empty for Nothing and a plain Kept
+    std::string headline; // in a few words, for the panel's message line
     double ms = 0;        // wall time spent
 };
 

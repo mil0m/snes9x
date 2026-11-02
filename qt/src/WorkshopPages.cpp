@@ -478,6 +478,8 @@ RomPage::RomPage(CorruptionControl &control, SurvivorSource &survivors, QWidget 
 
 void RomPage::refresh(const PanelStatus &status)
 {
+    if (++ticks % 4 == 0) // every two seconds: survivors keep themselves fresh (no Refresh button)
+        survivors_panel->refresh();
     QStringList changed;
     if (!status.game_loaded)
         changed << tr("Load a game to see its ROM.");
@@ -763,6 +765,11 @@ SharingPage::SharingPage(CorruptionControl &control, QWidget *parent) : QWidget(
     remote_label = help({}, this);
     remote_label->setObjectName("remote_status");
     layout->addWidget(remote_label);
+    // The address and the link only matter while it's on.
+    remote_details = new QWidget(this);
+    remote_details->setObjectName("remote_details");
+    auto details_layout = new QVBoxLayout(remote_details);
+    details_layout->setContentsMargins(0, 0, 0, 0);
     auto form = ui::form();
     remote_address = new QLineEdit(this);
     remote_address->setObjectName("remote_address");
@@ -770,7 +777,7 @@ SharingPage::SharingPage(CorruptionControl &control, QWidget *parent) : QWidget(
     remote_address->setToolTip(tr("The address your tunnel gives this computer, for the link. Kept in your settings "
                                   "only. Empty: a link for this computer."));
     form->addRow(tr("Public address"), remote_address);
-    layout->addLayout(form);
+    details_layout->addLayout(form);
     auto remote_row = new QHBoxLayout;
     auto copy_link = button(tr("Copy Link"), this, "copy");
     copy_link->setObjectName("remote_copy");
@@ -782,7 +789,9 @@ SharingPage::SharingPage(CorruptionControl &control, QWidget *parent) : QWidget(
     remote_row->addWidget(copy_link);
     remote_row->addWidget(new_key);
     remote_row->addStretch(1);
-    layout->addLayout(remote_row);
+    details_layout->addLayout(remote_row);
+    layout->addWidget(remote_details);
+    remote_details->hide();
     connect(remote_check, &QCheckBox::clicked, this, [this](bool on) {
         auto err = this->control.setRemote(on);
         if (!err.empty())
@@ -811,6 +820,7 @@ void SharingPage::refresh(const PanelStatus &status)
         QSignalBlocker block(remote_check);
         remote_check->setChecked(remote.enabled);
     }
+    remote_details->setVisible(remote.enabled);
     if (!remote_label->text().startsWith(tr("Link copied")) || ticks % 20 == 0)
         remote_label->setText(qs(remote.status));
     if (ticks++ % 10 == 0) // the folder is read every few seconds, not on every tick

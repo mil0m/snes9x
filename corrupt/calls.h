@@ -35,6 +35,13 @@ enum class CallType : uint8_t
 constexpr CallType call_type_of(uint8_t op) { return op == callop::Jsl ? CallType::Long : CallType::Near; }
 // The byte that skips a function called this way; 0 for mixed.
 constexpr uint8_t return_byte(CallType t) { return t == CallType::Near ? kRts : t == CallType::Long ? kRtl : 0; }
+// Switched off: its first byte is now the return that skips it, and in the clean ROM it
+// isn't (a stub that only returns was never switched off).
+constexpr bool function_off(CallType t, uint8_t now, uint8_t clean)
+{
+    uint8_t ret = return_byte(t);
+    return ret && now == ret && clean != ret;
+}
 
 // One call site as it ran: the call instruction and the function's entry, as ROM offsets.
 struct CallKey

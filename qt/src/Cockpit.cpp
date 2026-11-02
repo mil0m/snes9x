@@ -6,6 +6,7 @@
 #include "corrupt/rule_text.h"
 
 #include <QComboBox>
+#include <QEvent>
 #include <QFormLayout>
 #include <QHBoxLayout>
 #include <QHeaderView>
@@ -98,9 +99,20 @@ Cockpit::Cockpit(CorruptionControl &control, RecipeActions &actions, QWidget *pa
     guide->setAccessibleName(tr("Guide"));
     top->addWidget(guide, 0, Qt::AlignTop);
     layout->addLayout(top);
+
+    // What's going on, in one bar: the accent colour while corrupting.
+    state_label = new QLabel(this);
+    state_label->setObjectName("state");
+    state_label->setWordWrap(true);
+    state_label->setAutoFillBackground(true);
+    state_label->setMargin(6);
+    QFont state_font = state_label->font();
+    state_font.setBold(true);
+    state_label->setFont(state_font);
+    layout->addWidget(state_label);
     connect(workshop, &QPushButton::clicked, this, [this] {
-        if (openWorkshop)
-            openWorkshop(WorkshopPage::Recipe);
+        if (openWorkshopAgain)
+            openWorkshopAgain();
     });
     connect(guide, &QPushButton::clicked, this, [this] {
         if (openGuide)
@@ -134,12 +146,26 @@ Cockpit::Cockpit(CorruptionControl &control, RecipeActions &actions, QWidget *pa
     connect(recipe_combo, &QComboBox::activated, this, &Cockpit::recipeChosen);
     connect(save_button, &QPushButton::clicked, this, [this] { this->actions.save(); });
 
-    message_line = new ui::StatusLine(this);
+    // News from the session: a few words that fade. The area keeps one line's height when
+    // empty, so Corrupt doesn't jump under the mouse when a message comes or goes.
+    auto message_area = new QWidget(this);
+    message_area->setObjectName("message_area");
+    auto message_layout = new QVBoxLayout(message_area);
+    message_layout->setContentsMargins(0, 0, 0, 0);
+    message_line = new ui::StatusLine(message_area);
     message_line->setObjectName("message");
-    layout->addWidget(message_line);
+    message_layout->addWidget(message_line);
+    message_area->setMinimumHeight(fontMetrics().height());
+    layout->addWidget(message_area);
+    fade_timer = new QTimer(this);
+    fade_timer->setSingleShot(true);
+    connect(fade_timer, &QTimer::timeout, this, [this] {
+        message_line->setMessage({});
+        message_line->setToolTip({});
+        showing_error = false;
+    });
 
-    // Corrupt.
-    layout->addSpacing(ui::sectionGap(this) / 2);
+    // Corrupt (the message area above already leaves a line of space).
     auto run_row = new QHBoxLayout;
     corrupt_button = button(tr("Corrupt"), this, "bolt");
     corrupt_button->setObjectName("corrupt");
@@ -150,10 +176,11 @@ Cockpit::Cockpit(CorruptionControl &control, RecipeActions &actions, QWidget *pa
     run_row->addWidget(corrupt_button, 1);
     run_row->addWidget(back_button, 1);
     layout->addLayout(run_row);
-    run_label = new QLabel(this);
-    run_label->setObjectName("run_status");
-    run_label->setWordWrap(true);
-    layout->addWidget(run_label);
+    moment_note = new QLabel(this);
+    moment_note->setObjectName("moment_note");
+    moment_note->setWordWrap(true);
+    ui::setTone(moment_note, ui::Tone::Secondary);
+    layout->addWidget(moment_note);
     run_controls = new QWidget(this);
     run_controls->setObjectName("run_controls");
     auto run_form = ui::form(run_controls);
@@ -167,8 +194,9 @@ Cockpit::Cockpit(CorruptionControl &control, RecipeActions &actions, QWidget *pa
     auto seed_row = new QHBoxLayout;
     seed_edit = new QLineEdit(this);
     seed_edit->setObjectName("seed");
+    seed_edit->setFrame(false); // a quiet number; click it to type another
     seed_edit->setToolTip(tr("The dice. The same recipe with the same seed, from the same start, does the same "
-                             "thing every time. Type one and press Enter to use it."));
+                             "thing every time. Click and type one, then press Enter to use it."));
     reroll_button = button(tr("Re-roll"), this, "dice-5");
     reroll_button->setObjectName("reroll");
     reroll_button->setToolTip(tr("New dice: same recipe, different corruption, starting over."));
@@ -255,11 +283,19 @@ Cockpit::Cockpit(CorruptionControl &control, RecipeActions &actions, QWidget *pa
 
     // One line each about the crash guard and the ROM.
     layout->addSpacing(ui::sectionGap(this) / 2);
+    auto line = [this, &followLink](const char *name, QLabel *&icon) {
+        icon = new QLabel(this);
+        icon->setAlignment(Qt::AlignTop);
+        auto label = new QLabel(this);
+        label->setObjectName(name);
+        label->setWordWrap(true);
+        label->setTextInteractionFlags(Qt::LinksAccessibleByMouse | Qt::LinksAccessibleByKeyboard);
+        connect(label, &QLabel::linkActivated, this, followLink);
+        return label;
+    };
     auto guard_row = new QHBoxLayout;
-    guard_label = new QLabel(this);
-    guard_label->setObjectName("guard_line");
-    guard_label->setWordWrap(true);
-    connect(guard_label, &QLabel::linkActivated, this, followLink);
+    guard_label = line("guard_line", guard_icon);
+    guard_row->addWidget(guard_icon, 0, Qt::AlignTop);
     guard_row->addWidget(guard_label, 1);
     auto mark = mark_button = button(tr("It Crashed"), this, "history");
     mark->setObjectName("mark_crash");
@@ -267,11 +303,11 @@ Cockpit::Cockpit(CorruptionControl &control, RecipeActions &actions, QWidget *pa
     guard_row->addWidget(mark, 0, Qt::AlignTop);
     layout->addLayout(guard_row);
     connect(mark, &QPushButton::clicked, this, [this] { this->control.markCrash(); });
-    rom_label = new QLabel(this);
-    rom_label->setObjectName("rom_line");
-    rom_label->setWordWrap(true);
-    connect(rom_label, &QLabel::linkActivated, this, followLink);
-    layout->addWidget(rom_label);
+    auto rom_row = new QHBoxLayout;
+    rom_label = line("rom_line", rom_icon);
+    rom_row->addWidget(rom_icon, 0, Qt::AlignTop);
+    rom_row->addWidget(rom_label, 1);
+    layout->addLayout(rom_row);
     layout->addStretch(1);
 
     setToggleKey({});
@@ -295,9 +331,62 @@ void Cockpit::setToggleKey(const QString &key)
 void Cockpit::showMessage(const QString &text, bool error)
 {
     message_line->setMessage(text, error ? ui::Tone::Error : ui::Tone::Normal);
-    showing_error = error;
-    if (error) // the session's next news can replace it after a while, not at once
-        QTimer::singleShot(8000, this, [this] { showing_error = false; });
+    message_line->setToolTip({});
+    showing_error = error; // the session's news waits until it fades
+    startFade();
+}
+
+void Cockpit::startFade()
+{
+    fade_timer->start(fade_ms);
+}
+
+void Cockpit::changeEvent(QEvent *event)
+{
+    QWidget::changeEvent(event);
+    if (event->type() == QEvent::PaletteChange || event->type() == QEvent::ApplicationPaletteChange)
+        shown_state.clear(); // the bar's colours again
+}
+
+void Cockpit::showState(const QString &state, const QString &text)
+{
+    state_label->setText(text);
+    if (state == shown_state)
+        return;
+    shown_state = state;
+    state_label->setProperty("state", state);
+    QPalette p = palette();
+    if (state == "corrupting")
+    {
+        p.setColor(QPalette::Window, p.color(QPalette::Highlight));
+        p.setColor(QPalette::WindowText, p.color(QPalette::HighlightedText));
+    }
+    else
+    {
+        // A tint of the text (or the warning colour) over the window: a bar in any style,
+        // light or dark, where the Mac's alternate base is as white as the window.
+        auto mix = [](QColor a, QColor b, double t) {
+            return QColor::fromRgbF(a.redF() + (b.redF() - a.redF()) * t, a.greenF() + (b.greenF() - a.greenF()) * t,
+                                    a.blueF() + (b.blueF() - a.blueF()) * t);
+        };
+        QColor window = p.color(QPalette::Window);
+        QColor tint = state == "stopped" ? ui::toneColor(ui::Tone::Warning, p) : p.color(QPalette::WindowText);
+        p.setColor(QPalette::Window, mix(window, tint, state == "stopped" ? 0.18 : 0.07));
+    }
+    state_label->setPalette(p);
+}
+
+void Cockpit::setLink(QLabel *label, QLabel *icon, const char *icon_name, const QString &page, const QString &text,
+                      const QString &where, ui::Tone tone)
+{
+    // The whole line is the link, in the text's own colour, with a chevron: no word repeated.
+    QColor colour = ui::toneColor(tone, palette());
+    label->setText(QString("<a href=\"%1\" style=\"color:%2; text-decoration:none\">%3&nbsp;›</a>")
+                       .arg(page, colour.name(), text.toHtmlEscaped()));
+    label->setAccessibleName(tr("%1: %2").arg(where, text));
+    label->setToolTip(tr("Open %1 in the Workshop").arg(where));
+    int size = label->fontMetrics().height();
+    icon->setPixmap(ui::pixmap(icon_name, colour, size, devicePixelRatioF()));
 }
 
 void Cockpit::refresh()
@@ -308,8 +397,12 @@ void Cockpit::refresh()
     if (game_key != shown_game)
     {
         shown_game = game_key;
-        game_label->setText(status.game_loaded ? qs(game_folder_name(status.game.title, status.game.sha256))
-                                               : tr("No game loaded"));
+        QString title = status.rom_name.empty() ? qs(status.game.title) : qs(status.rom_name);
+        game_label->setText(status.game_loaded ? title : tr("No game loaded"));
+        game_label->setToolTip(status.game_loaded
+                                   ? tr("Its folder in the library: %1")
+                                         .arg(qs(game_folder_name(status.game.title, status.game.sha256)))
+                                   : QString());
         refreshRecipes();
     }
     if (status.library_generation != shown_library_generation)
@@ -366,45 +459,46 @@ void Cockpit::refresh()
     if (!seed_edit->hasFocus())
         seed_edit->setText(status.has_recipe ? QString::number(status.engine.seed) : QString());
 
-    // What's happening, in words.
-    QString run;
+    // What's happening, in one bar.
     if (!status.game_loaded)
-        run = tr("Load a game to start.");
+        showState("idle", tr("Load a game to start"));
     else if (!status.has_recipe)
-        run = tr("No recipe loaded: pick one above.");
+        showState("idle", tr("Pick a recipe to start"));
     else if (status.starting)
-        run = tr("Starting with the next frame…");
+        showState("corrupting", tr("Starting…"));
     else if (on)
     {
-        run = tr("On for %1 s · %2")
-                  .arg(status.engine.frame / 60)
-                  .arg(plural(status.engine.firings, tr("1 change made"), tr("%1 changes made")));
-        if (status.new_moment)
-            run += tr(" · Save to replay this run from its start");
-        else if (status.has_moment)
-            run += tr(" · started from its saved moment");
+        auto seconds = status.engine.frame / 60;
+        showState("corrupting", tr("Corrupting · %1:%2 · %3")
+                                    .arg(seconds / 60)
+                                    .arg(seconds % 60, 2, 10, QChar('0'))
+                                    .arg(plural(status.engine.firings, tr("1 change"), tr("%1 changes"))));
     }
     else if (status.back_to_normal)
-        run = tr("Off. The game is back to normal.");
+        showState("normal", tr("Not corrupting · back to normal"));
     else if (status.can_go_back)
-        run = tr("Off. What it changed stays until you press Back to Normal.");
+        showState("stopped", tr("Stopped · its changes stay until Back to Normal"));
     else
-        run = tr("Off. Press Corrupt to start.");
-    if (status.edited && !status.recipe_path.empty())
-        run += tr(" · the recipe has unsaved changes");
-    run_label->setText(run);
+        showState("idle", tr("Ready · press Corrupt to start"));
+
+    QString moment; // starting from a saved moment is news (the message line), not a note
+    if (status.has_recipe && on && status.new_moment)
+        moment = tr("This run starts from a new moment: Save keeps it, so the run can be replayed.");
+    moment_note->setText(moment);
+    moment_note->setVisible(!moment.isEmpty());
 
     // The crash guard, in one line.
     QString guard;
     if (!status.detection_enabled)
-        guard = tr("Crash guard off: crashes aren't caught.");
+        guard = tr("Crash guard off: crashes aren't caught");
     else if (status.crashes == 0)
-        guard = tr("Crash guard on · no crashes yet.");
+        guard = tr("Crash guard on · no crashes yet");
     else
-        guard = tr("Crash guard on · %1.").arg(plural(status.crashes, tr("1 crash caught"), tr("%1 crashes caught")));
-    guard_label->setText(guard.toHtmlEscaped() + " " + link("safety", tr("Safety")));
-    guard_label->setToolTip(status.last_crash.empty() ? QString() : tr("Last: %1").arg(qs(status.last_crash)));
-    ui::setTone(guard_label, status.detection_enabled ? ui::Tone::Normal : ui::Tone::Warning);
+        guard = tr("Crash guard on · %1").arg(plural(status.crashes, tr("1 crash caught"), tr("%1 crashes caught")));
+    setLink(guard_label, guard_icon, "shield", "safety", guard, tr("Safety"),
+            status.detection_enabled ? ui::Tone::Normal : ui::Tone::Warning);
+    if (!status.last_crash.empty())
+        guard_label->setToolTip(tr("Last: %1").arg(qs(status.last_crash)));
 
     // The ROM, in one line.
     QStringList rom;
@@ -418,14 +512,17 @@ void Cockpit::refresh()
         if (status.pins)
             rom << plural(status.pins, tr("1 pinned"), tr("%1 pinned"));
     }
-    rom_label->setText(rom.isEmpty() ? QString() : rom.join(" · ").toHtmlEscaped() + " " + link("rom", tr("ROM")));
+    if (!rom.isEmpty())
+        setLink(rom_label, rom_icon, "cpu", "rom", rom.join(" · "), tr("The ROM"), ui::Tone::Normal);
     rom_label->setVisible(!rom.isEmpty());
+    rom_icon->setVisible(!rom.isEmpty());
 
-    if (status.message != shown_message)
+    if (status.message != shown_message && !showing_error)
     {
         shown_message = status.message;
-        if (!showing_error)
-            message_line->setMessage(qs(status.message));
+        message_line->setMessage(qs(status.message));
+        message_line->setToolTip(qs(status.message_detail));
+        startFade();
     }
 }
 
@@ -471,7 +568,7 @@ void Cockpit::syncRecipeChoice(const PanelStatus &status)
     for (size_t i = 0; i < entries.size(); i++)
         if (!status.recipe_path.empty() && entries[i].path == status.recipe_path)
             return recipe_combo->setCurrentIndex(recipe_combo->findData(QString("mine:%1").arg(i)));
-    recipe_combo->insertItem(1, tr("%1 (not saved yet)").arg(qs(status.engine.recipe_name)), QString("loaded"));
+    recipe_combo->insertItem(1, tr("%1 (new)").arg(qs(status.engine.recipe_name)), QString("loaded"));
     recipe_combo->setCurrentIndex(1);
 }
 

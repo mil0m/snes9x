@@ -38,6 +38,9 @@ struct EmuConfig
     // Corruption tooling
     std::string corruption_library_root; // the recipe library, e.g. a clone of the shared library repo
     bool corruption_panel_visible = false;
+    int corruption_workshop_page = 0;      // the Workshop opens where it was (#64)
+    int corruption_workshop_width = 0;     // 0: as wide as its pages need
+    int corruption_workshop_height = 720;
     bool corruption_saved_moments = true; // save the moment a run starts with its recipe, and load it back
     // Remote control from a browser (#53): off by default; listens on 127.0.0.1 only. The
     // public address and the key are this user's, kept here and never in the code.

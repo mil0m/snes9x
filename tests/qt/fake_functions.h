@@ -60,6 +60,14 @@ struct FakeFunctions : FunctionSource
         rows = { busy, lng, mixed };
     }
     std::vector<FunctionRow> functions() override { return rows; }
+    // A function the game just started calling, busier than any (the session sorts busiest first).
+    void add_busy(uint32_t entry)
+    {
+        FunctionRow r;
+        r.f = { .entry = entry, .type = CallType::Near, .calls = 1, .callers = 1, .frames = 1, .now = 1000 };
+        r.address = 0x800000 | entry;
+        rows.insert(rows.begin(), r);
+    }
     bool running() override { return on; }
     std::string flip(uint32_t entry) override
     {

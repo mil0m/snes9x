@@ -207,6 +207,7 @@ TEST_CASE("it gives up after five crashes without a clean stretch, and turns cor
     rig.frames(130 * 8);
     REQUIRE(rig.outcomes.size() == CrashGuard::kMaxAttempts + 1);
     CHECK(rig.outcomes.back().kind == GuardOutcome::GaveUp);
+    CHECK(rig.outcomes.back().headline == "Kept crashing: corruption turned off");
     CHECK_FALSE(rig.engine.active());
     CHECK(rig.crash_byte() != kCrashValue);
     CHECK(rig.journal.back().kind == JournalEntry::GaveUp);
@@ -218,6 +219,9 @@ TEST_CASE("disable turns the suspect off; dampen halves its intensity")
     off.frames(400);
     CHECK_FALSE(off.engine.recipe().rules[0].enabled);
     CHECK(off.outcomes.size() == 1);
+    auto &said = off.outcomes[0].headline; // in words, not the policy's name for it
+    CHECK(said.rfind("Crash caught: went back ", 0) == 0);
+    CHECK(said.find(", turned off ") != std::string::npos);
 
     Rig damp(recipe_of({ poke_crash_byte(130, kCrashValue, kCrashValue) }), PolicyKind::Dampen);
     damp.frames(131);
@@ -536,6 +540,8 @@ TEST_SUITE("blaming single bytes the game used (ROM)")
         CHECK(out.rom_blamed == std::vector<uint32_t>{ 0x10, 0x20 });
         CHECK(out.rom_action == "reverted 2 ROM bytes");
         CHECK(out.summary.find("reverted 2 ROM bytes") != std::string::npos);
+        CHECK(out.headline.rfind("Crash caught: went back ", 0) == 0);
+        CHECK(out.headline.find("(") == std::string::npos); // the verdict stays in the summary
         CHECK(rig.guard.rule_crashes(rig.engine) == std::vector<unsigned>{ 0 });
         REQUIRE(bytes.acts.size() == 1);
         CHECK(bytes.acts[0].attempt == 1);

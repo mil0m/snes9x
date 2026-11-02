@@ -19,7 +19,7 @@ Use a game you have never set up (a fresh library folder, so no recipes exist fo
    - [ ] The seed changes, and the glitches are different.
 5. Press **Back to Normal**.
    - [ ] The game goes back to the moment you pressed Corrupt, with the ROM clean.
-   - [ ] The status says *Off. The game is back to normal.*
+   - [ ] The state bar says *Not corrupting · back to normal*.
 6. Click the **?** button at the top of the panel.
    - [ ] The guide opens.
 7. Hover each button in the panel.
@@ -42,7 +42,7 @@ Use a game you have never set up (a fresh library folder, so no recipes exist fo
 
 ## 2. Corruption runs
 1. Choose the recipe in the **Recipe** list (it loads), then press **Corrupt (F7)**.
-   - [ ] The button reads *Stop (F7)*. The status reads *On for N s · N changes made*; the rule table shows `drift` and *cgram 0x0000..0x01FF: add -2..2 x4, every 30 frames* (columns *Rule*, *What it does*, *Strength*), with no sideways scroll bar.
+   - [ ] The button reads *Stop (F7)*. The state bar reads *Corrupting · 0:NN · N changes*, in blue; the rule table shows `drift` and *cgram 0x0000..0x01FF: add -2..2 x4, every 30 frames* (columns *Rule*, *What it does*, *Strength*), with no sideways scroll bar.
    - [ ] Colours visibly change. A game that refreshes its palette every frame shows short flashes.
 2. Repeat with **Starter: Tile rot**.
    - [ ] Graphics decay within a few seconds.
@@ -58,7 +58,7 @@ Use a game you have never set up (a fresh library folder, so no recipes exist fo
    - [ ] The panel's **Buttons** section shows one named button for the rule (named after the rule) and one for the switch (named after what it does, e.g. *gravity off* if you named the function, otherwise its address).
    - [ ] A recipe with no buttons shows no **Buttons** section.
 4. Press **F7** to corrupt, then press the rule's button a few times.
-   - [ ] The changes made go up by one per press. The status line says what was pressed.
+   - [ ] The changes made go up by one per press. The message line says what was pressed.
 5. Press the switch's button.
    - [ ] The button stays lit and the function goes off. Press again: it goes dark and the function is back on.
 6. Open the remote page (section 31, steps 1-2).
@@ -76,7 +76,7 @@ Use a game you have never set up (a fresh library folder, so no recipes exist fo
 4. Workshop > **Sharing** > **Open This Game's Folder**.
    - [ ] The game's library folder opens, with its `recipes` folder.
 5. **New**, add a rule, then **Save** (the recipe has no file yet).
-   - [ ] It asks for a name. Before saving, the list shows the recipe as *(not saved yet)*.
+   - [ ] It asks for a name. Before saving, the list shows the recipe as *<name> (new)*.
 
 ## 5. Save backups
 1. Load the game.
@@ -94,8 +94,8 @@ Use a game you have never set up (a fresh library folder, so no recipes exist fo
 
 ## 7. Crash guard
 1. Pick **Starter: Low WRAM roulette** in a game you know, press **Corrupt (F7)**, and play. Open the Workshop's **Safety** page: make sure **Catch crashes and go back a few seconds** is ticked and **After a crash** says *Re-roll the guilty rule's dice*.
-   - [ ] Within a minute or two, a crash is caught: the message `Crash caught (…): back N s, reroll roulette` appears, and the game continues from slightly earlier.
-   - [ ] The panel's crash line says *Crash guard on · N crashes caught.*, the Safety page says *N crashes caught. Last: …*, and the rule's *Crashes* column goes up too. With no crashes it says *No crashes yet.*
+   - [ ] Within a minute or two, a crash is caught: the message *Crash caught: went back N s, re-rolled roulette* appears (hover it for the crash's cause), and the game continues from slightly earlier.
+   - [ ] The panel's guard line says *Crash guard on · N crashes caught*, the Safety page says *N crashes caught. Last: …*, and the rule's *Crashes* column goes up too. With no crashes it says *Crash guard on · no crashes yet*.
    - [ ] After a few crashes it says *It has learned N dangerous spots (rules can avoid them).*
    - [ ] `journal.<you>.jsonl` in the game's library folder has a `crash` line, and a `recovered` line after about 10 calm seconds.
 2. Set **After a crash** to *Turn the guilty rule off* and wait for a crash.
@@ -115,7 +115,7 @@ Use a game you have never set up (a fresh library folder, so no recipes exist fo
 1. Choose any recipe, press **Corrupt (F7)**. In the panel, double-click a rule.
    - [ ] The rule editor opens. In the Workshop's **Recipe** page, selecting a rule makes the pencil, copy and bin buttons (edit, duplicate, remove) clickable.
 2. Workshop > **Recipe** > **Add Rule…**, then **OK** with the defaults.
-   - [ ] A `new rule` row appears and is selected; the status line says *· the recipe has unsaved changes*, and *On for N s* keeps counting (no restart).
+   - [ ] A `new rule` row appears and is selected; **Save** becomes enabled, and the state bar's time keeps counting (no restart).
 3. Edit that rule: set **Memory** to `cgram (palette)`, **From** `0` **to** `0x1FF`, *What* `Add / subtract` −8..8, *When* every 10 frames.
    - [ ] The summary line under the form updates as you type.
    - [ ] Colours start changing within a second; any other rule carries on as before.
@@ -124,7 +124,7 @@ Use a game you have never set up (a fresh library folder, so no recipes exist fo
 5. Duplicate the rule (copy button), then remove the copy (bin button).
    - [ ] Remove asks first; the table is back to how it was.
 6. **Save**.
-   - [ ] *· the recipe has unsaved changes* goes away, and the recipe's JSON file has the new rule.
+   - [ ] **Save** is disabled again, and the recipe's JSON file has the new rule.
 7. Edit something, then choose another recipe in the **Recipe** list.
    - [ ] It asks before discarding the changes. **No** keeps them.
 8. **New**, **Add Rule…**, then **Save As…** `scratch` (Recipe page).
@@ -134,9 +134,9 @@ Use a game you have never set up (a fresh library folder, so no recipes exist fo
 
 ## 9. Chaos and Strength
 1. Pick **Starter: Tile rot** (or any visible recipe), press **Corrupt (F7)**, and drag **Chaos** down to 20 %.
-   - [ ] The effect slows down right away, and the status line says *· the recipe has unsaved changes*.
+   - [ ] The effect slows down right away, and **Save** becomes enabled.
 2. Drag it to 0 %.
-   - [ ] The changes made stop counting up. Back to 100 %: they resume, and *On for N s* never reset.
+   - [ ] The changes made stop counting up. Back to 100 %: they resume, and the state bar's time never resets.
 3. With two rules, drag one rule's **Strength** slider to 0 %.
    - [ ] Only that rule goes quiet.
 4. Drag **Chaos** in steps.
@@ -150,16 +150,16 @@ Use a game you have never set up (a fresh library folder, so no recipes exist fo
 
 ## 10. Where each run starts
 1. Make sure **Remember where each run starts** is ticked. Choose a recipe, play to a memorable spot, and press **Corrupt (F7)**.
-   - [ ] The status line says *start moment not saved yet*, and **Save** is enabled.
+   - [ ] The note under the buttons says *This run starts from a new moment: Save keeps it, so the run can be replayed.*, and **Save** is enabled.
 2. Play for 20 seconds with a visible recipe (Tile rot, Palette drift), then **Save**.
    - [ ] `recipes/<name>.anchor.frz` appears next to the JSON, and the JSON has `"anchor_state"`.
 3. Walk somewhere else, then choose the same recipe in the **Recipe** list again.
-   - [ ] The game jumps back to the spot from step 1 and the run starts; the status says *started from its saved moment*.
+   - [ ] The game jumps back to the spot from step 1 and the run starts; the message line says *Starting from its saved moment*.
    - [ ] Without touching the controller, the corruption looks the same as the first time (same tiles or colours at the same times).
 4. **Re-roll**.
-   - [ ] The status says *start moment not saved yet* again.
+   - [ ] The start-moment note shows again.
 5. Pause the game (P) and press **Corrupt (F7)** off and on.
-   - [ ] The status says *Starting with the next frame…* until you unpause.
+   - [ ] The state bar says *Starting…* until you unpause.
 6. Untick **Remember where each run starts** and choose the recipe again.
    - [ ] The game does not jump; the recipe starts where you are.
 7. **Save As…** (Recipe page) a recipe that started from its moment, under a new name.
@@ -202,7 +202,7 @@ Use a game you have never set up (a fresh library folder, so no recipes exist fo
 3. Switch **Memory** to another one, then click `palette copy` in the list.
    - [ ] It switches back to WRAM and selects the range.
 4. **Rename…** it to `palette`.
-   - [ ] The message says recipes follow; the recipe's JSON now says `"palette"`, it still loads, and the status doesn't say the recipe has unsaved changes.
+   - [ ] The message says recipes follow; the recipe's JSON now says `"palette"`, it still loads, and **Save** stays disabled.
 5. **Delete…** it.
    - [ ] The question names the recipe that uses it; afterwards the recipe still loads, with the range written out.
 
@@ -387,7 +387,7 @@ Use a game you have never set up (a fresh library folder, so no recipes exist fo
    - [ ] A list of changes with where (`$C0:5AD7`), what (`D0 → F0`), the instruction before and after (`BNE … → BEQ …`) and how many frames it was used. Data changes say `data`.
    - [ ] With nothing yet, it says so instead of showing an empty table.
 3. Select one or two, type a note, **Pin Selected**.
-   - [ ] They move to **Pinned in this recipe** with your note; the ROM page says *2 pinned*; the status says *· the recipe has unsaved changes*.
+   - [ ] They move to **Pinned in this recipe** with your note; the ROM page says *2 pinned*; **Save** becomes enabled.
 4. **Save** the recipe, press **Corrupt (F7)** to turn it off, untick the rule's **On** box, and press Corrupt again.
    - [ ] The console restarts, and **Colour by: Changes** shows just the pinned bytes, orange.
 5. Make the game crash some other way (a ROM rule or **It Crashed: Go Back**).
@@ -431,7 +431,7 @@ Use a game you have never set up (a fresh library folder, so no recipes exist fo
 ## 28. Instant revert
 1. Load Goof Troop (or any game) and play for a couple of minutes, so the code map knows its code.
 2. Pick **Starter: Code drip** and press **Corrupt (F7)**. Play on.
-   - [ ] Now and then the status line says *Caught at $xx:xxxx (jumped into the middle of an instruction): reverted 1 ROM byte and played the frame again*, and the on-screen message says *caught a bad jump*.
+   - [ ] Now and then the message line says *Caught a bad jump: reverted 1 ROM byte*; hovering it shows *Caught at $xx:xxxx (jumped into the middle of an instruction): reverted 1 ROM byte and played the frame again*, and the on-screen message says *caught a bad jump*.
    - [ ] When that happens the game doesn't visibly stop or jump back: at most a one-frame hitch.
    - [ ] The ROM page counts *N bad jumps put back at once*.
    - [ ] Crashes the guard catches (*Crash caught … back 1.5 s*) are rarer than before; some still happen (slow damage).
@@ -448,7 +448,7 @@ Use a game you have never set up (a fresh library folder, so no recipes exist fo
 1. Load Goof Troop (or any game) and play for a couple of minutes, so the code map knows its code.
 2. Pick **Starter: Code drip** and press **Corrupt (F7)**. Play on for a few minutes.
    - [ ] Every two seconds there's a very short pause (the change being tried ahead). The picture and sound don't jump ahead or stutter backwards: the future is never shown or heard.
-   - [ ] Now and then the status line says *Tested ahead: drip crashed the game (…), so it rolled again*; rarely *…so it's skipped this time*.
+   - [ ] Now and then the message line says *Tested ahead: drip would crash, so it picked again*; rarely *Tested ahead: drip would crash every time, so it's skipped this time* (hover for the full story).
    - [ ] The ROM page counts *N changes tested first (N re-rolled, N skipped)*.
    - [ ] Fewer *Caught at* and *Crash caught* lines than in section 28, though not none (changes the game uses only later aren't tried).
 3. Open the Workshop's **Memory** page on **rom**, **Colour by: Live**, during the pauses.
@@ -469,14 +469,14 @@ Removed on 2026-11-01: it didn't pay off (see FEATURES.md, *Tried and removed*).
    - [ ] The line under it says *Listening on this computer, port 8095. Nobody connected.*
 2. **Copy Link** (Public address empty) and open it in a browser on this computer.
    - [ ] The page shows the game and recipe; the address bar no longer shows the key.
-   - [ ] The Sharing page says *Connected: this computer*, and the status line *Remote: this computer connected*.
+   - [ ] The Sharing page says *Connected: this computer*, and the message line *Remote: this computer connected*.
 3. On the page: **Corrupt**, move **Chaos**, press button **1**, turn a rule off and on, **Re-roll**.
-   - [ ] Each one happens in the app at once, and the panel's status line says what the remote did.
+   - [ ] Each one happens in the app at once, and the panel's message line says what the remote did.
    - [ ] Changes made in the panel show up on the page within a second.
 3b. On the page, pick **Code drip** under *Starter recipe* and **Load**.
    - [ ] It asks first if a recipe is already loaded; then the app's panel shows Code drip and its rule, and the page lists the rule.
 4. Memory: WRAM, tick **Paint**, value `FF`, tap the picture.
-   - [ ] The byte changes (in the app's Memory page too); the status line says *painted 1 byte of wram with 0xFF*.
+   - [ ] The byte changes (in the app's Memory page too); the message line says *painted 1 byte of wram with 0xFF*.
 5. **New Key** on the Sharing page.
    - [ ] The page goes offline, then says the key is old. Opening a freshly copied link works again.
 6. Through the tunnel, from a phone on mobile data, with **Public address** set:
@@ -498,7 +498,7 @@ Removed on 2026-11-01: it didn't pay off (see FEATURES.md, *Tried and removed*).
    - [ ] Ticking **Off** does nothing and stays unticked.
 3. Pick **Starter: Gentle WRAM noise** (or any recipe), press **Corrupt (F7)**, then in Functions tick **Off** on one of the top rows.
    - [ ] Something in the game stops or changes right away (a movement, a sound, the scroll, an enemy), and the game keeps running.
-   - [ ] The status line under the table says it was turned off; the ROM line says *1 function off*.
+   - [ ] The line under the table says it was turned off; the ROM line says *1 function off*.
    - [ ] Unticking puts it back; the game behaves as before.
 4. Try a few more of the busy ones.
    - [ ] One that breaks the game is caught: *caught a bad jump* or *Crash caught*, and its box unticks by itself.
@@ -524,7 +524,7 @@ Removed on 2026-11-01: it didn't pay off (see FEATURES.md, *Tried and removed*).
 5. Load **Starter: Code drip**, Protect a function again, press Corrupt and let it drip for a minute.
    - [ ] In the Memory page with **Changes**, no changed byte lands inside the protected function's code.
 6. In the Memory page's Pixels view, **Paint Mode** (the value and brush show only now), paint across the protected function's code.
-   - [ ] The status line says *Kept N bytes as they were: guarded by $80:… (scroll?)*; those bytes don't change.
+   - [ ] The message line says *Kept N bytes as they were: guarded by $80:… (scroll?)*; those bytes don't change.
 7. Tick **Off** on another function (corruption on).
    - [ ] Its code is guarded too while it's off (*guarded* in the column, strongest colour at its first byte in the Memory page); untick and the guard goes.
 8. Untick **Protect**, **Save** with Protect on, reload the recipe.
@@ -559,11 +559,11 @@ Removed on 2026-11-01: it didn't pay off (see FEATURES.md, *Tried and removed*).
 ## 37. Playing together live (shared library)
 1. Two copies of the app on one computer: `SNES9X_PLAYER=a` and `SNES9X_PLAYER=b`, each with its own scratch config, both pointing at the same library folder; Goof Troop in both.
 2. Play a minute in **a**, open the Workshop's **Functions** page, name a busy function *gravity* (press Return).
-   - [ ] Within 30 s **b**'s status line says it picked up what the others learned; on **b**'s Functions page that function shows *gravity (a)*.
+   - [ ] Within 30 s **b**'s message line says it picked up what the others learned; on **b**'s Functions page that function shows *gravity (a)*.
 3. In **b**, save a recipe.
    - [ ] Within 30 s it shows in **a**'s recipe list, and **a**'s chosen recipe stays chosen.
 4. Copy a recipe file to `<name>.sync-conflict-20261102-201512-ABCDEFG.json` in the game's `recipes/` folder.
-   - [ ] It doesn't show in the list; within 30 s the status line says the sync kept two versions of it.
+   - [ ] It doesn't show in the list; within 30 s the message line says the sync kept two versions of it.
 5. With Syncthing for real (README "Playing together live"): two computers, the always-on one holding the git clone.
    - [ ] A name set on one shows on the other within a minute; `tools/push.sh` on the always-on computer pushes a commit named *Session <date>: <games>*.
 
@@ -573,9 +573,9 @@ Removed on 2026-11-01: it didn't pay off (see FEATURES.md, *Tried and removed*).
    - [ ] The panel shows the game's name with a **Workshop** button and a **?** button, the **Start here** card, the recipe list, and the Corrupt and Back to Normal buttons. **Chaos**, **Seed** and **Re-roll** are hidden.
 2. Pick a recipe with a few rules and a few buttons (for example the one from section 3, plus two more rules), in a normal-height window.
    - [ ] The **Start here** card goes away; **Chaos**, **Seed** and **Re-roll** appear; **Buttons** and **Rules** show. The whole panel fits without a vertical scroll bar.
-   - [ ] Top to bottom: name and Workshop/?, recipe list and **Save**, message line, Corrupt (F7) and Back to Normal, run line, Chaos and Seed, Buttons, Rules, crash line with **It Crashed**, ROM line.
+   - [ ] Top to bottom: name and Workshop/?, state bar, recipe list and **Save**, message line, Corrupt (F7) and Back to Normal, the start-moment note (only when there is one), Chaos and Seed, Buttons, Rules, guard line with **It Crashed**, ROM line.
    - [ ] **Rules** shows only on/off, name and strength. Double-clicking a rule opens the editor.
-3. Click the links: **Add or change rules**, then **Safety** (in *Crash guard on · N crashes caught.*), then **ROM** (in *ROM: N bytes changed · N functions off*).
+3. Click the links: **Add or change rules**, then the guard line (*Crash guard on · …*), then the ROM line (*ROM: N bytes changed · …*).
    - [ ] Each opens the Workshop on the matching page (Recipe, Safety, ROM). Clicking a link while the Workshop is open switches its page instead of opening a second window.
 4. Click through every Workshop page in the sidebar: Recipe, Functions, Memory, ROM, Safety, Sharing.
    - [ ] **Recipe**: name and notes; New, Save, Save As…, Share…, Import…; *Remember where each run starts*; the rules in full with Add Rule… and edit, duplicate and remove; **Also in This Recipe**.
@@ -587,7 +587,7 @@ Removed on 2026-11-01: it didn't pay off (see FEATURES.md, *Tried and removed*).
 5. On **Functions**, select a function and press **Show in ROM**.
    - [ ] The Workshop switches to the **Memory** page, on the ROM, with the function's bytes selected.
 6. Keep a switch (Functions: pick a busy function, **Button 1**, **Keep in Recipe**). Open **Recipe** > **Also in This Recipe**.
-   - [ ] The switch is listed on one line. Select it and press **Remove from Recipe**: the line goes, the panel's button for it goes, and the status says the recipe has unsaved changes.
+   - [ ] The switch is listed on one line. Select it and press **Remove from Recipe**: the line goes, the panel's button for it goes, and **Save** becomes enabled.
 7. On **Safety**, untick **Put back a ROM change that sends the game astray, at once**. Load **Starter: Code drip**, press **Corrupt (F7)**, and play two minutes.
    - [ ] The ROM page's *bad jumps put back* count does not grow, and no *Caught at* lines appear (crashes are caught by the guard instead). Tick it again: the count grows again.
    - [ ] The switch is for the app, not the recipe: loading another recipe keeps it off (a recipe's own `"instant_revert": false` still turns it off when the switch is on).
@@ -599,3 +599,40 @@ Removed on 2026-11-01: it didn't pay off (see FEATURES.md, *Tried and removed*).
    - [ ] **Options > Shortcuts…** has only *Corruption: Corrupt / Stop*.
 10. Switch the system between light and dark (or run with `TOUR_PLATFORM=cocoa`), and look at the panel and every Workshop page.
    - [ ] Text is readable, icons show in both, nothing is cut off, and the sidebar and pages use the same look as the rest of the app.
+
+## 39. Panel quick wins (#64)
+1. Open a game with no recipe, then pick a recipe in the list.
+   - [ ] With no game the state bar reads *Load a game to start*; with a game and no recipe *Pick a recipe to start*; with a recipe and no run *Ready · press Corrupt to start*. Idle bars are light grey.
+2. Press **Corrupt (F7)**, wait a few seconds.
+   - [ ] The bar reads *Starting…*, then *Corrupting · 0:13 · 6 changes* (minutes:seconds, *1 change* for one), in the accent colour (blue). No *unsaved changes* text anywhere.
+3. Press **Corrupt (F7)** again to stop.
+   - [ ] The bar reads *Stopped · its changes stay until Back to Normal*, tinted as a warning.
+4. Press **Back to Normal**.
+   - [ ] The bar reads *Not corrupting · back to normal*, and the message line says nothing new.
+5. Look at the bars in light and dark (system setting, or `TOUR_PLATFORM=cocoa`).
+   - [ ] Corrupting (accent) and Stopped (tinted) are clearly different from each other and from the idle grey; the text is readable in both.
+6. With a saved recipe loaded, move a rule's strength and press **Save** so a message shows (*Saved …*), and watch the panel.
+   - [ ] The message fades after about 12 seconds. When it appears and fades, the Corrupt and Back to Normal buttons don't move.
+7. Load Pocky & Rocky, make sure **Try ROM changes ahead first** (Safety page) is ticked, pick **Starter: Code drip**, press **Corrupt (F7)**, and play a few minutes.
+   - [ ] Now and then the message line shows *Tested ahead: drip would crash, so it picked again*. Hover it: the full story shows.
+8. Look at the panel's title.
+   - [ ] It is the game's file name (for example *Pocky & Rocky (USA)*). Hover it: the library folder name (for example *POCKY ROCKY [72b2b3be]*) shows.
+9. Press **Corrupt (F7)**. Click the seed number next to **Re-roll**, type `42`, press Enter.
+   - [ ] The seed is a plain number with no box. The run restarts with seed 42 (the number reads 42).
+10. Look at the guard line and the ROM line.
+   - [ ] Each is one whole link with an icon and a chevron: *Crash guard on · no crashes yet ›*, *ROM: 12 bytes changed · 1 function off ›* or *ROM clean ›*. No separate *Safety* or *ROM* words.
+   - [ ] Clicking the guard line opens the Workshop on **Safety**; clicking the ROM line opens **ROM**.
+11. Pick **Starter: Tile rot** in the list.
+   - [ ] A starter that has no file in the game's library yet shows as *<name> (new)* once loaded; after **Save** the *(new)* is gone.
+12. Look at the **Functions** and **ROM** pages.
+   - [ ] Neither has a **Refresh** button.
+13. Corrupt for a minute. On **Functions**, select a function that isn't at the top, then switch to **Memory** and back.
+   - [ ] The list is sorted busiest-first again, and the selected function is still selected. While you stay on the page, rows change in place and don't jump under the mouse.
+14. On the **ROM** page, use a recipe with live ROM rules (**Starter: Code drip**), select a survivor row, and wait.
+   - [ ] Survivors appear and update by themselves about every two seconds, and your selection stays.
+15. On **Sharing**, untick **Allow remote control from a browser**.
+   - [ ] **Public address**, **Copy Link** and **New Key** are hidden. Tick it again: they show.
+16. Open the Workshop on **Safety**, make the window bigger, close it. Quit the app and start it again, load a game, press **Workshop**.
+   - [ ] It opens on **Safety**, at the bigger size. **Corruption > Open Workshop** does the same. The panel's links still open their own page.
+17. Load Pocky & Rocky with no ROM changes made (**Restore Clean ROM** if unsure) and look at the ROM line.
+   - [ ] It reads *ROM clean ›*; it doesn't claim any function is off (one-byte stubs that are only a return don't count).

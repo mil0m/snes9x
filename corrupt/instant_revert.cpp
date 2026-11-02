@@ -33,6 +33,7 @@ std::optional<InstantRevertResult> InstantRevert::after_frame(std::optional<Dera
     out.rom_action = std::move(fixed.text);
     out.summary = "Caught at " + describe_pc(note->pc) + " (" + landing_text(note->kind) + "): " + out.rom_action +
                   " and played the frame again";
+    out.headline = "Caught a bad jump: " + out.rom_action;
     return out;
 }
 

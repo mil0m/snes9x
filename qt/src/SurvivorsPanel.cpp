@@ -1,7 +1,10 @@
 #include "SurvivorsPanel.hpp"
 #include "UiKit.hpp"
 
+#include <algorithm>
+
 #include <QFontDatabase>
+#include <QItemSelectionModel>
 
 #include <QHBoxLayout>
 #include <QHeaderView>
@@ -127,17 +130,12 @@ SurvivorsPanel::SurvivorsPanel(SurvivorSource &source, QWidget *parent) : QWidge
     unpin_button = new QPushButton(ui::icon("pinned-off"), tr("Unpin Selected"), this);
     unpin_button->setObjectName("unpin");
     unpin_button->setAutoDefault(false);
-    auto refresh_button = new QPushButton(ui::icon("refresh"), tr("Refresh"), this);
-    refresh_button->setObjectName("refresh");
-    refresh_button->setAutoDefault(false);
     bottom->addWidget(unpin_button);
     bottom->addStretch(1);
-    bottom->addWidget(refresh_button);
     layout->addLayout(bottom);
 
     connect(pin_button, &QPushButton::clicked, this, &SurvivorsPanel::pinSelected);
     connect(unpin_button, &QPushButton::clicked, this, &SurvivorsPanel::unpinSelected);
-    connect(refresh_button, &QPushButton::clicked, this, &SurvivorsPanel::refresh);
     connect(table, &QTableWidget::itemSelectionChanged, this, &SurvivorsPanel::selectionChanged);
     connect(pins_table, &QTableWidget::itemSelectionChanged, this, &SurvivorsPanel::selectionChanged);
     refresh();
@@ -145,8 +143,30 @@ SurvivorsPanel::SurvivorsPanel(SurvivorSource &source, QWidget *parent) : QWidge
 
 void SurvivorsPanel::refresh()
 {
-    shown = source.survivors();
-    shown_pins = source.pins();
+    auto survivors = source.survivors();
+    auto pins = source.pins();
+    auto same = [](auto &a, auto &b) {
+        return a.size() == b.size() &&
+               std::equal(a.begin(), a.end(), b.begin(), [](auto &x, auto &y) { return x.offset == y.offset; });
+    };
+    if (filled && same(survivors, shown) && same(pins, shown_pins))
+    {
+        // The same bytes: only how often they were used moves. Selection and scroll stay put.
+        shown = std::move(survivors);
+        for (size_t i = 0; i < shown.size(); i++)
+            if (auto item = table->item(int(i), 3))
+                item->setText(tr("%1 frames").arg(QLocale().toString(qulonglong(shown[i].frames_used))));
+        return;
+    }
+    std::vector<uint32_t> picked, picked_pins; // still selected after the lists change
+    for (int row : selected_rows(table))
+        if (size_t(row) < shown.size())
+            picked.push_back(shown[size_t(row)].offset);
+    for (int row : selected_rows(pins_table))
+        if (size_t(row) < shown_pins.size())
+            picked_pins.push_back(shown_pins[size_t(row)].offset);
+    shown = std::move(survivors);
+    shown_pins = std::move(pins);
 
     table->setRowCount(0);
     for (auto &s : shown)
@@ -188,6 +208,15 @@ void SurvivorsPanel::refresh()
     pins_table->setVisible(!shown_pins.empty());
     unpin_button->setVisible(!shown_pins.empty());
     pins_empty->setVisible(shown_pins.empty());
+    auto reselect = [](QTableWidget *t, auto &rows, const std::vector<uint32_t> &offsets) {
+        for (size_t i = 0; i < rows.size(); i++)
+            if (std::find(offsets.begin(), offsets.end(), rows[i].offset) != offsets.end())
+                t->selectionModel()->select(t->model()->index(int(i), 0),
+                                            QItemSelectionModel::Select | QItemSelectionModel::Rows);
+    };
+    reselect(table, shown, picked);
+    reselect(pins_table, shown_pins, picked_pins);
+    filled = true;
     selectionChanged();
 }
 

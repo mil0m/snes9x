@@ -287,7 +287,7 @@ void EmuMainWindow::createWidgets()
     panel_item->setText(tr("Show &Panel"));
     corruption_menu->addAction(panel_item);
     auto workshop_item = corruption_menu->addAction(tr("Open &Workshop"));
-    connect(workshop_item, &QAction::triggered, [this] { corruption_dock->openWorkshop(WorkshopPage::Recipe); });
+    connect(workshop_item, &QAction::triggered, [this] { corruption_dock->openWorkshopAgain(); });
     corruption_menu->addSeparator();
     auto recipe_item = [&](const QString &text, void (RecipeActions::*act)()) {
         connect(corruption_menu->addAction(text), &QAction::triggered,

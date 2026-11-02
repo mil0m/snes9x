@@ -125,6 +125,66 @@ and on the remote page), then the cockpit and the Workshop.
 - **Words.** "Hotkey" is gone from what you see (rule editor *When I press a button*,
   Functions and Change It… *Button N*, rule summaries *button 1*); starters' notes too, and
   *Stat swap on hotkey* is now *Stat swap on a button*. Recipe files keep `"hotkey"`.
-- **Not done:** the Workshop doesn't remember its size or last page between launches (the
-  app's settings would be the place); the viewer's New Rule from Selection doesn't jump to
+- **Not done:** the Workshop doesn't remember its size or last page between launches (done
+  in #64, below); the viewer's New Rule from Selection doesn't jump to
   the Recipe page (the rule shows up in the panel at once, which was enough in the tour).
+
+## Quick wins after a look at every window (#64)
+
+A pass over the tour's pictures (real Mac look, and a copy of the real library on Pocky &
+Rocky) found the panel saying the same thing twice and talking like an engineer. These
+are the cheap fixes; the bigger ones (rules in plain words, a rule editor beside the list,
+Functions filters, one Careful/Balanced/Wild safety choice, fewer nouns) wait for their own
+plans.
+
+- **One state bar** at the top of the panel, in the accent colour while corrupting:
+  *Corrupting · 0:13 · 6 changes*, *Stopped · its changes stay until Back to Normal*,
+  *Not corrupting · the game is as it was*, *Pick a recipe to start*. The run line below it
+  goes; what's left of it (a new start moment to save, starting from a saved one) becomes a
+  quiet note.
+- **Messages say it once, short, and fade.** Loading a game no longer says "Loaded <game>"
+  (the title says it) and loading a recipe no longer says "Recipe: <name>" unless there's
+  more to say (its saved moment). Test-ahead gets a headline ("Tested ahead: drip would
+  crash here, so it picked again") with the full story in the tooltip. A message fades after
+  12 seconds; the line keeps its height, so Corrupt doesn't jump.
+- **The title is the game's name** as its file calls it (*Pocky & Rocky (USA)*), with the
+  library folder name in the tooltip. The status grows a `rom_name`.
+- **The seed is one quiet line**: *Seed 5101 · Re-roll*; clicking the number edits it.
+- **Guard and ROM lines are whole links** with an icon and a chevron, no repeated word:
+  *Crash guard on · no crashes ›*, *ROM: 12 bytes changed · 1 function off ›*.
+- **"(not saved yet)" becomes "(new)"** in the recipe list, so it fits; the Save button
+  being enabled already says there's something to save.
+- **No Refresh buttons** on Functions and the ROM page's survivors: both refresh themselves.
+  Functions keeps its busiest-first order until you leave the page (re-sorting under the
+  mouse would be worse), so it re-sorts when the page is shown.
+- **Sharing**: the library path short (`~/…`), and the remote address, Copy Link and New Key
+  only shown while remote control is on.
+- **The Workshop remembers** its size and last page (app settings).
+- **A bug the panel showed**: "ROM clean · 2 functions off" with nothing changed. A function
+  whose first byte already is a return (a stub) counted as switched off. Off now means
+  *the byte is a return and the clean ROM's isn't* (`function_off()` in calls.h, tested).
+
+Tests: `function_off` unit cases; cockpit tests for the state bar's words and tone, the
+message fading, the seed line, the links; workshop tests for the hidden remote controls and
+the remembered page; the tour read again in both looks.
+
+### How it went (#64)
+
+Built the same day, test first (unit cases for stubs and headlines, eight new widget tests),
+then read in the tour with a copy of the real library on Pocky & Rocky, in the Mac look and
+Fusion dark. The tour script now takes `TOUR_LIBRARY=<dir>` for exactly that.
+
+- **The bug was real.** On Pocky & Rocky two functions are a lone `RTS` in the clean ROM
+  ($82:E010 is one of them); the panel said *2 functions off* on a clean ROM, and the
+  Functions page ticked them. `function_off()` fixed both.
+- **Found in the pictures:** the Frames column, sized once per refresh, was outgrown within
+  seconds (*28,9…*); it now leaves room for seven digits. The idle bar had no background on
+  the Mac (its alternate base is as white as the window), so the bars are a tint of the text
+  or the warning colour over the window. *Back to normal: the clean game…* repeated the bar
+  and is gone; so is the note about starting from a saved moment (the message says it).
+- **What it looks like now:** the panel reads top-down as name, state, recipe, buttons,
+  dice, rules, guard and ROM, with no word said twice; with no recipe the only text besides
+  the Start card is the two status lines.
+- **Left for later** (their own plans): rules in plain words and an editor beside the list,
+  Functions filters and a status column, one Careful/Balanced/Wild safety choice, a cap on
+  page width, sidebar counts, fewer nouns.

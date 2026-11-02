@@ -17,7 +17,8 @@ struct InstantRevertResult
     uint64_t frame = 0;            // the frame that was replayed
     std::vector<uint32_t> offsets; // the ROM bytes fixed, newest first
     std::string rom_action;        // "reverted 1 ROM byte"
-    std::string summary;           // for the status line
+    std::string summary;           // in full: where it landed and why
+    std::string headline;          // in a few words, for the panel's message line
 };
 
 // The crash journal's line for it ("event": "instant_revert").

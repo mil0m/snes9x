@@ -211,6 +211,7 @@ GuardOutcome CrashGuard::handle(const CrashVerdict &verdict, Engine &engine, Cor
         last_frame.reset();
         out.kind = GuardOutcome::GaveUp;
         out.summary = "Kept crashing (" + verdict.text + "): corruption turned off";
+        out.headline = "Kept crashing: corruption turned off";
         e.kind = JournalEntry::GaveUp;
         journal(e, engine);
         return out;
@@ -260,6 +261,20 @@ GuardOutcome CrashGuard::handle(const CrashVerdict &verdict, Engine &engine, Cor
         did.push_back(out.rom_action);
     out.summary = "Crash caught (" + verdict.text + "): back " + seconds(verdict.frame - restored) + ", " +
                   (did.empty() ? std::string("no rule to blame") : join(did));
+    // The headline says what was done in words: "re-rolled drip", not the policy's "reroll drip".
+    std::vector<std::string> done;
+    if (!suspects.empty())
+    {
+        const char *verb = out.action == ActionKind::Reroll ? "re-rolled"
+                           : out.action == ActionKind::Skip ? "paused"
+                           : out.action == ActionKind::Dampen ? "turned down"
+                                                              : "turned off";
+        done.push_back(std::string(verb) + " " + join(out.suspect_names));
+    }
+    if (!out.rom_action.empty())
+        done.push_back(out.rom_action);
+    out.headline = "Crash caught: went back " + seconds(verdict.frame - restored) +
+                   (done.empty() ? std::string() : ", " + join(done));
     e.kind = JournalEntry::Crash;
     e.action = suspects.empty() ? "none" : action_name(out.action);
     journal(e, engine);

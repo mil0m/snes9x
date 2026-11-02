@@ -22,25 +22,30 @@ That's all you need. The rest of this guide is for when you want more.
 
 ## The panel and the Workshop
 
-The **panel** (**Corruption > Show Panel**) holds what you use while you play: the recipe list
-and **Save**, **Corrupt (F7)** / **Stop (F7)** and **Back to Normal**, **Chaos** and **Seed**
+The **panel** (**Corruption > Show Panel**) holds what you use while you play. Under the
+game's name, a **state bar** says what is going on (*Pick a recipe to start*, *Corrupting · 0:13
+· 6 changes*, *Stopped · its changes stay until Back to Normal*). Then the recipe list
+and **Save** (enabled when there is something to save), a message line with short news that
+fades after a few seconds (hover it for the full story), **Corrupt (F7)** / **Stop (F7)** and **Back to Normal**, **Chaos** and **Seed**
 with **Re-roll**, the **Buttons** of the recipe, and the **Rules** (on or off, and strength).
 Below them, one line about the crash guard (with an **It Crashed** button) and one about the
-ROM. Double-click a rule to edit it. Until a recipe is loaded, a *Start here* card shows
+ROM; each opens its Workshop page. Double-click a rule to edit it. Until a recipe is loaded, a *Start here* card shows
 what to do first.
 
 Everything else is in the **Workshop**: press the **Workshop** button at the top of the
 panel, or choose **Corruption > Open Workshop**. It is one window with a list of pages on the
-left. The links in the panel (*Add or change rules*, *Safety*, *ROM*) open the right page.
+left. The Workshop opens on the page it was on last, at the size it had. The links in the panel
+(*Add or change rules*, the crash guard line, the ROM line) open their own page.
 
 - **Recipe**: name and notes, New, Save, Save As…, Share…, Import…, the rules in full, and
   what else the recipe keeps (switches, changes, protected functions, pins, paint).
-- **Functions**: turn the game's functions off, name them, change how they work.
+- **Functions**: turn the game's functions off, name them, change how they work. The busiest come first each time you open the page.
 - **Memory**: the memory viewer, with paint.
 - **ROM**: what changed, what the app has learned, Export ROM…, Restore Clean ROM, Survivors
-  and pins.
+  and pins (the survivors update by themselves).
 - **Safety**: the crash guard's switches and policy, and the game save backups.
-- **Sharing**: the library folder, who is here, and remote control.
+- **Sharing**: the library folder, who is here, and remote control (the address and key
+  show once you tick *Allow remote control from a browser*).
 
 ## Getting back to normal
 
@@ -57,7 +62,7 @@ There are four ways to undo something. Only one of them undoes everything.
 
 | You want to keep… | Do this |
 |---|---|
-| A glitch you just saw | **Save**, right away, while it's still on. The recipe is saved with this run's dice (the seed) and the moment the run started, so loading it plays the same run again, as long as you press the same buttons. The status line says *Save to replay this run from its start* until you do. |
+| A glitch you just saw | **Save**, right away, while it's still on. The recipe is saved with this run's dice (the seed) and the moment the run started, so loading it plays the same run again, as long as you press the same buttons. While the run starts from a new moment, the panel says so: *Save keeps it, so the run can be replayed.* |
 | The recipe, to play again | **Save**. With *Remember where each run starts*, it comes back to the same spot with the same dice. |
 | One exact ROM change you liked | Workshop, **ROM** page: **Survivors and pins**, **Pin Selected**, then **Save**. See *Survivors and pins*. |
 | Bytes you set by hand | They're kept in the recipe already (*paint*); **Save**. |
@@ -70,7 +75,7 @@ There are four ways to undo something. Only one of them undoes everything.
 | **Recipe** | A saved set of rules: what to corrupt, how and when. Each game has its own. **Starters** are recipes that come with the app. |
 | **Rule** | One line of a recipe: "every 2 seconds, put a random value in 1 byte of work RAM". |
 | **Run** | Corruption switched on, from the moment you press Corrupt until you stop. |
-| **Seed** | The dice. The same recipe with the same seed, from the same start, does exactly the same thing. **Re-roll** picks a new seed. |
+| **Seed** | The dice. The same recipe with the same seed, from the same start, does exactly the same thing. **Re-roll** picks a new seed; click the number next to it and type to set one. |
 | **Chaos** | How hard the whole recipe hits. **Strength** is the same for one rule. They multiply. |
 | **Memory** | Which part of the console a rule changes (see below). |
 | **Start moment** | A save state taken when a run starts. **Back to Normal** goes back to it, and **Save** stores it with the recipe (with *Remember where each run starts* on), so loading the recipe replays from the same spot. |
@@ -298,8 +303,8 @@ changed bytes in orange, bright once the game has used them; hovering one says s
 after running a changed byte, the game jumps into the middle of an instruction, into empty
 ROM, or into nowhere. The app notices that the moment it happens, puts back the byte that
 caused it and plays that frame again, so you see at most one frame repeat instead of a
-crash and a rollback of a second or more. The status line says *Caught at $C0:1234 (jumped
-into the middle of an instruction)*, and the ROM page counts them (*12 bad jumps put
+crash and a rollback of a second or more. The message line says *Caught a bad jump: reverted 1 ROM byte* (hover for *Caught at $C0:1234, jumped
+into the middle of an instruction*), and the ROM page counts them (*12 bad jumps put
 back at once*). It only works where the code map knows the code, so it gets better the more
 you've played. Crashes that build up slowly (a wrong number that breaks things later) are
 still the crash guard's. To watch a crash happen instead, untick **Put back a ROM change
@@ -310,8 +315,8 @@ in the recipe). Starter: **Code drip** (two bytes of code changed every two seco
 the game, the app first plays a few seconds ahead with that change, unseen and silent, and
 comes back. If the game would have crashed, the rule rolls again and the new pick is tried
 instead; after three tries that firing is skipped. You feel it as a short pause when a live
-ROM rule fires (around a tenth of a second), the status line says when something was
-re-rolled or skipped, and the ROM page counts them (*30 changes tested first (3
+ROM rule fires (around a tenth of a second), the message line says when something was
+re-rolled or skipped (*Tested ahead: drip would crash, so it picked again*), and the ROM page counts them (*30 changes tested first (3
 re-rolled, 0 skipped)*). It can only vouch for what the game actually uses in those
 seconds: a change in code the game won't reach for a while goes through untried, and the
 instant revert and the crash guard still watch it.
@@ -352,7 +357,7 @@ by paint, so only your change touches it. That's automatic for a function you sw
 or kept as a switch; tick **Protect it from other corruption** to guard one without
 changing it, and **And what it calls** to guard the functions it calls too. When a guard
 goes up, bytes other corruption had already changed in it are put back. Paint stops at
-guarded bytes and the status line says which function kept them. **Show in ROM** opens the
+guarded bytes and the message line says which function kept them. **Show in ROM** opens the
 Memory page on its code with the **Functions** colours: function code light, guarded code
 stronger, the first byte of a function that's off strongest; hover a byte to see whose code
 it is.
@@ -434,7 +439,7 @@ The link carries a key after the `#`, which browsers never send to any server; t
 takes it out of the address bar and remembers it in that browser, so next time the plain
 address is enough. **New Key** makes a new one: old links stop working, everyone connected
 is dropped, and browsers that remembered the old key forget it. The panel says who is connected
-(the email they logged in with), and the status line says what each of them does
+(the email they logged in with), and the message line says what each of them does
 (*Remote (erik@…): pressed button 1*).
 
 What a remote can't do: anything with files (your own recipes, saving, ROMs, backups,
@@ -459,7 +464,7 @@ is never committed) or anything shaped like a secret.
 
 ## When nothing seems to happen
 
-- **Is it on?** The Corrupt button reads *Stop* and the status line counts changes.
+- **Is it on?** The Corrupt button reads *Stop* and the state bar reads *Corrupting* and counts changes.
 - **Some memories bounce back.** Sprites and colours are often repainted every frame; see
   Tips.
 - **Gentle recipes are gentle.** Turn **Chaos** up, or a rule's **Strength**.

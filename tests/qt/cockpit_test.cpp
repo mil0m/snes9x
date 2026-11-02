@@ -5,7 +5,9 @@
 #include "UiKit.hpp"
 #include "fake_control.h"
 
+#include <QApplication>
 #include <QComboBox>
+#include <QElapsedTimer>
 #include <QDir>
 #include <QLabel>
 #include <QLineEdit>
@@ -44,6 +46,7 @@ struct Fixture
     RecipeActions actions{ control, &parent, starters() };
     std::unique_ptr<Cockpit> cockpit;
     std::vector<WorkshopPage> opened;
+    int reopened = 0; // the Workshop button: the page it was on last
     std::vector<std::pair<QString, bool>> said;
 
     Fixture()
@@ -56,6 +59,7 @@ struct Fixture
     {
         cockpit = std::make_unique<Cockpit>(control, actions);
         cockpit->openWorkshop = [this](WorkshopPage p) { opened.push_back(p); };
+        cockpit->openWorkshopAgain = [this] { reopened++; };
         cockpit->setToggleKey("F7");
         cockpit->resize(360, 700);
         cockpit->refresh();
@@ -108,7 +112,9 @@ TEST_SUITE("cockpit")
         CHECK(f.control.calls.back() == "back to normal");
         child<QPushButton>(c, "reroll")->click();
         CHECK(f.control.calls.back() == "reroll");
-        CHECK(child<QLineEdit>(c, "seed")->text() == "1008");
+        auto seed = child<QLineEdit>(c, "seed");
+        CHECK(seed->text() == "1008");
+        CHECK_FALSE(seed->hasFrame()); // a quiet number you can click and type over
         child<QPushButton>(c, "mark_crash")->click();
         CHECK(f.control.calls.back() == "mark crash");
     }
@@ -181,8 +187,12 @@ TEST_SUITE("cockpit")
         rom->linkActivated("rom");
         child<QLabel>(*f.cockpit, "rules_link")->linkActivated("recipe");
         child<QPushButton>(*f.cockpit, "workshop")->click();
-        CHECK(f.opened == std::vector<WorkshopPage>{ WorkshopPage::Safety, WorkshopPage::Rom, WorkshopPage::Recipe,
-                                                     WorkshopPage::Recipe });
+        CHECK(f.opened == std::vector<WorkshopPage>{ WorkshopPage::Safety, WorkshopPage::Rom, WorkshopPage::Recipe });
+        CHECK(f.reopened == 1);
+        // Whole lines are the links: no word repeated as a link after them.
+        CHECK_FALSE(guard->text().contains(">Safety<"));
+        CHECK_FALSE(rom->text().contains(">ROM<"));
+        CHECK(guard->accessibleName().contains("Safety"));
 
         f.control.s.detection_enabled = false;
         f.cockpit->refresh();
@@ -203,5 +213,103 @@ TEST_SUITE("cockpit")
         CHECK(f.cockpit->sizeHint().height() <= 640);
         CHECK(ui::audit(f.cockpit.get()).isEmpty());
         f.shot("cockpit-running");
+    }
+
+    TEST_CASE("the state bar says what's going on, in the accent colour while corrupting")
+    {
+        Fixture f;
+        auto state = child<QLabel>(*f.cockpit, "state");
+        CHECK(state->text().contains("Pick a recipe"));
+        CHECK(state->property("state").toString() == "idle");
+        f.control.running();
+        f.cockpit->refresh();
+        CHECK(state->text() == "Corrupting · 0:10 · 0 changes");
+        CHECK(state->property("state").toString() == "corrupting");
+        CHECK(state->palette().color(QPalette::Window) == state->palette().color(QPalette::Highlight));
+        f.control.s.engine.firings = 1;
+        f.control.s.engine.frame = 60 * 75;
+        f.cockpit->refresh();
+        CHECK(state->text() == "Corrupting · 1:15 · 1 change");
+        f.control.s.engine.active = false;
+        f.control.s.can_go_back = true;
+        f.cockpit->refresh();
+        CHECK(state->text().startsWith("Stopped"));
+        CHECK(state->text().contains("Back to Normal"));
+        CHECK(state->property("state").toString() == "stopped");
+        f.control.s.can_go_back = false;
+        f.control.s.back_to_normal = true;
+        f.cockpit->refresh();
+        CHECK(state->text() == "Not corrupting · back to normal");
+        CHECK(state->palette().color(QPalette::Window) != f.cockpit->palette().color(QPalette::Window)); // a bar
+        f.control.s.game_loaded = false;
+        f.cockpit->refresh();
+        CHECK(state->text().contains("Load a game"));
+        // The old run line's words are gone; only a note about the start moment is left.
+        CHECK(f.cockpit->findChild<QLabel *>("run_status") == nullptr);
+    }
+
+    TEST_CASE("the start moment note: only when there is one to save or it started from one")
+    {
+        Fixture f;
+        f.control.running();
+        f.cockpit->refresh();
+        auto note = child<QLabel>(*f.cockpit, "moment_note");
+        CHECK(note->isHidden());
+        f.control.s.new_moment = true;
+        f.cockpit->refresh();
+        CHECK_FALSE(note->isHidden());
+        CHECK(note->text().contains("Save"));
+    }
+
+    TEST_CASE("messages: the short headline, the whole story on hover, and they fade without moving Corrupt")
+    {
+        Fixture f;
+        f.control.running();
+        f.cockpit->setMessageFade(30);
+        f.cockpit->refresh();
+        auto line = static_cast<ui::StatusLine *>(child<QWidget>(*f.cockpit, "message"));
+        auto corrupt = child<QPushButton>(*f.cockpit, "corrupt");
+        f.cockpit->show();
+        QApplication::processEvents();
+        int y = corrupt->y();
+        f.control.s.message = "Tested ahead: drip would crash, so it picked again";
+        f.control.s.message_detail = "Tested ahead: drip crashed the game (jumped into the middle of an instruction at "
+                                     "$00:81D1 0.0 s in), so it rolled again";
+        f.cockpit->refresh();
+        QApplication::processEvents();
+        CHECK(line->text() == "Tested ahead: drip would crash, so it picked again");
+        CHECK(line->toolTip().contains("$00:81D1"));
+        CHECK(corrupt->y() == y);
+        QElapsedTimer t;
+        t.start();
+        while (!line->isHidden() && t.elapsed() < 2000)
+            QApplication::processEvents(QEventLoop::AllEvents, 10);
+        CHECK(line->isHidden());
+        QApplication::processEvents();
+        CHECK(corrupt->y() == y);
+        f.cockpit->hide();
+    }
+
+    TEST_CASE("the title is the game's name from its file; the library folder is on hover")
+    {
+        Fixture f;
+        auto game = child<QLabel>(*f.cockpit, "game");
+        CHECK(game->text() == "POCKY & ROCKY"); // no file name: the title in the ROM's header
+        CHECK(game->toolTip().contains("[01234567]"));
+        f.control.s.rom_name = "Pocky & Rocky (USA)";
+        f.control.s.game.sha256 = "fedcba9876543210"; // another game: the label is set again
+        f.cockpit->refresh();
+        CHECK(game->text() == "Pocky & Rocky (USA)");
+        CHECK(game->toolTip().contains("[fedcba98]"));
+    }
+
+    TEST_CASE("a recipe that isn't saved yet says (new), short enough to fit")
+    {
+        Fixture f;
+        f.control.running();
+        f.control.s.recipe_path.clear();
+        f.control.s.recipe_generation++;
+        f.cockpit->refresh();
+        CHECK(child<QComboBox>(*f.cockpit, "recipe")->currentText() == "Gravity mess (new)");
     }
 }

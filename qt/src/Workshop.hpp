@@ -1,6 +1,8 @@
 #pragma once
 #include <QWidget>
 
+#include <functional>
+
 #include "CorruptionControl.hpp"
 #include "WorkshopPage.hpp"
 
@@ -38,6 +40,9 @@ class Workshop : public QWidget
     SharingPage *sharingPage() const { return sharing; }
 
     void refresh(); // the current page, from the session (twice a second while shown)
+
+    // Closed: the page it was on and its size, for the dock to open it so next time.
+    std::function<void(WorkshopPage page, QSize size)> onClosed;
 
   protected:
     void showEvent(QShowEvent *event) override;

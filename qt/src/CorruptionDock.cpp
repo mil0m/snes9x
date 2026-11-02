@@ -127,6 +127,7 @@ CorruptionDock::CorruptionDock(EmuApplication &app, QWidget *parent) : QDockWidg
     cockpit = new Cockpit(*control, *actions, scroll);
     cockpit->setToggleKey(toggleKey());
     cockpit->openWorkshop = [this](WorkshopPage page) { openWorkshop(page); };
+    cockpit->openWorkshopAgain = [this] { openWorkshopAgain(); };
     cockpit->openGuide = [this] { openGuide({}); };
     scroll->setWidget(cockpit);
     // A scroll area doesn't pass its contents' minimum width on: without this the dock
@@ -177,8 +178,24 @@ void CorruptionDock::openWorkshop(WorkshopPage page)
         workshop = new Workshop(*control, *actions, *function_source, *survivor_source, *memory_source, this);
         workshop->sharingPage()->libraryChanged = [this] { refreshRecipes(); };
         workshop->sharingPage()->lookForRecipes = [this] { refreshRecipes(); };
+        // As big as it was last time, never smaller than its pages need.
+        auto &config = *app.config;
+        QSize size(std::max(config.corruption_workshop_width, workshop->width()),
+                   std::max(config.corruption_workshop_height, 480));
+        workshop->resize(size);
+        workshop->onClosed = [this](WorkshopPage page, QSize size) {
+            app.config->corruption_workshop_page = int(page);
+            app.config->corruption_workshop_width = size.width();
+            app.config->corruption_workshop_height = size.height();
+        };
     }
     workshop->showPage(page);
+}
+
+void CorruptionDock::openWorkshopAgain()
+{
+    int page = app.config->corruption_workshop_page;
+    openWorkshop(page >= 0 && page <= int(WorkshopPage::Sharing) ? WorkshopPage(page) : WorkshopPage::Recipe);
 }
 
 void CorruptionDock::openGuide(const QString &section)
