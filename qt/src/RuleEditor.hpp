@@ -64,6 +64,7 @@ class RuleEditor : public QDialog
     QWidget *rect_fields;
 
     QComboBox *op_combo;
+    QLabel *op_note; // why the op changed when the memory did (#69)
     QStackedWidget *op_pages;
     QSpinBox *add_min, *add_max;
     QCheckBox *add_clamp;

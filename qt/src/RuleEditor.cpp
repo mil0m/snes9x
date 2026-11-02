@@ -4,6 +4,7 @@
 
 #include <QCheckBox>
 #include <QComboBox>
+#include <QStandardItemModel>
 #include <QDialogButtonBox>
 #include <QDoubleSpinBox>
 
@@ -71,13 +72,28 @@ QString op_label(OpType t)
     case OpType::Filter: return QObject::tr("Filter (blur, sharpen…)");
     case OpType::Stamp: return QObject::tr("Stamp another area onto it");
     case OpType::Fill: return QObject::tr("Fill with a value");
-    case OpType::OpcodeSwap: return QObject::tr("Swap opcodes (same length, ROM)");
-    case OpType::BranchFlip: return QObject::tr("Flip branches (ROM)");
-    case OpType::NopOut: return QObject::tr("NOP out instructions (ROM)");
-    case OpType::PointerSwap: return QObject::tr("Swap pointers in jump tables (ROM)");
-    case OpType::Kill: return QObject::tr("Turn functions off (ROM)");
+    case OpType::OpcodeSwap: return QObject::tr("Swap opcodes (same length)");
+    case OpType::BranchFlip: return QObject::tr("Flip branches");
+    case OpType::NopOut: return QObject::tr("NOP out instructions");
+    case OpType::PointerSwap: return QObject::tr("Swap pointers in jump tables");
+    case OpType::Kill: return QObject::tr("Turn functions off");
     }
     return {};
+}
+
+// Ops that work on the game's code, which only the ROM has (#69).
+constexpr bool rom_only(OpType t)
+{
+    return is_code_op(t) || is_jump_op(t) || is_function_op(t);
+}
+
+// Each op's page in op_pages: kOps order (the combo has headings between them).
+int page_index(OpType t)
+{
+    for (int i = 0; i < int(std::size(kOps)); i++)
+        if (kOps[i] == t)
+            return i;
+    return 0;
 }
 
 QString trigger_label(TriggerType t)
@@ -293,10 +309,35 @@ void RuleEditor::buildForm()
     auto what_box = section(tr("What"));
     auto what = column(what_box);
     op_combo = combo(what_box, "op");
+    // Grouped (#69): what works on any bytes, on an area like a picture, and on code (the ROM).
+    auto heading_item = [this](const QString &text) {
+        op_combo->addItem(text);
+        if (auto model = qobject_cast<QStandardItemModel *>(op_combo->model()))
+        {
+            auto item = model->item(op_combo->count() - 1);
+            item->setFlags(Qt::ItemIsEnabled); // not selectable: a heading, in the normal colour (greyed reads as unavailable)
+            QFont bold = item->font();
+            bold.setBold(true);
+            item->setFont(bold);
+        }
+    };
     for (auto t : kOps)
+    {
+        if (t == OpType::Random)
+            heading_item(tr("Bytes"));
+        else if (t == OpType::Shift)
+            heading_item(tr("Areas, like a picture"));
+        else if (t == OpType::OpcodeSwap)
+            heading_item(tr("Code: the ROM only"));
         op_combo->addItem(op_label(t), QString(op_name(t)));
+    }
+    op_combo->setCurrentIndex(op_combo->findData(QString(op_name(OpType::Random))));
     op_combo->setToolTip(tr("What to do to each picked byte"));
     what->addLayout(ui::row(op_combo));
+    op_note = hint_label({}, what_box);
+    op_note->setObjectName("op_note");
+    op_note->hide();
+    what->addWidget(op_note);
     op_pages = new QStackedWidget(what_box);
     op_pages->setObjectName("op_pages");
     what->addWidget(op_pages);
@@ -1032,7 +1073,31 @@ QString RuleEditor::error() const
 
 void RuleEditor::refresh()
 {
-    op_pages->setCurrentIndex(op_combo->currentIndex());
+    // What follows Where (#69): code ops only for the ROM; leaving the ROM with one picked
+    // moves to Random value and says why.
+    {
+        bool on_rom = target_of(target_combo) == Target::ROM;
+        if (auto model = qobject_cast<QStandardItemModel *>(op_combo->model()))
+            for (auto t : kOps)
+                if (rom_only(t))
+                {
+                    auto item = model->item(op_combo->findData(QString(op_name(t))));
+                    item->setEnabled(on_rom);
+                    item->setToolTip(on_rom ? QString() : tr("Works on the game's code: choose rom under Where"));
+                }
+        auto picked = parse_op(op_combo->currentData().toString().toStdString()).value_or(OpType::Random);
+        if (!on_rom && rom_only(picked))
+        {
+            QSignalBlocker quiet(op_combo);
+            op_combo->setCurrentIndex(op_combo->findData(QString(op_name(OpType::Random))));
+            op_note->setText(tr("%1 works on the game's code, which only the rom has: switched to Random value.")
+                                 .arg(op_label(picked)));
+            op_note->show();
+        }
+        else if (op_note->isVisible() && picked != OpType::Random)
+            op_note->hide();
+    }
+    op_pages->setCurrentIndex(page_index(parse_op(op_combo->currentData().toString().toStdString()).value_or(OpType::Random)));
     when_pages->setCurrentIndex(when_combo->currentIndex());
     bitflip_bits->setEnabled(bitflip_mode->currentData() == "bits");
     bitflip_mask->setEnabled(bitflip_mode->currentData() == "mask");

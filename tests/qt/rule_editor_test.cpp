@@ -17,6 +17,9 @@
 #include <QLineEdit>
 #include <QPushButton>
 #include <QSpinBox>
+#include <QAbstractItemView>
+#include <QStackedWidget>
+#include <QStandardItemModel>
 
 using namespace corrupt;
 
@@ -282,7 +285,9 @@ TEST_CASE("aiming: only for the ROM, code ops aim at opcodes, and leaving out su
 
     choose(e, "target", "wram");
     CHECK(!e.rule().aim.active());
-    CHECK(!ok_enabled(e)); // opcode_swap is ROM only
+    // opcode_swap is ROM only: leaving the ROM moves to Random value instead of a red error (#69)
+    CHECK(child<QComboBox>(e, "op")->currentData().toString() == "random");
+    CHECK(ok_enabled(e));
 }
 
 TEST_CASE("a pointer swap counts entries, has no aim, and keeps its two choices")
@@ -549,4 +554,63 @@ TEST_CASE("nothing in it is unnamed for a screen reader")
     auto issues = ui::audit(&e);
     CAPTURE(issues.join("\n").toStdString());
     CHECK(issues.isEmpty());
+}
+
+TEST_CASE("What follows Where: grouped under headings, code ones only for the ROM")
+{
+    SizedMemory sizes; // the editor keeps a reference: not a temporary
+    RuleEditor e(default_rule(), {}, sizes); // work RAM
+    auto op = child<QComboBox>(e, "op");
+    auto model = qobject_cast<QStandardItemModel *>(op->model());
+    REQUIRE(model);
+    auto item_for = [&](const char *name) { return model->item(op->findData(QString(name))); };
+    // Headings: not choosable.
+    int code_heading = op->findText("Code: the ROM only");
+    REQUIRE(code_heading >= 0);
+    CHECK_FALSE(model->item(code_heading)->isSelectable());
+    CHECK(op->findText("Bytes") >= 0);
+    CHECK(op->findText("Areas, like a picture") >= 0);
+    // The code ones are greyed for work RAM, say why, and lost their "(ROM)" tag.
+    for (auto name : { "opcode_swap", "branch_flip", "nop_out", "pointer_swap", "kill" })
+    {
+        INFO(name);
+        CHECK_FALSE(item_for(name)->isEnabled());
+        CHECK(item_for(name)->toolTip().contains("rom"));
+        CHECK_FALSE(item_for(name)->text().contains("(ROM)"));
+    }
+    CHECK(item_for("random")->isEnabled());
+    CHECK(item_for("shift")->isEnabled());
+    if (auto dir = qgetenv("CORRUPT_SHOTS_DIR"); !dir.isEmpty()) // the list as it opens
+    {
+        e.show();
+        op->showPopup();
+        QApplication::processEvents();
+        op->view()->window()->grab().save(QString("%1/rule-editor-what-list.png").arg(QString::fromLocal8Bit(dir)));
+        op->hidePopup();
+    }
+    choose(e, "target", "rom");
+    for (auto name : { "opcode_swap", "branch_flip", "nop_out", "pointer_swap", "kill" })
+        CHECK(item_for(name)->isEnabled());
+    // The pages still follow the choice, headings or not.
+    choose(e, "op", "freeze");
+    CHECK(child<QStackedWidget>(e, "op_pages")->currentWidget()->isAncestorOf(child<QWidget>(e, "freeze_value")));
+}
+
+TEST_CASE("leaving the ROM with a code op picked moves to Random value and says why")
+{
+    SizedMemory sizes;
+    RuleEditor e(default_rule(), {}, sizes);
+    e.show();
+    choose(e, "target", "rom");
+    choose(e, "op", "nop_out");
+    auto note = child<QLabel>(e, "op_note");
+    CHECK(note->isHidden());
+    choose(e, "target", "wram");
+    CHECK(child<QComboBox>(e, "op")->currentData().toString() == "random");
+    CHECK_FALSE(note->isHidden());
+    CHECK(note->text().contains("NOP out"));
+    CHECK(note->text().contains("rom"));
+    CHECK(ok_enabled(e)); // a rule that works, not a red error
+    choose(e, "op", "add"); // the note was about that switch only
+    CHECK(note->isHidden());
 }

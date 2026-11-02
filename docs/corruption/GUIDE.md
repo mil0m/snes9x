@@ -145,11 +145,14 @@ that rule only.
 - **Where**: the **Memory**, then a range **From**/**to** (offsets like `0x1A00`), or a
   **Region** you named in the Memory page. **Shape: a rectangle** comes from drawing one
   in the Memory page's pixel view.
-- **What**: what happens to each picked byte. *Random value*, *Add / subtract* (−2..2 is a
-  gentle nudge), *Flip bits*, *Swap bytes*, *Copy a block*, *Freeze* (stuck timers,
-  infinite health), *Shuffle a window*; the whole-area ones (*Shift*, *Flip*, *Levels*,
-  *Filter*, *Stamp*, *Fill*, see *Editing memory like a picture*); and for the ROM, *Swap
-  opcodes*, *Flip branches*, *NOP out* (see *Corrupting the ROM*).
+- **What**: what happens to each picked byte, in three groups. **Bytes**: *Random value*,
+  *Add / subtract* (−2..2 is a gentle nudge), *Flip bits*, *Swap bytes*, *Copy a block*,
+  *Freeze* (stuck timers, infinite health), *Shuffle a window*. **Areas, like a picture**:
+  *Shift*, *Flip*, *Levels*, *Filter*, *Stamp*, *Fill* (see *Editing memory like a picture*;
+  best on graphics). **Code: the ROM only**: *Swap opcodes*, *Flip branches*, *NOP out*,
+  *Swap pointers in jump tables*, *Turn functions off* (see *Corrupting the ROM*). The code
+  ones are greyed unless **Where** is rom; switch away from the ROM with one picked and it
+  becomes *Random value*, with a line saying why.
 - **Aim** (ROM only): pick bytes by what they are. See *Corrupting the ROM*.
 - **When**: every N frames (60 is about a second), a chance per frame, once at a frame,
   when I press a button, or once when the run starts (for the ROM: the classic way, see below).
@@ -382,7 +385,7 @@ library (*calls.<you>.json*), like the code map, so it carries over.
 **On a timer.** Tick **Timer** before **Keep in Recipe**: *off for 2 s every 10 s* turns it
 off and on by itself, counted from the start of the run. Short times make it flicker.
 
-For chaos instead of picking: the rule type **Turn functions off (ROM)** turns random busy
+For chaos instead of picking: the rule type **Turn functions off** (ROM) turns random busy
 functions off when it fires; **Back on after** puts each one back after a while, so with a
 trigger every 10 s and 5 s here a different function is missing half the time. Starters:
 **Function roulette** (each press of button 1 turns one more off) and **Function flicker**

@@ -710,3 +710,13 @@ Removed on 2026-11-01: it didn't pay off (see FEATURES.md, *Tried and removed*).
    - [ ] **Export PNG…** and **Import PNG…** are in it and work as before.
 3. Visit every page at that size.
    - [ ] Each fits its width (Recipe, ROM, Safety and Sharing scroll vertically if they need to).
+
+## 45. What follows Where in the rule editor (#69)
+1. Workshop > Recipe > **Add Rule…**, with **Memory** wram. Open **What**.
+   - [ ] The list has three bold headings, *Bytes*, *Areas, like a picture* and *Code: the ROM only*, that can't be picked. The five code options are greyed; hovering one says to choose rom under Where. No option says "(ROM)".
+2. Set **Memory** to rom and open **What** again.
+   - [ ] The code options can be picked. Pick *NOP out instructions*.
+3. Set **Memory** back to wram.
+   - [ ] **What** becomes *Random value*, and a line under it says *NOP out instructions works on the game's code, which only the rom has: switched to Random value.* OK stays enabled. Picking another option hides the line.
+4. Edit an existing ROM rule that uses *Flip branches*.
+   - [ ] It opens with *Flip branches* picked, and its settings page shows.

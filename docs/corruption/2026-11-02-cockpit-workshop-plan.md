@@ -255,3 +255,11 @@ What came back from playing, one line each, with what was done about it.
   least 260 px tall. Smallest Workshop: 869 × 450 px in Fusion, 894 × 324 points on the Mac.
   The scroll areas take their page's minimum width, so a narrow window never cuts a page off
   (a test checks every page at the smallest size).
+- **"Inside Add Rule, is all the What really applicable to all the Where?"** (#69) No: five
+  (swap opcodes, flip branches, NOP out, swap pointers, turn functions off) work on code,
+  which only the ROM has, but were offered for every memory and only refused with a red line
+  after you picked one. Now **What follows Where**: the list is grouped under headings
+  (*Bytes*, *Areas, like a picture*, *Code: the ROM only*), the code ones are greyed for
+  other memories with a tooltip saying to choose rom, and switching memory away from the ROM
+  with one of them picked moves to *Random value* and says why under the list. The "(ROM)"
+  tags in their names went (the heading says it).
