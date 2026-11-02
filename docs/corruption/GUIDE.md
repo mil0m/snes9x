@@ -414,9 +414,44 @@ The old Photoshop way, built in. In the Memory page's **Pixels** view:
 - **Alt-drag** draws a rectangle; **New Rule from Selection…** makes a rule for it, and the
   whole-area ops (*Shift*, *Flip*, *Levels*, *Filter*, *Stamp*, *Fill*) act on all of it.
 - **Paint Mode**: drag to set bytes to **Value** with a **Brush**; Alt-click picks a byte's
-  value. Painted bytes go into the recipe; **Clear Paint** on the ROM page forgets them.
+  value. Each drag is one **stroke**. Painted bytes go into the recipe; **Clear Paint** on
+  the ROM page forgets them.
 - **Export PNG…** saves the selection (or the whole memory) as a greyscale picture; edit it
-  in any image editor and **Import PNG…** puts the changed pixels back as paint.
+  in any image editor and **Import PNG…** puts the changed pixels back as paint (one stroke).
+
+### Painting the ROM: draw first, then Apply
+
+Painting the game itself usually crashes it, so ROM paint is a **draft**: the view shows
+the bytes as you drew them (tinted, with a mark beside their rows) but the game doesn't have
+them yet. Draw as much as you like, then press **Apply Paint**: everything drafted goes in
+at once.
+
+For the next **ten seconds** the app watches the game, whether you're corrupting or not. If
+it crashes, the game goes back to the moment before Apply, the painted bytes come out
+again, and your strokes are back in the draft. The page says so in orange: *Your paint
+crashed the game: CPU stopped… It's back in the draft*. Undo a stroke or two and Apply
+again: that's how you find the stroke that did it. If the game holds up for ten seconds,
+the paint stays (a crash after that is the crash guard's, as usual). With *Catch crashes*
+off on the Safety page there's no watch.
+
+**Throw Away Draft** forgets the drafted strokes. Other memories (work RAM, VRAM…) aren't
+drafted: they change as you drag, as before.
+
+### Undo, redo and the history
+
+**Cmd+Z** (Ctrl+Z) undoes the last stroke, **Shift+Cmd+Z** (Ctrl+Y) redoes it, while the
+Memory page has focus; the arrows beside the draft do the same. **Paint History** under
+*What's where* lists them, newest first: *Stroke · 24 bytes at 0x01C234 → EA*, *Applied ·
+4 strokes, 54 bytes*. Click one to go back to just after it; the greyed ones after it can be
+redone until you paint something new. Undoing an *Applied* takes it out of the game and its
+strokes go back to the draft. The history is cleared when you load another game or recipe.
+
+### Painting before the game starts
+
+**Corruption > Start Games Paused**: a game you open waits before its first frame (the
+panel says *Paused · Emulation > Run starts it*). Paint the ROM and Apply, then **Emulation
+> Run**: the game boots with your paint, and the ten-second watch starts with its first
+frame.
 
 ## Remote control from a browser
 
@@ -449,7 +484,8 @@ is dropped, and browsers that remembered the old key forget it. The panel says w
 
 What a remote can't do: anything with files (your own recipes, saving, ROMs, backups,
 exporting), or settings; the starters it can load are built into the app. Painting only changes the emulated SNES, which the crash guard
-looks after: the worst a remote can do is crash the game it's corrupting.
+looks after: the worst a remote can do is crash the game it's corrupting. Remote paint on
+the ROM goes in at once (no draft), with the same ten-second watch.
 
 If you change the code: `tools/install-hooks.sh` makes a pre-commit check that refuses
 commits containing a word from your own `.private-words` (your domain, emails; that file

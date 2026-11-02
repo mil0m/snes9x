@@ -39,6 +39,7 @@ struct PanelStatus
     std::string message;             // last notable event, for the panel: a few words
     std::string message_detail;      // the same in full (on hover), or empty
     std::string rom_name;            // the game's file name without its extension ("Pocky & Rocky (USA)")
+    bool paused = false;             // the emulation is paused (the app's, not the session's)
 
     // Crash guard.
     corrupt::PolicyKind policy = corrupt::PolicyKind::Reroll;

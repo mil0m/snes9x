@@ -305,6 +305,13 @@ void EmuMainWindow::createWidgets()
     page_item(tr("The &ROM (Export, Restore Clean)…"), WorkshopPage::Rom);
     page_item(tr("&Library and Remote Control…"), WorkshopPage::Sharing);
     corruption_menu->addSeparator();
+    auto paused_item = corruption_menu->addAction(tr("Start Games &Paused"));
+    paused_item->setCheckable(true);
+    paused_item->setChecked(app.config->corruption_start_paused);
+    paused_item->setToolTip(tr("A game you open waits before its first frame, so you can paint it first. "
+                               "Emulation > Run starts it."));
+    connect(paused_item, &QAction::toggled, [&](bool on) { app.config->corruption_start_paused = on; });
+    corruption_menu->addSeparator();
     auto guide_item = corruption_menu->addAction(tr("&Guide…"));
     connect(guide_item, &QAction::triggered, [this] {
         corruption_dock->setVisible(true);
@@ -481,6 +488,12 @@ bool EmuMainWindow::openFile(const std::string &filename)
 
         QApplication::sync();
         app.startGame();
+        if (app.config->corruption_start_paused && !manual_pause)
+        {
+            // Before its first frame: paint and apply first, then Emulation > Run (#66).
+            manual_pause = true;
+            app.pause();
+        }
         mouse_timer.start();
         return true;
     }

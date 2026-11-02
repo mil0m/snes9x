@@ -462,6 +462,8 @@ void Cockpit::refresh()
     // What's happening, in one bar.
     if (!status.game_loaded)
         showState("idle", tr("Load a game to start"));
+    else if (status.paused)
+        showState("idle", tr("Paused · Emulation > Run starts it"));
     else if (!status.has_recipe)
         showState("idle", tr("Pick a recipe to start"));
     else if (status.starting)

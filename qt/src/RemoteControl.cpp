@@ -61,7 +61,10 @@ void SessionRemote::press_hotkey(int n)
 
 std::string SessionRemote::paint(Target t, const std::vector<uint32_t> &offsets, uint8_t value)
 {
-    return session().paint(t, offsets, value);
+    std::vector<std::pair<uint32_t, uint8_t>> bytes;
+    for (auto o : offsets)
+        bytes.push_back({ o, value });
+    return session().setBytesNow(t, bytes); // ROM paint goes in at once, with the crash watch (#66)
 }
 
 size_t SessionRemote::starter_count()

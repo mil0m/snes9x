@@ -40,6 +40,7 @@ struct MemorySnapshot
     std::vector<uint8_t> code;
     RomAddresses rom_where;
     std::vector<RomChange> rom_changes; // in offset order
+    std::vector<uint32_t> draft;        // ROM only: bytes drafted by paint, not in the game yet (#66); shown in `bytes`
     // ROM only: the jump tables found so far (everyone's), and a jumpmark per byte.
     std::vector<JumpTable> jump_tables;
     std::vector<uint8_t> jumps;

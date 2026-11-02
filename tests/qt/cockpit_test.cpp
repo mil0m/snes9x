@@ -312,4 +312,12 @@ TEST_SUITE("cockpit")
         f.cockpit->refresh();
         CHECK(child<QComboBox>(*f.cockpit, "recipe")->currentText() == "Gravity mess (new)");
     }
+
+    TEST_CASE("a game opened paused says how to start it")
+    {
+        Fixture f;
+        f.control.s.paused = true;
+        f.cockpit->refresh();
+        CHECK(child<QLabel>(*f.cockpit, "state")->text() == "Paused · Emulation > Run starts it");
+    }
 }

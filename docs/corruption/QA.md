@@ -664,3 +664,27 @@ Removed on 2026-11-01: it didn't pay off (see FEATURES.md, *Tried and removed*).
    - [ ] It asks for the new recipe's name; the old recipe's change is gone.
 3. Change the new recipe, then pick another recipe in the panel's list and choose **Save**.
    - [ ] A new recipe asks for its name first (cancelling that cancels the switch); then it's saved and the other recipe loads. The same question comes for **Import…**.
+
+## 42. Painting the ROM: draft, Apply, crash watch, history (#66)
+1. Load Pocky & Rocky, don't press Corrupt. Workshop > Memory, **rom**, **Pixels**, **Paint Mode** on.
+   - [ ] Under the toolbar: undo and redo arrows, *Paint here is a draft…*, **Apply Paint** (disabled) and **Throw Away Draft**. **Paint History** shows under *What's where*.
+2. Zoom in at 0x000000, set **Value** DB, brush 8, and draw two strokes over the top rows.
+   - [ ] The pixels change and are tinted, with a mark beside their rows; the game plays on unchanged. The history shows two *Stroke · N bytes at 0x… → DB* rows; the bar says *N bytes drafted*.
+3. Press **Cmd+Z**, then **Shift+Cmd+Z**.
+   - [ ] The second stroke disappears from the picture and greys out in the history, then comes back.
+4. Press **Apply Paint**.
+   - [ ] Within a second the game freezes or stops and comes back by itself (just before Apply); the bar says in orange *Your paint crashed the game: CPU stopped… It's back in the draft*; the panel's message says it too. The ROM page says the ROM is clean. The strokes are drafted again.
+5. Undo both strokes; draw one over an area the **Code** colouring shows as unused (dark), and Apply.
+   - [ ] *Applied N bytes: watching ten seconds for a crash*, then *Your paint held up for ten seconds: it stays*. The ROM page counts the changed bytes; the history shows *Applied · 1 stroke, N bytes*.
+6. Press **Cmd+Z**.
+   - [ ] The applied bytes come out of the game (ROM clean again) and the stroke is back in the draft.
+7. **Throw Away Draft**, then **Cmd+Z**.
+   - [ ] The draft empties (*Thrown away · 1 stroke*), and comes back.
+8. Switch to **wram**, paint a stroke.
+   - [ ] It changes in the game at once (no Apply button); **Cmd+Z** writes the old values back.
+9. Safety page: untick **Catch crashes…**; Apply a crashing stroke on the ROM.
+   - [ ] *Applied N bytes (the crash guard is off: no watch)*; the game stays crashed until you undo or go back to normal.
+10. **Corruption > Start Games Paused**, then open the game again.
+   - [ ] The game doesn't start; the panel says *Paused · Emulation > Run starts it*. The Memory page shows the ROM at once. Paint and Apply, then **Emulation > Run**: the game boots with the paint (or is taken back if it crashes within ten seconds).
+11. On the remote page, paint the ROM.
+   - [ ] It goes in at once and is taken back if it crashes within ten seconds.

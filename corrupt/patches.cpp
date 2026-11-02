@@ -51,6 +51,14 @@ void remove_patch_bytes(std::vector<Patch> &patches, Target t, const std::vector
     patches = runs(all);
 }
 
+std::optional<uint8_t> patch_byte(const std::vector<Patch> &patches, Target t, uint32_t offset)
+{
+    for (auto &p : patches)
+        if (p.target == t && offset >= p.at && offset - p.at < p.bytes.size())
+            return p.bytes[offset - p.at];
+    return std::nullopt;
+}
+
 size_t patched_bytes(const std::vector<Patch> &patches)
 {
     size_t n = 0;

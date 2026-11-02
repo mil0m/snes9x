@@ -21,6 +21,9 @@
 #include "corrupt/memory_watch.h"
 #include "corrupt/function_guard.h"
 #include "corrupt/function_change.h"
+#include "corrupt/paint_history.h"
+#include "corrupt/paint_store.h"
+#include "corrupt/paint_watch.h"
 
 #include "snes9x.h"
 #include "memmap.h"
@@ -709,6 +712,79 @@ TEST_SUITE("ROM corruption in the real core")
         CHECK(h.outcomes.size() == 1); // without the undo the STP would stay and crash again
         CHECK(h.memory.read(Target::ROM, kMainWai) == 0xCB); // the WAI is back
         CHECK(alive(h));
+    }
+
+    // Paint (#66): drafted, applied as a batch with a restore point, watched for ten seconds.
+    struct Painting
+    {
+        RecipePaintStore store;
+        PaintHistory history{ store };
+        PaintWatch watch;
+        explicit Painting(Harness &h) : store(h.rom, h.engine) {}
+
+        PaintWatch::Outcome play(Harness &h, int frames)
+        {
+            PaintWatch::Outcome out;
+            for (int i = 0; i < frames && out.result == PaintWatch::Result::Nothing; i++)
+            {
+                h.run(1);
+                out = watch.observe(h.access.sample());
+            }
+            return out;
+        }
+    };
+
+    TEST_CASE("paint: a stroke that stops the game is taken back after Apply, with corruption off")
+    {
+        Harness h(testrom::Crash::None, Recipe{}, PolicyKind::Skip);
+        h.engine.set_active(false); // not corrupting: the crash guard isn't watching
+        Painting p(h);
+        h.run(30);
+        p.history.stroke(Target::ROM, { { kMainWai, 0xDB } }); // STP over the main loop's WAI
+        CHECK(h.memory.read(Target::ROM, kMainWai) == 0xCB);   // drafted: not in the game
+        CHECK(alive(h));
+
+        auto restore = h.access.save_state();
+        auto applied = p.history.apply();
+        REQUIRE(applied);
+        p.watch.arm(restore, applied->entry);
+        CHECK(h.memory.read(Target::ROM, kMainWai) == 0xDB);
+        CHECK(patch_byte(h.engine.recipe().patches, Target::ROM, kMainWai) == 0xDB);
+
+        auto out = p.play(h, 120);
+        REQUIRE(out.result == PaintWatch::Result::Crashed);
+        CHECK(out.verdict->signal == CrashSignal::CpuStopped);
+        CHECK(h.outcomes.empty()); // the guard never saw it
+        REQUIRE(h.access.load_state(out.state));
+        CHECK(p.history.take_back(out.entry));
+        CHECK(h.memory.read(Target::ROM, kMainWai) == 0xCB);
+        CHECK_FALSE(patch_byte(h.engine.recipe().patches, Target::ROM, kMainWai));
+        CHECK(p.history.draft().at(kMainWai) == 0xDB); // back in the draft, to change
+        CHECK(alive(h));
+    }
+
+    TEST_CASE("paint: a stroke the game survives for ten seconds stays, in the game and the recipe")
+    {
+        Harness h(testrom::Crash::None, Recipe{}, PolicyKind::Skip);
+        h.engine.set_active(false);
+        Painting p(h);
+        h.run(30);
+        constexpr uint32_t kData = 0x3000; // padding the game never runs
+        uint8_t clean = h.memory.read(Target::ROM, kData);
+        p.history.stroke(Target::ROM, { { kData, 0x55 }, { kData + 1, 0x66 } });
+        auto restore = h.access.save_state();
+        auto applied = p.history.apply();
+        REQUIRE(applied);
+        p.watch.arm(restore, applied->entry);
+        auto out = p.play(h, int(PaintWatch::kFrames) + 10);
+        CHECK(out.result == PaintWatch::Result::Kept);
+        CHECK(h.memory.read(Target::ROM, kData) == 0x55);
+        CHECK(patch_byte(h.engine.recipe().patches, Target::ROM, kData + 1) == 0x66);
+        CHECK(alive(h));
+        // Undo still takes it out, by hand.
+        CHECK(p.history.undo());
+        CHECK(h.memory.read(Target::ROM, kData) == clean);
+        CHECK_FALSE(patch_byte(h.engine.recipe().patches, Target::ROM, kData));
     }
 }
 

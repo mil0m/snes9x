@@ -239,3 +239,9 @@ What came back from playing, one line each, with what was done about it.
   obvious. It is now the Mac's **Save / Don't Save / Cancel** (Escape cancels, and Save on a
   new recipe asks for its name first; cancelling that cancels everything); the same
   question guards loading another recipe and importing. The button reads **New Recipe…**.
+- **"The drawing crashed the game and the rollback didn't come; we want to finish a drawing
+  before it goes in, and undo every stroke."** Built as #66
+  ([plan](2026-11-02-paint-draft-plan.md)): ROM paint is a draft until **Apply Paint**, which
+  is watched for ten seconds (corrupting or not) and taken back into the draft on a crash;
+  every stroke undoes and redoes, with a history; *Start Games Paused* to paint before the
+  first frame.

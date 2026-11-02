@@ -371,6 +371,11 @@ void Engine::add_patches(Target t, const std::vector<std::pair<uint32_t, uint8_t
     add_patch_bytes(current.patches, t, bytes);
 }
 
+void Engine::remove_patches(Target t, const std::vector<uint32_t> &offsets)
+{
+    remove_patch_bytes(current.patches, t, offsets);
+}
+
 void Engine::clear_patches(Target t)
 {
     std::erase_if(current.patches, [t](const Patch &p) { return p.target == t; });

@@ -7,6 +7,9 @@
 #include "corrupt/engine.h"
 #include "corrupt/library.h"
 #include "corrupt/memory_watch.h"
+#include "corrupt/paint_history.h"
+#include "corrupt/paint_store.h"
+#include "corrupt/paint_watch.h"
 #include "corrupt/rom_keeper.h"
 #include "corrupt/instant_revert.h"
 #include "corrupt/test_ahead.h"
@@ -19,6 +22,7 @@
 #include "corrupt/save_backup.h"
 
 #include <filesystem>
+#include <functional>
 #include <array>
 #include <mutex>
 #include <optional>
@@ -111,13 +115,31 @@ class CorruptionSession
     void restoreCleanRom();
     std::string exportRom(const std::filesystem::path &path); // error or empty; the checksum is fixed
 
-    // Painting: sets the bytes now and keeps them in the recipe as patches, which apply
-    // whenever a run starts (a new recipe is made if none is loaded). Error or empty.
+    // Painting (#66). A dab of the brush belongs to the stroke being drawn until endStroke().
+    // ROM strokes go into a draft and into the game with applyPaint(), as one batch with a
+    // restore point and a ten-second crash watch; other memories are written as they're
+    // painted. Painted bytes are kept in the recipe as patches (a new recipe is made if none
+    // is loaded). Error or empty.
     std::string paint(corrupt::Target t, const std::vector<uint32_t> &offsets, uint8_t value);
+    void endStroke();
+    std::string applyPaint(); // at once while paused, else between the next two frames
+    bool undoPaint();
+    bool redoPaint();
+    void goToPaint(size_t count);
+    void discardDraft();
+    std::vector<corrupt::PaintHistory::Row> paintRows();
+    bool canUndoPaint();
+    bool canRedoPaint();
+    size_t draftSize();
+    bool paintWatching(); // a batch is being watched for a crash
+    std::string paintNews(); // what happened to the last Apply (watching, crashed, held up), until the next stroke
+    std::function<bool()> is_paused; // set by the app: the emulation thread is idle
     // A window of a memory as it is now (for the remote page, #53); empty if there's none.
     std::vector<uint8_t> readMemory(corrupt::Target t, uint32_t offset, uint32_t length);
     void remoteNote(const std::string &text); // the status line says what a remote did
-    std::string setBytes(corrupt::Target t, const std::vector<std::pair<uint32_t, uint8_t>> &bytes); // the same, a value each
+    std::string setBytes(corrupt::Target t, const std::vector<std::pair<uint32_t, uint8_t>> &bytes); // a stroke, a value each
+    // The remote page's paint: a whole stroke, and for the ROM applied at once (with the watch).
+    std::string setBytesNow(corrupt::Target t, const std::vector<std::pair<uint32_t, uint8_t>> &bytes);
     void clearPatches(); // forgets them; the bytes stay until the next run starts
 
     // Survivors: changed ROM bytes the game used often with no crash after. Pinning keeps a
@@ -183,6 +205,11 @@ class CorruptionSession
     void loadNames();
     void rebuildGuard(); // the functions in play's bodies to the engine; cleans them; the overlay
     std::string guardedBy(uint32_t offset) const; // "$C0:9000 (gravity)", for messages
+    void applyPaintLocked();                      // on the emulation thread, or while it's idle
+    bool watchPaint();                            // between frames: the crash watch after Apply; true: rolled back
+    void forgetPaint();                           // another game or recipe: the history goes
+    void lookNow();                               // the viewer's snapshot, read again now
+    std::string paintLocked(corrupt::Target t, const corrupt::PaintBytes &bytes, bool whole_stroke);
 
     std::mutex mutex;
     corrupt::Engine engine;
@@ -193,6 +220,11 @@ class CorruptionSession
     corrupt::CrashGuard guard;
     corrupt::RunControl control;
     corrupt::MemoryWatch watch;
+    corrupt::RecipePaintStore paint_store{ rom, engine };
+    corrupt::PaintHistory paint_history{ paint_store };
+    corrupt::PaintWatch paint_watch;
+    bool apply_pending = false;
+    std::string paint_news;
     corrupt::WramAccessCounter wram_access; // counting only while the viewer watches WRAM
     corrupt::CrashMapKeeper crash_map;
     corrupt::CodeMapKeeper code_map;        // recorded into by the tracer whenever a game is loaded

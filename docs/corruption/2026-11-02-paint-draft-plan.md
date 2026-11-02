@@ -1,6 +1,6 @@
 # Paint with a draft, a history and a crash watch (plan, roadmap #66)
 
-Status: planned, 2 November 2026.
+Status: done, 2 November 2026.
 
 ## What's wrong now
 
@@ -122,4 +122,23 @@ gets the crash watch; its RAM paint stays live.
 
 ## How it went
 
-(to be written)
+Built the same day, test first: 13 unit cases (history and watch), two real-core cases, four
+widget cases, and a tour step that paints a real game.
+
+- **On Pocky & Rocky, with corruption off:** a stroke of STP over the ROM's first 1 KB,
+  applied, stopped the CPU at $00:81F7 within a frame; the watch loaded the restore point,
+  the ROM was clean again (0 bytes changed) and all 1,024 bytes were back in the draft. The
+  crash guard never saw it, as designed.
+- **The store had to batch.** The recipe's patch list is rebuilt on every change, so a patch
+  per byte would have been quadratic on an imported picture; `PaintStore::set_patches` takes
+  a stroke's worth at once.
+- **Found in the pictures:** after a crash the Memory page still said *watching ten seconds*
+  (the message was set on Apply and never replaced). The session now keeps a *paint news*
+  line (applied, held up, crashed) that the page shows, the crash in the warning colour,
+  until the next stroke.
+- **Found by the build:** `signals` is a Qt keyword (a parameter named so broke every Qt file
+  that includes the watch).
+- **Not done:** the automatic search for the bad stroke (apply half, then half again); paint
+  of a running RAM value can't be "applied" (it's live by choice); a crash caught first by
+  the instant revert (#51, only while corrupting with ROM rules) fixes the byte without the
+  history knowing, so that batch shows as kept.

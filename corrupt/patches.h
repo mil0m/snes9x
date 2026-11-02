@@ -2,6 +2,7 @@
 #include "memory.h"
 
 #include <cstdint>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -92,5 +93,6 @@ struct Protect
 void add_patch_bytes(std::vector<Patch> &patches, Target t, const std::vector<std::pair<uint32_t, uint8_t>> &bytes);
 void remove_patch_bytes(std::vector<Patch> &patches, Target t, const std::vector<uint32_t> &offsets);
 size_t patched_bytes(const std::vector<Patch> &patches);
+std::optional<uint8_t> patch_byte(const std::vector<Patch> &patches, Target t, uint32_t offset); // the patch's value there
 
 } // namespace corrupt

@@ -129,6 +129,10 @@ void PixelView::setSnapshot(const MemorySnapshot &snapshot)
     uint32_t keep = same ? firstVisibleOffset() : 0;
     snap = snapshot;
     scale = overlayScale(snap);
+    drafted.assign(snap.draft.empty() ? 0 : snap.bytes.size(), 0);
+    for (auto o : snap.draft)
+        if (o < drafted.size())
+            drafted[o] = 1;
     if (!same)
     {
         anchor.reset();
@@ -310,6 +314,11 @@ void PixelView::paintAt(uint32_t offset)
             {
                 offsets.push_back(uint32_t(o));
                 snap.bytes[o] = paint_value;
+                if (snap.target == corrupt::Target::ROM) // drafted until Apply Paint (#66)
+                {
+                    drafted.resize(snap.bytes.size(), 0);
+                    drafted[o] = 1;
+                }
             }
         }
     viewport()->update();
@@ -375,6 +384,8 @@ void PixelView::mouseMoveEvent(QMouseEvent *event)
 
 void PixelView::mouseReleaseEvent(QMouseEvent *)
 {
+    if (painting && onStrokeEnd)
+        onStrokeEnd();
     painting = false;
     dragging = false;
 }
@@ -441,6 +452,7 @@ void PixelView::paintEvent(QPaintEvent *)
     QRgb hot = overlayColor(overlay).rgb();
     QRgb highlight = palette().color(QPalette::Highlight).rgb();
     auto sel = selection();
+    std::vector<int> draft_rows; // a tick beside them: at 1x a drafted byte is a single pixel
     for (int r = 0; r < rows; r++)
     {
         auto line = reinterpret_cast<QRgb *>(image.scanLine(r));
@@ -465,6 +477,12 @@ void PixelView::paintEvent(QPaintEvent *)
             }
             if (sel && offset >= sel->first && offset <= sel->second && (!rect_sel || rect_sel->contains(uint32_t(offset))))
                 colour = blend(colour, highlight, 0.45f);
+            if (offset < drafted.size() && drafted[offset])
+            {
+                colour = blend(colour, highlight, 0.35f); // drafted paint, not in the game yet
+                if (draft_rows.empty() || draft_rows.back() != r)
+                    draft_rows.push_back(r);
+            }
             line[c] = colour;
         }
     }
@@ -517,6 +535,8 @@ void PixelView::paintEvent(QPaintEvent *)
     int tick = std::max(3, zoom_);
     for (int r : hot_rows)
         p.fillRect(QRect(addressWidth() - 12, r * zoom_ + zoom_ / 2 - tick / 2, 3, tick), QColor(225, 40, 40));
+    for (int r : draft_rows)
+        p.fillRect(QRect(addressWidth() - 16, r * zoom_ + zoom_ / 2 - tick / 2, 3, tick), highlight);
 
     // A bar beside the rows the selection covers: at 1:1 a selection can be a pixel high.
     if (sel)

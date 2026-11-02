@@ -5,6 +5,7 @@
 #include "PixelView.hpp"
 #include "TileView.hpp"
 
+#include <QAction>
 #include <QApplication>
 #include <QComboBox>
 #include <QDir>
@@ -174,6 +175,30 @@ struct FakeSource : MemorySource
     {
         return name == "stats" ? users_of_stats : std::vector<std::string>{};
     }
+
+    // Paint's draft and history (#66).
+    int strokes_ended = 0, applied = 0, undos = 0, redos = 0, discards = 0;
+    std::vector<size_t> gone_to;
+    std::vector<PaintHistory::Row> rows;
+    size_t drafted = 0;
+    bool watching = false, undoable = false, redoable = false;
+    void endStroke() override { strokes_ended++; }
+    std::string applyPaint() override
+    {
+        applied++;
+        return {};
+    }
+    bool undoPaint() override { return ++undos, true; }
+    bool redoPaint() override { return ++redos, true; }
+    void goToPaint(size_t count) override { gone_to.push_back(count); }
+    void discardDraft() override { discards++; }
+    std::vector<PaintHistory::Row> paintRows() override { return rows; }
+    bool canUndoPaint() override { return undoable; }
+    bool canRedoPaint() override { return redoable; }
+    size_t draftSize() override { return drafted; }
+    bool paintWatching() override { return watching; }
+    std::string news;
+    std::string paintNews() override { return news; }
 };
 
 template <typename W>
@@ -522,6 +547,139 @@ TEST_SUITE("the pixel view in the viewer")
         CHECK_FALSE(child<QSpinBox>(v, "brush")->isVisible());
         choose(v, "mode", "hex");
         CHECK_FALSE(paint->isVisible());
+    }
+
+    TEST_CASE("ROM paint is drafted: Apply Paint and Throw Away show for the ROM only, and a stroke ends on release")
+    {
+        FakeSource src;
+        MemoryViewer v(src);
+        v.show();
+        choose(v, "target", "rom");
+        choose(v, "mode", "pixels");
+        v.refresh();
+        child<QPushButton>(v, "paint")->click();
+        auto apply = child<QPushButton>(v, "apply_paint");
+        auto discard = child<QPushButton>(v, "discard_draft");
+        auto drafted = child<QLabel>(v, "draft_status");
+        CHECK(apply->isVisible());
+        CHECK_FALSE(apply->isEnabled()); // nothing drafted yet
+        CHECK(drafted->text().contains("Paint here is a draft"));
+
+        auto pixels = child<PixelView>(v, "pixels");
+        QPoint at = pixels->pixelRect(0x200).center();
+        QMouseEvent press(QEvent::MouseButtonPress, QPointF(at), pixels->viewport()->mapToGlobal(QPointF(at)),
+                          Qt::LeftButton, Qt::LeftButton, Qt::NoModifier);
+        QApplication::sendEvent(pixels->viewport(), &press);
+        CHECK(src.strokes_ended == 0);
+        QMouseEvent release(QEvent::MouseButtonRelease, QPointF(at), pixels->viewport()->mapToGlobal(QPointF(at)),
+                            Qt::LeftButton, Qt::NoButton, Qt::NoModifier);
+        QApplication::sendEvent(pixels->viewport(), &release);
+        CHECK(src.strokes_ended == 1);
+
+        src.drafted = 12;
+        v.refresh();
+        CHECK(apply->isEnabled());
+        CHECK(drafted->text().contains("12 bytes drafted"));
+        apply->click();
+        CHECK(src.applied == 1);
+        discard->click();
+        CHECK(src.discards == 1);
+        src.drafted = 0;
+        src.watching = true;
+        v.refresh();
+        CHECK(drafted->text().contains("Watching"));
+        src.watching = false; // ...and it crashed: the page says so, in the warning colour
+        src.drafted = 12;
+        src.news = "Your paint crashed the game (CPU stopped): it's back in the draft. Undo a stroke or two and apply again.";
+        v.refresh();
+        CHECK(drafted->text().contains("crashed the game"));
+        CHECK(drafted->palette().color(QPalette::WindowText) == ui::toneColor(ui::Tone::Warning, drafted->palette()));
+        CHECK(ui::audit(&v).isEmpty());
+
+        choose(v, "target", "wram"); // painted live: nothing to apply
+        v.refresh();
+        CHECK_FALSE(apply->isVisible());
+        CHECK_FALSE(discard->isVisible());
+    }
+
+    TEST_CASE("Undo and Redo: buttons, Cmd+Z and Shift+Cmd+Z, and the history list goes back to a row")
+    {
+        FakeSource src;
+        MemoryViewer v(src);
+        v.show();
+        choose(v, "target", "rom");
+        choose(v, "mode", "pixels");
+        child<QPushButton>(v, "paint")->click();
+        PaintHistory::Row draft;
+        draft.kind = PaintEntry::Draft;
+        draft.target = Target::ROM;
+        draft.bytes = 4;
+        draft.first = 0x200;
+        draft.value = 0xEA;
+        draft.index = 2;
+        PaintHistory::Row applied;
+        applied.kind = PaintEntry::Applied;
+        applied.target = Target::ROM;
+        applied.strokes = 3;
+        applied.bytes = 54;
+        applied.first = 0x1000;
+        applied.index = 1;
+        PaintHistory::Row undone = draft;
+        undone.active = false;
+        undone.index = 3;
+        src.rows = { undone, draft, applied };
+        src.undoable = src.redoable = true;
+        v.refresh();
+        auto history = child<QListWidget>(v, "paint_history");
+        CHECK(history->isVisible());
+        REQUIRE(history->count() == 3);
+        CHECK(history->item(1)->text().contains("4 bytes at 0x000200"));
+        CHECK(history->item(1)->text().contains("EA"));
+        CHECK(history->item(2)->text().contains("Applied"));
+        CHECK(history->item(2)->text().contains("3 strokes"));
+        CHECK(history->item(0)->foreground().color() != history->item(1)->foreground().color()); // undone: quieter
+
+        child<QPushButton>(v, "undo_paint")->click();
+        CHECK(src.undos == 1);
+        child<QPushButton>(v, "redo_paint")->click();
+        CHECK(src.redos == 1);
+        auto undo_action = v.findChild<QAction *>("undo_paint_key");
+        auto redo_action = v.findChild<QAction *>("redo_paint_key");
+        REQUIRE(undo_action);
+        REQUIRE(redo_action);
+        CHECK(undo_action->shortcut() == QKeySequence(QKeySequence::Undo));
+        CHECK(redo_action->shortcuts().contains(QKeySequence(QKeySequence::Redo)));
+        undo_action->trigger();
+        CHECK(src.undos == 2);
+        history->itemClicked(history->item(2)); // just after the applied batch
+        REQUIRE(src.gone_to.size() == 1);
+        CHECK(src.gone_to[0] == 2);
+
+        src.undoable = src.redoable = false;
+        v.refresh();
+        CHECK_FALSE(child<QPushButton>(v, "undo_paint")->isEnabled());
+        child<QPushButton>(v, "paint")->click(); // off: no history to look at
+        CHECK_FALSE(history->isVisible());
+    }
+
+    TEST_CASE("the pixel view marks drafted bytes")
+    {
+        PixelView view;
+        view.resize(400, 300);
+        MemorySnapshot s;
+        s.target = Target::ROM;
+        s.bytes.assign(0x400, 0x40);
+        view.setSnapshot(s);
+        view.setRowWidth(32);
+        view.show();
+        QApplication::processEvents();
+        QPoint drafted_at = view.pixelRect(0x21).center(), plain_at = view.pixelRect(0x22).center();
+        auto before = view.viewport()->grab().toImage();
+        CHECK(before.pixelColor(drafted_at) == before.pixelColor(plain_at));
+        s.draft = { 0x21 };
+        view.setSnapshot(s);
+        auto after = view.viewport()->grab().toImage();
+        CHECK(after.pixelColor(drafted_at) != after.pixelColor(plain_at));
     }
 
     TEST_CASE("Export PNG writes the selection as a picture; an edited copy comes back as paint")

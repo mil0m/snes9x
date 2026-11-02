@@ -21,7 +21,12 @@ SessionControl::SessionControl(EmuApplication &app, RemoteControl &remote) : app
         app.config->corruption_remote_token = remote::new_token();
 }
 
-PanelStatus SessionControl::status() { return session().status(); }
+PanelStatus SessionControl::status()
+{
+    auto s = session().status();
+    s.paused = s.game_loaded && app.isPaused();
+    return s;
+}
 void SessionControl::setActive(bool on) { session().setActive(on); }
 void SessionControl::backToNormal() { session().backToNormal(); }
 uint64_t SessionControl::reroll() { return session().reroll(); }

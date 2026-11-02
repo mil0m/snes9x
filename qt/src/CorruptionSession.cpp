@@ -130,6 +130,12 @@ void CorruptionSession::betweenFrames()
         note(moment ? std::string() : "Only the ROM went back: there was no run start to go back to");
         S9xSetInfoString("Corruption: back to normal");
     }
+    // Paint's own crash watch (#66), corrupting or not; a rollback here ends this frame's work.
+    if (watchPaint())
+    {
+        tracer.take_derail(); // from the frame that crashed, which never happened now
+        return;
+    }
     // The instant revert first, before anything reads the frame that ran: a changed ROM byte
     // that sent the CPU into non-code is fixed and the frame played again (#51). The note is
     // taken every frame, which also lets the tracer mark the map again.
@@ -370,6 +376,7 @@ void CorruptionSession::gameLoaded()
     window_off.clear();
     window_changes.clear();
     guard_dirty = true;
+    forgetPaint();
     guard.reset();
     instant.drop();
     instant.reset_counts();
@@ -544,6 +551,7 @@ void CorruptionSession::gameClosing()
     instant.drop();
     rom.game_closed();
     SnesCoreAccess::unwatch_resets();
+    forgetPaint();
     game_loaded = false;
 }
 
@@ -597,6 +605,7 @@ std::vector<std::string> CorruptionSession::loadRecipe(const Recipe &recipe, con
     saved_json = path.empty() ? std::string() : recipeJson(recipe);
     guard.reset();
     instant.drop();
+    forgetPaint(); // another recipe: its paint history isn't this one's
     instant.reset_counts();
     ahead.reset_counts();
     last_crash.clear();
@@ -631,7 +640,11 @@ void CorruptionSession::watchMemory(Target target)
 {
     std::lock_guard lock(mutex);
     if (!watch.watching() || watch.target() != target)
+    {
         watch.watch(target, game_loaded ? memory.size(target) : 0);
+        if (game_loaded)
+            lookNow(); // the bytes now, not at the next frame: a paused game has none coming
+    }
 }
 
 void CorruptionSession::stopWatching()
@@ -670,6 +683,13 @@ MemorySnapshot CorruptionSession::memorySnapshot()
             }
         std::sort(snap.rom_changes.begin(), snap.rom_changes.end(),
                   [](const RomChange &a, const RomChange &b) { return a.offset < b.offset; });
+        // The paint draft (#66), shown as it would be, and marked.
+        for (auto [o, v] : paint_history.draft())
+            if (o < snap.bytes.size())
+            {
+                snap.bytes[o] = v;
+                snap.draft.push_back(o);
+            }
     }
     return snap;
 }
@@ -816,6 +836,7 @@ std::string CorruptionSession::recipeJson(Recipe recipe) const
 void CorruptionSession::newRecipe(const std::string &name)
 {
     std::lock_guard lock(mutex);
+    forgetPaint();
     newRecipeLocked(name);
 }
 
@@ -1250,45 +1271,236 @@ void CorruptionSession::remoteNote(const std::string &text)
 
 std::string CorruptionSession::paint(Target t, const std::vector<uint32_t> &offsets, uint8_t value)
 {
-    std::vector<std::pair<uint32_t, uint8_t>> bytes;
+    PaintBytes bytes;
     for (auto o : offsets)
         bytes.push_back({ o, value });
-    return setBytes(t, bytes);
+    std::lock_guard lock(mutex);
+    return paintLocked(t, bytes, false);
 }
 
-std::string CorruptionSession::setBytes(Target t, const std::vector<std::pair<uint32_t, uint8_t>> &wanted)
+std::string CorruptionSession::setBytes(Target t, const std::vector<std::pair<uint32_t, uint8_t>> &bytes)
 {
     std::lock_guard lock(mutex);
+    return paintLocked(t, bytes, true); // an imported picture: one stroke
+}
+
+std::string CorruptionSession::setBytesNow(Target t, const std::vector<std::pair<uint32_t, uint8_t>> &bytes)
+{
+    std::lock_guard lock(mutex);
+    auto err = paintLocked(t, bytes, true);
+    if (err.empty() && PaintHistory::drafted(t))
+    {
+        if (is_paused && is_paused())
+            applyPaintLocked();
+        else
+            apply_pending = true;
+    }
+    return err;
+}
+
+std::string CorruptionSession::paintLocked(Target t, const PaintBytes &wanted, bool whole_stroke)
+{
     if (!game_loaded)
         return "No game loaded";
     if (!has_recipe)
         newRecipeLocked("Painted");
-    std::vector<std::pair<uint32_t, uint8_t>> bytes;
+    PaintBytes bytes;
     size_t size = rom.size(t);
-    size_t kept = 0;
-    std::optional<uint32_t> first_kept;
     for (auto [o, v] : wanted)
+        if (o < size && !rom.locked_mask().is_hot(t, o))
+            bytes.push_back({ o, v });
+    if (!PaintHistory::drafted(t))
     {
-        if (o >= size || rom.locked_mask().is_hot(t, o))
-            continue;
-        if (engine.guarded_mask().is_hot(t, o))
-        {
-            kept++;
-            if (!first_kept)
+        // Live: guarded bytes are left as they are, and said so (the ROM's are, at Apply).
+        size_t kept = 0;
+        std::optional<uint32_t> first_kept;
+        for (auto [o, v] : bytes)
+            if (engine.guarded_mask().is_hot(t, o) && !kept++)
                 first_kept = o;
-            continue;
-        }
-        bytes.push_back({ o, v });
+        if (kept)
+            note("Kept " + std::to_string(kept) + (kept == 1 ? " byte" : " bytes") + " as they were: guarded by " +
+                 guardedBy(*first_kept));
     }
-    if (kept)
-        note("Kept " + std::to_string(kept) + (kept == 1 ? " byte" : " bytes") + " as they were: guarded by " +
-             guardedBy(*first_kept));
     if (bytes.empty())
         return {};
-    engine.add_patches(t, bytes);
-    for (auto &[o, v] : bytes)
-        rom.write_at_start(t, o, v); // a rollback mustn't undo paint
+    paint_history.dab(t, bytes);
+    paint_news.clear();
+    if (whole_stroke)
+        paint_history.end_stroke();
+    if (!PaintHistory::drafted(t))
+        lookNow();
     return {};
+}
+
+void CorruptionSession::endStroke()
+{
+    std::lock_guard lock(mutex);
+    paint_history.end_stroke();
+}
+
+std::string CorruptionSession::applyPaint()
+{
+    std::lock_guard lock(mutex);
+    if (!game_loaded)
+        return "No game loaded";
+    paint_history.end_stroke();
+    if (!paint_history.has_draft())
+        return "Nothing drafted to apply";
+    if (is_paused && is_paused())
+        applyPaintLocked(); // the emulation thread is idle: the restore point can be taken now
+    else
+        apply_pending = true; // between the next two frames, where the guard takes its states too
+    return {};
+}
+
+void CorruptionSession::applyPaintLocked()
+{
+    apply_pending = false;
+    if (!game_loaded || !paint_history.has_draft())
+        return;
+    std::optional<uint32_t> first_kept;
+    for (auto [o, v] : paint_history.draft())
+        if (paint_store.skip(Target::ROM, o))
+        {
+            first_kept = o;
+            break;
+        }
+    auto state = access.save_state();
+    auto applied = paint_history.apply();
+    if (!applied)
+        return;
+    std::string kept;
+    if (applied->skipped)
+        kept = " (" + std::to_string(applied->skipped) + " guarded by " + guardedBy(*first_kept) + " left as they were)";
+    if (detection_enabled && !state.empty())
+    {
+        paint_watch.set_config(guard.detector_config());
+        paint_watch.arm(std::move(state), applied->entry);
+        paint_news = "Applied " + std::to_string(applied->bytes) + (applied->bytes == 1 ? " byte" : " bytes") + kept +
+                     ": watching ten seconds for a crash";
+        note(paint_news);
+    }
+    else
+    {
+        paint_news = "Applied " + std::to_string(applied->bytes) + (applied->bytes == 1 ? " byte" : " bytes") + kept +
+                     " (the crash guard is off: no watch)";
+        note(paint_news);
+    }
+    lookNow();
+}
+
+bool CorruptionSession::watchPaint()
+{
+    // The frame that just ran first (it was played with the batch being watched), then a
+    // pending Apply, so the frame after this is the first one with the new batch.
+    PaintWatch::Outcome out;
+    if (paint_watch.armed())
+        out = paint_watch.observe(access.sample());
+    if (out.result == PaintWatch::Result::Kept)
+    {
+        paint_news = "Your paint held up for ten seconds: it stays";
+        note(paint_news);
+    }
+    if (out.result != PaintWatch::Result::Crashed)
+    {
+        if (apply_pending)
+            applyPaintLocked();
+        return false;
+    }
+    access.load_state(out.state);
+    paint_history.take_back(out.entry);
+    guard.reset(); // its checkpoints may be from after the restore point
+    instant.drop();
+    std::string why = out.verdict ? out.verdict->text : std::string("a crash");
+    paint_news = "Your paint crashed the game: " + why + ". It's back in the draft: undo a stroke or two and apply again.";
+    note("Your paint crashed the game: it's back in the draft",
+         "Your paint crashed the game: " + why + ". The game went back to just before Apply, the painted bytes "
+         "are out again, and the strokes are back in the draft: undo one or two and apply again.");
+    S9xSetInfoString("Corruption: the paint crashed the game, put back");
+    apply_pending = false; // a newer Apply waits for the player to press it again
+    lookNow();
+    return true;
+}
+
+void CorruptionSession::forgetPaint()
+{
+    paint_news.clear();
+    paint_history.clear();
+    paint_watch.disarm();
+    apply_pending = false;
+}
+
+void CorruptionSession::lookNow()
+{
+    if (watch.watching())
+        watch.observe(memory, engine.event_log(), engine.current_frame());
+}
+
+bool CorruptionSession::undoPaint()
+{
+    std::lock_guard lock(mutex);
+    bool done = paint_history.undo();
+    if (done)
+        lookNow();
+    return done;
+}
+
+bool CorruptionSession::redoPaint()
+{
+    std::lock_guard lock(mutex);
+    bool done = paint_history.redo();
+    if (done)
+        lookNow();
+    return done;
+}
+
+void CorruptionSession::goToPaint(size_t count)
+{
+    std::lock_guard lock(mutex);
+    paint_history.go_to(count);
+    lookNow();
+}
+
+void CorruptionSession::discardDraft()
+{
+    std::lock_guard lock(mutex);
+    paint_history.discard_draft();
+}
+
+std::vector<PaintHistory::Row> CorruptionSession::paintRows()
+{
+    std::lock_guard lock(mutex);
+    return paint_history.rows();
+}
+
+bool CorruptionSession::canUndoPaint()
+{
+    std::lock_guard lock(mutex);
+    return paint_history.can_undo();
+}
+
+bool CorruptionSession::canRedoPaint()
+{
+    std::lock_guard lock(mutex);
+    return paint_history.can_redo();
+}
+
+size_t CorruptionSession::draftSize()
+{
+    std::lock_guard lock(mutex);
+    return paint_history.draft().size();
+}
+
+std::string CorruptionSession::paintNews()
+{
+    std::lock_guard lock(mutex);
+    return paint_news;
+}
+
+bool CorruptionSession::paintWatching()
+{
+    std::lock_guard lock(mutex);
+    return paint_watch.armed() || apply_pending;
 }
 
 void CorruptionSession::pinChanged()
@@ -1698,6 +1910,7 @@ void CorruptionSession::unpin(const std::vector<uint32_t> &offsets)
 void CorruptionSession::clearPatches()
 {
     std::lock_guard lock(mutex);
+    forgetPaint(); // its undo would put the patches back
     for (auto t : kAllTargets)
         engine.clear_patches(t);
 }

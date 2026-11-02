@@ -68,6 +68,7 @@ class PixelView : public QAbstractScrollArea, public MemoryPane
     void setBrush(int size) { brush = std::clamp(size, 1, 64); }
     std::function<void(const std::vector<uint32_t> &)> onPaint;
     std::function<void(uint8_t)> onPick;
+    std::function<void()> onStrokeEnd; // the mouse let go: one stroke for the paint history (#66)
 
     std::function<void()> onZoomChanged;
     std::function<void(std::optional<uint32_t>)> onHover; // the byte under the mouse, or none
@@ -94,6 +95,7 @@ class PixelView : public QAbstractScrollArea, public MemoryPane
     void zoomTo(int zoom, std::optional<QPoint> around);
 
     corrupt::MemorySnapshot snap;
+    std::vector<uint8_t> drafted; // per byte: 1 where paint is drafted, not in the game yet (#66)
     Overlay overlay = Overlay::Activity;
     std::optional<uint32_t> anchor;
     std::optional<uint32_t> cursor;

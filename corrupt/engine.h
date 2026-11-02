@@ -110,6 +110,7 @@ class Engine
     void add_pins(const std::vector<Pin> &pins);       // a pin on the same byte is replaced; no restart
     void remove_pins(const std::vector<uint32_t> &offsets); // no restart
     void add_patches(Target t, const std::vector<std::pair<uint32_t, uint8_t>> &bytes); // no restart
+    void remove_patches(Target t, const std::vector<uint32_t> &offsets);                 // no restart
 
     // Kill switches (#34). A flip happens at the start of the next frame, only while the
     // run is on: the entry gets `ret` unless it holds it already, then it gets `clean`

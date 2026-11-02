@@ -6,6 +6,7 @@
 
 #include "corrupt/memory_map.h"
 #include "corrupt/memory_watch.h"
+#include "corrupt/paint_history.h"
 #include "corrupt/recipe_json.h"
 
 #include <array>
@@ -46,6 +47,21 @@ struct MemorySource
     virtual std::string renameRegion(const std::string &from, const std::string &to) = 0;
     virtual std::string deleteRegion(const std::string &name) = 0;
     virtual std::vector<std::string> regionUsers(const std::string &name) = 0;
+
+    // Paint's draft and history (#66). paint() is a dab of the stroke being drawn; ROM strokes
+    // are drafted until applyPaint() puts them in (with a ten-second crash watch).
+    virtual void endStroke() {}
+    virtual std::string applyPaint() { return {}; }
+    virtual bool undoPaint() { return false; }
+    virtual bool redoPaint() { return false; }
+    virtual void goToPaint(size_t) {}
+    virtual void discardDraft() {}
+    virtual std::vector<corrupt::PaintHistory::Row> paintRows() { return {}; }
+    virtual bool canUndoPaint() { return false; }
+    virtual bool canRedoPaint() { return false; }
+    virtual size_t draftSize() { return 0; }
+    virtual bool paintWatching() { return false; } // a batch is being watched for a crash
+    virtual std::string paintNews() { return {}; } // what became of the last Apply, until the next stroke
     virtual ~MemorySource() = default;
 };
 
@@ -101,6 +117,8 @@ class MemoryViewer : public QWidget
     void askRename();
     void askDelete();
     void showResult(const QString &error, const QString &done);
+    void refreshPaint(); // the paint bar and the history (#66)
+    void paintToolsShown();
 
     MemorySource &source;
     unsigned slow_ticks = 0;
@@ -144,4 +162,15 @@ class MemoryViewer : public QWidget
     QPushButton *name_button;
     QPushButton *rename_button;
     QPushButton *delete_button;
+
+    // Paint's draft and history (#66): shown while painting in the pixel view.
+    QWidget *paint_bar;
+    QPushButton *undo_button;
+    QPushButton *redo_button;
+    QLabel *draft_label;
+    QPushButton *apply_button;
+    QPushButton *discard_button;
+    QWidget *history_box;
+    QListWidget *history_list;
+    QString shown_history; // what the list shows, to fill it only when it changes
 };

@@ -38,6 +38,7 @@ struct EmuConfig
     // Corruption tooling
     std::string corruption_library_root; // the recipe library, e.g. a clone of the shared library repo
     bool corruption_panel_visible = false;
+    bool corruption_start_paused = false;  // a game opens paused, to paint before its first frame (#66)
     int corruption_workshop_page = 0;      // the Workshop opens where it was (#64)
     int corruption_workshop_width = 0;     // 0: as wide as its pages need
     int corruption_workshop_height = 720;

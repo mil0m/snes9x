@@ -67,6 +67,18 @@ struct SessionMemorySource : MemorySource
     std::string renameRegion(const std::string &from, const std::string &to) override { return s.renameRegion(from, to); }
     std::string deleteRegion(const std::string &name) override { return s.deleteRegion(name); }
     std::vector<std::string> regionUsers(const std::string &name) override { return s.regionUsers(name); }
+    void endStroke() override { s.endStroke(); }
+    std::string applyPaint() override { return s.applyPaint(); }
+    bool undoPaint() override { return s.undoPaint(); }
+    bool redoPaint() override { return s.redoPaint(); }
+    void goToPaint(size_t count) override { s.goToPaint(count); }
+    void discardDraft() override { s.discardDraft(); }
+    std::vector<PaintHistory::Row> paintRows() override { return s.paintRows(); }
+    bool canUndoPaint() override { return s.canUndoPaint(); }
+    bool canRedoPaint() override { return s.canRedoPaint(); }
+    size_t draftSize() override { return s.draftSize(); }
+    bool paintWatching() override { return s.paintWatching(); }
+    std::string paintNews() override { return s.paintNews(); }
 };
 
 struct SessionSurvivors : SurvivorSource
@@ -117,6 +129,8 @@ CorruptionDock::CorruptionDock(EmuApplication &app, QWidget *parent) : QDockWidg
     function_source = std::make_unique<SessionFunctions>();
     survivor_source = std::make_unique<SessionSurvivors>();
     memory_source = std::make_unique<SessionMemorySource>();
+    // Apply Paint takes its restore point at once while the emulation thread is idle (#66).
+    CorruptionSession::get().is_paused = [&app] { return app.isPaused(); };
 
     // The cockpit scrolls when the window is short, instead of holding the window tall.
     auto scroll = new QScrollArea(this);
@@ -306,6 +320,37 @@ void CorruptionDock::tour(const QString &dir)
         choose(workshop->memoryPage(), "overlay", "code");
     });
     steps->push_back([=, this] { shot(workshop, "10-workshop-memory-rom-code"); });
+    // Paint (#66): a stroke of STP over the first 1 KB of the ROM, drafted, then applied: the
+    // game runs into it, the watch rolls back and the stroke is back in the draft.
+    steps->push_back([=, this] {
+        auto memory_page = workshop->memoryPage();
+        if (auto paint = memory_page->findChild<QPushButton *>("paint"); paint && !paint->isChecked())
+            paint->click();
+        std::vector<uint32_t> offsets;
+        for (uint32_t o = 0; o < 0x400; o++)
+            offsets.push_back(o);
+        auto &session = CorruptionSession::get();
+        session.paint(Target::ROM, offsets, 0xDB);
+        session.endStroke();
+        memory_page->refresh();
+    });
+    steps->push_back([=, this] {
+        shot(workshop, "10b-workshop-memory-paint-draft");
+        if (auto apply = workshop->memoryPage()->findChild<QPushButton *>("apply_paint"))
+            apply->click();
+    });
+    steps->push_back([] {}); // the frames after Apply
+    steps->push_back([=, this] {
+        workshop->memoryPage()->refresh();
+        shot(workshop, "10c-workshop-memory-paint-taken-back");
+        auto status = CorruptionSession::get().status();
+        log(QString("paint: %1 / %2; draft %3, ROM changed %4")
+                .arg(QString::fromStdString(status.message), QString::fromStdString(status.message_detail))
+                .arg(CorruptionSession::get().draftSize())
+                .arg(status.rom_changed));
+        cockpit->refresh();
+        shot(cockpit, "10d-cockpit-paint-taken-back");
+    });
     steps->push_back([=, this] {
         choose(workshop->memoryPage(), "target", "vram");
         choose(workshop->memoryPage(), "mode", "tiles");

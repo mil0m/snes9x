@@ -7,7 +7,9 @@
 #include "RuleEditor.hpp"
 #include "corrupt/rule_text.h"
 
+#include <QAction>
 #include <QComboBox>
+#include <QKeySequence>
 #include <QDir>
 #include <QFileDialog>
 #include <QFontDatabase>
@@ -176,8 +178,9 @@ MemoryViewer::MemoryViewer(MemorySource &source, QWidget *parent)
     paint_button = new QPushButton(tr("Paint Mode"), view_options);
     paint_button->setObjectName("paint");
     paint_button->setCheckable(true);
-    paint_button->setToolTip(tr("Drag to paint bytes with the value, into the game and the recipe (as patches). "
-                                "Alt-click picks the value under the mouse."));
+    paint_button->setToolTip(tr("Drag to paint bytes with the value. On the ROM it's a draft until Apply Paint; "
+                                "other memories change as you drag. Painted bytes are kept in the recipe. "
+                                "Alt-click picks the value under the mouse; Cmd+Z undoes a stroke."));
     paint_value = new QSpinBox(view_options);
     paint_value->setObjectName("paint_value");
     paint_value->setRange(0, 255);
@@ -211,6 +214,73 @@ MemoryViewer::MemoryViewer(MemorySource &source, QWidget *parent)
     options->addStretch(1);
     layout->addWidget(view_options);
 
+    // While painting: undo and redo, and for the ROM the draft and Apply Paint (#66).
+    paint_bar = new QWidget(this);
+    paint_bar->setObjectName("paint_bar");
+    auto paint_row = new QHBoxLayout(paint_bar);
+    paint_row->setContentsMargins(0, 0, 0, 0);
+    undo_button = new QPushButton(ui::icon("arrow-back-up"), QString(), paint_bar);
+    undo_button->setObjectName("undo_paint");
+    undo_button->setToolTip(tr("Undo the last stroke (Cmd+Z)"));
+    undo_button->setAccessibleName(tr("Undo stroke"));
+    undo_button->setAutoDefault(false);
+    redo_button = new QPushButton(ui::icon("arrow-forward-up"), QString(), paint_bar);
+    redo_button->setObjectName("redo_paint");
+    redo_button->setToolTip(tr("Redo it (Shift+Cmd+Z)"));
+    redo_button->setAccessibleName(tr("Redo stroke"));
+    redo_button->setAutoDefault(false);
+    draft_label = new QLabel(paint_bar);
+    draft_label->setObjectName("draft_status");
+    draft_label->setWordWrap(true);
+    apply_button = new QPushButton(ui::icon("bolt"), tr("Apply Paint"), paint_bar);
+    apply_button->setObjectName("apply_paint");
+    apply_button->setAutoDefault(false);
+    apply_button->setToolTip(tr("Put the drafted bytes into the game together. For ten seconds after, a crash "
+                                "takes them back out and returns them to the draft."));
+    discard_button = new QPushButton(ui::icon("trash"), tr("Throw Away Draft"), paint_bar);
+    discard_button->setObjectName("discard_draft");
+    discard_button->setAutoDefault(false);
+    discard_button->setToolTip(tr("Forget the drafted strokes (Undo brings them back)"));
+    paint_row->addWidget(undo_button);
+    paint_row->addWidget(redo_button);
+    paint_row->addWidget(draft_label, 1);
+    paint_row->addWidget(apply_button);
+    paint_row->addWidget(discard_button);
+    layout->addWidget(paint_bar);
+    paint_bar->hide();
+    auto undo_key = new QAction(tr("Undo Stroke"), this);
+    undo_key->setObjectName("undo_paint_key");
+    undo_key->setShortcut(QKeySequence::Undo);
+    undo_key->setShortcutContext(Qt::WidgetWithChildrenShortcut);
+    addAction(undo_key);
+    auto redo_key = new QAction(tr("Redo Stroke"), this);
+    redo_key->setObjectName("redo_paint_key");
+    redo_key->setShortcuts(QKeySequence::Redo);
+    redo_key->setShortcutContext(Qt::WidgetWithChildrenShortcut);
+    addAction(redo_key);
+    auto undo = [this] {
+        if (this->source.undoPaint())
+            refresh();
+    };
+    auto redo = [this] {
+        if (this->source.redoPaint())
+            refresh();
+    };
+    connect(undo_key, &QAction::triggered, this, undo);
+    connect(redo_key, &QAction::triggered, this, redo);
+    connect(undo_button, &QPushButton::clicked, this, undo);
+    connect(redo_button, &QPushButton::clicked, this, redo);
+    connect(apply_button, &QPushButton::clicked, this, [this] {
+        auto err = this->source.applyPaint();
+        if (!err.empty())
+            selection_label->setText(tr("Couldn't apply: %1").arg(QString::fromStdString(err)));
+        refresh();
+    });
+    connect(discard_button, &QPushButton::clicked, this, [this] {
+        this->source.discardDraft();
+        refresh();
+    });
+
     auto middle = new QHBoxLayout;
     map_list = new QListWidget(this);
     map_list->setObjectName("map");
@@ -236,6 +306,25 @@ MemoryViewer::MemoryViewer(MemorySource &source, QWidget *parent)
     auto map_column = new QVBoxLayout;
     map_column->addWidget(ui::heading(tr("What's where"), this));
     map_column->addWidget(map_list, 1);
+    history_box = new QWidget(this);
+    history_box->setObjectName("history_box");
+    auto history_layout = new QVBoxLayout(history_box);
+    history_layout->setContentsMargins(0, 0, 0, 0);
+    history_layout->addWidget(ui::heading(tr("Paint History"), history_box));
+    history_list = new QListWidget(history_box);
+    history_list->setObjectName("paint_history");
+    history_list->setAccessibleName(tr("Paint history"));
+    history_list->setToolTip(tr("Newest first. Click a stroke to go back to just after it; the ones after it can be "
+                                "redone until you paint something new."));
+    history_list->setWordWrap(true);
+    history_list->setMaximumWidth(340);
+    history_layout->addWidget(history_list);
+    map_column->addWidget(history_box, 1);
+    history_box->hide();
+    connect(history_list, &QListWidget::itemClicked, this, [this](QListWidgetItem *item) {
+        this->source.goToPaint(size_t(item->data(Qt::UserRole).toULongLong()) + 1);
+        refresh();
+    });
     middle->addLayout(map_column);
     middle->addWidget(stack, 1);
     layout->addLayout(middle, 1);
@@ -390,10 +479,15 @@ MemoryViewer::MemoryViewer(MemorySource &source, QWidget *parent)
             selection_label->setText(tr("Couldn't paint: %1").arg(QString::fromStdString(err)));
     };
     pixels->onPick = [this](uint8_t v) { paint_value->setValue(v); };
+    pixels->onStrokeEnd = [this] {
+        this->source.endStroke();
+        refresh();
+    };
     connect(paint_button, &QPushButton::toggled, this, [this](bool on) {
         pixels->setPaintMode(on);
         paint_value->setVisible(on); // the paint tools only while painting
         brush_spin->setVisible(on);
+        paintToolsShown();
     });
     connect(export_png_button, &QPushButton::clicked, this, [this] {
         auto path = QFileDialog::getSaveFileName(this, tr("Export PNG"),
@@ -753,10 +847,112 @@ void MemoryViewer::refresh()
     if (mode() == "tiles")
         tiles->setCgram(source.palette()); // live, so palette corruption shows at once
     refreshMap();
+    refreshPaint();
     if (pending_select && !snap.bytes.empty())
     {
         pane()->select(pending_select->first, pending_select->second);
         pending_select.reset();
+    }
+}
+
+namespace
+{
+QString count(size_t n, const QString &one, const QString &many)
+{
+    return n == 1 ? one : many.arg(QLocale().toString(qulonglong(n)));
+}
+} // namespace
+
+void MemoryViewer::paintToolsShown()
+{
+    bool on = mode() == "pixels" && paint_button->isChecked();
+    paint_bar->setVisible(on);
+    history_box->setVisible(on);
+    if (on)
+        refreshPaint();
+}
+
+void MemoryViewer::refreshPaint()
+{
+    if (!paint_bar->isVisible())
+        return;
+    bool rom = target() == corrupt::Target::ROM;
+    size_t drafted = source.draftSize();
+    bool watching = source.paintWatching();
+    apply_button->setVisible(rom);
+    discard_button->setVisible(rom);
+    apply_button->setEnabled(drafted > 0);
+    discard_button->setEnabled(drafted > 0);
+    apply_button->setDefault(drafted > 0);
+    undo_button->setEnabled(source.canUndoPaint());
+    redo_button->setEnabled(source.canRedoPaint());
+    QString status;
+    if (rom && drafted)
+        status = count(drafted, tr("1 byte drafted: Apply Paint puts it in the game"),
+                       tr("%1 bytes drafted: Apply Paint puts them in the game"));
+    else if (rom && watching)
+        status = tr("Watching ten seconds for a crash…");
+    else if (rom)
+        status = tr("Paint here is a draft: it goes into the game when you press Apply Paint");
+    else
+        status = tr("Painted live, into the game as you drag. Cmd+Z undoes a stroke.");
+    if (rom && drafted && watching)
+        status += tr(" · watching the last batch for a crash");
+    // What became of the last Apply (crashed and taken back, held up), until the next stroke.
+    auto news = QString::fromStdString(source.paintNews());
+    bool crashed = news.contains("crashed");
+    if (rom && !news.isEmpty() && !(watching && !news.startsWith("Applied")))
+        status = news;
+    draft_label->setText(status);
+    ui::setTone(draft_label, crashed ? ui::Tone::Warning : ui::Tone::Normal);
+
+    auto rows = source.paintRows();
+    QString key;
+    for (auto &r : rows)
+        key += QString("%1:%2:%3:%4:%5;").arg(r.index).arg(int(r.kind)).arg(r.active).arg(r.bytes).arg(r.strokes);
+    if (key == shown_history)
+        return;
+    shown_history = key;
+    history_list->clear();
+    QColor quiet = ui::toneColor(ui::Tone::Secondary, palette());
+    for (auto &r : rows)
+    {
+        QString where = QString::fromStdString(corrupt::hex_address(r.first, r.target));
+        QString value = r.value < 0 ? tr("several values") : QString("%1").arg(r.value, 2, 16, QChar('0')).toUpper();
+        QString text;
+        switch (r.kind)
+        {
+        case corrupt::PaintEntry::Draft:
+            text = tr("Stroke · %1 at %2 → %3").arg(count(r.bytes, tr("1 byte"), tr("%1 bytes")), where, value);
+            break;
+        case corrupt::PaintEntry::Live:
+            text = tr("Stroke · %1 of %2 at %3 → %4")
+                       .arg(count(r.bytes, tr("1 byte"), tr("%1 bytes")), QString(corrupt::target_name(r.target)), where,
+                            value);
+            break;
+        case corrupt::PaintEntry::Applied:
+            text = tr("Applied · %1, %2")
+                       .arg(count(r.strokes, tr("1 stroke"), tr("%1 strokes")), count(r.bytes, tr("1 byte"), tr("%1 bytes")));
+            if (r.skipped)
+                text += tr(" (%1 guarded, left as they were)").arg(r.skipped);
+            break;
+        case corrupt::PaintEntry::Discarded:
+            text = tr("Thrown away · %1").arg(count(r.strokes, tr("1 stroke"), tr("%1 strokes")));
+            break;
+        }
+        auto item = new QListWidgetItem(text, history_list);
+        item->setData(Qt::UserRole, qulonglong(r.index));
+        if (!r.active)
+        {
+            item->setForeground(quiet);
+            item->setToolTip(tr("Undone: Redo, or click it, brings it back"));
+        }
+    }
+    if (rows.empty())
+    {
+        auto item = new QListWidgetItem(tr("Nothing painted yet"), history_list);
+        item->setFlags(Qt::NoItemFlags);
+        item->setForeground(quiet);
     }
 }
 
@@ -863,8 +1059,12 @@ void MemoryViewer::importPng(const QString &path)
         return;
     }
     auto err = source.setBytes(target(), *bytes);
-    selection_label->setText(err.empty() ? tr("Imported: %n byte(s) changed, kept as paint", "", int(bytes->size()))
-                                         : tr("Couldn't import: %1").arg(QString::fromStdString(err)));
+    QString done = target() == corrupt::Target::ROM
+                       ? count(bytes->size(), tr("Imported: 1 byte drafted. Apply Paint puts it in the game."),
+                               tr("Imported: %1 bytes drafted. Apply Paint puts them in the game."))
+                       : count(bytes->size(), tr("Imported: 1 byte changed, kept as paint"),
+                               tr("Imported: %1 bytes changed, kept as paint"));
+    selection_label->setText(err.empty() ? done : tr("Couldn't import: %1").arg(QString::fromStdString(err)));
 }
 
 void MemoryViewer::newRule()
