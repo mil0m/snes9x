@@ -1,4 +1,5 @@
 #pragma once
+#include "function_guard.h"
 #include "code_map.h"
 #include "jump_tables.h"
 #include "crash_map.h"
@@ -44,6 +45,9 @@ struct MemorySnapshot
     std::vector<uint8_t> jumps;
     // ROM only: what the game runs and reads right now, 255 this frame fading to 0 (RomHeat).
     std::vector<uint8_t> live;
+    // ROM only: the functions' bodies (#58), a funcmark per byte, and the functions for hover.
+    std::vector<uint8_t> functions;
+    std::vector<ShownFunction> function_list;
 
     const RomChange *rom_change(uint32_t offset) const; // null when the byte is clean
 };

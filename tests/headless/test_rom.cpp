@@ -318,5 +318,31 @@ std::vector<uint8_t> build_calls()
     return rom;
 }
 
+std::vector<uint8_t> build_bodies()
+{
+    auto rom = build(Crash::None);
+    put(rom, 0x8011, {
+        0xCB,             // WAI              main
+        0x20, 0x60, 0x80, // JSR $8060        step
+        0x20, 0xC0, 0x80, // JSR $80C0        other
+        0x80, 0xF7,       // BRA main
+    });
+    put(rom, 0x8060, {
+        0xA5, 0x20,       // LDA $20          step: the counter goes up by one
+        0x18,             // CLC
+        0x69, 0x01,       // ADC #$01
+        0x85, 0x20,       // STA $20
+        0x29, 0x01,       // AND #$01
+        0xF0, 0x02,       // BEQ +2           every other frame
+        0xE6, 0x22,       // INC $22
+        0x20, 0xA0, 0x80, // JSR $80A0        helper
+        0x60,             // RTS
+    });
+    put(rom, 0x80A0, { 0xE6, 0x21, 0x60 }); // INC $21; RTS   helper
+    put(rom, 0x80C0, { 0xE6, 0x23, 0x60 }); // INC $23; RTS   other
+    fix_checksum(rom);
+    return rom;
+}
+
 } // namespace testrom
 

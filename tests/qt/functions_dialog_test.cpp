@@ -28,12 +28,22 @@ struct FakeFunctions : FunctionSource
         std::string note;
     };
     std::vector<Kept> kept;
+    std::vector<std::pair<uint32_t, std::string>> named;
+    struct Protected
+    {
+        uint32_t entry;
+        bool on, deep;
+    };
+    std::vector<Protected> protects;
 
     FakeFunctions()
     {
         FunctionRow busy;
         busy.f = { .entry = 0x0019EE, .type = CallType::Near, .calls = 17972, .callers = 1, .frames = 17972, .now = 300 };
         busy.address = 0x8099EE;
+        busy.body_bytes = 46;
+        busy.runs = { { 0x0019EE, 0x001A0F }, { 0x001A40, 0x001A4C } };
+        busy.label = "scroll (erik)";
         FunctionRow lng;
         lng.f = { .entry = 0x000142, .type = CallType::Long, .calls = 31043, .callers = 8, .frames = 17779, .now = 150 };
         lng.address = 0x808142;
@@ -44,6 +54,12 @@ struct FakeFunctions : FunctionSource
         s.hotkey = 3;
         s.note = "gravity?";
         lng.kept = s;
+        lng.label = "gravity";
+        lng.my_name = "gravity";
+        lng.body_bytes = 12;
+        lng.runs = { { 0x000142, 0x00014D } };
+        lng.guarded = true;
+        lng.protect = Protect{ 0x000142, true };
         FunctionRow mixed;
         mixed.f = { .entry = 0x002000, .type = CallType::Mixed, .calls = 10, .callers = 2, .frames = 5, .now = 0 };
         mixed.address = 0x80A000;
@@ -62,6 +78,16 @@ struct FakeFunctions : FunctionSource
         return {};
     }
     void forget(uint32_t entry) override { forgotten.push_back(entry); }
+    std::string protect(uint32_t entry, bool on, bool deep) override
+    {
+        protects.push_back({ entry, on, deep });
+        return {};
+    }
+    std::string setName(uint32_t entry, const std::string &name) override
+    {
+        named.push_back({ entry, name });
+        return {};
+    }
 };
 
 template <typename W>
@@ -77,9 +103,9 @@ enum Col
     Name,
     Now,
     Frames,
-    Callers,
+    Size,
     Off,
-    Recipe
+    About
 };
 } // namespace
 
@@ -96,11 +122,16 @@ TEST_CASE("the functions window lists what runs, busiest now first, and shows wh
     CHECK(table->item(0, Now)->text() == "100%");
     CHECK(table->item(1, Now)->text() == "50%");
     CHECK(table->item(0, Frames)->text().remove(QRegularExpression("[^0-9]")) == "17972");
-    CHECK(table->item(1, Callers)->text() == "8");
+    CHECK(table->item(1, Frames)->toolTip().contains("8 places"));
+    CHECK(table->item(0, Size)->text() == "46 B");
+    CHECK(table->item(0, Size)->toolTip().contains("2 pieces"));
+    CHECK(table->item(2, Size)->toolTip().contains("isn't known"));
     CHECK(table->item(0, Off)->checkState() == Qt::Unchecked);
     CHECK(table->item(1, Off)->checkState() == Qt::Checked);
-    CHECK(table->item(1, Recipe)->text().contains("3"));
-    CHECK(table->item(1, Recipe)->text().contains("gravity?"));
+    CHECK(table->item(0, About)->text() == "scroll (erik)");
+    CHECK(table->item(1, About)->text().contains("gravity"));
+    CHECK(table->item(1, About)->text().contains("key 3"));
+    CHECK(table->item(1, About)->text().contains("protected with what it calls"));
     // A function reached both ways can't be skipped safely: no box to tick.
     CHECK(!(table->item(2, Off)->flags() & Qt::ItemIsUserCheckable));
     CHECK(child<QLabel>(d, "empty")->isHidden());
@@ -138,13 +169,13 @@ TEST_CASE("a switch is kept in the recipe with its hotkey, start and note, and f
     auto table = child<QTableWidget>(d, "functions");
     auto keep = child<QPushButton>(d, "keep");
     auto forget = child<QPushButton>(d, "forget");
-    CHECK(!keep->isEnabled());
+    CHECK(!keep->isVisible()); // nothing selected: no details
     table->selectRow(0);
     CHECK(keep->isEnabled());
     CHECK(!forget->isEnabled()); // not in the recipe yet
     child<QComboBox>(d, "hotkey")->setCurrentIndex(5); // key 5
     child<QCheckBox>(d, "start_off")->setChecked(true);
-    child<QLineEdit>(d, "note")->setText("no scroll");
+    child<QLineEdit>(d, "name")->setText("no scroll");
     keep->click();
     REQUIRE(src.kept.size() == 1);
     CHECK(src.kept[0].entry == 0x0019EE);
@@ -154,7 +185,7 @@ TEST_CASE("a switch is kept in the recipe with its hotkey, start and note, and f
 
     table->selectRow(1); // already kept: the controls show its switch
     CHECK(child<QComboBox>(d, "hotkey")->currentIndex() == 3);
-    CHECK(child<QLineEdit>(d, "note")->text() == "gravity?");
+    CHECK(child<QLineEdit>(d, "name")->text() == "gravity");
     CHECK(forget->isEnabled());
     forget->click();
     CHECK(src.forgotten == std::vector<uint32_t>{ 0x000142 });
@@ -173,6 +204,11 @@ TEST_CASE("the filter finds a function by its address or its note")
     filter->setText("99ee");
     CHECK(!table->isRowHidden(0));
     CHECK(table->isRowHidden(1));
+    filter->setText("gravity");
+    CHECK(table->isRowHidden(0));
+    CHECK(!table->isRowHidden(1));
+    filter->setText("erik"); // someone else's name finds it too
+    CHECK(!table->isRowHidden(0));
     filter->setText("gravity");
     CHECK(table->isRowHidden(0));
     CHECK(!table->isRowHidden(1));
@@ -201,4 +237,57 @@ TEST_CASE("nothing in the functions window is unnamed for a screen reader")
     auto issues = ui::audit(&d);
     CAPTURE(issues.join("\n").toStdString());
     CHECK(issues.isEmpty());
+}
+
+TEST_CASE("the selected function: your name is saved, Protect guards it, Show in ROM selects its code")
+{
+    FakeFunctions src;
+    FunctionsDialog d(src);
+    d.show();
+    auto table = child<QTableWidget>(d, "functions");
+    auto details = child<QWidget>(d, "selected")->parentWidget();
+    CHECK_FALSE(details->isVisible()); // nothing selected
+    table->selectRow(0);
+    CHECK(details->isVisible());
+    CHECK(child<QLabel>(d, "selected")->text() == "$80:99EE · scroll (erik)");
+    auto name = child<QLineEdit>(d, "name");
+    CHECK(name->text().isEmpty()); // erik named it, you didn't
+    name->setText("  camera ");
+    emit name->editingFinished();
+    REQUIRE(src.named.size() == 1);
+    CHECK(src.named[0] == std::pair<uint32_t, std::string>{ 0x0019EE, "camera" });
+
+    auto protect = child<QCheckBox>(d, "protect");
+    auto deep = child<QCheckBox>(d, "deep");
+    CHECK_FALSE(protect->isChecked());
+    CHECK_FALSE(deep->isEnabled());
+    protect->setChecked(true);
+    REQUIRE(src.protects.size() == 1);
+    CHECK(src.protects[0].entry == 0x0019EE);
+    CHECK(src.protects[0].on);
+    CHECK_FALSE(src.protects[0].deep);
+    CHECK(deep->isEnabled());
+    deep->setChecked(true);
+    CHECK(src.protects.back().deep);
+
+    std::pair<uint32_t, uint32_t> shown{};
+    d.onShowInRom = [&](uint32_t first, uint32_t last) { shown = { first, last }; };
+    child<QPushButton>(d, "show")->click();
+    CHECK(shown == std::pair<uint32_t, uint32_t>{ 0x0019EE, 0x001A0F }); // the piece with the entry
+
+    table->selectRow(1); // protected deep already: the boxes say so, and nothing is sent
+    CHECK(protect->isChecked());
+    CHECK(deep->isChecked());
+    CHECK(src.protects.size() == 2);
+
+    table->selectRow(2); // its code isn't known: nothing to protect or show
+    CHECK_FALSE(protect->isEnabled());
+    CHECK_FALSE(child<QPushButton>(d, "show")->isEnabled());
+
+    if (auto dir = getenv("CORRUPT_SHOTS_DIR"))
+    {
+        table->selectRow(1);
+        QApplication::processEvents();
+        d.grab().save(QString("%1/functions-dialog-selected.png").arg(dir));
+    }
 }

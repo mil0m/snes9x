@@ -299,11 +299,24 @@ seconds they ran in. Tick **Off** and the game skips that function from the next
 its first byte becomes a return, so it's called and comes straight back. Untick to put it
 back.
 
-There are no names: the app can't know which one is gravity. Try the busy ones near the
-top and watch what stops; when you find a good one, give it a note (*gravity*), pick a
-hotkey and **Keep in Recipe**. Then that key turns it off and on again while you play (the
-panel's 1-9, the keyboard shortcuts, or the remote page). **Starts off** has it off from
-the start of every run. **Save** to keep it.
+The app can't know which one is gravity: try the busy ones near the top and watch what
+stops. When you find a good one, select it and give it a **Name** (*gravity*). Names are
+saved in the library (*names.<you>.json*), so everyone who shares it sees yours, and you
+see theirs with who named it: *jump (erik)*. Then pick a hotkey and **Keep in Recipe**:
+that key turns it off and on again while you play (the panel's 1-9, the keyboard shortcuts,
+or the remote page). **Starts off** has it off from the start of every run. **Save** to
+keep it.
+
+**Keeping it safe from other corruption.** A function you play with is *guarded*: its code
+(the *Size* column says how much the code map knows) is left alone by every other rule and
+by paint, so only your change touches it. That's automatic for a function you switched off
+or kept as a switch; tick **Protect it from other corruption** to guard one without
+changing it, and **And what it calls** to guard the functions it calls too. When a guard
+goes up, bytes other corruption had already changed in it are put back. Paint stops at
+guarded bytes and the status line says which function kept them. **Show in ROM** opens the
+memory viewer on its code with the **Functions** colours: function code light, guarded code
+stronger, the first byte of a function that's off strongest; hover a byte to see whose code
+it is.
 
 Switches work while corruption is on (press **Corrupt**). Some functions can't be skipped
 (one that reads data placed right after its call, or one the game needs to keep going):

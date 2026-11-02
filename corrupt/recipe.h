@@ -32,6 +32,7 @@ struct Recipe
     std::vector<Patch> patches; // painted or imported bytes, applied as a run starts
     std::vector<Pin> pins;      // kept ROM changes (survivors), applied as a run starts, before the rules
     std::vector<Switch> switches; // kill switches (#34): flipped by their hotkeys, some off from the start
+    std::vector<Protect> protects; // functions guarded from every rule and from paint (#58)
 
     // Unset means "use the session's choice" (default policy, default detection).
     std::optional<PolicyKind> crash_policy;

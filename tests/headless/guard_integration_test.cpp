@@ -19,6 +19,7 @@
 #include "corrupt/survivors.h"
 #include "corrupt/run_control.h"
 #include "corrupt/memory_watch.h"
+#include "corrupt/function_guard.h"
 
 #include "snes9x.h"
 #include "memmap.h"
@@ -1442,5 +1443,84 @@ TEST_SUITE("kill switches")
         CHECK(s.rom(cl::kInline) == 0xC2);
         CHECK(s.runs(3) != inline_runs); // the frame played again with it back on
         CHECK(alive(s.h));
+    }
+}
+
+TEST_SUITE("function bodies and guards")
+{
+    namespace bd = testrom::bodies;
+
+    // The bodies ROM after 30 frames of learning, with every function's body found.
+    struct Learned
+    {
+        Harness h{ testrom::build_bodies(), Recipe{}, PolicyKind::Skip };
+        CodeMap map{ 0 };
+        CallKeeper calls;
+        RomTracer tracer;
+        FunctionBodies bodies;
+
+        Learned()
+        {
+            map = CodeMap(Memory.CalculatedSize);
+            REQUIRE(tracer.start(map, nullptr, &calls.mine()));
+            for (int i = 0; i < 30; i++)
+            {
+                h.run(1);
+                calls.end_frame();
+            }
+            bodies = function_bodies(h.rom.clean(), map.flags(), calls.functions(), SnesCoreAccess::rom_addresses());
+        }
+        uint8_t rom(uint32_t o) { return h.memory.read(Target::ROM, o); }
+    };
+
+    TEST_CASE("the map gives a function's body exactly: both sides of its branch, past its call, not its helper")
+    {
+        Learned l;
+        REQUIRE(l.bodies.count(bd::kStep));
+        auto &b = l.bodies.at(bd::kStep);
+        std::vector<uint32_t> starts;
+        for (auto &i : b.code)
+            starts.push_back(i.at);
+        CHECK(starts == std::vector<uint32_t>{ 0x60, 0x62, 0x63, 0x65, 0x67, 0x69, 0x6B, 0x6D, 0x70 });
+        CHECK(b.bytes == bd::kStepBytes);
+        CHECK_FALSE(b.contains(bd::kHelper));
+        CHECK_FALSE(b.open_ended);
+        CHECK(l.bodies.at(bd::kHelper).bytes == 3);
+        CHECK(l.bodies.at(bd::kOther).bytes == 3);
+    }
+
+    TEST_CASE("guarded with what it calls, a rule over all its code leaves it alone and it keeps counting")
+    {
+        Learned l;
+        auto calls = l.calls.combined();
+        HotMask guard = guard_mask({ { bd::kStep, true } }, l.bodies, &calls);
+        CHECK(guard.count(Target::ROM) == bd::kStepBytes + 3);
+        l.h.engine.set_guarded(guard);
+        Rule r;
+        r.range = { Target::ROM, bd::kStep, 0xBF }; // the step, the padding after it and the helper
+        r.op.type = OpType::Random;
+        r.op.min = 0;
+        r.op.max = 255;
+        r.when.type = TriggerType::EveryFrames;
+        r.when.every = 1;
+        r.count = 32;
+        l.h.engine.add_rule(r);
+        uint8_t counter = l.h.wram(bd::kCounter), helper = l.h.wram(bd::kHelperRuns);
+        l.h.run(30);
+        size_t changed = 0;
+        for (uint32_t o = bd::kStep; o <= 0xBF; o++)
+        {
+            bool guarded = guard.is_hot(Target::ROM, o);
+            if (guarded)
+                CHECK(l.rom(o) == l.h.rom.clean()[o]);
+            else
+                changed += l.rom(o) != l.h.rom.clean()[o];
+        }
+        CHECK(changed > 20);
+        for (auto &e : l.h.engine.event_log())
+            CHECK_FALSE(guard.is_hot(Target::ROM, e.write.offset));
+        CHECK(l.h.wram(bd::kCounter) == uint8_t(counter + 30));
+        CHECK(l.h.wram(bd::kHelperRuns) == uint8_t(helper + 30));
+        CHECK(alive(l.h));
     }
 }

@@ -28,6 +28,7 @@ class MemoryPane
         Changes, // bytes that differ from the clean ROM, stronger once the game used them
         Jumps,   // jump table entries (seen strong, likely lighter) and the instructions that jump through them
         Live,    // what the game runs and reads in the ROM right now, fading
+        Functions, // the functions' code (#58): guarded stronger, an entry that's off strongest
         None,
     };
 
@@ -45,6 +46,7 @@ class MemoryPane
                : overlay == Overlay::Changes ? QColor(255, 120, 30)
                : overlay == Overlay::Jumps   ? QColor(95, 110, 255)
                : overlay == Overlay::Live    ? QColor(255, 225, 60)
+               : overlay == Overlay::Functions ? QColor(60, 190, 120)
                                             : QColor(235, 110, 40);
     }
 
@@ -130,6 +132,13 @@ class MemoryPane
         }
         case Overlay::Live:
             return offset < snap.live.size() ? float(snap.live[offset]) / 255.0f : 0.0f;
+        case Overlay::Functions: {
+            uint8_t m = offset < snap.functions.size() ? snap.functions[offset] : 0;
+            return m == corrupt::funcmark::Off       ? 1.0f
+                   : m == corrupt::funcmark::Guarded ? 0.8f
+                   : m == corrupt::funcmark::Body    ? 0.35f
+                                                     : 0.0f;
+        }
         case Overlay::None:
             return 0.0f;
         }

@@ -147,7 +147,7 @@ size_t Engine::fire_at_load(MemoryAccess &mem, const std::function<bool(Target)>
         if (which && !which(rule.range.target))
             continue;
         auto events = tick_rule(rule, runtimes[i], mem, Rng::rule_seed(current.seed, rule.salt), i, 0, 0,
-                                current.intensity, &hot_and_locked, &locked, aim_for(i, mem));
+                                current.intensity, &hot_and_locked, &rules_locked, aim_for(i, mem));
         for (auto &e : events)
             log.push_back({ 0, i, e });
         written += events.size();
@@ -155,18 +155,30 @@ size_t Engine::fire_at_load(MemoryAccess &mem, const std::function<bool(Target)>
     return written;
 }
 
+void Engine::merge_masks()
+{
+    rules_locked = locked;
+    rules_locked.merge(guarded);
+    hot_and_locked = hot;
+    hot_and_locked.merge(rules_locked);
+}
+
 void Engine::set_hot_mask(HotMask mask)
 {
     hot = std::move(mask);
-    hot_and_locked = hot;
-    hot_and_locked.merge(locked);
+    merge_masks();
 }
 
 void Engine::set_locked(HotMask mask)
 {
     locked = std::move(mask);
-    hot_and_locked = hot;
-    hot_and_locked.merge(locked);
+    merge_masks();
+}
+
+void Engine::set_guarded(HotMask mask)
+{
+    guarded = std::move(mask);
+    merge_masks();
 }
 
 size_t Engine::apply_patches(MemoryAccess &mem, const std::function<bool(Target)> &which)
@@ -179,7 +191,7 @@ size_t Engine::apply_patches(MemoryAccess &mem, const std::function<bool(Target)
         for (uint32_t i = 0; i < p.bytes.size(); i++)
         {
             uint32_t at = p.at + i;
-            if (at >= mem.size(p.target) || locked.is_hot(p.target, at) || mem.read(p.target, at) == p.bytes[i])
+            if (at >= mem.size(p.target) || rules_locked.is_hot(p.target, at) || mem.read(p.target, at) == p.bytes[i])
                 continue;
             mem.write_at_start(p.target, at, p.bytes[i]);
             written++;
@@ -245,6 +257,23 @@ void Engine::add_switch(const Switch &s)
 void Engine::remove_switch(uint32_t entry)
 {
     std::erase_if(current.switches, [&](const Switch &s) { return s.entry == entry; });
+}
+
+void Engine::add_protect(const Protect &p)
+{
+    auto it = std::find_if(current.protects.begin(), current.protects.end(),
+                           [&](const Protect &o) { return o.entry == p.entry; });
+    if (it != current.protects.end())
+        *it = p;
+    else
+        current.protects.push_back(p);
+    std::sort(current.protects.begin(), current.protects.end(),
+              [](const Protect &a, const Protect &b) { return a.entry < b.entry; });
+}
+
+void Engine::remove_protect(uint32_t entry)
+{
+    std::erase_if(current.protects, [&](const Protect &p) { return p.entry == entry; });
 }
 
 Engine::PinsApplied Engine::apply_switches(MemoryAccess &mem)
@@ -390,7 +419,7 @@ void Engine::on_frame(MemoryAccess &real)
             continue;
         auto &rule = current.rules[i];
         auto events = tick_rule(rule, runtimes[i], mem, Rng::rule_seed(current.seed, rule.salt), i, frame, hotkeys,
-                                current.intensity, &hot_and_locked, &locked, aim_for(i, mem));
+                                current.intensity, &hot_and_locked, &rules_locked, aim_for(i, mem));
         for (auto &e : events)
             if (!vetoes_now || !is_vetoed(e.target, e.offset))
                 log.push_back({ frame, i, e });

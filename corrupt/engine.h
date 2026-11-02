@@ -63,6 +63,10 @@ class Engine
     void rename_region(const std::string &from, const std::string &to); // empty `to`: unnamed; no restart
     void set_hot_mask(HotMask mask); // for rules with avoid_hot; no restart
     void set_locked(HotMask mask);   // bytes no rule may write (the ROM header and vectors); no restart
+    // Guards (#58): the bodies of the functions in play. Rules and patches skip them; switches,
+    // changes and pins (your own play) don't. No restart.
+    void set_guarded(HotMask mask);
+    const HotMask &guarded_mask() const { return guarded; }
     // Where aimed ROM rules learn what each byte is: the code map's flags (everyone's).
     // Called once per run, when an aimed rule first fires; the span must stay valid until
     // the next run starts.
@@ -121,6 +125,8 @@ class Engine
     void set_pending_flips(std::vector<Flip> f) { flips = std::move(f); }
     void add_switch(const Switch &s);      // one on the same entry is replaced; no restart
     void remove_switch(uint32_t entry);    // no restart
+    void add_protect(const Protect &p);    // one on the same entry is replaced; no restart
+    void remove_protect(uint32_t entry);   // no restart
     // The start-off switches, as the run starts (after the pins); skipped like a pin when
     // `was` isn't the byte there.
     PinsApplied apply_switches(MemoryAccess &mem);
@@ -193,8 +199,10 @@ class Engine
     std::vector<Veto> vetoed;
     std::optional<uint64_t> quiet_from;
     Target quiet_target = Target::ROM;
-    HotMask hot, locked;
+    HotMask hot, locked, guarded;
     HotMask hot_and_locked; // what avoiding rules skip
+    HotMask rules_locked;   // what every rule skips: locked and guarded
+    void merge_masks();
     bool is_active = false;
     uint64_t frame = 0;
     uint16_t pending_hotkeys = 0;

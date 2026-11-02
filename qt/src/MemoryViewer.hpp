@@ -58,6 +58,9 @@ class MemoryViewer : public QWidget
     explicit MemoryViewer(MemorySource &source, QWidget *parent = nullptr);
 
     void refresh();                    // pull a fresh snapshot (the timer does this 10 times a second)
+    // Shows that memory with those bytes selected and scrolled to, coloured by `overlay`
+    // (its combo box value, like "functions"; empty keeps the colours).
+    void showRange(corrupt::Target target, uint32_t first, uint32_t last, const QString &overlay = {});
     corrupt::Rule ruleFromSelection() const; // what New Rule from Selection starts from
 
     // The picture round trip (the buttons ask for a file, then call these). Export writes

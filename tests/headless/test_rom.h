@@ -131,4 +131,21 @@ constexpr uint32_t kNearSite = 0x0012, kLongSite = 0x0015, kMixedNearSite = 0x00
 constexpr uint32_t kCounts = 0x20; // WRAM: runs of near, long, mixed (twice a frame), inline at $20-$23
 } // namespace calls
 
+// A main loop calling a function with a body worth changing (#58, #60): step adds 1 to a
+// counter with ADC #$01, counts every other frame past a BEQ, and calls a helper; another
+// near function is called beside it, for redirecting the helper's call.
+std::vector<uint8_t> build_bodies();
+namespace bodies
+{
+constexpr uint32_t kStep = 0x0060;   // $8060
+constexpr uint32_t kAdc = 0x0063;    // ADC #$01: the number is at kAdc + 1
+constexpr uint32_t kBeq = 0x0069;
+constexpr uint32_t kCall = 0x006D;   // JSR $80A0
+constexpr uint32_t kHelper = 0x00A0; // $80A0
+constexpr uint32_t kOther = 0x00C0;  // $80C0
+constexpr uint32_t kStepBytes = 17;
+// WRAM: $20 step's counter, $21 helper runs, $22 the branch's count, $23 other runs.
+constexpr uint32_t kCounter = 0x20, kHelperRuns = 0x21, kBranchRuns = 0x22, kOtherRuns = 0x23;
+} // namespace bodies
+
 } // namespace testrom

@@ -50,6 +50,14 @@ inline bool switch_off(const Switch &s, const MemoryAccess &mem)
     return s.entry < mem.size(Target::ROM) && mem.read(Target::ROM, s.entry) == s.ret;
 }
 
+// A function kept clean on purpose (#58): its body is guarded, so no rule and no paint
+// changes it. Deep: the functions it calls are guarded too.
+struct Protect
+{
+    uint32_t entry = 0;
+    bool deep = false;
+};
+
 void add_patch_bytes(std::vector<Patch> &patches, Target t, const std::vector<std::pair<uint32_t, uint8_t>> &bytes);
 void remove_patch_bytes(std::vector<Patch> &patches, Target t, const std::vector<uint32_t> &offsets);
 size_t patched_bytes(const std::vector<Patch> &patches);

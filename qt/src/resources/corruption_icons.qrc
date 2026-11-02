@@ -21,6 +21,10 @@
     <file alias="pin.svg">corruption-icons/pin.svg</file>
     <file alias="pinned-off.svg">corruption-icons/pinned-off.svg</file>
     <file alias="power.svg">corruption-icons/power.svg</file>
+    <file alias="shield.svg">corruption-icons/shield.svg</file>
+    <file alias="eye.svg">corruption-icons/eye.svg</file>
+    <file alias="adjustments-horizontal.svg">corruption-icons/adjustments-horizontal.svg</file>
+    <file alias="clock.svg">corruption-icons/clock.svg</file>
     <file alias="player-stop.svg">corruption-icons/player-stop.svg</file>
     <file alias="plus.svg">corruption-icons/plus.svg</file>
     <file alias="refresh.svg">corruption-icons/refresh.svg</file>

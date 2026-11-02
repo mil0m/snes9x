@@ -105,6 +105,8 @@ struct SessionFunctions : FunctionSource
         return s.keepSwitch(entry, hotkey, start_off, note);
     }
     void forget(uint32_t entry) override { s.forgetSwitch(entry); }
+    std::string protect(uint32_t entry, bool on, bool deep) override { return s.protectFunction(entry, on, deep); }
+    std::string setName(uint32_t entry, const std::string &name) override { return s.setFunctionName(entry, name); }
 };
 
 QPushButton *button(const QString &text, QWidget *parent, const char *icon = nullptr)
@@ -560,6 +562,10 @@ CorruptionDock::CorruptionDock(EmuApplication &app, QWidget *parent)
         {
             function_source = std::make_unique<SessionFunctions>();
             functions_dialog = new FunctionsDialog(*function_source, this);
+            functions_dialog->onShowInRom = [this](uint32_t first, uint32_t last) {
+                openViewer();
+                memory_viewer->showRange(Target::ROM, first, last, "functions");
+            };
         }
         functions_dialog->refresh();
         functions_dialog->show();
@@ -864,8 +870,29 @@ void CorruptionDock::tour(const QString &dir)
         if (functions_dialog)
         {
             shot(functions_dialog, "09b-functions");
-            functions_dialog->close();
+            // The busiest one selected, protected, then shown in the ROM.
+            if (auto table = functions_dialog->findChild<QTableWidget *>("functions"); table && table->rowCount())
+                table->selectRow(0);
+            if (auto protect = functions_dialog->findChild<QCheckBox *>("protect"); protect && protect->isEnabled())
+                protect->setChecked(true);
         }
+    });
+    steps->push_back([=, this] {
+        if (functions_dialog)
+        {
+            shot(functions_dialog, "09c-functions-selected");
+            if (auto show = functions_dialog->findChild<QPushButton *>("show"); show && show->isEnabled())
+                show->click();
+        }
+    });
+    steps->push_back([=, this] {
+        if (memory_viewer && memory_viewer->isVisible())
+        {
+            shot(memory_viewer, "09d-viewer-rom-functions");
+            memory_viewer->close();
+        }
+        if (functions_dialog)
+            functions_dialog->close();
         openGuide({});
     });
     steps->push_back([=, this] {
@@ -1013,11 +1040,15 @@ void CorruptionDock::refreshStatus()
                                 .arg(QLocale().toString(qulonglong(status.rom_used))));
         QStringList kept;
         if (status.functions)
-            kept << (status.functions_off
-                         ? tr("%1 (%2 off)")
-                               .arg(plural(status.functions, tr("1 function known"), tr("%1 functions known")))
-                               .arg(status.functions_off)
-                         : plural(status.functions, tr("1 function known"), tr("%1 functions known")));
+        {
+            QStringList what;
+            if (status.functions_off)
+                what << tr("%1 off").arg(status.functions_off);
+            if (status.functions_guarded)
+                what << tr("%1 guarded").arg(status.functions_guarded);
+            QString known = plural(status.functions, tr("1 function known"), tr("%1 functions known"));
+            kept << (what.isEmpty() ? known : tr("%1 (%2)").arg(known, what.join(", ")));
+        }
         if (status.survivors)
             kept << plural(status.survivors, tr("1 survivor"), tr("%1 survivors"));
         if (status.pins)

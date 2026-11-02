@@ -207,7 +207,7 @@ Plan: `rom-corruption-plan` (six phases, each with "Phase N in detail"). QA 20-2
 - Docs: `ui-pass-plan`; project skill `.claude/skills/qt-widgets-ui`.
 - Gotchas: offscreen cannot paint the macOS style (blank controls). A hand-written scratch config needs `[%General]` or `PauseEmulationWhenUnfocused` is ignored and the game pauses when another window takes focus.
 
-## Phases 8 and 9: game-aware (#25, #26, #32, #34)
+## Phases 8 and 9: game-aware (#25, #26, #32, #34, #58, #59)
 
 **Jump tables (#25)** - finds tables of jump targets from indirect jumps the game ran.
 - Code: `corrupt/jump_tables.cpp` (JumpLog noted by `RomTracer` for opcodes 7C/FC/6C/DC; `find_jump_tables`; JumpLogKeeper; Library `jumps.<user>.json`), `SnesCoreAccess::rom_offsets`, viewer Jumps overlay and hover, dock line.
@@ -235,6 +235,18 @@ Plan: `rom-corruption-plan` (six phases, each with "Phase N in detail"). QA 20-2
 - Measure: `--kill [seeds] [count]` (busiest functions off vs random opcodes vs clean, unguarded): 6 off in a minute left the game running and moving in 31 of 35 runs (Goof, Pocky, FE4, FF6), against 7 of 35 for random code bytes.
 - Docs: `functions-plan`; GUIDE "Turning the game's functions off"; QA 33.
 - Gotchas: switches only flip while corruption is on (the engine is the only writer during a run). The Functions window keeps its row order until Refresh, so nothing moves under the mouse.
+
+**Function bodies and guards (#58)** - where each function's code ends, walked from its entry over the code map (no tracer cost), and guards: the bodies of functions in play (a switch, a protect, or switched off from the window) are skipped by every rule and by paint.
+- Code: `corrupt/function_body.cpp` (`function_body`/`function_bodies`: opcodes the map knows only, branches both ways, `BRA`/`BRL`, `JMP $abs` in its bank via `RomAddresses`, past calls when what follows ran, stops at returns, indirect and long jumps, 4 KB cap); `corrupt/function_guard.cpp` (`functions_in_play`, `guard_mask` with deep = callees through the call log, `guard_cleanup`, `own_bytes`, overlay `function_marks`/`function_at`); `Protect` and `Recipe::protects` (`"protect"`: entry, deep); `Engine::set_guarded` (rules and patches skip it via `rules_locked`; switches, pins don't); `HotMask::add`/`count`. Session: `findBodies` (every 5 s when the call log or map grew, on the clean ROM), `rebuildGuard` (when dirty and every 5 s; cleans guarded bytes with `rom.settle`), paint's "Kept N bytes as they were: guarded by …", `window_off`; Functions window *Size* column, *Protect* / *And what it calls*, *Show in ROM*; viewer overlay *Functions* (`MemoryPane::Overlay::Functions`, `snap.functions`, `snap.function_list`) and hover "in function …"; `MemoryViewer::showRange`; the ROM line's "(N off, M guarded)".
+- Tests: `tests/corrupt/function_body_test.cpp`, `tests/corrupt/function_guard_test.cpp`; `guard_integration_test.cpp` suite "function bodies and guards" (test ROM `build_bodies`: the body exact; guarded with what it calls, a random rule over all of it leaves it alone and it keeps counting); `tests/qt/functions_dialog_test.cpp`.
+- Measure: `--bodies` (functions with a body, sizes, how much of the code they cover, time, guard sizes).
+- Docs: `function-changes-plan`; GUIDE "Turning the game's functions off"; QA 34.
+- Gotchas: bodies are walked on the clean ROM, so corruption doesn't move them. Kill-rule offs aren't guarded (chaos, not a choice). Data tables a function reads aren't in its body.
+
+**Shared names (#59)** - name a function once and everyone sharing the library sees it: `names.<user>.json` per game, everyone's loaded, only yours written.
+- Code: `corrupt/function_names.cpp` (`encode_names`/`decode_names`, `FunctionNames::label`: "gravity · jump (erik)"), Library `names_path/load_names/save_names`; session `setFunctionName`, `loadNames` (with the code map); the window's *Name* field and *Name* column (a kept switch takes the name as its note).
+- Tests: `tests/corrupt/function_names_test.cpp`; `tests/qt/functions_dialog_test.cpp`.
+- Docs: `function-changes-plan`; QA 34.
 
 ## Phase 7: safety (#50-#52, #57; #55 and #56 tried and removed)
 

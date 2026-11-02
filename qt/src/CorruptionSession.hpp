@@ -74,6 +74,8 @@ class CorruptionSession
         size_t rom_used = 0;    // ...of which the game has run or read since they changed
         size_t functions = 0;     // the call graph's functions (#26)
         size_t functions_off = 0; // of them, switched off now (#34)
+        size_t functions_guarded = 0; // in play, their bodies guarded (#58)
+        size_t guarded_bytes = 0;
         size_t survivors = 0;   // ...of which proved themselves (see survivors())
         unsigned instant_reverts = 0; // changed bytes caught sending the CPU astray, fixed at once (#51)
         unsigned tested_first = 0;    // live ROM firings played ahead before they landed (#52)
@@ -180,6 +182,10 @@ class CorruptionSession
     std::string flipFunction(uint32_t entry);
     std::string keepSwitch(uint32_t entry, int hotkey, bool start_off, const std::string &note);
     void forgetSwitch(uint32_t entry);
+    // Guards and names (#58, #59). Protect guards a function's body (deep: and what it
+    // calls) without changing it; setName writes your name for it to the library.
+    std::string protectFunction(uint32_t entry, bool on, bool deep);
+    std::string setFunctionName(uint32_t entry, const std::string &name);
 
     // Save backups.
     std::filesystem::path backupDir();
@@ -211,6 +217,10 @@ class CorruptionSession
     void saveJumpLog();
     void saveCallLog();
     void findJumpTables(const corrupt::CodeMap &all); // when the log or the map grew since last time
+    void findBodies(const corrupt::CodeMap &all);     // the same for function bodies (#58)
+    void loadNames();
+    void rebuildGuard(); // the functions in play's bodies to the engine; cleans them; the overlay
+    std::string guardedBy(uint32_t offset) const; // "$C0:9000 (gravity)", for messages
 
     std::mutex mutex;
     corrupt::Engine engine;
@@ -238,6 +248,14 @@ class CorruptionSession
     corrupt::RomHeat rom_heat;              // the viewer's Live overlay, while it shows the ROM
     corrupt::JumpLogKeeper jump_log;        // the tracer notes indirect jumps into it, kept like the code map
     corrupt::CallKeeper call_log;           // ...and calls (#26): the functions kill switches turn off
+    corrupt::FunctionBodies bodies;         // each function's code (#58), from everyone's map, every few seconds
+    uint64_t bodies_print = ~uint64_t(0);
+    corrupt::FunctionNames names;           // everyone's names for the functions (#59)
+    std::vector<uint32_t> window_off;       // switched off from the Functions window: in play while off
+    bool guard_dirty = false;               // rebuild the guard between frames
+    std::vector<corrupt::InPlay> in_play;
+    std::vector<uint8_t> function_shown;    // the overlay's marks, while the viewer shows the ROM
+    std::vector<corrupt::ShownFunction> function_list;
     corrupt::RomOffsets rom_offsets;        // where each 4 KB of the address space is in the ROM
     std::vector<corrupt::JumpTable> jump_tables; // found from everyone's log and map, every few seconds
     std::vector<uint8_t> jump_shown;        // the viewer's marks for them

@@ -11,6 +11,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdio>
 #include <fstream>
 #include <random>
 #include <sstream>
@@ -243,7 +244,11 @@ void CorruptionSession::betweenFrames()
         auto all = code_map.combined();
         code_coverage = all.coverage();
         findJumpTables(all);
+        findBodies(all);
+        guard_dirty = true; // rollbacks may have undone flips; cheap enough every 5 s
     }
+    if (guard_dirty)
+        rebuildGuard();
     if (watch.watching())
         live_map = watch.target() == Target::VRAM   ? video_map(SnesCoreAccess::video_layout())
                    : watch.target() == Target::ARAM ? sound_map(SnesCoreAccess::sound_layout())
@@ -326,6 +331,8 @@ void CorruptionSession::gameLoaded()
     rules_generation++;
     recipe_path.clear();
     saved_json.clear();
+    window_off.clear();
+    guard_dirty = true;
     guard.reset();
     instant.drop();
     instant.reset_counts();
@@ -390,6 +397,9 @@ void CorruptionSession::loadCodeMap()
     code_shown = {};
     jumps_found_print = ~uint64_t(0);
     findJumpTables(all);
+    bodies_print = ~uint64_t(0);
+    findBodies(all);
+    loadNames();
     if (!tracer.start(code_map.mine(), &jump_log.mine(), &call_log.mine()))
         note("The code map isn't recording (no ROM?)");
     else
@@ -545,6 +555,8 @@ std::vector<std::string> CorruptionSession::loadRecipe(const Recipe &recipe, con
     ahead.reset_counts();
     last_crash.clear();
     configureGuard();
+    window_off.clear();
+    guard_dirty = true;
     note("Recipe: " + recipe.name);
 
     // Its saved moment: jump there and start, if the switch is on and it's this ROM.
@@ -600,6 +612,8 @@ MemorySnapshot CorruptionSession::memorySnapshot()
         snap.jump_tables = jump_tables;
         snap.jumps = jump_shown;
         snap.live = rom_heat.levels();
+        snap.functions = function_shown;
+        snap.function_list = function_list;
         if (game_loaded)
             for (uint32_t o : rom_blame.changed_offsets())
             {
@@ -775,6 +789,8 @@ void CorruptionSession::newRecipeLocked(const std::string &name)
     rules_generation++;
     recipe_path.clear();
     saved_json.clear();
+    window_off.clear();
+    guard_dirty = true;
     guard.reset();
     instant.drop();
     instant.reset_counts();
@@ -1106,6 +1122,8 @@ CorruptionSession::Status CorruptionSession::status()
             uint8_t ret = return_byte(f.type);
             s.functions_off += ret && f.entry < memory.size(Target::ROM) && memory.read(Target::ROM, f.entry) == ret;
         }
+        s.functions_guarded = in_play.size();
+        s.guarded_bytes = engine.guarded_mask().count(Target::ROM);
         s.instant_reverts = instant.total();
         s.tested_first = ahead.tested();
         s.tested_rerolled = ahead.rerolled();
@@ -1182,9 +1200,24 @@ std::string CorruptionSession::setBytes(Target t, const std::vector<std::pair<ui
         newRecipeLocked("Painted");
     std::vector<std::pair<uint32_t, uint8_t>> bytes;
     size_t size = rom.size(t);
+    size_t kept = 0;
+    std::optional<uint32_t> first_kept;
     for (auto [o, v] : wanted)
-        if (o < size && !rom.locked_mask().is_hot(t, o))
-            bytes.push_back({ o, v });
+    {
+        if (o >= size || rom.locked_mask().is_hot(t, o))
+            continue;
+        if (engine.guarded_mask().is_hot(t, o))
+        {
+            kept++;
+            if (!first_kept)
+                first_kept = o;
+            continue;
+        }
+        bytes.push_back({ o, v });
+    }
+    if (kept)
+        note("Kept " + std::to_string(kept) + (kept == 1 ? " byte" : " bytes") + " as they were: guarded by " +
+             guardedBy(*first_kept));
     if (bytes.empty())
         return {};
     engine.add_patches(t, bytes);
@@ -1218,6 +1251,19 @@ std::vector<FunctionRow> CorruptionSession::functions()
         for (auto &s : engine.recipe().switches)
             if (s.entry == f.entry)
                 r.kept = s;
+        for (auto &p : engine.recipe().protects)
+            if (p.entry == f.entry)
+                r.protect = p;
+        r.label = names.label(f.entry);
+        if (auto n = names.mine.find(f.entry); n != names.mine.end())
+            r.my_name = n->second;
+        if (auto b = bodies.find(f.entry); b != bodies.end())
+        {
+            r.body_bytes = b->second.bytes;
+            r.open_ended = b->second.open_ended;
+            r.runs = b->second.runs();
+        }
+        r.guarded = engine.guarded_mask().is_hot(Target::ROM, f.entry);
         rows.push_back(std::move(r));
     }
     return rows;
@@ -1243,6 +1289,9 @@ std::string CorruptionSession::flipFunction(uint32_t entry)
             if (entry >= rom.clean().size() || rom.locked_mask().is_hot(Target::ROM, entry))
                 return "that byte can't be changed";
             engine.flip_function(entry, ret, rom.clean()[entry]);
+            if (std::find(window_off.begin(), window_off.end(), entry) == window_off.end())
+                window_off.push_back(entry); // in play while it's off (#58)
+            guard_dirty = true;
             return {};
         }
     return "no such function";
@@ -1271,6 +1320,7 @@ std::string CorruptionSession::keepSwitch(uint32_t entry, int hotkey, bool start
             s.start_off = start_off;
             s.note = note_text;
             engine.add_switch(s);
+            guard_dirty = true;
             return {};
         }
     return "no such function";
@@ -1280,6 +1330,136 @@ void CorruptionSession::forgetSwitch(uint32_t entry)
 {
     std::lock_guard lock(mutex);
     engine.remove_switch(entry);
+    guard_dirty = true;
+}
+
+std::string CorruptionSession::protectFunction(uint32_t entry, bool on, bool deep)
+{
+    std::lock_guard lock(mutex);
+    if (!game_loaded)
+        return "No game loaded";
+    if (!on)
+    {
+        engine.remove_protect(entry);
+        guard_dirty = true;
+        return {};
+    }
+    if (!bodies.count(entry) || bodies.at(entry).code.empty())
+        return "its code isn't known yet: play until it runs";
+    if (!has_recipe)
+        newRecipeLocked("Protected");
+    engine.add_protect({ entry, deep });
+    guard_dirty = true;
+    return {};
+}
+
+std::string CorruptionSession::setFunctionName(uint32_t entry, const std::string &name)
+{
+    std::lock_guard lock(mutex);
+    if (!game_loaded)
+        return "No game loaded";
+    names.set_mine(entry, name);
+    guard_dirty = true; // the overlay's hover text shows names
+    if (library_root.empty())
+        return "Choose a library folder (More) to keep names and share them";
+    return Library(library_root).save_names(game, user_name(), names.mine);
+}
+
+void CorruptionSession::loadNames()
+{
+    names = {};
+    if (library_root.empty())
+        return;
+    names = Library(library_root).load_names(game, user_name());
+    for (auto &e : names.errors)
+        note("Names skipped: " + e);
+}
+
+void CorruptionSession::findBodies(const CodeMap &all)
+{
+    auto calls = call_log.combined();
+    uint64_t print = calls.fingerprint() * 0x9E3779B97F4A7C15ULL ^ all.fingerprint();
+    if (print == bodies_print)
+        return;
+    bodies_print = print;
+    std::vector<Function> known;
+    for (auto &[key, seen] : calls.all())
+        known.push_back({ key.target });
+    std::sort(known.begin(), known.end(), [](const Function &a, const Function &b) { return a.entry < b.entry; });
+    known.erase(std::unique(known.begin(), known.end(),
+                            [](const Function &a, const Function &b) { return a.entry == b.entry; }),
+                known.end());
+    // The clean ROM: what corruption did to the code doesn't move where a function ends.
+    bodies = function_bodies(rom.clean(), all.flags(), known, rom_where);
+    guard_dirty = true;
+}
+
+void CorruptionSession::rebuildGuard()
+{
+    guard_dirty = false;
+    size_t size = memory.size(Target::ROM);
+    // Window flips are in play while they're off.
+    std::erase_if(window_off, [&](uint32_t e) {
+        return e >= size || e >= rom.clean().size() || memory.read(Target::ROM, e) == rom.clean()[e];
+    });
+    in_play = functions_in_play(engine.recipe(), window_off);
+    auto calls = call_log.combined();
+    HotMask mask = guard_mask(in_play, bodies, &calls);
+    if (const uint8_t *now = memory.data(Target::ROM))
+    {
+        auto fix = guard_cleanup(mask, own_bytes(engine.recipe()), rom.clean(), { now, size });
+        if (!fix.empty())
+        {
+            rom.settle(fix);
+            note("Guard: put back " + std::to_string(fix.size()) + (fix.size() == 1 ? " byte" : " bytes") +
+                 " other corruption had changed in " + guardedBy(fix.front().first));
+        }
+    }
+    engine.set_guarded(mask);
+
+    // The overlay and the hover text.
+    function_list.clear();
+    for (auto &[entry, body] : bodies)
+    {
+        if (body.code.empty())
+            continue;
+        ShownFunction f;
+        f.entry = entry;
+        f.address = rom_where.cpu_address(entry);
+        f.label = names.label(entry);
+        f.bytes = body.bytes;
+        f.runs = body.runs();
+        f.guarded = mask.is_hot(Target::ROM, entry);
+        uint8_t now = entry < size ? memory.read(Target::ROM, entry) : 0;
+        f.off = entry < rom.clean().size() && now != rom.clean()[entry] && (now == kRts || now == kRtl);
+        function_list.push_back(std::move(f));
+    }
+    std::sort(function_list.begin(), function_list.end(),
+              [](const ShownFunction &a, const ShownFunction &b) { return a.entry < b.entry; });
+    function_shown = function_marks(function_list, mask, size);
+}
+
+std::string CorruptionSession::guardedBy(uint32_t offset) const
+{
+    // A function in play whose body holds it, else whichever function does.
+    const ShownFunction *best = nullptr;
+    for (auto &p : in_play)
+        if (auto it = bodies.find(p.entry); it != bodies.end() && it->second.contains(offset))
+            for (auto &f : function_list)
+                if (f.entry == p.entry)
+                    best = &f;
+    if (!best)
+        best = function_at(function_list, offset);
+    if (!best)
+        return "a function in play";
+    std::string where = hex_address(best->entry, Target::ROM);
+    if (best->address)
+    {
+        char cpu[16];
+        std::snprintf(cpu, sizeof cpu, "$%02X:%04X", *best->address >> 16, *best->address & 0xFFFF);
+        where = cpu;
+    }
+    return best->label.empty() ? where : where + " (" + best->label + ")";
 }
 
 std::vector<Survivor> CorruptionSession::survivors()

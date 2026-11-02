@@ -266,6 +266,56 @@ std::string Library::save_call_log(const GameId &game, const std::string &user, 
     return write_file_atomic(call_log_path(game, user), encode_call_log(log, rom_size));
 }
 
+fs::path Library::names_path(const GameId &game, const std::string &user) const
+{
+    return game_dir(game) / ("names." + recipe_file_stem(user) + ".json");
+}
+
+FunctionNames Library::load_names(const GameId &game, const std::string &user) const
+{
+    FunctionNames out;
+    std::error_code ec;
+    auto mine = names_path(game, user).filename().string();
+    std::vector<fs::path> files;
+    for (auto &entry : fs::directory_iterator(game_dir(game), ec))
+    {
+        auto name = entry.path().filename().string();
+        if (name.rfind("names.", 0) == 0 && entry.path().extension() == ".json")
+            files.push_back(entry.path());
+    }
+    std::sort(files.begin(), files.end()); // the same order on every machine
+    for (auto &path : files)
+    {
+        auto name = path.filename().string();
+        auto text = read_file(path);
+        std::string error;
+        auto names = text ? decode_names(*text, error) : std::nullopt;
+        if (!text)
+            error = "couldn't read it";
+        if (!names)
+        {
+            out.errors.push_back(name + ": " + error);
+            continue;
+        }
+        if (name == mine)
+            out.mine = std::move(*names);
+        else
+        {
+            std::string who = name.substr(6, name.size() - 6 - 5); // names.<who>.json
+            for (auto &[entry, n] : *names)
+                out.others[entry].push_back({ who, n });
+        }
+    }
+    return out;
+}
+
+std::string Library::save_names(const GameId &game, const std::string &user, const NameList &names) const
+{
+    if (auto err = ensure_game_dir(game); !err.empty())
+        return err;
+    return write_file_atomic(names_path(game, user), encode_names(names));
+}
+
 std::vector<RecipeEntry> Library::list_recipes(const GameId &game) const
 {
     std::vector<RecipeEntry> entries;

@@ -750,7 +750,7 @@ ParseResult parse_recipe(std::string_view json_text, const Regions &regions)
         return result;
     }
     check_keys(ctx, doc, "recipe", { "format", "name", "notes", "game", "seed", "intensity", "anchor_state", "rules",
-                                     "patches", "pins", "switches", "crash_policy", "rom_policy", "instant_revert", "test_first",
+                                     "patches", "pins", "switches", "protect", "crash_policy", "rom_policy", "instant_revert", "test_first",
                                      "crash_detection" });
 
     if (!doc.contains("format") || !doc["format"].is_number_integer() || doc["format"].get<int>() != Recipe::kFormat)
@@ -933,6 +933,41 @@ ParseResult parse_recipe(std::string_view json_text, const Regions &regions)
             }
     }
 
+    if (doc.contains("protect"))
+    {
+        const json &ps = doc["protect"];
+        if (!ps.is_array())
+            ctx.fail("recipe.protect", "expected a list");
+        else
+            for (size_t i = 0; i < ps.size(); i++)
+            {
+                std::string path = "protect[" + std::to_string(i) + "]";
+                const json &j = ps[i];
+                if (!require_object(ctx, j, path))
+                    continue;
+                check_keys(ctx, j, path, { "entry", "deep" });
+                if (!j.contains("entry"))
+                {
+                    ctx.fail(path, "needs entry (the function's offset)");
+                    continue;
+                }
+                auto entry = get_int_in(ctx, j["entry"], path + ".entry", 0, 0xFFFFFF);
+                if (!entry)
+                    continue;
+                Protect p{ uint32_t(*entry), false };
+                if (j.contains("deep"))
+                {
+                    if (!j["deep"].is_boolean())
+                    {
+                        ctx.fail(path + ".deep", "expected true or false");
+                        continue;
+                    }
+                    p.deep = j["deep"].get<bool>();
+                }
+                recipe.protects.push_back(p);
+            }
+    }
+
     if (doc.contains("crash_policy"))
     {
         const json &p = doc["crash_policy"];
@@ -1050,6 +1085,18 @@ std::string write_recipe(const Recipe &recipe)
             ss.push_back(j);
         }
         doc["switches"] = ss;
+    }
+    if (!recipe.protects.empty())
+    {
+        ojson ps = ojson::array();
+        for (auto &p : recipe.protects)
+        {
+            ojson j = { { "entry", hex_addr(p.entry) } };
+            if (p.deep)
+                j["deep"] = true;
+            ps.push_back(j);
+        }
+        doc["protect"] = ps;
     }
     if (recipe.crash_policy)
         doc["crash_policy"] = policy_name(*recipe.crash_policy);

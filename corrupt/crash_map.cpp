@@ -109,6 +109,22 @@ void HotMask::add_block(Target t, uint32_t offset)
         v[block + i] = true;
 }
 
+void HotMask::add(Target t, uint32_t offset)
+{
+    auto &v = hot[size_t(t)];
+    if (v.size() <= offset)
+        v.resize(size_t(offset) + 1, false);
+    v[offset] = true;
+}
+
+size_t HotMask::count(Target t) const
+{
+    size_t n = 0;
+    for (bool b : hot[size_t(t)])
+        n += b;
+    return n;
+}
+
 void HotMask::merge(const HotMask &other)
 {
     for (size_t t = 0; t < kTargetCount; t++)

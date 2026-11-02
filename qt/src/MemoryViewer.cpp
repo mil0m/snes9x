@@ -128,6 +128,7 @@ MemoryViewer::MemoryViewer(MemorySource &source, QWidget *parent)
     overlay_combo->addItem(tr("Changes: what differs from the clean ROM, bright once used"), QString("changes"));
     overlay_combo->addItem(tr("Jumps: the game's tables of routines, for pointer swaps (ROM)"), QString("jumps"));
     overlay_combo->addItem(tr("Live: what the game runs and reads right now (ROM)"), QString("live"));
+    overlay_combo->addItem(tr("Functions: the game's functions, guarded ones stronger (ROM)"), QString("functions"));
     overlay_combo->addItem(tr("Plain"), QString("none"));
     goto_edit = new QLineEdit(this);
     goto_edit->setObjectName("goto");
@@ -513,6 +514,20 @@ void MemoryViewer::zoomChanged()
     zoom_in_button->setEnabled(zoom < (on_tiles ? TileView::kMaxZoom : PixelView::kMaxZoom));
 }
 
+void MemoryViewer::showRange(Target t, uint32_t first, uint32_t last, const QString &overlay)
+{
+    if (mode() == "tiles") // bytes, not graphics: pixels show code and its colours best
+        mode_combo->setCurrentIndex(mode_combo->findData(QString("pixels")));
+    pending_select = std::pair{ first, last };
+    int index = target_combo->findData(QString(target_name(t)));
+    if (target_combo->currentIndex() != index)
+        target_combo->setCurrentIndex(index);
+    if (!overlay.isEmpty()) // after the target: switching target filters the overlays
+        if (int i = overlay_combo->findData(overlay); i >= 0)
+            overlay_combo->setCurrentIndex(i);
+    refresh();
+}
+
 void MemoryViewer::hovered(std::optional<uint32_t> offset)
 {
     auto &snap = pixels->snapshot();
@@ -570,6 +585,23 @@ void MemoryViewer::hovered(std::optional<uint32_t> offset)
         }
         else if (at.site_tables)
             text += tr(" · jumps through a table of routines: %1 entries known (Jumps shows them)").arg(at.site_entries);
+    }
+    // Which function's code it is (ROM only): its names, size, and whether it's guarded or off.
+    if (auto *fn = function_at(snap.function_list, *offset))
+    {
+        QString where = fn->address ? QString("$%1:%2")
+                                          .arg(*fn->address >> 16, 2, 16, QChar('0'))
+                                          .arg(*fn->address & 0xFFFF, 4, 16, QChar('0'))
+                                          .toUpper()
+                                    : hexa(fn->entry, snap.target);
+        text += tr(" · in function %1").arg(where);
+        if (!fn->label.empty())
+            text += " " + QString::fromStdString(fn->label);
+        text += tr(" (%1 bytes)").arg(fn->bytes);
+        if (fn->guarded)
+            text += tr(", guarded");
+        if (fn->off)
+            text += tr(", off");
     }
     // Whether corruption changed it (ROM only), and whether the game has used it since.
     if (auto *c = snap.rom_change(*offset))
@@ -647,6 +679,7 @@ MemoryPane::Overlay MemoryViewer::overlayNamed(const QString &o)
            : o == "changes" ? MemoryPane::Overlay::Changes
            : o == "jumps"   ? MemoryPane::Overlay::Jumps
            : o == "live"    ? MemoryPane::Overlay::Live
+           : o == "functions" ? MemoryPane::Overlay::Functions
            : o == "none"    ? MemoryPane::Overlay::None
                             : MemoryPane::Overlay::Activity;
 }
@@ -660,7 +693,8 @@ void MemoryViewer::filterOverlays()
     for (int i = 0; i < overlay_combo->count(); i++)
     {
         QString o = overlay_combo->itemData(i).toString();
-        bool rom_only = o == "code" || o == "data" || o == "dma" || o == "changes" || o == "jumps" || o == "live";
+        bool rom_only = o == "code" || o == "data" || o == "dma" || o == "changes" || o == "jumps" || o == "live" ||
+                        o == "functions";
         bool fits = (o != "reads" && o != "writes" && !rom_only) ||
                     ((o == "reads" || o == "writes") && t == "wram") || (t == "rom" && o != "reads" && o != "writes");
         if (view)
@@ -692,6 +726,9 @@ void MemoryViewer::showLegend()
                                           "second and a half")
                    : o == "jumps"    ? tr("jump tables: entries the game jumped through strong, likely ones lighter, "
                                           "the instruction that jumps in between")
+                   : o == "functions" ? tr("the code of the game's functions: light, guarded from other corruption "
+                                           "stronger (paint and rules leave it alone), the entry of one that's off "
+                                           "strongest")
                                      : tr("no colours: just the bytes");
     auto overlay = overlayNamed(o);
     QString base = mode() == "pixels" ? tr(" Under it, each dot's grey is the byte's value.")

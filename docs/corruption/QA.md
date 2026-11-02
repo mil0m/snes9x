@@ -506,3 +506,22 @@ Removed on 2026-11-01: it didn't pay off (see FEATURES.md, *Tried and removed*).
 8. Close the game and open it again.
    - [ ] The list is there at once (from `calls.<you>.json` in the library's game folder).
 
+## 34. Function bodies, guards and names
+1. Load Goof Troop, play for a few seconds, open **Functions…**.
+   - [ ] *Size* shows bytes for most rows (a dash for ones whose code the map hasn't seen run).
+2. Select a busy row, type a **Name** (*scroll?*), press Return.
+   - [ ] The *Name* column shows it; `names.<you>.json` appears in the library's game folder.
+   - [ ] With a copy named `names.erik.json` (edit the name inside), the column shows *yours · theirs (erik)* after reopening the game.
+3. Tick **Protect it from other corruption**.
+   - [ ] The *Name* column says *protected*; the ROM section says *(1 guarded)*.
+4. **Show in ROM**.
+   - [ ] The memory viewer opens on the ROM, in Pixels, coloured by **Functions**, with the function's code selected; hovering a byte of it says *in function $80:…*, its name, its size and *guarded*.
+5. Load **Starter: Code drip**, Protect a function again, press Corrupt and let it drip for a minute.
+   - [ ] In the viewer with **Changes**, no changed byte lands inside the protected function's code.
+6. In the viewer's Pixels view, **Paint Mode**, paint across the protected function's code.
+   - [ ] The status line says *Kept N bytes as they were: guarded by $80:… (scroll?)*; those bytes don't change.
+7. Tick **Off** on another function (corruption on).
+   - [ ] Its code is guarded too while it's off (*guarded* in the column, strongest colour at its first byte in the viewer); untick and the guard goes.
+8. Untick **Protect**, **Save** with Protect on, reload the recipe.
+   - [ ] Protect comes back with the recipe (`"protect"` in the file).
+

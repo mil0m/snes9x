@@ -1,7 +1,7 @@
 // End-to-end check of the corruption engine inside the real emulator, no window
 // needed:
 //
-//   corrupt-smoke <rom> <recipe.json> [frames=600] [warmup=600] [--guard | --instant [seeds] | --ahead [seeds] | --eyes [seeds] | --derail-fp [learn] | --learn [held=3] [from=0] | --replay | --copies | --map | --access [dir] | --codemap [file] | --jumps [file] | --calls | --kill [seeds] [count] | --dump <dir>]
+//   corrupt-smoke <rom> <recipe.json> [frames=600] [warmup=600] [--guard | --instant [seeds] | --ahead [seeds] | --eyes [seeds] | --derail-fp [learn] | --learn [held=3] [from=0] | --replay | --copies | --map | --access [dir] | --codemap [file] | --jumps [file] | --calls | --bodies | --kill [seeds] [count] | --dump <dir>]
 //
 // Boots the ROM, runs `warmup` frames, saves a state, then runs `frames` twice
 // from that state: once clean, once with the recipe. Reports what the recipe
@@ -71,6 +71,7 @@
 #include "corrupt/core_access.h"
 #include "corrupt/core_memory.h"
 #include "corrupt/calls.h"
+#include "corrupt/function_guard.h"
 #include "corrupt/jump_tables.h"
 #include "corrupt/pointer_swap.h"
 #include "corrupt/crash_guard.h"
@@ -711,6 +712,90 @@ int run_calls(int frames)
     for (size_t i = 0; i < fs.size() && i < 12; i++)
         printf("         $%06X %-5s %6llu %8u %3u\n", where.cpu_address(fs[i].entry).value_or(0), fs[i].type == CallType::Near ? "near" : "long",
                (unsigned long long)fs[i].frames, fs[i].calls, fs[i].callers);
+    return 0;
+}
+
+// --bodies: learn for `frames` (the code map and the call graph), then each function's body
+// (#58): how many have one, their sizes, how much of the code they cover, how long finding them
+// takes, and what guards would cost (the 10 busiest, shallow and deep).
+int run_bodies(int frames)
+{
+    CodeMap map(Memory.CalculatedSize);
+    CallKeeper calls;
+    RomTracer tracer;
+    if (!tracer.start(map, nullptr, &calls.mine()))
+        return 1;
+    for (int f = 0; f < frames; f++)
+    {
+        headless::run_frames(1);
+        calls.end_frame();
+    }
+    tracer.stop();
+    auto where = SnesCoreAccess::rom_addresses();
+    auto fs = calls.functions();
+    std::vector<uint8_t> rom(Memory.ROM, Memory.ROM + Memory.CalculatedSize);
+    auto t0 = std::chrono::steady_clock::now();
+    auto bodies = function_bodies(rom, map.flags(), fs, where);
+    double ms = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0).count();
+
+    std::vector<size_t> sizes;
+    size_t empty = 0, truncated = 0, open = 0, pieces = 0;
+    std::vector<bool> covered(rom.size(), false);
+    for (auto &[entry, b] : bodies)
+    {
+        if (b.code.empty())
+        {
+            empty++;
+            continue;
+        }
+        sizes.push_back(b.bytes);
+        truncated += b.truncated;
+        open += b.open_ended;
+        auto runs = b.runs();
+        pieces += runs.size();
+        for (auto &[first, last] : runs)
+            for (uint32_t o = first; o <= last; o++)
+                covered[o] = true;
+    }
+    if (getenv("CORRUPT_BODIES_VERBOSE")) // a few busy ones, instruction by instruction
+        for (size_t i = 0; i < fs.size() && i < 8; i++)
+        {
+            auto &b = bodies.at(fs[i].entry);
+            printf("  $%06X %zu B:", where.cpu_address(b.entry).value_or(0), b.bytes);
+            for (auto &in : b.code)
+            {
+                auto d = instruction_at(rom, map.flags(), in.at, where);
+                printf(" [%06X %s]", in.at, d ? d->text.c_str() : "?");
+            }
+            uint32_t end = b.code.empty() ? b.entry : b.code.back().at + b.code.back().length;
+            printf("  next %06X flags %02X\n", end, map.at(end));
+        }
+    std::sort(sizes.begin(), sizes.end());
+    size_t code = map.coverage().code, in_bodies = 0;
+    for (size_t o = 0; o < rom.size(); o++)
+        in_bodies += covered[o] && (map.at(o) & codeflag::Code);
+    auto pct = [&](size_t n) { return sizes.empty() ? 0 : sizes[std::min(sizes.size() - 1, sizes.size() * n / 100)]; };
+    printf("bodies   %zu functions, %zu with a body (%zu not known as code), found in %.1f ms\n", fs.size(), sizes.size(),
+           empty, ms);
+    printf("sizes    median %zu B, 90%% %zu B, largest %zu B; %.1f pieces each; %zu truncated at 4 KB, %zu leave "
+           "through a table\n",
+           pct(50), pct(90), sizes.empty() ? 0 : sizes.back(), sizes.empty() ? 0.0 : double(pieces) / sizes.size(),
+           truncated, open);
+    printf("cover    %zu of %zu code bytes the map knows are in some function's body (%.0f%%)\n", in_bodies, code,
+           code ? 100.0 * in_bodies / code : 0.0);
+    auto log = calls.combined();
+    auto busy = busiest(fs, 10);
+    std::vector<InPlay> shallow, deep;
+    for (auto &f : busy)
+    {
+        shallow.push_back({ f.entry, false });
+        deep.push_back({ f.entry, true });
+    }
+    t0 = std::chrono::steady_clock::now();
+    auto deep_mask = guard_mask(deep, bodies, &log);
+    double guard_ms = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0).count();
+    printf("guards   the 10 busiest: %zu bytes shallow, %zu with what they call (%.1f ms)\n",
+           guard_mask(shallow, bodies, &log).count(Target::ROM), deep_mask.count(Target::ROM), guard_ms);
     return 0;
 }
 
@@ -1581,6 +1666,8 @@ int main(int argc, char **argv)
         return run_kill(frames, argc > 6 ? atoi(argv[6]) : 10, argc > 7 ? atoi(argv[7]) : 6);
     if (argc > 5 && std::string(argv[5]) == "--calls")
         return run_calls(frames);
+    if (argc > 5 && std::string(argv[5]) == "--bodies")
+        return run_bodies(frames);
     if (argc > 5 && std::string(argv[5]) == "--jumps")
         return run_jumps(frames, argc > 6 ? argv[6] : nullptr);
     if (argc > 5 && std::string(argv[5]) == "--access")

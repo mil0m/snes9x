@@ -1,6 +1,6 @@
 # Functions, deeper: bodies, guards, names, changes and timers (plan, roadmap #58-#61 and #35)
 
-**Status (2026-11-02):** planned. Follows [the functions plan](./2026-11-01-functions-plan.md)
+**Status (2026-11-02):** #58 and #59 done (QA.md 34); #60, #35 and #61 in progress. Follows [the functions plan](./2026-11-01-functions-plan.md)
 (#26 call graph, #34 kill switches). Asked for by Mikael: "Set what type of changes should
 happen every x second", "corrupt the actual functions as well? To make them behave
 differently?", "guard the related ROM parts so we don't touch them with other corrupt
@@ -182,4 +182,32 @@ Guarded bodies are skipped as everywhere.
 
 ## How it went
 
-(Filled in when it's built.)
+### #58 bodies and guards, #59 names
+
+Built as planned. The Functions window got a details area for the selected function (its
+name, *Protect* and *And what it calls*, the switch, *Show in ROM*), a *Size* column, and a
+*Name* column that also says what you do with it (key, protected, guarded).
+
+**Bodies (`--bodies`, 5 minutes of each demo, debug build):**
+
+| Game | Functions | Median body | 90% | Largest | Code the map knows that's in a body | Time | 10 busiest guarded: shallow / deep |
+|---|---|---|---|---|---|---|---|
+| Goof Troop | 331 | 38 B | 121 B | 489 B | 78% | 9 ms | 560 / 590 B |
+| Pocky & Rocky | 517 | 35 B | 121 B | 495 B | 58% | 13 ms | 1212 / 1212 B |
+| FE4 | 1012 | 38 B | 133 B | 539 B | 73% | 28 ms | 452 / 635 B |
+| FF6 | 204 | 54 B | 228 B | 1055 B | 85% | 9 ms | 1058 / 1227 B |
+
+- Every function the call graph knows has a body; none hit the 4 KB cap; 1-12% leave through
+  a jump table (open-ended).
+- The rest of the code the map knows is interrupt handlers, code reached only by jumps
+  (dispatch targets), and FF6/FE4 code reached with `JML`.
+- A deep guard costs little: helpers are small and shared.
+- **A bug found by the numbers:** the first run gave FE4 a median body of 3 bytes. An
+  instruction whose width depends on M but whose length doesn't (`PHA`, `LDA $1801,X`), run
+  only at 16 bits, wasn't followed, so most bodies ended at the first one after a
+  `REP #$20`. A unit test now covers it; Goof's coverage went from 35% to 78%.
+- Bodies are found again (on the emulation thread) at most every 5 s and only while the call
+  log or the map grows: a few ms in the release build.
+- **The guard works on the real core:** with the test ROM's function guarded with what it
+  calls, a rule writing 32 random bytes a frame over all of its code for 30 frames changed
+  none of its bytes, logged no write in it, and it kept counting every frame.
