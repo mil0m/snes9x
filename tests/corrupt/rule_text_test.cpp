@@ -80,7 +80,7 @@ TEST_CASE("each trigger has a short description")
     CHECK(describe_trigger({ .type = TriggerType::EveryFrames, .every = 1 }) == "every frame");
     CHECK(describe_trigger({ .type = TriggerType::ChancePerFrame, .chance = 0.02 }) == "2% per frame");
     CHECK(describe_trigger({ .type = TriggerType::ChancePerFrame, .chance = 0.005 }) == "0.5% per frame");
-    CHECK(describe_trigger({ .type = TriggerType::Hotkey, .hotkey = 3 }) == "hotkey 3");
+    CHECK(describe_trigger({ .type = TriggerType::Hotkey, .hotkey = 3 }) == "button 3");
     CHECK(describe_trigger({ .type = TriggerType::AtLoad }) == "once at load");
     Trigger windowed{ .type = TriggerType::EveryFrames, .every = 60, .window = FrameWindow{ 600, 1200 } };
     CHECK(describe_trigger(windowed) == "every 60 frames, frames 600-1200");

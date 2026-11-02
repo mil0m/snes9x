@@ -103,6 +103,7 @@ class CorruptionDock : public QDockWidget
     QLabel *rules_empty;
     QLineEdit *seed_edit;
     QPushButton *reroll_button;
+    class ButtonsBar *buttons_bar;
     QTableWidget *rules_table;
     std::vector<IntensitySlider *> rule_sliders;
     IntensitySlider *chaos_slider;

@@ -57,7 +57,7 @@ TEST_CASE("the functions window lists what runs, busiest now first, and shows wh
     CHECK(table->item(1, Off)->checkState() == Qt::Checked);
     CHECK(table->item(0, About)->text() == "scroll (erik)");
     CHECK(table->item(1, About)->text().contains("gravity"));
-    CHECK(table->item(1, About)->text().contains("key 3"));
+    CHECK(table->item(1, About)->text().contains("button 3"));
     CHECK(table->item(1, About)->text().contains("protected with what it calls"));
     // A function reached both ways can't be skipped safely: no box to tick.
     CHECK(!(table->item(2, Off)->flags() & Qt::ItemIsUserCheckable));

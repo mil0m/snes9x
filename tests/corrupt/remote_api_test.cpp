@@ -168,7 +168,7 @@ TEST_SUITE("remote control")
         f.act({ { "do", "rule_enabled" }, { "rule", 2 }, { "on", false } });
         f.act({ { "do", "rule_strength" }, { "rule", 1 }, { "value", 0.5 } });
         auto r = f.send({ { "do", "hotkey" }, { "key", 3 }, { "id", 1 } });
-        CHECK(r.did == "pressed hotkey 3");
+        CHECK(r.did == "pressed button 3");
         CHECK(f.control.calls == std::vector<std::string>{ "active on", "active off", "back", "reroll", "crash",
                                                             "chaos 25", "rule 2 off", "strength 1 50", "hotkey 3" });
     }
@@ -303,6 +303,7 @@ TEST_SUITE("remote control")
         s.sizes[size_t(Target::WRAM)] = 0x20000;
         s.clients = { "erik@example.com" };
         s.starters = { "Gentle noise" };
+        s.buttons = { { 1, "gravity off", "gravity off", true, true }, { 4, "Burst + 1 more", "Burst\nSparkle", false, false } };
         auto j = json::parse(status_json(s))["status"];
         CHECK(j["game"] == "GOOF TROOP");
         CHECK(j["active"] == true);
@@ -314,6 +315,13 @@ TEST_SUITE("remote control")
         CHECK(j["sizes"]["wram"] == 0x20000);
         CHECK(j["clients"][0] == "erik@example.com");
         CHECK(j["starters"][0] == "Gentle noise");
+        REQUIRE(j["buttons"].size() == 2);
+        CHECK(j["buttons"][0]["key"] == 1);
+        CHECK(j["buttons"][0]["label"] == "gravity off");
+        CHECK(j["buttons"][0]["toggle"] == true);
+        CHECK(j["buttons"][0]["on"] == true);
+        CHECK(j["buttons"][1]["details"] == "Burst\nSparkle");
+        CHECK(j["buttons"][1]["toggle"] == false);
     }
 
     TEST_CASE("tokens: random, long, URL-safe, and compared whole")

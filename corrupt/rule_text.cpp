@@ -103,7 +103,7 @@ std::string describe_trigger(const Trigger &t)
         text = buf;
         break;
     }
-    case TriggerType::Hotkey: text = "hotkey " + std::to_string(t.hotkey); break;
+    case TriggerType::Hotkey: text = "button " + std::to_string(t.hotkey); break;
     case TriggerType::AtLoad: text = "once at load"; break;
     }
     if (t.window)

@@ -487,39 +487,6 @@ void EmuApplication::handleCorruptionBinding(const std::string &name)
             text = std::string("Corruption ") + (on ? "ON" : "OFF") + " - " + status.engine.recipe_name +
                    " - seed " + std::to_string(status.engine.seed);
     }
-    else if (name == "CorruptionReroll")
-    {
-        text = "Corruption seed " + std::to_string(session.reroll());
-    }
-    else if (name == "CorruptionSaveRecipe")
-    {
-        auto status = session.status();
-        auto recipe_name = status.engine.recipe_name.empty() ? "untitled" : status.engine.recipe_name;
-        recipe_name += " " + std::to_string(status.engine.seed);
-        auto result = session.saveRecipeAs(recipe_name, "");
-        text = result.error.empty() ? "Saved recipe " + result.path.filename().string() : "Couldn't save: " + result.error;
-    }
-    else if (name == "CorruptionBackToNormal")
-    {
-        session.backToNormal();
-        return; // the session shows its own message
-    }
-    else if (name == "CorruptionMarkCrash")
-    {
-        session.markCrash();
-        text = "Corruption: rolling back";
-    }
-    else if (name == "CorruptionMore" || name == "CorruptionLess")
-    {
-        double now = session.stepIntensity(name == "CorruptionMore" ? 0.1 : -0.1);
-        text = "Corruption chaos " + std::to_string(int(std::lround(now * 100))) + "%";
-    }
-    else if (name.starts_with("CorruptionFire"))
-    {
-        int n = name.back() - '0';
-        session.pressHotkey(n);
-        return; // the corruption itself is the feedback
-    }
     else
         return;
 

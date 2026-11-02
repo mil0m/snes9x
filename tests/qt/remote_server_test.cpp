@@ -197,7 +197,7 @@ TEST_SUITE("remote server")
         REQUIRE(wait_for([&] { return c.has("done"); }));
         CHECK(f.control.calls == std::vector<std::string>{ "hotkey 2" });
         CHECK(who == "erik@example.com");
-        CHECK(what == "pressed hotkey 2");
+        CHECK(what == "pressed button 2");
 
         // A change in the session reaches the page by itself.
         f.active = true;

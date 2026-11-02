@@ -1147,6 +1147,17 @@ CorruptionSession::Status CorruptionSession::status()
         s.instant_revert = instant.is_enabled();
         s.pins = engine.recipe().pins.size();
         s.patched = patched_bytes(engine.recipe().patches);
+        ButtonState bs;
+        bs.function_name = [this](uint32_t entry) -> std::string {
+            if (auto n = names.mine.find(entry); n != names.mine.end())
+                return n->second;
+            if (auto o = names.others.find(entry); o != names.others.end() && !o->second.empty())
+                return o->second.front().name;
+            return {};
+        };
+        bs.switch_off = [this](const Switch &sw) { return switch_off(sw, memory); };
+        bs.change_on = [this](const Change &c) { return corrupt::change_on(c, memory); };
+        s.buttons = recipe_buttons(engine.recipe(), bs);
     }
     s.policy = guard.get_policy();
     s.policy_overridden = policy_override.has_value();

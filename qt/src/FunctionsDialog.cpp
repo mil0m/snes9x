@@ -70,7 +70,7 @@ QString about(const FunctionRow &r)
     QStringList parts;
     if (r.kept)
     {
-        parts << (r.kept->hotkey ? QObject::tr("key %1").arg(r.kept->hotkey) : QObject::tr("switch in the recipe"));
+        parts << (r.kept->hotkey ? QObject::tr("button %1").arg(r.kept->hotkey) : QObject::tr("switch in the recipe"));
         if (r.kept->start_off)
             parts << QObject::tr("starts off");
         if (r.kept->every)
@@ -201,12 +201,12 @@ FunctionsDialog::FunctionsDialog(FunctionSource &source, QWidget *parent) : QDia
     switch_layout->setContentsMargins(0, 0, 0, 0);
     hotkey = new QComboBox(switch_row);
     hotkey->setObjectName("hotkey");
-    hotkey->setAccessibleName(tr("Hotkey for the switch"));
-    hotkey->addItem(tr("No hotkey"));
+    hotkey->setAccessibleName(tr("Button for the switch"));
+    hotkey->addItem(tr("No button"));
     for (int k = 1; k <= 9; k++)
-        hotkey->addItem(tr("Key %1").arg(k));
-    hotkey->setToolTip(tr("Pressing this hotkey (1-9 in the panel, the keyboard or the remote page) turns the "
-                          "function off, and on again"));
+        hotkey->addItem(tr("Button %1").arg(k));
+    hotkey->setToolTip(tr("A button in the corruption panel (and on the remote page) that turns the function "
+                          "off, and on again"));
     start_off = new QCheckBox(tr("Starts off"), switch_row);
     start_off->setObjectName("start_off");
     start_off->setToolTip(tr("Off from the start of every run"));
@@ -560,7 +560,7 @@ void FunctionsDialog::keepSelected()
         say(tr("Couldn't keep it: %1").arg(QString::fromStdString(err)), int(ui::Tone::Error));
     else
         say(hotkey->currentIndex()
-                ? tr("Kept in the recipe on key %1. Save the recipe to keep it.").arg(hotkey->currentIndex())
+                ? tr("Kept in the recipe on button %1. Save the recipe to keep it.").arg(hotkey->currentIndex())
                 : tr("Kept in the recipe. Save the recipe to keep it."),
             int(ui::Tone::Ok));
     update();

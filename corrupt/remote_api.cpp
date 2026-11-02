@@ -204,9 +204,9 @@ Connection::Reply Connection::handle(std::string_view message, Clock::time_point
     {
         auto key = integer(j, "key");
         if (!key || *key < 1 || *key > kMaxHotkey)
-            return refuse("hotkeys are 1 to 9");
+            return refuse("buttons are 1 to 9");
         control.press_hotkey(int(*key));
-        return done("pressed hotkey " + std::to_string(*key));
+        return done("pressed button " + std::to_string(*key));
     }
     if (action == "watch")
     {
@@ -274,6 +274,13 @@ std::string status_json(const StatusView &s)
                           { "enabled", r.enabled },
                           { "strength", r.strength },
                           { "hotkey", r.hotkey } });
+    json buttons = json::array();
+    for (auto &b : s.buttons)
+        buttons.push_back({ { "key", b.key },
+                            { "label", b.label },
+                            { "details", b.details },
+                            { "toggle", b.toggle },
+                            { "on", b.on } });
     json sizes = json::object();
     for (auto t : kAllTargets)
         sizes[target_name(t)] = s.sizes[size_t(t)];
@@ -289,6 +296,7 @@ std::string status_json(const StatusView &s)
                      { "crashes", s.crashes },
                      { "message", s.message },
                      { "rules", rules },
+                     { "buttons", buttons },
                      { "sizes", sizes },
                      { "clients", s.clients },
                      { "starters", s.starters } } } }

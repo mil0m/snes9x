@@ -173,7 +173,7 @@ TEST_CASE("a change is kept with its hotkey and start, shows as kept, and is rem
     CHECK_FALSE(e.src.kept_changes[0].start_on);
     CHECK(e.src.kept_changes[0].note == "scroll (erik)");
     QApplication::processEvents();
-    CHECK(e.lines()->item(3, 3)->text().contains("kept, key 4"));
+    CHECK(e.lines()->item(3, 3)->text().contains("kept, button 4"));
     CHECK(forget->isEnabled());
     forget->click();
     CHECK(e.src.forgotten_changes == std::vector<uint32_t>{ 0x19F4 });

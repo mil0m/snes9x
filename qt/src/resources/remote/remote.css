@@ -30,6 +30,7 @@ button.big { width: 100%; min-height: 56px; font-size: 1.1rem; font-weight: 600;
              background: var(--accent); color: var(--accent-text); border-color: var(--accent); }
 button.big.on { background: var(--danger); border-color: var(--danger); }
 button:disabled { opacity: 0.5; cursor: default; }
+#buttons button.on { background: var(--accent); color: var(--accent-text); border-color: var(--accent); }
 .field { display: block; margin-top: 12px; }
 .field > span { display: flex; justify-content: space-between; font-size: 0.9rem; color: var(--muted); }
 .field.inline { display: inline-flex; flex-direction: column; margin-top: 0; }

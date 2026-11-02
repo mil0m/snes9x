@@ -178,7 +178,7 @@ struct EmuConfig
 
     static const int allowed_bindings = 4;
     static const int num_controller_bindings = 18;
-    static const int num_shortcuts = 71;
+    static const int num_shortcuts = 56;
 
     bool automap_gamepads;
 
@@ -260,20 +260,5 @@ struct EmuConfig
         eStopRecording,
         eSeekToFrame,
         eCorruptionToggle,
-        eCorruptionReroll,
-        eCorruptionSaveRecipe,
-        eCorruptionFire1,
-        eCorruptionFire2,
-        eCorruptionFire3,
-        eCorruptionFire4,
-        eCorruptionFire5,
-        eCorruptionFire6,
-        eCorruptionFire7,
-        eCorruptionFire8,
-        eCorruptionFire9,
-        eCorruptionMarkCrash,
-        eCorruptionMore,
-        eCorruptionLess,
-        eCorruptionBackToNormal,
     };
 };

@@ -229,11 +229,11 @@ FunctionEditor::FunctionEditor(FunctionSource &source, const FunctionRow &row, Q
     put_back_button->setToolTip(tr("The game's own instruction again, at the next frame"));
     hotkey = new QComboBox(editor);
     hotkey->setObjectName("hotkey");
-    hotkey->setAccessibleName(tr("Hotkey for the change"));
-    hotkey->addItem(tr("No hotkey"));
+    hotkey->setAccessibleName(tr("Button for the change"));
+    hotkey->addItem(tr("No button"));
     for (int k = 1; k <= 9; k++)
-        hotkey->addItem(tr("Key %1").arg(k));
-    hotkey->setToolTip(tr("Pressing this hotkey turns the change on, and off again"));
+        hotkey->addItem(tr("Button %1").arg(k));
+    hotkey->setToolTip(tr("A button in the corruption panel (and on the remote page) that turns the change on, and off again"));
     start_on = new QCheckBox(tr("Starts on"), editor);
     start_on->setObjectName("start_on");
     start_on->setChecked(true);
@@ -349,7 +349,7 @@ void FunctionEditor::update()
         if (now != clean)
             parts << tr("now %1").arg(text_of(o, now));
         if (auto *k = kept(o.at))
-            parts << (k->hotkey ? tr("kept, key %1").arg(k->hotkey) : tr("kept")) +
+            parts << (k->hotkey ? tr("kept, button %1").arg(k->hotkey) : tr("kept")) +
                          (k->start_on ? tr(", starts on") : QString()) +
                          (k->every ? tr(", on %1 s every %2 s").arg(k->for_frames / 60.0).arg(k->every / 60.0) : QString());
         if (auto *it = table->item(int(i), Now); it && it->text() != parts.join(" · "))
@@ -552,7 +552,7 @@ void FunctionEditor::keep()
     auto err = source.keepChange(*c);
     if (!err.empty())
         return say(tr("Couldn't keep it: %1").arg(QString::fromStdString(err)), int(ui::Tone::Error));
-    say(c->hotkey ? tr("Kept in the recipe on key %1. Save the recipe to keep it.").arg(c->hotkey)
+    say(c->hotkey ? tr("Kept in the recipe on button %1. Save the recipe to keep it.").arg(c->hotkey)
                   : tr("Kept in the recipe. Save the recipe to keep it."),
         int(ui::Tone::Ok));
     update();

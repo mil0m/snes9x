@@ -97,7 +97,7 @@ function render(s) {
   $("message").textContent = s.message || (s.crashes ? s.crashes + " crashes caught" : "");
   $("who").textContent = s.clients.length ? "Connected: " + s.clients.join(", ") : "";
   renderRules(s.rules);
-  renderHotkeys(s.rules);
+  renderButtons(s.buttons || []);
   renderMemories(s.sizes);
   renderStarters(s.starters || []);
 }
@@ -152,20 +152,22 @@ function renderRules(rules) {
   });
 }
 
-function renderHotkeys(rules) {
-  const keys = new Map();
-  for (const r of rules) if (r.hotkey && !keys.has(r.hotkey)) keys.set(r.hotkey, r.name);
-  $("hotkeys-card").hidden = keys.size === 0;
-  const box = $("hotkeys");
-  const want = [...keys.entries()].sort((a, b) => a[0] - b[0]);
-  const sig = JSON.stringify(want);
+function renderButtons(buttons) {
+  $("buttons-card").hidden = buttons.length === 0;
+  const box = $("buttons");
+  const sig = JSON.stringify(buttons);
   if (box.dataset.sig === sig) return;
   box.dataset.sig = sig;
   box.textContent = "";
-  for (const [k, name] of want) {
+  for (const btn of buttons) {
     const b = document.createElement("button");
-    b.textContent = k + " · " + name;
-    b.addEventListener("click", () => send({ do: "hotkey", key: k }));
+    b.textContent = btn.label;
+    b.title = btn.details;
+    if (btn.toggle) {
+      b.setAttribute("aria-pressed", btn.on ? "true" : "false");
+      b.classList.toggle("on", btn.on);
+    }
+    b.addEventListener("click", () => send({ do: "hotkey", key: btn.key }));
     box.appendChild(b);
   }
 }

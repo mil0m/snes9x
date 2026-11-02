@@ -35,6 +35,16 @@ struct RuleView
     int hotkey = 0; // 1-9 for a hotkey rule, else 0
 };
 
+// A button of the recipe (#63): slot 1-9, named after what it does.
+struct ButtonView
+{
+    int key = 0;
+    std::string label;
+    std::string details;
+    bool toggle = false;
+    bool on = false;
+};
+
 // What a remote sees of the session.
 struct StatusView
 {
@@ -49,6 +59,7 @@ struct StatusView
     unsigned crashes = 0;
     std::string message;
     std::vector<RuleView> rules;
+    std::vector<ButtonView> buttons;
     std::array<size_t, kTargetCount> sizes{};
     std::vector<std::string> clients;  // who is connected
     std::vector<std::string> starters; // names of the recipes that come with the app

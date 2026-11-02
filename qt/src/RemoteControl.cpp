@@ -123,6 +123,8 @@ remote::StatusView SessionRemote::status()
         rv.hotkey = r.when.type == TriggerType::Hotkey ? int(r.when.hotkey) : 0;
         v.rules.push_back(std::move(rv));
     }
+    for (auto &b : s.buttons)
+        v.buttons.push_back({ b.key, b.label, b.details, b.toggle, b.on });
     if (s.game_loaded)
         v.sizes = s.sizes;
     for (auto &st : bundled_starters())

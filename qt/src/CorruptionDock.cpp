@@ -1,4 +1,5 @@
 #include "CorruptionDock.hpp"
+#include "ButtonsBar.hpp"
 #include "SurvivorsDialog.hpp"
 #include "GuideWindow.hpp"
 #include "CorruptionSession.hpp"
@@ -222,9 +223,9 @@ CorruptionDock::CorruptionDock(EmuApplication &app, QWidget *parent)
     start_card->setFrameShape(QFrame::StyledPanel);
     start_card->setMargin(8);
     start_card->setText(tr("<b>Start here.</b> 1. Pick a recipe below: the <i>starters</i> come with the app. "
-                           "2. Press <b>Corrupt</b> (%1) and watch the game. 3. <b>Back to normal</b> (%2) "
+                           "2. Press <b>Corrupt</b> (%1) and watch the game. 3. <b>Back to normal</b> "
                            "undoes everything. <b>Guide</b> explains the rest.")
-                            .arg(hotkey(EmuConfig::eCorruptionToggle), hotkey(EmuConfig::eCorruptionBackToNormal)));
+                            .arg(hotkey(EmuConfig::eCorruptionToggle)));
     layout->addWidget(start_card);
 
     // Recipe: what to corrupt.
@@ -340,12 +341,10 @@ CorruptionDock::CorruptionDock(EmuApplication &app, QWidget *parent)
     // press does, and Corrupt is the default-looking button while it's off.
     corrupt_button = button(tr("Corrupt (%1)").arg(hotkey(EmuConfig::eCorruptionToggle)), run_box, "bolt");
     corrupt_button->setObjectName("corrupt");
-    back_button = button(tr("Back to Normal (%1)").arg(hotkey(EmuConfig::eCorruptionBackToNormal)), run_box,
-                         "arrow-back-up");
+    back_button = button(tr("Back to Normal"), run_box, "arrow-back-up");
     back_button->setObjectName("back_to_normal");
     back_button->setToolTip(tr("Turn corruption off, put the ROM back to clean, and take the game back to the "
-                               "moment the run started, so everything it changed is gone. Hotkey: %1")
-                                .arg(hotkey(EmuConfig::eCorruptionBackToNormal)));
+                               "moment the run started, so everything it changed is gone."));
     run_row->addWidget(corrupt_button, 1);
     run_row->addWidget(back_button, 1);
     run_layout->addLayout(run_row);
@@ -356,9 +355,7 @@ CorruptionDock::CorruptionDock(EmuApplication &app, QWidget *parent)
     auto run_form = ui::form();
     chaos_slider = new IntensitySlider(run_box);
     chaos_slider->setObjectName("chaos");
-    chaos_slider->setToolTip(tr("How hard the whole recipe hits: turns every rule up or down together. Hotkeys: "
-                                "%1 more, %2 less.")
-                                 .arg(hotkey(EmuConfig::eCorruptionMore), hotkey(EmuConfig::eCorruptionLess)));
+    chaos_slider->setToolTip(tr("How hard the whole recipe hits: turns every rule up or down together."));
     chaos_slider->setAccessibleName(tr("Chaos"));
     chaos_slider->onChanged = [](double v) { CorruptionSession::get().setIntensity(v); };
     run_form->addRow(tr("Chaos"), chaos_slider);
@@ -367,16 +364,18 @@ CorruptionDock::CorruptionDock(EmuApplication &app, QWidget *parent)
     seed_edit->setObjectName("seed");
     seed_edit->setToolTip(tr("The dice. The same recipe with the same seed, from the same start, does the same "
                              "thing every time. Type one and press Enter to use it."));
-    auto reroll = reroll_button = button(tr("Re-roll (%1)").arg(hotkey(EmuConfig::eCorruptionReroll)), run_box, "dice-5");
+    auto reroll = reroll_button = button(tr("Re-roll"), run_box, "dice-5");
     reroll->setObjectName("reroll");
-    reroll->setToolTip(tr("New dice: same recipe, different corruption, starting over. Hotkey: %1")
-                           .arg(hotkey(EmuConfig::eCorruptionReroll)));
+    reroll->setToolTip(tr("New dice: same recipe, different corruption, starting over."));
     seed_row->addWidget(seed_edit, 1);
     seed_row->addWidget(reroll);
     auto seed_label = new QLabel(tr("Seed"), run_box);
     seed_label->setBuddy(seed_edit);
     run_form->addRow(seed_label, seed_row);
     run_layout->addLayout(run_form);
+    buttons_bar = new ButtonsBar(run_box);
+    buttons_bar->onPress = [](int key) { CorruptionSession::get().pressHotkey(key); };
+    run_layout->addWidget(buttons_bar);
 
     connect(corrupt_button, &QPushButton::clicked, [] {
         auto &session = CorruptionSession::get();
@@ -505,8 +504,7 @@ CorruptionDock::CorruptionDock(EmuApplication &app, QWidget *parent)
     // For the rare miss: an ordinary button, not one as big as Corrupt.
     auto mark = button(tr("It Crashed: Go Back"), guard_box, "history");
     mark->setObjectName("mark_crash");
-    mark->setToolTip(tr("For a crash the guard missed: go back about two seconds and blame what changed. Hotkey: %1")
-                         .arg(hotkey(EmuConfig::eCorruptionMarkCrash)));
+    mark->setToolTip(tr("For a crash the guard missed: go back about two seconds and blame what changed."));
     auto mark_row = new QHBoxLayout;
     mark_row->addWidget(mark);
     mark_row->addStretch(1);
@@ -534,7 +532,7 @@ CorruptionDock::CorruptionDock(EmuApplication &app, QWidget *parent)
     functions_button = button(tr("Functions…"), rom_box, "power");
     functions_button->setObjectName("functions");
     functions_button->setToolTip(tr("The game's functions, busiest now first: turn one off and the game skips it "
-                                    "(gravity, collision, enemy AI…), or put it on a hotkey"));
+                                    "(gravity, collision, enemy AI…), or put it on a button"));
     clear_paint_button = button(tr("Clear Paint"), rom_box, "eraser");
     clear_paint_button->setObjectName("clear_paint");
     clear_paint_button->setToolTip(tr("Forget the bytes painted in the memory viewer. They stay until the next run "
@@ -592,7 +590,7 @@ CorruptionDock::CorruptionDock(EmuApplication &app, QWidget *parent)
     remote_check = new QCheckBox(tr("Allow remote control from a browser"), remote_box);
     remote_check->setObjectName("remote");
     remote_check->setToolTip(tr("Lets a browser with this panel's link run the corruption: on and off, Chaos, "
-                                "rules, hotkeys and painting memory. It listens on this computer only; to reach it "
+                                "rules, buttons and painting memory. It listens on this computer only; to reach it "
                                 "from elsewhere, put it behind a tunnel with a login (see the guide)."));
     remote_layout->addLayout(ui::row(remote_check));
     remote_label = new QLabel(remote_box);
@@ -1000,6 +998,7 @@ void CorruptionDock::refreshStatus()
     start_card->setVisible(status.game_loaded && !status.has_recipe);
     library_label->setFullText(tr("Library: %1").arg(ui::shortPath(qs(app.config->corruption_library_root))));
 
+    buttons_bar->setButtons(status.buttons);
     chaos_slider->setEnabled(status.has_recipe);
     seed_edit->setEnabled(status.has_recipe);
     reroll_button->setEnabled(status.has_recipe);

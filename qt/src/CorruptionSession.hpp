@@ -1,4 +1,5 @@
 #pragma once
+#include "corrupt/buttons.h"
 #include "corrupt/core_access.h"
 #include "corrupt/core_memory.h"
 #include "corrupt/crash_guard.h"
@@ -38,6 +39,7 @@ class CorruptionSession
 
     struct Status
     {
+        std::vector<corrupt::ButtonSlot> buttons; // the recipe's buttons 1-9, named (#63)
         bool game_loaded = false;
         corrupt::GameId game;
         corrupt::EngineStatus engine;

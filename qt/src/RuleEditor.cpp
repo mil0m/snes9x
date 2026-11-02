@@ -87,7 +87,7 @@ QString trigger_label(TriggerType t)
     case TriggerType::EveryFrames: return QObject::tr("Every N frames");
     case TriggerType::ChancePerFrame: return QObject::tr("Chance per frame");
     case TriggerType::OnceAtFrame: return QObject::tr("Once, at a frame");
-    case TriggerType::Hotkey: return QObject::tr("Hotkey");
+    case TriggerType::Hotkey: return QObject::tr("When I press a button");
     case TriggerType::AtLoad: return QObject::tr("Once, when the run starts (classic ROM)");
     }
     return {};
@@ -562,8 +562,8 @@ void RuleEditor::buildForm()
     once_frame = spin(when_box, "once_frame", 1, INT_MAX);
     when_page(tr("At frame"), once_frame);
     hotkey = spin(when_box, "hotkey", 1, 9);
-    hotkey->setToolTip(tr("Fires when you press corruption hotkey 1-9 (set them in Options > Shortcuts; 1 is F9)"));
-    when_page(tr("Hotkey"), hotkey);
+    hotkey->setToolTip(tr("Fires each time you press this button: the Buttons in the corruption panel, or on the remote page"));
+    when_page(tr("Button"), hotkey);
     auto at_load_note = hint_label(tr("Fires once as the run starts. On the ROM, the console then restarts, "
                                       "so the game boots from the corrupted ROM."),
                                    when_box);
