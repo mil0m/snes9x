@@ -289,14 +289,14 @@ void EmuMainWindow::createWidgets()
     auto workshop_item = corruption_menu->addAction(tr("Open &Workshop"));
     connect(workshop_item, &QAction::triggered, [this] { corruption_dock->openWorkshopAgain(); });
     corruption_menu->addSeparator();
-    auto recipe_item = [&](const QString &text, void (RecipeActions::*act)()) {
+    auto recipe_item = [&](const QString &text, std::function<void(RecipeActions &)> act) {
         connect(corruption_menu->addAction(text), &QAction::triggered,
-                [this, act] { (corruption_dock->recipeActions().*act)(); });
+                [this, act] { act(corruption_dock->recipeActions()); });
     };
-    recipe_item(tr("&New Recipe…"), &RecipeActions::newRecipe);
-    recipe_item(tr("Save Recipe &As…"), &RecipeActions::saveAs);
-    recipe_item(tr("&Share Recipe…"), &RecipeActions::share);
-    recipe_item(tr("&Import a Shared Recipe…"), &RecipeActions::import);
+    recipe_item(tr("&New Recipe…"), [](RecipeActions &a) { a.newRecipe(); });
+    recipe_item(tr("Save Recipe &As…"), [](RecipeActions &a) { a.saveAs(); });
+    recipe_item(tr("&Share Recipe…"), [](RecipeActions &a) { a.share(); });
+    recipe_item(tr("&Import a Shared Recipe…"), [](RecipeActions &a) { a.import(); });
     corruption_menu->addSeparator();
     auto page_item = [&](const QString &text, WorkshopPage page) {
         connect(corruption_menu->addAction(text), &QAction::triggered,
