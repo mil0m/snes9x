@@ -1,6 +1,6 @@
 # Playing together live: a shared library that syncs while you play (plan, roadmap #62)
 
-**Status (2026-11-02):** planned. Asked for by Mikael: when playing together over Discord in
+**Status (2026-11-02):** done. Asked for by Mikael: when playing together over Discord in
 an evening, nobody should have to push and pull the library through GitHub; the files
 should travel by themselves, through his server, and go into git when the night is over.
 
@@ -63,4 +63,22 @@ Snes9x stays self-contained: without Syncthing it's a folder like today. Three c
 
 ## How it went
 
-(Filled in when it's built.)
+Built as planned, the same day.
+
+- **The app:** `is_sync_leftover` is applied in every library scan and in `list_recipes`;
+  `conflict_copies` feeds the panel's mention; `others_stamp` / `recipes_stamp` (name, size,
+  time) are checked every 30 s between frames, and a change reloads everyone's files and
+  refreshes the recipe list. `SNES9X_PLAYER` names the player, so two instances on one
+  machine can share a folder (QA 37). Unit tests: `tests/corrupt/live_library_test.cpp`.
+- **The library repo:** `tools/stignore` and `tools/push.sh` (commits only the game folders,
+  summary per game; `tests/library/push_test.sh` runs it on a scratch repo in
+  `./build-mac.sh test`); `.gitignore` keeps conflict copies and Syncthing's folders out.
+- **The setup:** Syncthing on the server (its copy is the git clone, with a deploy key that
+  may push to the library repo only) and on Mikael's Mac. Verified both ways: the README and
+  `tools/` reached the Mac, Goof Troop's `codemap.mikael.bin` and `jumps.mikael.json` reached
+  the server, ROMs and save backups stayed local, nothing went to GitHub until a push.
+  Server details are in the private homelab repo.
+- **What bit:** the server's ssh used another key first for github.com, so the push alias has
+  to come before `Host *`; on the Mac, adding a folder under `~/Documents` waits on macOS's
+  folder-access prompt (it looks like a hang until someone clicks Allow).
+- **Still to do:** add Erik's device when he sends its id.
