@@ -23,6 +23,15 @@ class RecipeActions
 
     // The questions. Defaults are Qt's standard dialogs on `parent`.
     std::function<bool(const QString &title, const QString &question)> confirm;
+    // The recipe has unsaved changes and something would replace it: keep them, throw them
+    // away, or don't do it after all. The default is the Mac's Save / Don't Save / Cancel.
+    enum class Unsaved
+    {
+        Save,
+        Discard,
+        Cancel,
+    };
+    std::function<Unsaved(const QString &title, const QString &recipe_name)> askUnsaved;
     std::function<std::optional<QString>(const QString &title, const QString &label, const QString &text)> askText;
     // Save: true asks where to write a file, false which file to open; empty: cancelled.
     std::function<QString(bool save, const QString &title, const QString &start, const QString &filter)> askFile;
@@ -36,12 +45,12 @@ class RecipeActions
     const std::vector<corrupt::RecipeEntry> &refreshEntries();
     const std::vector<corrupt::RecipeEntry> &entries() const { return entry_list; }
 
-    bool confirmDiscard(const QString &action); // true when nothing would be lost, or the user agrees
+    bool confirmDiscard(const QString &action); // true to go on: nothing to lose, saved, or "Don't Save"
     // "mine:<i>" (an entry) or "starter:<i>". True when it loaded.
     bool choose(const QString &choice);
     void newRecipe();
-    void save();
-    void saveAs();
+    bool save();   // true when it was saved
+    bool saveAs(); // false when cancelled or it failed
     void share();
     void import();
 

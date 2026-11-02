@@ -75,7 +75,7 @@ Use a game you have never set up (a fresh library folder, so no recipes exist fo
    - [ ] It's listed as *(broken)*, and choosing it shows the error with its path.
 4. Workshop > **Sharing** > **Open This Game's Folder**.
    - [ ] The game's library folder opens, with its `recipes` folder.
-5. **New**, add a rule, then **Save** (the recipe has no file yet).
+5. **New Recipe…**, add a rule, then **Save** (the recipe has no file yet).
    - [ ] It asks for a name. Before saving, the list shows the recipe as *<name> (new)*.
 
 ## 5. Save backups
@@ -127,7 +127,7 @@ Use a game you have never set up (a fresh library folder, so no recipes exist fo
    - [ ] **Save** is disabled again, and the recipe's JSON file has the new rule.
 7. Edit something, then choose another recipe in the **Recipe** list.
    - [ ] It asks before discarding the changes. **No** keeps them.
-8. **New**, **Add Rule…**, then **Save As…** `scratch` (Recipe page).
+8. **New Recipe…**, **Add Rule…**, then **Save As…** `scratch` (Recipe page).
    - [ ] `scratch.json` appears in the recipe list, and **Save** works on it afterwards.
 9. If the game has a `regions.json` (add one by hand; see README), open the editor.
    - [ ] **Region** lists the names; picking one fills the range and greys it out, and the saved JSON uses the name.
@@ -578,7 +578,7 @@ Removed on 2026-11-01: it didn't pay off (see FEATURES.md, *Tried and removed*).
 3. Click the links: **Add or change rules**, then the guard line (*Crash guard on · …*), then the ROM line (*ROM: N bytes changed · …*).
    - [ ] Each opens the Workshop on the matching page (Recipe, Safety, ROM). Clicking a link while the Workshop is open switches its page instead of opening a second window.
 4. Click through every Workshop page in the sidebar: Recipe, Functions, Memory, ROM, Safety, Sharing.
-   - [ ] **Recipe**: name and notes; New, Save, Save As…, Share…, Import…; *Remember where each run starts*; the rules in full with Add Rule… and edit, duplicate and remove; **Also in This Recipe**.
+   - [ ] **Recipe**: name and notes; New Recipe…, Save, Save As…, Share…, Import…; *Remember where each run starts*; the rules in full with Add Rule… and edit, duplicate and remove; **Also in This Recipe**.
    - [ ] **Functions**: same controls as before; **Change It…** opens its own dialog.
    - [ ] **Memory**: the memory viewer. The paint value and brush show only while **Paint Mode** is on.
    - [ ] **ROM**: what changed, what's learned, Export ROM…, Restore Clean ROM, Clear Paint, Survivors and pins.
@@ -655,3 +655,12 @@ Removed on 2026-11-01: it didn't pay off (see FEATURES.md, *Tried and removed*).
    - [ ] It says *1 here* (or more); with remote control ticked, *remote on*.
 8. Turn on VoiceOver and move through the list of pages.
    - [ ] Each page is read with its words (*Functions, 1 off*).
+
+## 41. Unsaved changes: Save, Don't Save, Cancel
+1. Load a saved recipe, move a rule's strength (it now has unsaved changes), then press **New Recipe…** (Recipe page).
+   - [ ] It asks *Save the changes to "<name>" first?* with **Save**, **Don't Save** and **Cancel**.
+   - [ ] **Cancel** (or Escape): nothing happens, no name is asked, the recipe and its change are still there.
+2. Press **New Recipe…** again and choose **Don't Save**.
+   - [ ] It asks for the new recipe's name; the old recipe's change is gone.
+3. Change the new recipe, then pick another recipe in the panel's list and choose **Save**.
+   - [ ] A new recipe asks for its name first (cancelling that cancels the switch); then it's saved and the other recipe loads. The same question comes for **Import…**.

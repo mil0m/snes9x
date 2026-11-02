@@ -142,7 +142,7 @@ RecipePage::RecipePage(CorruptionControl &control, RecipeActions &actions, QWidg
     layout->addWidget(notes_label);
 
     auto file_row = new QHBoxLayout;
-    auto new_button = button(tr("New"), this, "file-plus");
+    auto new_button = button(tr("New Recipe…"), this, "file-plus");
     new_button->setObjectName("new_recipe");
     new_button->setToolTip(tr("Start an empty recipe for this game"));
     save_button = button(tr("Save"), this, "device-floppy");

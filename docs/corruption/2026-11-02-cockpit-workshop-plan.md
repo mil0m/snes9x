@@ -229,3 +229,13 @@ the real library in the Mac look and Fusion dark.
   raised the Workshop's minimum width; a test that resized to 1,100 px had to grow.
 - **Not done:** the notes don't count anything the session doesn't already count (no
   *named areas* on Memory, no per-person detail on Sharing beyond the number).
+
+## Play-test findings (Mikael and Erik)
+
+What came back from playing, one line each, with what was done about it.
+
+- **"I want to be able to cancel New after tapping it; the button should say New Recipe."**
+  The unsaved-changes question was *Discard them?* with Yes and No, so backing out wasn't
+  obvious. It is now the Mac's **Save / Don't Save / Cancel** (Escape cancels, and Save on a
+  new recipe asks for its name first; cancelling that cancels everything); the same
+  question guards loading another recipe and importing. The button reads **New Recipe…**.

@@ -9,6 +9,7 @@
 #include "fake_functions.h"
 
 #include <QApplication>
+#include <algorithm>
 #include <optional>
 #include <QCheckBox>
 #include <QComboBox>
@@ -357,5 +358,47 @@ TEST_SUITE("workshop")
         QApplication::processEvents();
         CHECK(f.workshop.memoryPage()->width() > 1200);
         f.workshop.close();
+    }
+
+    TEST_CASE("New Recipe with unsaved changes: Save, Don't Save, or Cancel and nothing happens")
+    {
+        Fixture f;
+        f.control.running(1);
+        f.control.s.engine.recipe_name = "Testing1";
+        f.control.s.edited = true;
+        auto &page = *f.workshop.recipePage();
+        page.refresh(f.control.status());
+        auto new_button = child<QPushButton>(page, "new_recipe");
+        CHECK(new_button->text() == "New Recipe…");
+        QString asked;
+        int named = 0;
+        f.actions.askText = [&](const QString &, const QString &, const QString &) -> std::optional<QString> {
+            named++;
+            return QString("Fresh");
+        };
+        f.actions.askUnsaved = [&](const QString &, const QString &name) {
+            asked = name;
+            return RecipeActions::Unsaved::Cancel;
+        };
+        size_t before = f.control.calls.size();
+        new_button->click();
+        CHECK(asked == "Testing1");
+        CHECK(named == 0); // cancelled: not even asked for a name
+        CHECK(f.control.calls.size() == before);
+
+        f.actions.askUnsaved = [](const QString &, const QString &) { return RecipeActions::Unsaved::Discard; };
+        new_button->click();
+        CHECK(f.control.calls.back() == "new Fresh");
+        CHECK(std::find(f.control.calls.begin() + long(before), f.control.calls.end(), "save") == f.control.calls.end());
+
+        f.control.s.edited = true;
+        f.actions.askUnsaved = [&](const QString &, const QString &) {
+            return RecipeActions::Unsaved::Save;
+        };
+        before = f.control.calls.size();
+        new_button->click();
+        REQUIRE(f.control.calls.size() >= before + 2);
+        CHECK(f.control.calls[before] == "save"); // kept first, then the new one
+        CHECK(f.control.calls.back() == "new Fresh");
     }
 }

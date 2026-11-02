@@ -26,6 +26,20 @@ RecipeActions::RecipeActions(CorruptionControl &control, QWidget *parent, std::v
     confirm = [this](const QString &title, const QString &question) {
         return QMessageBox::question(dialogParent(), title, question) == QMessageBox::Yes;
     };
+    askUnsaved = [this](const QString &title, const QString &name) {
+        QMessageBox box(QMessageBox::Warning, title,
+                        QObject::tr("Save the changes to \"%1\" first?").arg(name),
+                        QMessageBox::Save | QMessageBox::Discard | QMessageBox::Cancel, dialogParent());
+        box.setInformativeText(QObject::tr("If you don't save them, they're gone."));
+        box.setDefaultButton(QMessageBox::Save);
+        box.setEscapeButton(QMessageBox::Cancel);
+        switch (box.exec())
+        {
+        case QMessageBox::Save: return Unsaved::Save;
+        case QMessageBox::Discard: return Unsaved::Discard;
+        default: return Unsaved::Cancel;
+        }
+    };
     askText = [this](const QString &title, const QString &label, const QString &text) -> std::optional<QString> {
         bool ok = false;
         auto value = QInputDialog::getText(dialogParent(), title, label, QLineEdit::Normal, text, &ok);
@@ -80,7 +94,13 @@ bool RecipeActions::confirmDiscard(const QString &action)
     bool worth_keeping = status.has_recipe && status.edited && (!status.recipe_path.empty() || !status.rules.empty());
     if (!worth_keeping)
         return true;
-    return confirm(action, QObject::tr("\"%1\" has unsaved changes. Discard them?").arg(qs(status.engine.recipe_name)));
+    switch (askUnsaved(action, qs(status.engine.recipe_name)))
+    {
+    case Unsaved::Save: return save(); // a new recipe asks for its name; cancelling that cancels this
+    case Unsaved::Discard: return true;
+    case Unsaved::Cancel: return false;
+    }
+    return false;
 }
 
 bool RecipeActions::choose(const QString &choice)
@@ -155,33 +175,47 @@ void RecipeActions::newRecipe()
     tell(QObject::tr("New recipe. Add a rule, press Corrupt to try it, and Save to keep it."));
 }
 
-void RecipeActions::save()
+bool RecipeActions::save()
 {
     auto status = control.status();
     if (!status.has_recipe)
-        return tell(QObject::tr("Load a recipe first"), true);
+    {
+        tell(QObject::tr("Load a recipe first"), true);
+        return false;
+    }
     if (status.recipe_path.empty())
         return saveAs(); // a new recipe or a starter: it needs a name first
     auto result = control.save();
     if (!result.error.empty())
-        return tell(QObject::tr("Couldn't save: %1").arg(qs(result.error)), true);
+    {
+        tell(QObject::tr("Couldn't save: %1").arg(qs(result.error)), true);
+        return false;
+    }
     listsChanged();
     tell(QObject::tr("Saved %1").arg(qs(result.path.filename().string())));
+    return true;
 }
 
-void RecipeActions::saveAs()
+bool RecipeActions::saveAs()
 {
     auto status = control.status();
     if (!status.has_recipe)
-        return tell(QObject::tr("Load a recipe first"), true);
+    {
+        tell(QObject::tr("Load a recipe first"), true);
+        return false;
+    }
     auto name = askText(QObject::tr("Save recipe"), QObject::tr("Name:"), qs(status.engine.recipe_name));
     if (!name || name->trimmed().isEmpty())
-        return;
+        return false;
     auto result = control.saveAs(name->trimmed().toStdString(), status.notes);
     if (!result.error.empty())
-        return tell(QObject::tr("Couldn't save: %1").arg(qs(result.error)), true);
+    {
+        tell(QObject::tr("Couldn't save: %1").arg(qs(result.error)), true);
+        return false;
+    }
     listsChanged();
     tell(QObject::tr("Saved %1").arg(qs(result.path.filename().string())));
+    return true;
 }
 
 void RecipeActions::share()
