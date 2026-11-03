@@ -146,3 +146,24 @@ couple for the headless host, more for a full front end.
 **Tests:** the engine's tests on the fake platform (step 1); every slice of step 2 green on
 both platforms; old code map and crash map files still load (step 3); the include check in
 `./build-mac.sh test` (no core header outside the glue); step 5's acceptance test above.
+
+## Decision (3 Nov): parked, with two guards
+
+Mikael asked first whether anything would be lost (no: Snes9x stays the full host, offering
+the extras only it has; replays don't depend on how memories are numbered; SNES-only
+features stay allowed), then how much doing it *now* gains, since hooking up any other
+emulator means integration work in that emulator anyway. Not much: a port is three pieces
+of work, generalizing the engine, an adapter inside the other emulator, and the interface
+(about 21,000 lines of Qt that another emulator's own UI can't use), and doing the first
+early doesn't make it smaller. With a real second host it also comes out right first time,
+where guesses went wrong in the first draft. The exception is libretro *inside our own app*:
+the interface comes along and one adapter covers many consoles; that's the moment to pick
+this up. No separate repository until a second user of the engine exists (`corrupt/`
+already builds alone; a subtree or submodule then).
+
+Until then, two cheap guards so the coupling doesn't grow:
+- `tools/engine_boundary_check.sh`, run by `./build-mac.sh test` (with its own test,
+  `tests/tools/engine_boundary_check_test.sh`): nothing in `corrupt/` but the two glue files
+  includes a Snes9x header or declares a core global.
+- `is_code_memory(t)` in `memory.h`: new engine code asks it instead of `t == Target::ROM`;
+  CLAUDE.md says so.

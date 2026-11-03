@@ -76,6 +76,11 @@ tools/privacy_check.sh [--staged]            # nothing private in tracked files
   the Fusion pictures for layout and use `TOUR_PLATFORM=cocoa` for the real look.
 - **lldb and sample can't attach here**; for a hang, a watchdog thread printing
   `Registers.PBPC` / `CPU.V_Counter` finds where it spins.
+- **The engine stays hostable elsewhere** (#75, parked: `2026-11-03-platforms-plan.md`). Only
+  `corrupt/core_access.cpp` and `core_memory.cpp` reach the Snes9x core;
+  `tools/engine_boundary_check.sh` (in `./build-mac.sh test`) fails anything else in
+  `corrupt/` that includes a core header. New engine code asks `is_code_memory(t)`, not
+  `t == Target::ROM`. SNES-only features are still fine: nothing has to be portable.
 - `pint` in the core is signed: use `uintptr_t` for pointer arithmetic on ROM offsets.
 - `QHttpServer::bind()` owns the `QTcpServer` it's given; don't delete it yourself.
 - After a landing (#51's watch) the tracer teaches the map nothing for the rest of that

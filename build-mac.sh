@@ -78,6 +78,9 @@ build_test() {
     run_filtered "FAIL" bash tests/remote/privacy_check_test.sh
     run_filtered "FAIL" bash tests/library/push_test.sh
     tools/privacy_check.sh || tests_failed=1
+    # The engine reaches the Snes9x core only through its two glue files (#75).
+    run_filtered "FAIL" bash tests/tools/engine_boundary_check_test.sh
+    tools/engine_boundary_check.sh || tests_failed=1
   fi
   return $tests_failed
 }

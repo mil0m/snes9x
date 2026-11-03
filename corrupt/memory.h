@@ -27,6 +27,11 @@ constexpr std::array<Target, kTargetCount> kAllTargets = {
     Target::WRAM, Target::SRAM, Target::VRAM, Target::OAM, Target::CGRAM, Target::ARAM, Target::ROM
 };
 
+// Whether the memory holds the game's code (on the SNES, the ROM). New engine code asks this
+// rather than comparing with Target::ROM, so the day another platform comes (#75, parked)
+// the question is already in one place. Existing comparisons stay until then.
+constexpr bool is_code_memory(Target t) { return t == Target::ROM; }
+
 const char *target_name(Target t);
 std::optional<Target> parse_target(std::string_view name);
 size_t nominal_size(Target t); // SRAM: the common 8 KB; ROM: 1 MB
