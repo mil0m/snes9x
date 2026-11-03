@@ -92,7 +92,9 @@ const std::vector<RecipeEntry> &RecipeActions::refreshEntries()
 bool RecipeActions::confirmDiscard(const QString &action)
 {
     auto status = control.status();
-    bool worth_keeping = status.has_recipe && status.edited && (!status.recipe_path.empty() || !status.rules.empty());
+    // An Untitled recipe with anything in it (#74) is worth asking about, rules or not.
+    bool worth_keeping = status.has_recipe && status.edited && !status.blank &&
+                         (!status.recipe_path.empty() || status.untitled || !status.rules.empty());
     if (!worth_keeping)
         return true;
     switch (askUnsaved(action, qs(status.engine.recipe_name)))
@@ -169,11 +171,8 @@ void RecipeActions::newRecipe()
         return tell(QObject::tr("Load a game first"), true);
     if (!confirmDiscard(QObject::tr("New recipe")))
         return;
-    auto name = askText(QObject::tr("New recipe"), QObject::tr("Name:"), QObject::tr("My recipe"));
-    if (!name || name->trimmed().isEmpty())
-        return;
-    control.newRecipe(name->trimmed().toStdString());
-    tell(QObject::tr("New recipe. Add a rule, press Corrupt to try it, and Save to keep it."));
+    control.newRecipe({}); // Untitled: the name comes at Save (#74)
+    tell(QObject::tr("New Untitled recipe. Add a rule, turn a function off or paint, and Save to give it a name."));
 }
 
 bool RecipeActions::save()
@@ -205,7 +204,8 @@ bool RecipeActions::saveAs()
         tell(QObject::tr("Load a recipe first"), true);
         return false;
     }
-    auto name = askText(QObject::tr("Save recipe"), QObject::tr("Name:"), qs(status.engine.recipe_name));
+    auto name = askText(QObject::tr("Save recipe"), QObject::tr("Name:"),
+                        status.untitled ? QObject::tr("My recipe") : qs(status.engine.recipe_name));
     if (!name || name->trimmed().isEmpty())
         return false;
     auto result = control.saveAs(name->trimmed().toStdString(), status.notes);

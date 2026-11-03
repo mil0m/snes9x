@@ -917,9 +917,9 @@ void MemoryViewer::refreshPaint()
     else if (rom && watching)
         status = tr("Watching ten seconds for a crash…");
     else if (rom)
-        status = tr("Paint here is a draft: it goes into the game when you press Apply Paint");
+        status = tr("Paint here is a draft: it goes into the game, and the recipe, when you press Apply Paint");
     else
-        status = tr("Painted live, into the game as you drag. Cmd+Z undoes a stroke.");
+        status = tr("Painted live, into the game as you drag, and kept in the recipe. Cmd+Z undoes a stroke.");
     if (rom && drafted && watching)
         status += tr(" · watching the last batch for a crash");
     // What became of the last Apply (crashed and taken back, held up), until the next stroke.

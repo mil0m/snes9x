@@ -38,12 +38,20 @@ panel, or choose **Corruption > Open Workshop**. It is one window with a list of
 left. The Workshop opens on the page it was on last, at the size it had. The links in the panel
 (*Add or change rules*, the crash guard line, the ROM line) open their own page.
 
+**There is always a recipe.** A game starts with an empty one called **Untitled**, like a new
+document. Everything you make lands in the recipe you have: rules, functions you turn off or
+guard, changes, paint, pins. The top of the Workshop's page list names it and says whether
+it's saved (*Empty · not saved*, *Not saved*, *Changed since saved*, *Saved*), and so does the
+window's title. **Save** gives an Untitled recipe its name. Each page says which of its
+parts are saved in the recipe and which belong to the game: function names and what the app
+learns about the code are the game's, for every recipe; the Safety switches are the app's.
+
 The list of pages is also a summary: beside each name, a few words say what's going on
 there, whichever page you're on: *3 rules*, *2 off* (functions), *40 painted*, *14 changed*
 (ROM bytes), *1 crash* or *guard off* (in the warning colour), *2 here* (other people in the
 library) or *remote on*. No words means nothing to report.
 
-- **Recipe**: name and notes, New Recipe…, Save, Save As…, Share…, Import…, the rules in full, and
+- **Recipe**: name and notes, New Recipe, Save, Save As…, Share…, Import…, the rules in full, and
   what else the recipe keeps (switches, changes, protected functions, pins, paint).
 - **Functions**: turn the game's functions off, name them, change how they work. The busiest come first each time you open the page.
 - **Memory**: the memory viewer, with paint.
@@ -126,8 +134,8 @@ to **Button 9** in the Functions page or in **Change It…**, or in the rule edi
 ## Recipes and rules
 
 **The Recipe list** has your recipes for this game first, then the starters. Choosing one
-loads it. **New Recipe…** starts an empty one. If the recipe you have has unsaved changes, it asks first: **Save**, **Don't Save**, or **Cancel** (nothing happens). **Save** keeps it in your library (a starter becomes
-your own copy, so it asks for a name). The Workshop's **Recipe** page also has Save As,
+loads it. **New Recipe** starts an empty, Untitled one. If the recipe you have has unsaved changes, it asks first: **Save**, **Don't Save**, or **Cancel** (nothing happens). An Untitled recipe with nothing in it isn't asked about. **Save** keeps it in your library (an Untitled recipe or a starter
+asks for a name first: a starter becomes your own copy). The Workshop's **Recipe** page also has Save As,
 Share and Import (they're in the **Corruption** menu too), and the library folder is on the
 **Sharing** page.
 

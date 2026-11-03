@@ -263,6 +263,28 @@ void CorruptionDock::tour(const QString &dir)
         setVisible(true);
         shot(window(), "01-window");
         shot(cockpit, "02-cockpit-no-recipe");
+        // Always a recipe (#74): the game started with a blank Untitled one, and a rule
+        // added straight away lands in it (no "make a recipe first").
+        auto describe = [](const char *when) {
+            auto st = CorruptionSession::get().status();
+            return QString("untitled %1: \"%2\" untitled=%3 blank=%4 edited=%5 rules=%6")
+                .arg(when, qs(st.engine.recipe_name))
+                .arg(int(st.untitled))
+                .arg(int(st.blank))
+                .arg(int(st.edited))
+                .arg(st.rules.size());
+        };
+        log(describe("at load"));
+        openWorkshop(WorkshopPage::Recipe);
+        workshop->refresh();
+        shot(workshop, "02a-workshop-untitled");
+        auto added = CorruptionSession::get().addRule(default_rule());
+        log(describe("after Add Rule") + (added.empty() ? "" : " error " + qs(added)));
+        workshop->refresh();
+        cockpit->refresh();
+        shot(workshop, "02b-workshop-untitled-rule");
+        shot(cockpit, "02c-cockpit-untitled-rule");
+        workshop->hide();
     });
     steps->push_back([=] { load(":/corruption-examples/low-wram-roulette.json"); });
     steps->push_back([=, this] {

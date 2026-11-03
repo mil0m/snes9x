@@ -142,9 +142,9 @@ RecipePage::RecipePage(CorruptionControl &control, RecipeActions &actions, QWidg
     layout->addWidget(notes_label);
 
     auto file_row = new QHBoxLayout;
-    auto new_button = button(tr("New Recipe…"), this, "file-plus");
+    auto new_button = button(tr("New Recipe"), this, "file-plus");
     new_button->setObjectName("new_recipe");
-    new_button->setToolTip(tr("Start an empty recipe for this game"));
+    new_button->setToolTip(tr("Start an empty, Untitled recipe for this game. Save gives it a name."));
     save_button = button(tr("Save"), this, "device-floppy");
     save_button->setObjectName("save");
     auto save_as = button(tr("Save As…"), this);
@@ -314,13 +314,19 @@ void RecipePage::refresh(const PanelStatus &status)
     if (!status.has_recipe)
         notes = status.game_loaded ? tr("Pick one in the panel, or New starts an empty one.")
                                    : tr("Load a game, then pick a recipe in the panel.");
+    else if (status.blank)
+        notes = tr("Nothing in it yet. Add a rule here, turn a function off, guard one, or paint: it all lands in "
+                   "this recipe. Save gives it a name. Or pick another recipe in the panel.");
+    else if (status.untitled && notes.isEmpty())
+        notes = tr("Not saved yet: Save gives it a name.");
     notes_label->setText(notes);
     notes_label->setVisible(!notes.isEmpty());
     {
         QSignalBlocker block(moments_check);
         moments_check->setChecked(status.saved_moments);
     }
-    save_button->setEnabled(status.has_recipe && (status.edited || status.new_moment || status.recipe_path.empty()));
+    save_button->setEnabled(status.has_recipe && !status.blank && // nothing to keep in an empty one (#74)
+                            (status.edited || status.new_moment || status.recipe_path.empty()));
     add_button->setEnabled(status.has_recipe);
 
     if (status.recipe_generation != shown_generation || status.rules_generation != shown_rules_generation)
@@ -434,6 +440,11 @@ RomPage::RomPage(CorruptionControl &control, SurvivorSource &survivors, QWidget 
     setObjectName("rom_page");
     auto layout = pageLayout(this);
     layout->addWidget(ui::heading(tr("The ROM (the Game Itself)"), this));
+    auto rom_scope = help(tr("Pins (ROM changes you keep) are saved in the recipe. What's learned about the code "
+                             "belongs to the game, for every recipe."),
+                          this);
+    rom_scope->setObjectName("rom_scope");
+    layout->addWidget(rom_scope);
     changed_label = new QLabel(this);
     changed_label->setObjectName("rom_changed");
     changed_label->setWordWrap(true);
@@ -551,6 +562,11 @@ SafetyPage::SafetyPage(CorruptionControl &control, QWidget *parent) : QWidget(pa
     setObjectName("safety_page");
     auto layout = pageLayout(this);
     layout->addWidget(ui::heading(tr("Crash Guard"), this));
+    auto guard_scope = help(tr("These switches are for the app, not saved in a recipe. After a crash can follow the "
+                               "recipe's own choice."),
+                            this);
+    guard_scope->setObjectName("safety_scope");
+    layout->addWidget(guard_scope);
     detect_check = new QCheckBox(tr("Catch crashes and go back a few seconds"), this);
     detect_check->setObjectName("detect");
     detect_check->setToolTip(tr("Notices when the game freezes, goes black, stops or reboots itself, takes it back "
@@ -703,6 +719,21 @@ void SafetyPage::refreshBackups()
 
 // ---------------------------------------------------------------- Sidebar
 
+QString recipe_state(const PanelStatus &status)
+{
+    if (!status.game_loaded)
+        return QObject::tr("No game loaded");
+    if (!status.has_recipe)
+        return QObject::tr("No recipe");
+    if (status.blank)
+        return QObject::tr("Empty · not saved");
+    if (status.untitled)
+        return QObject::tr("Not saved");
+    if (status.recipe_path.empty())
+        return QObject::tr("Starter · not yours yet");
+    return status.edited ? QObject::tr("Changed since saved") : QObject::tr("Saved");
+}
+
 std::array<SidebarNote, 6> sidebar_notes(const PanelStatus &status, size_t others, bool remote_on)
 {
     std::array<SidebarNote, 6> notes;
@@ -710,10 +741,10 @@ std::array<SidebarNote, 6> sidebar_notes(const PanelStatus &status, size_t other
     auto count = [](size_t n, const char *one, const char *many) {
         return n == 1 ? QObject::tr(one) : QObject::tr(many).arg(QLocale().toString(qulonglong(n)));
     };
-    if (status.has_recipe)
+    if (status.has_recipe && !status.blank)
     {
         QString text = count(status.rules.size(), "1 rule", "%1 rules");
-        if (status.edited && !status.recipe_path.empty())
+        if (status.edited && (!status.recipe_path.empty() || (status.untitled && !status.blank)))
             text += QObject::tr(" · unsaved");
         note(WorkshopPage::Recipe).text = text;
     }
@@ -746,7 +777,7 @@ SharingPage::SharingPage(CorruptionControl &control, QWidget *parent) : QWidget(
     layout->addWidget(ui::heading(tr("Library"), this));
     layout->addWidget(help(tr("The folder where recipes, named areas and what the app learns about each game are "
                               "kept. Point it at a folder you share (a git clone, or one Syncthing keeps in step) "
-                              "and you play with each other's recipes and maps."),
+                              "and you play with each other's recipes and maps. Nothing on this page is part of a recipe."),
                            this));
     library_label = new ui::ElidedLabel(this);
     library_label->setObjectName("library");

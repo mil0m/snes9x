@@ -18,8 +18,8 @@ std::string SessionRemote::set_active(bool on)
     auto s = session().status();
     if (on && !s.game_loaded)
         return "No game loaded";
-    if (on && !s.has_recipe)
-        return "No recipe loaded: choose one in the panel (or paint something) first";
+    if (on && (!s.has_recipe || s.blank))
+        return "Nothing to run yet: choose a recipe (or paint something) first";
     session().setActive(on);
     return {};
 }
@@ -113,10 +113,10 @@ remote::StatusView SessionRemote::status()
     remote::StatusView v;
     v.game_loaded = s.game_loaded;
     v.game = s.game.title;
-    v.recipe = s.has_recipe ? s.engine.recipe_name : "";
+    v.recipe = s.has_recipe && !s.blank ? s.engine.recipe_name : ""; // a blank Untitled is as good as none (#74)
     v.active = s.engine.active;
     v.starting = s.starting;
-    v.has_recipe = s.has_recipe;
+    v.has_recipe = s.has_recipe && !s.blank;
     v.chaos = s.intensity;
     v.seed = s.engine.seed;
     v.crashes = s.crashes;

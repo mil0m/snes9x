@@ -230,7 +230,7 @@ Cockpit::Cockpit(CorruptionControl &control, RecipeActions &actions, QWidget *pa
     connect(back_button, &QPushButton::clicked, this, [this] { this->control.backToNormal(); });
     connect(here_button, &QPushButton::clicked, this, [this] { this->control.normalHere(); });
     connect(reroll_button, &QPushButton::clicked, this,
-            [this] { seed_edit->setText(QString::number(this->control.reroll())); });
+            [this] { showSeed(QString::number(this->control.reroll())); });
     connect(seed_edit, &QLineEdit::returnPressed, this, [this] {
         bool ok = false;
         auto seed = seed_edit->text().trimmed().toULongLong(&ok, 0);
@@ -434,17 +434,22 @@ void Cockpit::refresh()
         shown_rules_generation = status.rules_generation;
         rebuildRules(status);
     }
-    if (status.recipe_generation != shown_choice_generation || status.recipe_path != shown_recipe_path)
+    if (status.recipe_generation != shown_choice_generation || status.recipe_path != shown_recipe_path ||
+        int(status.blank) != shown_blank)
     {
         shown_choice_generation = status.recipe_generation;
         shown_recipe_path = status.recipe_path;
+        shown_blank = int(status.blank);
         syncRecipeChoice(status);
     }
-    start_card->setVisible(status.game_loaded && !status.has_recipe);
+    // An Untitled recipe with nothing in it (#74) is as good as none: the Start card, and
+    // nothing to run yet.
+    bool usable = status.has_recipe && !status.blank;
+    start_card->setVisible(status.game_loaded && !usable);
 
-    save_button->setEnabled(status.has_recipe && (status.edited || status.new_moment || status.recipe_path.empty()));
-    run_controls->setVisible(status.has_recipe); // hidden rather than greyed out
-    mark_button->setVisible(status.has_recipe);
+    save_button->setEnabled(usable && (status.edited || status.new_moment || status.recipe_path.empty()));
+    run_controls->setVisible(usable); // hidden rather than greyed out
+    mark_button->setVisible(usable);
     chaos_slider->refresh(status.intensity);
     if (status.intensity != all_rules)
     {
@@ -463,33 +468,33 @@ void Cockpit::refresh()
     }
     buttons_bar->setButtons(status.buttons);
     buttons_box->setVisible(!status.buttons.empty());
-    rules_box->setVisible(status.has_recipe);
+    rules_box->setVisible(usable);
     rules_empty->setVisible(status.rules.empty());
 
     bool on = status.engine.active;
-    corrupt_button->setEnabled(status.has_recipe);
-    if (shown_active != int(on) + 2 * int(status.has_recipe))
+    corrupt_button->setEnabled(usable);
+    if (shown_active != int(on) + 2 * int(usable))
     {
-        shown_active = int(on) + 2 * int(status.has_recipe);
+        shown_active = int(on) + 2 * int(usable);
         QString key = toggle_key.isEmpty() ? QString() : QString(" (%1)").arg(toggle_key);
         corrupt_button->setText((on ? tr("Stop") : tr("Corrupt")) + key);
         corrupt_button->setIcon(ui::icon(on ? "player-stop" : "bolt"));
-        corrupt_button->setDefault(!on && status.has_recipe); // the obvious next step looks it
-        corrupt_button->setToolTip(!status.has_recipe ? tr("Pick a recipe first")
+        corrupt_button->setDefault(!on && usable); // the obvious next step looks it
+        corrupt_button->setToolTip(!usable ? tr("Pick a recipe first, or put something in this one")
                                    : on ? tr("Stop corrupting. What it already changed stays; Back to Normal undoes it.")
                                         : tr("Start the recipe."));
     }
     back_button->setEnabled(status.can_go_back || status.engine.active);
     here_button->setEnabled(status.engine.active || status.rom_changed > 0);
     if (!seed_edit->hasFocus())
-        seed_edit->setText(status.has_recipe ? QString::number(status.engine.seed) : QString());
+        showSeed(status.has_recipe ? QString::number(status.engine.seed) : QString());
 
     // What's happening, in one bar.
     if (!status.game_loaded)
         showState("idle", tr("Load a game to start"));
     else if (status.paused)
         showState("idle", tr("Paused · Emulation > Run starts it"));
-    else if (!status.has_recipe)
+    else if (!usable)
         showState("idle", tr("Pick a recipe to start"));
     else if (status.starting)
         showState("corrupting", tr("Starting…"));
@@ -584,6 +589,15 @@ void Cockpit::refreshRecipes()
     syncRecipeChoice(status);
 }
 
+void Cockpit::showSeed(const QString &seed)
+{
+    if (seed_edit->text() == seed)
+        return;
+    // A fresh seed has up to 20 digits: show its start, not its end (a narrow panel cuts it).
+    seed_edit->setText(seed);
+    seed_edit->setCursorPosition(0);
+}
+
 void Cockpit::syncRecipeChoice(const PanelStatus &status)
 {
     QSignalBlocker block(recipe_combo);
@@ -591,13 +605,14 @@ void Cockpit::syncRecipeChoice(const PanelStatus &status)
     for (int i = recipe_combo->count() - 1; i >= 0; i--)
         if (recipe_combo->itemData(i).toString() == "loaded")
             recipe_combo->removeItem(i);
-    if (!status.has_recipe)
+    if (!status.has_recipe || status.blank)
         return recipe_combo->setCurrentIndex(0);
     auto &entries = actions.entries();
     for (size_t i = 0; i < entries.size(); i++)
         if (!status.recipe_path.empty() && entries[i].path == status.recipe_path)
             return recipe_combo->setCurrentIndex(recipe_combo->findData(QString("mine:%1").arg(i)));
-    recipe_combo->insertItem(1, tr("%1 (new)").arg(qs(status.engine.recipe_name)), QString("loaded"));
+    recipe_combo->insertItem(1, (status.untitled ? tr("%1 (not saved)") : tr("%1 (new)")).arg(qs(status.engine.recipe_name)),
+                             QString("loaded"));
     recipe_combo->setCurrentIndex(1);
 }
 

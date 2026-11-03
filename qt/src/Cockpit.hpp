@@ -44,6 +44,7 @@ class Cockpit : public QWidget
 
   private:
     void rebuildRules(const PanelStatus &status);
+    void showSeed(const QString &seed);
     void syncRecipeChoice(const PanelStatus &status);
     void recipeChosen(int index);
     void fitRulesTable();
@@ -95,6 +96,7 @@ class Cockpit : public QWidget
     uint64_t shown_library_generation = 0;
     uint64_t shown_choice_generation = UINT64_MAX;
     std::filesystem::path shown_recipe_path;
+    int shown_blank = -1;
     int shown_active = -1;
 
     enum { kOn, kName, kStrength, kColumns };

@@ -155,11 +155,8 @@ TEST_SUITE("workshop")
         };
         child<QPushButton>(page, "add_rule")->click();
         CHECK(f.control.calls.back() == "add rule sparkle");
-        f.actions.askText = [](const QString &, const QString &, const QString &) -> std::optional<QString> {
-            return QString("Fresh");
-        };
         child<QPushButton>(page, "new_recipe")->click();
-        CHECK(f.control.calls.back() == "new Fresh");
+        CHECK(f.control.calls.back() == "new "); // Untitled: no name asked (#74)
         child<QCheckBox>(page, "moments")->setChecked(!child<QCheckBox>(page, "moments")->isChecked());
         CHECK(f.control.calls.back().rfind("moments", 0) == 0);
         auto rules = child<QTableWidget>(page, "rules");
@@ -379,6 +376,89 @@ TEST_SUITE("workshop")
         f.workshop.close();
     }
 
+    TEST_CASE("always a recipe (#74): the Workshop names the one it changes, on every page, and its state")
+    {
+        Fixture f; // a blank Untitled
+        f.workshop.show();
+        f.workshop.refresh();
+        auto name = child<QLabel>(f.workshop, "workshop_recipe");
+        auto state = child<QLabel>(f.workshop, "workshop_recipe_state");
+        CHECK(name->text() == "Untitled");
+        CHECK(state->text() == "Empty · not saved");
+        CHECK(f.workshop.windowTitle() == "Untitled[*] — Corruption Workshop");
+        CHECK_FALSE(f.workshop.isWindowModified()); // nothing in it to lose
+        CHECK(child<QLabel>(*f.workshop.recipePage(), "recipe_notes")->text().contains("lands in this recipe"));
+        CHECK(child<QPushButton>(*f.workshop.recipePage(), "add_rule")->isEnabled()); // no "make a recipe first"
+        CHECK_FALSE(child<QPushButton>(*f.workshop.recipePage(), "save")->isEnabled()); // nothing in it to keep
+        CHECK(sidebar_notes(f.control.status(), 0, false)[0].text.isEmpty()); // not "0 rules"
+
+        f.workshop.showPage(WorkshopPage::Functions); // the header stays whatever the page
+        f.control.s.blank = false; // a function turned off
+        f.control.s.edited = true;
+        f.workshop.refresh();
+        CHECK(name->text() == "Untitled");
+        CHECK(state->text() == "Not saved");
+        CHECK(f.workshop.isWindowModified());
+        CHECK(sidebar_notes(f.control.status(), 0, false)[0].text == "0 rules · unsaved");
+
+        f.control.running(1); // a saved recipe of the library
+        f.control.s.edited = true;
+        f.workshop.refresh();
+        CHECK(name->text() == "Gravity mess");
+        CHECK(state->text() == "Changed since saved");
+        CHECK(f.workshop.windowTitle() == "Gravity mess[*] — Corruption Workshop");
+        f.control.s.edited = false;
+        CHECK(recipe_state(f.control.status()) == "Saved");
+        f.control.s.recipe_path.clear(); // a starter
+        CHECK(recipe_state(f.control.status()) == "Starter · not yours yet");
+        f.control.s.game_loaded = false;
+        CHECK(recipe_state(f.control.status()) == "No game loaded");
+    }
+
+    TEST_CASE("each page says what of it is saved in the recipe (#74)")
+    {
+        Fixture f;
+        CHECK(child<QLabel>(*f.workshop.findChild<QWidget *>("rom_page"), "rom_scope")->text().contains("saved in the recipe"));
+        CHECK(child<QLabel>(*f.workshop.findChild<QWidget *>("safety_page"), "safety_scope")->text().contains("not saved in a recipe"));
+        auto labels = f.workshop.findChildren<QLabel *>();
+        CHECK(std::any_of(labels.begin(), labels.end(),
+                          [](QLabel *l) { return l->text().contains("names are shared with everyone"); }));
+        CHECK(std::any_of(labels.begin(), labels.end(),
+                          [](QLabel *l) { return l->text().contains("Nothing on this page is part of a recipe"); }));
+    }
+
+    TEST_CASE("an Untitled recipe with something in it asks before New; a blank one doesn't; Save asks its name (#74)")
+    {
+        Fixture f;
+        auto &page = *f.workshop.recipePage();
+        page.refresh(f.control.status());
+        int asked = 0;
+        f.actions.askUnsaved = [&](const QString &, const QString &) {
+            asked++;
+            return RecipeActions::Unsaved::Cancel;
+        };
+        f.control.s.edited = true; // a re-roll alone: still blank
+        child<QPushButton>(page, "new_recipe")->click();
+        CHECK(asked == 0);
+        CHECK(f.control.calls.back() == "new ");
+
+        f.control.s.blank = false; // paint, no rules
+        size_t before = f.control.calls.size();
+        child<QPushButton>(page, "new_recipe")->click();
+        CHECK(asked == 1);
+        CHECK(f.control.calls.size() == before); // cancelled
+
+        QString offered;
+        f.actions.askText = [&](const QString &, const QString &, const QString &text) -> std::optional<QString> {
+            offered = text;
+            return QString("Floaty");
+        };
+        page.refresh(f.control.status());
+        child<QPushButton>(page, "save")->click();
+        CHECK(offered == "My recipe"); // not "Untitled"
+        CHECK(f.control.calls.back() == "save as Floaty");
+    }
+
     TEST_CASE("New Recipe with unsaved changes: Save, Don't Save, or Cancel and nothing happens")
     {
         Fixture f;
@@ -388,7 +468,7 @@ TEST_SUITE("workshop")
         auto &page = *f.workshop.recipePage();
         page.refresh(f.control.status());
         auto new_button = child<QPushButton>(page, "new_recipe");
-        CHECK(new_button->text() == "New Recipe…");
+        CHECK(new_button->text() == "New Recipe"); // no dialog of its own any more (#74)
         QString asked;
         int named = 0;
         f.actions.askText = [&](const QString &, const QString &, const QString &) -> std::optional<QString> {
@@ -402,12 +482,12 @@ TEST_SUITE("workshop")
         size_t before = f.control.calls.size();
         new_button->click();
         CHECK(asked == "Testing1");
-        CHECK(named == 0); // cancelled: not even asked for a name
+        CHECK(named == 0); // never asked for a name (#74)
         CHECK(f.control.calls.size() == before);
 
         f.actions.askUnsaved = [](const QString &, const QString &) { return RecipeActions::Unsaved::Discard; };
         new_button->click();
-        CHECK(f.control.calls.back() == "new Fresh");
+        CHECK(f.control.calls.back() == "new ");
         CHECK(std::find(f.control.calls.begin() + long(before), f.control.calls.end(), "save") == f.control.calls.end());
 
         f.control.s.edited = true;
@@ -418,7 +498,7 @@ TEST_SUITE("workshop")
         new_button->click();
         REQUIRE(f.control.calls.size() >= before + 2);
         CHECK(f.control.calls[before] == "save"); // kept first, then the new one
-        CHECK(f.control.calls.back() == "new Fresh");
+        CHECK(f.control.calls.back() == "new ");
     }
 }
 

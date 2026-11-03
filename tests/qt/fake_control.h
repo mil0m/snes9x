@@ -28,11 +28,18 @@ struct FakeControl : CorruptionControl
         s.sizes[size_t(corrupt::Target::ROM)] = 0x100000;
         s.rom_size = 0x100000;
         remote_state.status = "Off. Nobody can control this from a browser.";
+        // A game starts with a blank Untitled recipe (#74), as the session does.
+        s.has_recipe = true;
+        s.untitled = true;
+        s.blank = true;
+        s.engine.recipe_name = "Untitled";
     }
     // A recipe with rules, running.
     void running(size_t rules = 3)
     {
         s.has_recipe = true;
+        s.untitled = false;
+        s.blank = false;
         s.engine.recipe_name = "Gravity mess";
         s.engine.active = true;
         s.engine.seed = 1007;

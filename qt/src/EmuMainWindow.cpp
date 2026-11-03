@@ -293,7 +293,7 @@ void EmuMainWindow::createWidgets()
         connect(corruption_menu->addAction(text), &QAction::triggered,
                 [this, act] { act(corruption_dock->recipeActions()); });
     };
-    recipe_item(tr("&New Recipe…"), [](RecipeActions &a) { a.newRecipe(); });
+    recipe_item(tr("&New Recipe"), [](RecipeActions &a) { a.newRecipe(); });
     recipe_item(tr("Save Recipe &As…"), [](RecipeActions &a) { a.saveAs(); });
     recipe_item(tr("&Share Recipe…"), [](RecipeActions &a) { a.share(); });
     recipe_item(tr("&Import a Shared Recipe…"), [](RecipeActions &a) { a.import(); });

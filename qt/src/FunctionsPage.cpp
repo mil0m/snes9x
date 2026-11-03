@@ -224,7 +224,8 @@ FunctionsPage::FunctionsPage(FunctionSource &source, QWidget *parent) : QWidget(
     auto intro = new QLabel(tr("The game's own functions, as it calls them, busiest right now first. Tick <b>Off</b> "
                                "and the game skips that function: it returns as soon as it's called. Gravity, "
                                "collision, enemy AI, the scroll: try the busy ones and watch what stops. Untick to "
-                               "put it back. If one breaks the game, the crash guard turns it back on."),
+                               "put it back. If one breaks the game, the crash guard turns it back on. Off, Guard, buttons "
+                               "and changes are saved in the recipe; names are shared with everyone who plays this game."),
                             this);
     intro->setWordWrap(true);
     ui::setTone(intro, ui::Tone::Secondary);

@@ -75,8 +75,8 @@ Use a game you have never set up (a fresh library folder, so no recipes exist fo
    - [ ] It's listed as *(broken)*, and choosing it shows the error with its path.
 4. Workshop > **Sharing** > **Open This Game's Folder**.
    - [ ] The game's library folder opens, with its `recipes` folder.
-5. **New Recipe…**, add a rule, then **Save** (the recipe has no file yet).
-   - [ ] It asks for a name. Before saving, the list shows the recipe as *<name> (new)*.
+5. **New Recipe**, add a rule, then **Save** (the recipe has no file yet).
+   - [ ] It asks for a name. Before saving, the list shows the recipe as *Untitled (not saved)*.
 
 ## 5. Save backups
 1. Load the game.
@@ -127,7 +127,7 @@ Use a game you have never set up (a fresh library folder, so no recipes exist fo
    - [ ] **Save** is disabled again, and the recipe's JSON file has the new rule.
 7. Edit something, then choose another recipe in the **Recipe** list.
    - [ ] It asks before discarding the changes. **No** keeps them.
-8. **New Recipe…**, **Add Rule…**, then **Save As…** `scratch` (Recipe page).
+8. **New Recipe**, **Add Rule…**, then **Save As…** `scratch` (Recipe page).
    - [ ] `scratch.json` appears in the recipe list, and **Save** works on it afterwards.
 9. If the game has a `regions.json` (add one by hand; see README), open the editor.
    - [ ] **Region** lists the names; picking one fills the range and greys it out, and the saved JSON uses the name.
@@ -578,7 +578,7 @@ Removed on 2026-11-01: it didn't pay off (see FEATURES.md, *Tried and removed*).
 3. Click the links: **Add or change rules**, then the guard line (*Crash guard on · …*), then the ROM line (*ROM: N bytes changed · …*).
    - [ ] Each opens the Workshop on the matching page (Recipe, Safety, ROM). Clicking a link while the Workshop is open switches its page instead of opening a second window.
 4. Click through every Workshop page in the sidebar: Recipe, Functions, Memory, ROM, Safety, Sharing.
-   - [ ] **Recipe**: name and notes; New Recipe…, Save, Save As…, Share…, Import…; *Remember where each run starts*; the rules in full with Add Rule… and edit, duplicate and remove; **Also in This Recipe**.
+   - [ ] **Recipe**: name and notes; New Recipe, Save, Save As…, Share…, Import…; *Remember where each run starts*; the rules in full with Add Rule… and edit, duplicate and remove; **Also in This Recipe**.
    - [ ] **Functions**: same controls as before; **Change It…** opens its own dialog.
    - [ ] **Memory**: the memory viewer. The paint value and brush show only while **Paint Mode** is on.
    - [ ] **ROM**: what changed, what's learned, Export ROM…, Restore Clean ROM, Clear Paint, Survivors and pins.
@@ -595,7 +595,7 @@ Removed on 2026-11-01: it didn't pay off (see FEATURES.md, *Tried and removed*).
    - [ ] On **Sharing** > **Who's Here**, each copy lists both players, with when they last changed something, and *(you)* beside its own name.
    - [ ] With a `*.sync-conflict-*` file in the game's folder, a warning shows.
 9. Open the **Corruption** menu.
-   - [ ] It lists: Show Panel, Open Workshop, New Recipe…, Save Recipe As…, Share Recipe…, Import a Shared Recipe…, The ROM (Export, Restore Clean)…, Library and Remote Control…, Guide…. Each opens what its name says (the Workshop page for the ROM and Library items, the guide for Guide…).
+   - [ ] It lists: Show Panel, Open Workshop, New Recipe, Save Recipe As…, Share Recipe…, Import a Shared Recipe…, The ROM (Export, Restore Clean)…, Library and Remote Control…, Guide…. Each opens what its name says (the Workshop page for the ROM and Library items, the guide for Guide…).
    - [ ] **Options > Shortcuts…** has only *Corruption: Corrupt / Stop*.
 10. Switch the system between light and dark (or run with `TOUR_PLATFORM=cocoa`), and look at the panel and every Workshop page.
    - [ ] Text is readable, icons show in both, nothing is cut off, and the sidebar and pages use the same look as the rest of the app.
@@ -657,13 +657,13 @@ Removed on 2026-11-01: it didn't pay off (see FEATURES.md, *Tried and removed*).
    - [ ] Each page is read with its words (*Functions, 1 off*).
 
 ## 41. Unsaved changes: Save, Don't Save, Cancel
-1. Load a saved recipe, move a rule's strength (it now has unsaved changes), then press **New Recipe…** (Recipe page).
+1. Load a saved recipe, move a rule's strength (it now has unsaved changes), then press **New Recipe** (Recipe page).
    - [ ] It asks *Save the changes to "<name>" first?* with **Save**, **Don't Save** and **Cancel**.
    - [ ] **Cancel** (or Escape): nothing happens, no name is asked, the recipe and its change are still there.
-2. Press **New Recipe…** again and choose **Don't Save**.
-   - [ ] It asks for the new recipe's name; the old recipe's change is gone.
-3. Change the new recipe, then pick another recipe in the panel's list and choose **Save**.
-   - [ ] A new recipe asks for its name first (cancelling that cancels the switch); then it's saved and the other recipe loads. The same question comes for **Import…**.
+2. Press **New Recipe** again and choose **Don't Save**.
+   - [ ] An Untitled recipe starts (no name asked); the old recipe's change is gone.
+3. Change the Untitled recipe (a rule, or just a function turned off), then pick another recipe in the panel's list and choose **Save**.
+   - [ ] It asks for its name first (cancelling that cancels the switch); then it's saved and the other recipe loads. The same question comes for **Import…**.
 
 ## 42. Painting the ROM: draft, Apply, crash watch, history (#66)
 1. Load Pocky & Rocky, don't press Corrupt. Workshop > Memory, **rom**, **Pixels**, **Paint Mode** on.
@@ -769,3 +769,17 @@ Removed on 2026-11-01: it didn't pay off (see FEATURES.md, *Tried and removed*).
    - [ ] It counts in its own things: *instructions*, *jump table entries*, *functions*.
 7. On the remote page (QA 31), drag **Strength, all rules**.
    - [ ] Under each rule's slider, a line says what it does, and it follows within a second.
+
+## 50. Always a recipe: Untitled until it's saved (#74)
+1. Load a game and open the Workshop before choosing anything.
+   - [ ] The top of the page list says **Untitled** / *Empty · not saved*; the window's title is *Untitled — Corruption Workshop*. The Recipe page says nothing is in it yet; **Add Rule…** works, **Save** is greyed. The panel still shows the *Start here* card and *Choose a recipe…*, and **Corrupt** waits.
+2. Without picking a recipe, turn a function **Off** (Functions page; press Corrupt first so it takes).
+   - [ ] The header now says *Not saved*, the title has the edited mark, the panel's list says *Untitled (not saved)* and **Corrupt** works. The Recipe page's *Also in This Recipe* lists the switch. No recipe called *Switches* appears (nor *Painted*, *Protected*, *Changes* or *Pinned* for the others).
+3. Press **New Recipe**.
+   - [ ] It asks Save / Don't Save / Cancel (the switch is worth keeping). **Save** asks a name, offering *My recipe*.
+4. With a blank Untitled, press **Re-roll** or move **Strength, all rules**, then **New Recipe** or pick a starter.
+   - [ ] Nothing is asked: an empty recipe has nothing to lose.
+5. Look at the top of each page: Functions, ROM, Safety, Sharing; and paint on WRAM in Memory.
+   - [ ] Each says what is the recipe's: Functions (Off, Guard, buttons, changes; names are everyone's), ROM (pins; what's learned is the game's), Safety (the app's), Sharing (nothing), Memory (the paint line says it's kept in the recipe).
+6. Pick a starter, then a saved recipe and change it.
+   - [ ] The header says *Starter · not yours yet*, then *Saved*, then *Changed since saved*.

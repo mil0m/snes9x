@@ -405,3 +405,84 @@ changes how a game is corrupted.
 - **Fit:** the label is longer than *Chaos*; the tour's running panel shows it whole, with
   the slider beside it.
 - Tests 548/57/183 (unit/real-core/Qt), ASan clean, tour and the remote end-to-end read.
+
+## Always a recipe: Untitled until it's saved (#74)
+
+Mikael: "we create a new recipe from the workshop. But you can open the workshop and then
+… do all of the changes and add rules and open a ROM … without ever having created a new
+recipe. It seems so strange to me. … It's difficult to understand if some things are tied
+to a recipe existing or not."
+
+**What the code did.** Three behaviours with no rule behind them: *Add Rule* and *Corrupt*
+refused without a recipe; turning a function off, Guard, painting, keeping a change and
+pinning each made an unsaved recipe with a name of its own (*Switches*, *Protected*,
+*Painted*, *Changes*, *Pinned*); names, what's learned, Safety and Sharing never belonged to
+one, and no page said so.
+
+**Choice (Mikael agreed): there is always a recipe, like a document in an editor.** Asking
+for a name whenever the Workshop opens was the other option; it was turned down because the
+Workshop is opened just to look (memory, names, Safety) as often as to build, and that would
+leave a trail of throwaway recipes.
+- **A game loads with an Untitled recipe** (empty, a fresh seed). Everything lands in it:
+  rules, switches, guards, paint, changes, pins. The five made-up names go.
+- **The name comes at Save** (Save on Untitled is Save As, as for a starter). *New Recipe*
+  starts another Untitled without asking for a name (it still asks about unsaved work).
+- **Blank** = Untitled with nothing in it (no rules, paint, pins, switches, protects,
+  changes). Blank behaves as "no recipe" did where that was useful: the panel's *Start here*
+  card shows, *Corrupt* and the run controls wait, the remote page offers starters. A re-roll
+  or a strength change alone doesn't make it worth saving.
+- **Unsaved work is never lost silently:** choosing another recipe, *New*, or *Import* with
+  a non-blank Untitled (or any edited recipe) asks Save / Don't Save / Cancel, as now. Today
+  that asks only when it has rules; it will ask for any content.
+- **Which recipe you're editing, on every page:** the Workshop's window title is the
+  recipe's name with the edited mark (*Untitled — Corruption Workshop*, the platform's
+  document convention), and the top of the sidebar names it with its state (*not saved*,
+  *saved*, *changed*). The panel's recipe list shows *Untitled (not saved)*.
+- **Each page says what of it is the recipe's:** one line under the page's intro. Functions:
+  Off, Guard, buttons and changes are saved in the recipe; names are shared with everyone
+  for this game. Memory: paint is saved in the recipe. ROM: pins are; what's learned about the
+  code is the game's. Safety: these switches are for the app (After a crash can follow the
+  recipe). Sharing: nothing in it is the recipe's.
+
+**Later (Mikael):** maybe group more into the recipe; this change makes the line visible
+first.
+
+**Tests:** session (fake-free parts in `tests/qt` with the fake control; the session's own
+behaviour where it is testable): a loaded game has an Untitled blank recipe; switch/paint/
+protect/change/pin land in it without renaming it; blank → not worth keeping, content →
+asks; New makes Untitled without a name; Save on Untitled asks for a name. Panel: Start card
+and Corrupt follow *blank*; the list shows *Untitled (not saved)*. Workshop: title and
+sidebar header follow the recipe and its state; each page's scope line. Remote: a blank
+recipe reads as none. No smoke numbers: nothing changes how a game is corrupted.
+
+### How it went (#74)
+
+- **The session.** `gameLoaded` ends with `newRecipeLocked({})`: an empty name means
+  *Untitled*, `untitled` set and `saved_json` taken from it, so it isn't *edited* until
+  something is in it. The five places that made their own recipe now make the same Untitled
+  one (they only run with no game recipe at all, which no longer happens after a load).
+  `blankLocked()` (Untitled, no rules, paint, pins, switches, protects or changes) keeps
+  `setActive`/`toggleActive` from running an empty recipe and goes out in the status as
+  `blank`; loading or saving a recipe clears `untitled`. The tour logs it on the real
+  session: *untitled at load: "Untitled" untitled=1 blank=1 edited=0 rules=0*, then
+  *after Add Rule: … blank=0 edited=1 rules=1* (Add Rule straight away, no "make a recipe
+  first").
+- **The panel** treats blank as it treated no recipe (Start card, *Choose a recipe…*,
+  Corrupt and the run controls waiting), so a fresh game looks exactly as before; with
+  something in it the list says *Untitled (not saved)*. **The remote page** reads a blank
+  recipe as none.
+- **New Recipe** lost its dialog and its ellipsis (button and menu); **Save** on Untitled
+  offers *My recipe*, not *Untitled*. Unsaved-work questions now cover an Untitled recipe
+  with any content, not only rules; a re-roll or strength change alone on a blank one isn't
+  asked about.
+- **The Workshop** has the recipe's name and state above its page list (on the list's own
+  surface, so it reads as one sidebar) and in the window title with the edited mark. The
+  sidebar's Recipe note is empty for a blank recipe (not *0 rules*). Scope lines: a
+  sentence at the end of Functions' intro, one help line under the ROM and Safety headings,
+  the Library help on Sharing, and Memory's paint status line ("kept in the recipe") so the
+  page, which has no intro, doesn't grow taller.
+- **Found on the way:** a fresh recipe's seed (up to 20 digits) showed its *end* in the
+  panel's narrow seed field, since `setText` puts the cursor last; the field now shows the
+  start and is only re-set when the seed changes.
+- Narrowest Workshop still 887 px; tests 548/57/187 (unit/real-core/Qt), ASan clean, tour
+  (28 pictures, three new) and the remote end-to-end read.

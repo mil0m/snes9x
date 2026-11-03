@@ -38,6 +38,10 @@ struct SidebarNote
     bool warning = false;
 };
 // `others`: people other than you with files for this game in the library.
+// The recipe the Workshop is changing, in a few words for the top of its sidebar (#74):
+// "Not saved", "Changed since saved", "Saved", "Empty · not saved", "Starter · not yours yet".
+QString recipe_state(const PanelStatus &status);
+
 std::array<SidebarNote, 6> sidebar_notes(const PanelStatus &status, size_t others, bool remote_on);
 
 // The recipe: its rules in full, everything else it keeps, and saving and sharing it.

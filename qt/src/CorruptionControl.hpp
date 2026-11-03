@@ -35,6 +35,8 @@ struct PanelStatus
     bool saved_moments = true;
     std::filesystem::path recipe_path; // the file it came from; empty for a new recipe
     bool edited = false;               // differs from that file (rules, seed, name...)
+    bool untitled = false;             // made here, never saved: a game starts with one (#74)
+    bool blank = false;                // untitled with nothing in it: as good as no recipe
     std::array<size_t, corrupt::kTargetCount> sizes{}; // the loaded game's memory sizes
     std::string message;             // last notable event, for the panel: a few words
     std::string message_detail;      // the same in full (on hover), or empty

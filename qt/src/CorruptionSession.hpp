@@ -55,7 +55,7 @@ class CorruptionSession
 
     // Engine control. loadRecipe validates against the loaded game and returns the problems, if any.
     std::vector<std::string> loadRecipe(const corrupt::Recipe &recipe, const std::filesystem::path &path = {});
-    void newRecipe(const std::string &name); // an empty recipe for the loaded game
+    void newRecipe(const std::string &name); // an empty recipe for the loaded game; empty name: Untitled (#74)
     void setActive(bool active);
     bool toggleActive(); // returns the new state
     // Back to normal: corruption off, the clean ROM back, and the game back at the moment the
@@ -182,7 +182,8 @@ class CorruptionSession
 
   private:
     CorruptionSession() = default;
-    void newRecipeLocked(const std::string &name);
+    void newRecipeLocked(const std::string &name); // empty: Untitled, not edited until something is in it
+    bool blankLocked() const;                       // Untitled with nothing in it
     static void frameHook();
     void onFrame();
     void backupNow(const char *reason);
@@ -279,6 +280,7 @@ class CorruptionSession
     std::filesystem::path library_root;
     bool game_loaded = false;
     bool has_recipe = false;
+    bool untitled = false; // made here and never saved (#74): a game starts with one
     uint64_t recipe_generation = 0;
     uint64_t rules_generation = 0;
     std::filesystem::path recipe_path;

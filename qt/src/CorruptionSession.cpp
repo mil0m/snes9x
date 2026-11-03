@@ -23,6 +23,7 @@ namespace
 {
 
 constexpr uint64_t kBackupCheckFrames = 60; // about once a second
+constexpr const char *kUntitled = "Untitled"; // the recipe a game starts with (#74)
 
 std::string hex_bytes(const unsigned char *data, size_t size)
 {
@@ -415,6 +416,7 @@ void CorruptionSession::gameLoaded()
     rom_where = SnesCoreAccess::rom_addresses();
     rom_offsets = SnesCoreAccess::rom_offsets();
     loadCodeMap(); // after the reset watch: the tracer goes on top of it
+    newRecipeLocked({}); // always a recipe (#74): Untitled until it's saved
 }
 
 void CorruptionSession::loadCodeMap()
@@ -599,6 +601,7 @@ std::vector<std::string> CorruptionSession::loadRecipe(const Recipe &recipe, con
     engine.set_recipe(recipe);
     engine.set_active(was_active);
     has_recipe = true;
+    untitled = false;
     recipe_generation++;
     rules_generation++;
     recipe_path = path;
@@ -840,12 +843,21 @@ void CorruptionSession::newRecipe(const std::string &name)
     newRecipeLocked(name);
 }
 
+bool CorruptionSession::blankLocked() const
+{
+    if (!has_recipe || !untitled)
+        return false;
+    auto &r = engine.recipe();
+    return r.rules.empty() && r.patches.empty() && r.pins.empty() && r.switches.empty() && r.protects.empty() &&
+           r.changes.empty();
+}
+
 void CorruptionSession::newRecipeLocked(const std::string &name)
 {
     if (!game_loaded)
         return;
     Recipe recipe;
-    recipe.name = name;
+    recipe.name = name.empty() ? kUntitled : name;
     recipe.game = game;
     recipe.seed = random_seed();
     bool was_active = engine.active();
@@ -857,7 +869,9 @@ void CorruptionSession::newRecipeLocked(const std::string &name)
     recipe_generation++;
     rules_generation++;
     recipe_path.clear();
-    saved_json.clear();
+    untitled = name.empty();
+    // An Untitled recipe isn't edited until something is in it; a named new one is.
+    saved_json = untitled ? recipeJson(recipe) : std::string();
     window_off.clear();
     window_changes.clear();
     guard_dirty = true;
@@ -867,7 +881,8 @@ void CorruptionSession::newRecipeLocked(const std::string &name)
     ahead.reset_counts();
     last_crash.clear();
     configureGuard();
-    note("New recipe: " + name);
+    if (!untitled)
+        note("New recipe: " + name);
 }
 
 std::string CorruptionSession::replaceRule(size_t index, const Rule &rule)
@@ -911,16 +926,18 @@ std::string CorruptionSession::removeRule(size_t index)
 void CorruptionSession::setActive(bool active)
 {
     std::lock_guard lock(mutex);
-    engine.set_active(active && has_recipe && game_loaded);
+    engine.set_active(active && has_recipe && game_loaded && !blankLocked());
 }
 
 bool CorruptionSession::toggleActive()
 {
     std::lock_guard lock(mutex);
-    bool on = !engine.active() && has_recipe && game_loaded;
+    bool on = !engine.active() && has_recipe && game_loaded && !blankLocked();
     engine.set_active(on);
     if (!has_recipe)
         note("No recipe loaded");
+    else if (!engine.active() && blankLocked())
+        note("Nothing in this recipe yet: pick one, or add a rule");
     return on;
 }
 
@@ -1079,6 +1096,7 @@ SaveResult CorruptionSession::saveRecipeAs(const std::string &name, const std::s
     {
         engine.set_info(name, notes);
         recipe_path = result.path;
+        untitled = false;
         saved_json = recipeJson(recipe);
         recipe_generation++; // the dock re-reads the name and path
         note("Saved " + result.path.filename().string());
@@ -1176,6 +1194,8 @@ CorruptionSession::Status CorruptionSession::status()
     s.saved_moments = saved_moments;
     s.recipe_path = recipe_path;
     s.edited = has_recipe && recipeJson(engine.recipe()) != saved_json;
+    s.untitled = has_recipe && untitled;
+    s.blank = blankLocked();
     if (game_loaded)
     {
         for (auto t : kAllTargets)
@@ -1307,7 +1327,7 @@ std::string CorruptionSession::paintLocked(Target t, const PaintBytes &wanted, b
     if (!game_loaded)
         return "No game loaded";
     if (!has_recipe)
-        newRecipeLocked("Painted");
+        newRecipeLocked({});
     PaintBytes bytes;
     size_t size = rom.size(t);
     for (auto [o, v] : wanted)
@@ -1602,7 +1622,7 @@ std::string CorruptionSession::keepSwitch(uint32_t entry, int hotkey, bool start
             if (entry >= rom.clean().size())
                 return "that byte isn't in the ROM";
             if (!has_recipe)
-                newRecipeLocked("Switches");
+                newRecipeLocked({});
             Switch s;
             s.entry = entry;
             s.ret = ret;
@@ -1682,7 +1702,7 @@ std::string CorruptionSession::keepChange(const Change &c)
     if (c.value.empty() || c.value.size() != c.was.size() || c.at + c.value.size() > rom.clean().size())
         return "that change doesn't fit the ROM";
     if (!has_recipe)
-        newRecipeLocked("Changes");
+        newRecipeLocked({});
     Change kept = c;
     kept.hotkey = std::clamp(kept.hotkey, 0, 9);
     engine.add_change(kept);
@@ -1711,7 +1731,7 @@ std::string CorruptionSession::protectFunction(uint32_t entry, bool on, bool dee
     if (!bodies.count(entry) || bodies.at(entry).code.empty())
         return "its code isn't known yet: play until it runs";
     if (!has_recipe)
-        newRecipeLocked("Protected");
+        newRecipeLocked({});
     engine.add_protect({ entry, deep });
     guard_dirty = true;
     return {};
@@ -1889,7 +1909,7 @@ std::string CorruptionSession::pin(const std::vector<uint32_t> &offsets, const s
     if (!game_loaded)
         return "No game loaded";
     if (!has_recipe)
-        newRecipeLocked("Pinned");
+        newRecipeLocked({});
     std::vector<Pin> pins;
     std::vector<std::pair<uint32_t, uint8_t>> keep;
     for (auto o : offsets)

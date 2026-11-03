@@ -8,7 +8,9 @@
 #include "WorkshopPages.hpp"
 
 #include <QHBoxLayout>
+#include <QLabel>
 #include <QListWidget>
+#include <QVBoxLayout>
 #include <QPainter>
 #include <QStyledItemDelegate>
 #include <QScrollArea>
@@ -138,7 +140,37 @@ Workshop::Workshop(CorruptionControl &control, RecipeActions &actions, FunctionS
                         sidebar->fontMetrics().horizontalAdvance(tr("12 rules · unsaved")) -
                             (widest - sidebar->fontMetrics().horizontalAdvance(tr("Recipe"))));
     sidebar->setFixedWidth(widest + note + 18 + 48);
-    layout->addWidget(sidebar);
+
+    // Above the pages: the recipe they change (#74), so it's never a guess whether there is one.
+    auto column = new QWidget(this);
+    column->setObjectName("sidebar_column");
+    column->setBackgroundRole(QPalette::Base); // one surface with the list below
+    column->setAutoFillBackground(true);
+    auto column_layout = new QVBoxLayout(column);
+    column_layout->setContentsMargins(0, 0, 0, 0);
+    column_layout->setSpacing(0);
+    auto header = new QWidget(column);
+    header->setObjectName("recipe_header");
+    header->setToolTip(tr("The recipe the Workshop changes. Rules, switches, guards, changes, paint and pins all "
+                          "land in it; Save keeps it."));
+    auto header_layout = new QVBoxLayout(header);
+    header_layout->setContentsMargins(12, 10, 12, 8);
+    header_layout->setSpacing(1);
+    recipe_name = new QLabel(header);
+    recipe_name->setObjectName("workshop_recipe");
+    QFont bold = recipe_name->font();
+    bold.setBold(true);
+    recipe_name->setFont(bold);
+    recipe_name->setTextFormat(Qt::PlainText);
+    recipe_status = new QLabel(header);
+    recipe_status->setObjectName("workshop_recipe_state");
+    ui::setTone(recipe_status, ui::Tone::Secondary);
+    header_layout->addWidget(recipe_name);
+    header_layout->addWidget(recipe_status);
+    column_layout->addWidget(header);
+    column_layout->addWidget(sidebar, 1);
+    column->setFixedWidth(sidebar->width());
+    layout->addWidget(column);
 
     stack = new QStackedWidget(this);
     recipe = new RecipePage(control, actions);
@@ -205,6 +237,15 @@ void Workshop::refresh()
 
 void Workshop::refreshNotes(const PanelStatus &status)
 {
+    // The recipe it changes: above the pages, and the window's title with the edited mark.
+    QString name = status.has_recipe ? QString::fromStdString(status.engine.recipe_name) : QString();
+    recipe_name->setText(name.isEmpty() ? tr("No recipe") : recipe_name->fontMetrics().elidedText(
+                                                                 name, Qt::ElideRight, recipe_name->parentWidget()->width() - 24));
+    recipe_name->setToolTip(name);
+    recipe_status->setText(recipe_state(status));
+    setWindowTitle(name.isEmpty() ? tr("Corruption Workshop") : tr("%1[*] — Corruption Workshop").arg(name));
+    setWindowModified(status.has_recipe && status.edited && !status.blank);
+
     if (ticks++ % 10 == 0) // the library's folder is read every five seconds, not every tick
     {
         auto me = control.me();

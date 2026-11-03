@@ -136,6 +136,29 @@ TEST_SUITE("cockpit")
         CHECK(f.control.calls.back() == "rule 1 off");
     }
 
+    TEST_CASE("always a recipe (#74): a blank Untitled is as good as none; with something in it, it runs")
+    {
+        Fixture f; // a game just loaded: a blank Untitled recipe
+        auto &c = *f.cockpit;
+        auto combo = child<QComboBox>(c, "recipe");
+        CHECK_FALSE(child<QLabel>(c, "start_here")->isHidden());
+        CHECK_FALSE(child<QPushButton>(c, "corrupt")->isEnabled());
+        CHECK(child<QWidget>(c, "run_controls")->isHidden());
+        CHECK(combo->currentText() == "Choose a recipe…");
+        // A function turned off: the Untitled recipe has something in it now.
+        f.control.s.blank = false;
+        f.control.s.edited = true;
+        f.cockpit->refresh();
+        CHECK(child<QLabel>(c, "start_here")->isHidden());
+        CHECK(child<QPushButton>(c, "corrupt")->isEnabled());
+        CHECK(combo->currentText() == "Untitled (not saved)");
+        CHECK(child<QPushButton>(c, "save")->isEnabled());
+        // A fresh seed is long: the field shows its start.
+        f.control.s.engine.seed = 15215831168ULL * 1000000000ULL;
+        f.cockpit->refresh();
+        CHECK(child<QLineEdit>(c, "seed")->cursorPosition() == 0);
+    }
+
     TEST_CASE("Strength, all rules: named like each rule's Strength, and every rule slider says what it means (#73)")
     {
         Fixture f;

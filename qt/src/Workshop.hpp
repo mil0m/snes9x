@@ -67,6 +67,7 @@ class Workshop : public QWidget
     size_t others = 0;             // other people in the library for this game
     int ticks = 0;
     QListWidget *sidebar;
+    class QLabel *recipe_name, *recipe_status; // which recipe it changes, above the pages (#74)
     QStackedWidget *stack;
     QTimer *timer;
     RecipePage *recipe;
