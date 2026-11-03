@@ -48,6 +48,7 @@ struct PanelStatus
     bool policy_overridden = false;
     bool detection_enabled = true;
     bool test_first_enabled = true;
+    double test_first_seconds = 3.0; // how far ahead the recipe tests ROM changes; 0: it turns testing off (#76)
     unsigned crashes = 0;
     std::string last_crash;
     std::vector<unsigned> rule_crashes;

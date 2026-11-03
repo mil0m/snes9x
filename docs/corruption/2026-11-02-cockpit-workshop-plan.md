@@ -496,3 +496,46 @@ Careful / Balanced / Wild choice, the switches tucked under *Details*. **Rejecte
 truly impossible to understand. The direction here is the opposite: explain the details
 themselves, in plain words, where they are, as #73 did for Strength. If the switches are
 hard to parse, fix their words and explanations, not their visibility.
+
+## The Safety page explains its switches (#76)
+
+What item 15 should have been: keep every switch visible and say what it does. Each switch
+and *After a crash* get a line under them, in Secondary tone, like Strength's line in #73:
+what it watches for, what it does then, what it costs, what *off* means, whether it has
+anything to do for this recipe now, and what it has done so far.
+
+- **Catch crashes and go back a few seconds**: watches for the game stopping, restarting
+  itself, or freezing or going black while you press buttons; rewinds a few seconds and
+  deals with the rule that caused it (*After a crash*). Off: a crash stays, and Back to
+  Normal gets the game back. The crash count and learned dangerous spots stay under it.
+- **Test ROM changes before they reach the game** (was *Try ROM changes ahead first*): only
+  rules that change the ROM; plays N seconds ahead (the recipe's `test_first`, 3 unless it
+  says otherwise) unseen, tries up to 3 picks, skips the change if all crash; a short pause
+  each time. *This recipe has no ROM rules, so there's nothing to test*; *this recipe turns
+  it off*; *so far: 12 tested, 2 picked again, 1 skipped*.
+- **Undo a ROM change the moment it derails the game** (was *Put back a ROM change that
+  sends the game astray, at once*): when a changed ROM byte (a rule's, paint, a kept
+  change) makes the game jump into something that isn't code, puts that byte back and plays
+  the frame again, before the crash; watches every instruction while the ROM is changed,
+  which costs a little speed. *The ROM isn't changed, so there's nothing to watch*; *this
+  recipe turns it off*; *so far: 4 put back*.
+- **After a crash**: the chosen action in a sentence (*the rule that caused it gets new
+  random values*, *…halved, not below 5%, in the recipe*, *…turned off in the recipe; turn
+  it back on in Recipe*, the Escalate ladder), plus *changed ROM bytes the game used are
+  put back either way*.
+- The lines are the switches' accessible descriptions; the long tooltips go (they said the
+  same thing, hidden). `PanelStatus` gains `test_first_seconds`.
+
+Tests: the four notes from statuses (no ROM rules, recipe off, counts, each policy) and the
+renamed switches in `workshop_test.cpp`; the tour's Safety picture read.
+
+### How it went (#76)
+
+Built the same day, test first (two widget tests: the four notes from statuses, and the
+page showing them under renamed switches with matching accessible descriptions).
+
+- **Read in the tour** on Goof Troop with *Code drip*: the lines count while it runs (*So
+  far: 8 tested, 1 picked again*). The *After a crash* line first sat a line lower than
+  its menu (the form row was sized for three lines and centred two); it's top-aligned now.
+- **The old tooltips are gone**: they said the same as the lines, hidden.
+- Tests 548/57/189 (unit/real-core/Qt), ASan clean.

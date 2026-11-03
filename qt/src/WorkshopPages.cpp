@@ -4,6 +4,7 @@
 #include "SurvivorsPanel.hpp"
 #include "UiKit.hpp"
 #include "corrupt/rule_text.h"
+#include "corrupt/test_ahead.h"
 
 #include <QCheckBox>
 #include <QClipboard>
@@ -23,11 +24,13 @@
 #include <QMessageBox>
 #include <QPushButton>
 #include <QRegularExpression>
+#include <QStyle>
 #include <QTableWidget>
 #include <QTimer>
 #include <QUrl>
 #include <QVBoxLayout>
 
+#include <algorithm>
 #include <chrono>
 
 using namespace corrupt;
@@ -567,22 +570,28 @@ SafetyPage::SafetyPage(CorruptionControl &control, QWidget *parent) : QWidget(pa
                             this);
     guard_scope->setObjectName("safety_scope");
     layout->addWidget(guard_scope);
+    // Each switch keeps its line under it, indented to its text: the switch explained where
+    // it is, never hidden behind a preset (#76; item 15's Careful/Balanced/Wild was rejected).
+    auto under = [this, layout](QCheckBox *check, const char *name) {
+        auto note = help({}, this);
+        note->setObjectName(name);
+        int indent = check->style()->pixelMetric(QStyle::PM_IndicatorWidth, nullptr, check) +
+                     check->style()->pixelMetric(QStyle::PM_CheckBoxLabelSpacing, nullptr, check);
+        note->setContentsMargins(indent, 0, 0, 0);
+        layout->addLayout(ui::row(check));
+        layout->addWidget(note);
+        layout->addSpacing(ui::sectionGap(this) / 2);
+        return note;
+    };
     detect_check = new QCheckBox(tr("Catch crashes and go back a few seconds"), this);
     detect_check->setObjectName("detect");
-    detect_check->setToolTip(tr("Notices when the game freezes, goes black, stops or reboots itself, takes it back "
-                                "to a moment before, and changes what caused it so it plays on."));
-    layout->addLayout(ui::row(detect_check));
-    test_first_check = new QCheckBox(tr("Try ROM changes ahead first"), this);
+    detect_note = under(detect_check, "detect_note");
+    test_first_check = new QCheckBox(tr("Test ROM changes before they reach the game"), this);
     test_first_check->setObjectName("test_first");
-    test_first_check->setToolTip(tr("Before a live ROM rule changes the game, plays a few seconds ahead with the "
-                                    "change, unseen, and rolls again if the game would crash. Costs a short pause "
-                                    "each time."));
-    layout->addLayout(ui::row(test_first_check));
-    instant_check = new QCheckBox(tr("Put back a ROM change that sends the game astray, at once"), this);
+    test_first_note = under(test_first_check, "test_first_note");
+    instant_check = new QCheckBox(tr("Undo a ROM change the moment it derails the game"), this);
     instant_check->setObjectName("instant_revert");
-    instant_check->setToolTip(tr("When a changed ROM byte makes the game jump into something that isn't code, puts "
-                                 "it back the moment it happens and plays the frame again, before it can crash."));
-    layout->addLayout(ui::row(instant_check));
+    instant_note_label = under(instant_check, "instant_note");
     auto form = ui::form();
     policy_combo = new QComboBox(this);
     policy_combo->setObjectName("policy");
@@ -591,9 +600,11 @@ SafetyPage::SafetyPage(CorruptionControl &control, QWidget *parent) : QWidget(pa
     policy_combo->addItem(tr("Whatever the recipe says"), QString());
     for (auto p : { PolicyKind::Reroll, PolicyKind::Skip, PolicyKind::Dampen, PolicyKind::Disable, PolicyKind::Escalate })
         policy_combo->addItem(policyText(p), QString(policy_name(p)));
-    policy_combo->setToolTip(tr("What to do with the rule that caused a crash. Changed ROM bytes the game used "
-                                "are put back either way."));
     form->addRow(tr("After a crash"), policy_combo);
+    policy_note_label = help({}, this);
+    policy_note_label->setObjectName("policy_note");
+    policy_note_label->setAlignment(Qt::AlignLeft | Qt::AlignTop);
+    form->addRow(QString(), policy_note_label);
     layout->addLayout(form);
     crash_label = new QLabel(this);
     crash_label->setObjectName("crash_status");
@@ -681,6 +692,15 @@ void SafetyPage::refresh(const PanelStatus &status)
     instant_check->setChecked(status.instant_enabled);
     policy_combo->setItemText(0, tr("As the recipe says: %1")
                                      .arg(status.policy_overridden ? tr("its own choice") : policyText(status.policy)));
+    auto note = [](QLabel *label, QWidget *described, const QString &text) {
+        if (label->text() != text)
+            label->setText(text);
+        described->setAccessibleDescription(text);
+    };
+    note(detect_note, detect_check, guard_note(status));
+    note(test_first_note, test_first_check, ahead_note(status));
+    note(instant_note_label, instant_check, instant_note(status));
+    note(policy_note_label, policy_combo, policy_note(status.policy));
     QString text = status.crashes == 0 ? tr("No crashes yet.")
                                        : plural(status.crashes, tr("1 crash caught."), tr("%1 crashes caught.")) +
                                              tr(" Last: %1").arg(qs(status.last_crash));
@@ -715,6 +735,95 @@ void SafetyPage::refreshBackups()
     backup_list->setVisible(backup_list->count() > 0);
     backups_empty->setVisible(backup_list->count() == 0);
     restore_backup_button->setVisible(backup_list->count() > 0);
+}
+
+// ---------------------------------------------------------------- Safety notes (#76)
+
+namespace
+{
+bool has_rom_rules(const PanelStatus &status)
+{
+    return std::any_of(status.rules.begin(), status.rules.end(),
+                       [](const Rule &r) { return r.enabled && r.range.target == Target::ROM; });
+}
+} // namespace
+
+QString guard_note(const PanelStatus &)
+{
+    return QObject::tr("Watches for the game stopping, restarting itself, or freezing or going black while you press "
+                       "buttons. Then it goes back a few seconds and deals with what caused it (After a crash, below), "
+                       "so the game plays on. Off, a crash stays a crash: Back to Normal gets the game back.");
+}
+
+QString ahead_note(const PanelStatus &status)
+{
+    double seconds = status.test_first_seconds > 0 ? status.test_first_seconds : 3.0;
+    QString text = QObject::tr("For rules that change the ROM: before each change reaches the game, it plays %1 seconds "
+                               "ahead with it, unseen. If the game would crash, it tries another random change (up "
+                               "to %2 tries) or skips that one. Costs a short pause each time.")
+                       .arg(QLocale().toString(seconds, 'g', 3))
+                       .arg(AheadConfig{}.tries);
+    QString now;
+    if (status.test_first_seconds <= 0)
+        now = QObject::tr("This recipe turns it off.");
+    else if (!has_rom_rules(status))
+        now = QObject::tr("This recipe has no ROM rules, so there's nothing to test now.");
+    else if (status.tested_first == 0)
+        now = QObject::tr("Nothing tested yet.");
+    else
+    {
+        now = QObject::tr("So far: %1 tested").arg(status.tested_first);
+        if (status.tested_rerolled)
+            now += QObject::tr(", %1 picked again").arg(status.tested_rerolled);
+        if (status.tested_skipped)
+            now += QObject::tr(", %1 skipped").arg(status.tested_skipped);
+        now += ".";
+    }
+    return text + " " + now;
+}
+
+QString instant_note(const PanelStatus &status)
+{
+    QString text = QObject::tr("When a changed ROM byte (a rule's, painted or kept) makes the game jump into something "
+                               "that isn't code, it puts that byte back and plays the frame again, before the game can "
+                               "crash. It checks every instruction the game runs while the ROM is changed, which "
+                               "costs a little speed.");
+    QString now;
+    if (!status.instant_revert)
+        now = QObject::tr("This recipe turns it off.");
+    else if (status.rom_changed == 0 && !has_rom_rules(status))
+        now = QObject::tr("The ROM isn't changed, so there's nothing to watch now.");
+    else if (status.instant_reverts == 0)
+        now = QObject::tr("Nothing put back yet.");
+    else
+        now = QObject::tr("So far: %1 put back.").arg(status.instant_reverts);
+    return text + " " + now;
+}
+
+QString policy_note(PolicyKind policy)
+{
+    QString what;
+    switch (policy)
+    {
+    case PolicyKind::Reroll:
+        what = QObject::tr("The rule that changed things just before the crash fires again with new random values.");
+        break;
+    case PolicyKind::Skip:
+        what = QObject::tr("The seconds it went back play again without that rule's changes; after that the rule "
+                           "carries on.");
+        break;
+    case PolicyKind::Dampen:
+        what = QObject::tr("That rule's Strength is halved in the recipe (never below 5%).");
+        break;
+    case PolicyKind::Disable:
+        what = QObject::tr("That rule is turned off in the recipe; turn it back on in Recipe.");
+        break;
+    case PolicyKind::Escalate:
+        what = QObject::tr("Its first two crashes give it new random values, the next two halve its Strength, and the "
+                           "fifth turns it off.");
+        break;
+    }
+    return what + " " + QObject::tr("Changed ROM bytes the game used just before the crash are put back either way.");
 }
 
 // ---------------------------------------------------------------- Sidebar

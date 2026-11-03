@@ -326,8 +326,8 @@ crash and a rollback of a second or more. The message line says *Caught a bad ju
 into the middle of an instruction*), and the ROM page counts them (*12 bad jumps put
 back at once*). It only works where the code map knows the code, so it gets better the more
 you've played. Crashes that build up slowly (a wrong number that breaks things later) are
-still the crash guard's. To watch a crash happen instead, untick **Put back a ROM change
-that sends the game astray, at once** on the Safety page (or set `"instant_revert": false`
+still the crash guard's. To watch a crash happen instead, untick **Undo a ROM change
+the moment it derails the game** on the Safety page (or set `"instant_revert": false`
 in the recipe). Starter: **Code drip** (two bytes of code changed every two seconds).
 
 **Live ROM changes are tried before they land.** When a live ROM rule is about to change
@@ -340,9 +340,14 @@ re-rolled, 0 skipped)*). It can only vouch for what the game actually uses in th
 seconds: a change in code the game won't reach for a while goes through untried, and the
 instant revert and the crash guard still watch it.
 
-It's **Try ROM changes ahead first** on the Safety page. In the recipe,
+It's **Test ROM changes before they reach the game** on the Safety page. In the recipe,
 `"test_first": 0` turns it off, and a number of seconds looks further ahead (3 by
 default).
+
+Each switch on the Safety page has a line under it saying what it watches for, what it does
+then, what it costs and what *off* means, followed by what it has done for this recipe so far
+(*So far: 12 tested, 2 picked again*) or why it has nothing to do right now (*This recipe
+has no ROM rules*). *After a crash* says what the chosen action does in one sentence.
 
 ## Survivors and pins
 

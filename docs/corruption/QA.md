@@ -437,7 +437,7 @@ Use a game you have never set up (a fresh library folder, so no recipes exist fo
    - [ ] Crashes the guard catches (*Crash caught … back 1.5 s*) are rarer than before; some still happen (slow damage).
 3. Open the Workshop's **Memory** page on **rom**, **Colour by: Changes**.
    - [ ] Orange bytes stay where the game keeps running them; the ones caught are gone.
-4. On the Safety page, untick **Put back a ROM change that sends the game astray, at once**, and play.
+4. On the Safety page, untick **Undo a ROM change the moment it derails the game**, and play.
    - [ ] No more *Caught at*; the same kind of changes now end in crashes the guard catches and rolls back.
 5. Load a save state (File > Load State) while **Code drip** is running.
    - [ ] The game continues from the loaded state; nothing jumps back to before it.
@@ -462,7 +462,7 @@ Use a game you have never set up (a fresh library folder, so no recipes exist fo
 
 ## 30. Test at first use (removed)
 Removed on 2026-11-01: it didn't pay off (see FEATURES.md, *Tried and removed*). Nothing to check.
-   - [ ] **Try ROM changes ahead first** (Safety page) has no *Tested at first use* lines and the ROM page no *at first use* count.
+   - [ ] **Test ROM changes before they reach the game** (Safety page) has no *Tested at first use* lines and the ROM page no *at first use* count.
 
 ## 31. Remote control from a browser
 1. Load a game, pick a recipe with a button rule (say **Starter: Pointer roulette**). In the Workshop's **Sharing** page, **Remote Control**, tick **Allow remote control from a browser**.
@@ -588,7 +588,7 @@ Removed on 2026-11-01: it didn't pay off (see FEATURES.md, *Tried and removed*).
    - [ ] The Workshop switches to the **Memory** page, on the ROM, with the function's bytes selected.
 6. Keep a switch (Functions: pick a busy function, **Button 1**, **Keep in Recipe**). Open **Recipe** > **Also in This Recipe**.
    - [ ] The switch is listed on one line. Select it and press **Remove from Recipe**: the line goes, the panel's button for it goes, and **Save** becomes enabled.
-7. On **Safety**, untick **Put back a ROM change that sends the game astray, at once**. Load **Starter: Code drip**, press **Corrupt (F7)**, and play two minutes.
+7. On **Safety**, untick **Undo a ROM change the moment it derails the game**. Load **Starter: Code drip**, press **Corrupt (F7)**, and play two minutes.
    - [ ] The ROM page's *bad jumps put back* count does not grow, and no *Caught at* lines appear (crashes are caught by the guard instead). Tick it again: the count grows again.
    - [ ] The switch is for the app, not the recipe: loading another recipe keeps it off (a recipe's own `"instant_revert": false` still turns it off when the switch is on).
 8. Two copies of the app, `SNES9X_PLAYER=erik` and your own name, each with its own scratch config, both on the same library folder, same game. Play a minute in each (or learn something: name a function).
@@ -613,7 +613,7 @@ Removed on 2026-11-01: it didn't pay off (see FEATURES.md, *Tried and removed*).
    - [ ] Corrupting (accent) and Stopped (tinted) are clearly different from each other and from the idle grey; the text is readable in both.
 6. With a saved recipe loaded, move a rule's strength and press **Save** so a message shows (*Saved …*), and watch the panel.
    - [ ] The message fades after about 12 seconds. When it appears and fades, the Corrupt and Back to Normal buttons don't move.
-7. Load Pocky & Rocky, make sure **Try ROM changes ahead first** (Safety page) is ticked, pick **Starter: Code drip**, press **Corrupt (F7)**, and play a few minutes.
+7. Load Pocky & Rocky, make sure **Test ROM changes before they reach the game** (Safety page) is ticked, pick **Starter: Code drip**, press **Corrupt (F7)**, and play a few minutes.
    - [ ] Now and then the message line shows *Tested ahead: drip would crash, so it picked again*. Hover it: the full story shows.
 8. Look at the panel's title.
    - [ ] It is the game's file name (for example *Pocky & Rocky (USA)*). Hover it: the library folder name (for example *POCKY ROCKY [72b2b3be]*) shows.
@@ -783,3 +783,13 @@ Removed on 2026-11-01: it didn't pay off (see FEATURES.md, *Tried and removed*).
    - [ ] Each says what is the recipe's: Functions (Off, Guard, buttons, changes; names are everyone's), ROM (pins; what's learned is the game's), Safety (the app's), Sharing (nothing), Memory (the paint line says it's kept in the recipe).
 6. Pick a starter, then a saved recipe and change it.
    - [ ] The header says *Starter · not yours yet*, then *Saved*, then *Changed since saved*.
+
+## 51. The Safety page explains its switches (#76)
+1. Load a game with a blank Untitled recipe and open **Safety**.
+   - [ ] Under each switch a grey line says what it does. *Test ROM changes…* ends *This recipe has no ROM rules, so there's nothing to test now*; *Undo a ROM change…* ends *The ROM isn't changed, so there's nothing to watch now*.
+2. Pick **Starter: Code drip**, press **Corrupt (F7)** and play a minute with Safety open.
+   - [ ] The lines count up: *So far: N tested* (with *picked again* / *skipped* when it happened) and *So far: N put back* once a bad jump was caught.
+3. Change **After a crash** through every choice.
+   - [ ] The line under it says what each one does, and every one ends *Changed ROM bytes the game used just before the crash are put back either way*.
+4. With VoiceOver, move to each switch.
+   - [ ] It reads the switch's line as its description.

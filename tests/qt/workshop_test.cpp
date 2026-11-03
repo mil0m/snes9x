@@ -214,6 +214,76 @@ TEST_SUITE("workshop")
         CHECK(f.control.calls.back() == "restore goof_20261102_auto.srm");
     }
 
+    TEST_CASE("Safety: each switch says what it does, what off means, and what it has done (#76)")
+    {
+        PanelStatus s;
+        s.game_loaded = s.has_recipe = true;
+        // Catch crashes: what it watches for, what it does, what off means.
+        auto guard = guard_note(s);
+        CHECK(guard.contains("freezing or going black while you press buttons"));
+        CHECK(guard.contains("goes back a few seconds"));
+        CHECK(guard.contains("Back to Normal"));
+
+        // Test ahead: nothing to do without ROM rules; the recipe's seconds; the counts.
+        CHECK(ahead_note(s).contains("plays 3 seconds ahead"));
+        CHECK(ahead_note(s).contains("no ROM rules, so there's nothing to test"));
+        Rule rom_rule;
+        rom_rule.range.target = Target::ROM;
+        s.rules = { rom_rule };
+        s.test_first_seconds = 5;
+        CHECK(ahead_note(s).contains("plays 5 seconds ahead"));
+        CHECK(ahead_note(s).contains("Nothing tested yet."));
+        s.tested_first = 12;
+        s.tested_rerolled = 2;
+        s.tested_skipped = 1;
+        CHECK(ahead_note(s).contains("So far: 12 tested, 2 picked again, 1 skipped."));
+        s.test_first_seconds = 0;
+        CHECK(ahead_note(s).contains("This recipe turns it off."));
+
+        // Undo at once: nothing to watch on a clean ROM without ROM rules; the recipe; the count.
+        PanelStatus clean;
+        CHECK(instant_note(clean).contains("isn't code"));
+        CHECK(instant_note(clean).contains("costs a little speed"));
+        CHECK(instant_note(clean).contains("The ROM isn't changed, so there's nothing to watch now."));
+        clean.rom_changed = 3; // painted bytes count as changed
+        CHECK(instant_note(clean).contains("Nothing put back yet."));
+        clean.instant_reverts = 4;
+        CHECK(instant_note(clean).contains("So far: 4 put back."));
+        clean.instant_revert = false;
+        CHECK(instant_note(clean).contains("This recipe turns it off."));
+
+        // After a crash: every choice in a sentence, and the ROM bytes either way.
+        CHECK(policy_note(PolicyKind::Reroll).contains("new random values"));
+        CHECK(policy_note(PolicyKind::Skip).contains("without that rule's changes"));
+        CHECK(policy_note(PolicyKind::Dampen).contains("halved"));
+        CHECK(policy_note(PolicyKind::Disable).contains("turned off in the recipe"));
+        CHECK(policy_note(PolicyKind::Escalate).contains("fifth turns it off"));
+        for (auto p : { PolicyKind::Reroll, PolicyKind::Skip, PolicyKind::Dampen, PolicyKind::Disable,
+                        PolicyKind::Escalate })
+            CHECK(policy_note(p).contains("are put back either way"));
+    }
+
+    TEST_CASE("Safety: the notes sit under their switches, named plainly, and follow the status (#76)")
+    {
+        Fixture f;
+        Rule rom_rule;
+        rom_rule.range.target = Target::ROM;
+        f.control.s.rules = { rom_rule };
+        f.control.s.tested_first = 2;
+        f.control.s.policy = PolicyKind::Disable;
+        auto &page = *f.workshop.safetyPage();
+        page.refresh(f.control.status());
+        CHECK(child<QCheckBox>(page, "test_first")->text() == "Test ROM changes before they reach the game");
+        CHECK(child<QCheckBox>(page, "instant_revert")->text() == "Undo a ROM change the moment it derails the game");
+        CHECK(child<QLabel>(page, "test_first_note")->text().contains("So far: 2 tested."));
+        CHECK(child<QCheckBox>(page, "test_first")->accessibleDescription() ==
+              child<QLabel>(page, "test_first_note")->text());
+        CHECK(child<QLabel>(page, "detect_note")->text() == guard_note(f.control.status()));
+        CHECK(child<QLabel>(page, "instant_note")->text() == instant_note(f.control.status()));
+        CHECK(child<QLabel>(page, "policy_note")->text() == policy_note(PolicyKind::Disable));
+        CHECK(ui::audit(&page).isEmpty());
+    }
+
     TEST_CASE("Sharing: the library, who's in it, conflicts, and remote control")
     {
         Fixture f;

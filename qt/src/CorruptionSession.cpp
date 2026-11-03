@@ -1241,6 +1241,7 @@ CorruptionSession::Status CorruptionSession::status()
     s.policy_overridden = policy_override.has_value();
     s.detection_enabled = detection_enabled;
     s.test_first_enabled = test_first_enabled;
+    s.test_first_seconds = engine.recipe().test_first.value_or(3.0);
     s.instant_enabled = instant_enabled;
     s.crashes = guard.total_crashes();
     s.last_crash = last_crash;

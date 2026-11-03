@@ -42,6 +42,13 @@ struct SidebarNote
 // "Not saved", "Changed since saved", "Saved", "Empty · not saved", "Starter · not yours yet".
 QString recipe_state(const PanelStatus &status);
 
+// The Safety page's lines under each switch (#76): what it does, what it costs, what off
+// means, whether it has anything to do for this recipe now, and what it has done so far.
+QString guard_note(const PanelStatus &status);
+QString ahead_note(const PanelStatus &status);
+QString instant_note(const PanelStatus &status);
+QString policy_note(corrupt::PolicyKind policy);
+
 std::array<SidebarNote, 6> sidebar_notes(const PanelStatus &status, size_t others, bool remote_on);
 
 // The recipe: its rules in full, everything else it keeps, and saving and sharing it.
@@ -121,6 +128,7 @@ class SafetyPage : public QWidget
     QCheckBox *test_first_check;
     QCheckBox *instant_check;
     QComboBox *policy_combo;
+    QLabel *detect_note, *test_first_note, *instant_note_label, *policy_note_label;
     QLabel *crash_label;
     QListWidget *backup_list;
     QLabel *backups_empty;
