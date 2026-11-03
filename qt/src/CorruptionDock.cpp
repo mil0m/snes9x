@@ -105,6 +105,7 @@ struct SessionFunctions : FunctionSource
     std::string protect(uint32_t entry, bool on, bool deep) override { return s.protectFunction(entry, on, deep); }
     std::string setName(uint32_t entry, const std::string &name) override { return s.setFunctionName(entry, name); }
     std::vector<ChangeOption> changeOptions(uint32_t entry) override { return s.changeOptions(entry); }
+    std::vector<FeedReading> changeFeeds(uint32_t entry) override { return s.changeFeeds(entry); }
     std::vector<uint8_t> romNow(uint32_t at, size_t n) override { return s.romBytes(at, n, false); }
     std::vector<uint8_t> romClean(uint32_t at, size_t n) override { return s.romBytes(at, n, true); }
     std::optional<std::vector<uint8_t>> redirectBytes(const ChangeOption &o, uint32_t entry) override

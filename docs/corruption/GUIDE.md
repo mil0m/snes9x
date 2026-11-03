@@ -438,11 +438,24 @@ that kind of change does to the game:
 **Apply** changes it at the next frame (corruption on); **Put Back** undoes it. **Keep in
 Recipe** keeps it, on a button that toggles it if you like, starting on or not, and with a
 timer (*on for 1 s every 4 s*). Nothing else corrupts a function while you change it (its
-code is guarded), and if a change breaks the game the crash guard puts it back.
+code is guarded). If a change breaks the game, the crash guard goes back to before the game
+first ran your change (as far as its last 30 seconds reach) and puts it back: going back
+only a moment would keep what the change already did to the game's memory.
+
+**Risk** says, for each line, how often a change like it stopped the game in tests, judged
+from where the changed value goes next: *Low · a value in memory* (a speed, a timer),
+*Medium · an index* (it picks an entry from a table), *High · a pointer* or *a call's input*.
+Select a line and the line under the choices says why, in words, and the measured share (*about
+4 in 100 changes like this stopped the game within 30 seconds*). Click the Risk header to
+sort the lowest first; nothing is hidden. It's about the line, not the whole function: the
+game's busiest functions (its main loop and what runs every frame) break more easily than
+their lines suggest, so start a little further down the list.
 
 For chaos: the code rules (*Swap opcodes*, *Flip branches*, *NOP out*) and the aimed byte
 rules can tick **Only inside the busiest functions**, so their changes land in the code the
-game is running all the time.
+game is running all the time, and **Only where a change is low risk**, so they pick the
+lines Change It marks Low. Six changes a minute stacked up kept the game moving in 45 of 60
+tests with it, against 33 of 60 without.
 
 ## Editing memory like a picture
 

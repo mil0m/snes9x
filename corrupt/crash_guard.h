@@ -84,6 +84,13 @@ struct ByteBlame
     // Whether acting removes the bytes for good (put back clean), so every crash it acts on
     // is progress that can't repeat forever, and needn't count towards giving up.
     virtual bool fixes_for_good() const { return false; }
+    // Of the suspects in (after, through], the bytes you changed yourself (a Change It change,
+    // one kept in the recipe): the earliest frame the game first used one. The guard goes back
+    // to before it, since everything after carries the damage. None: no such suspect.
+    virtual std::optional<uint64_t> own_first_use(uint64_t /*after*/, uint64_t /*through*/, bool /*only_new*/) const
+    {
+        return std::nullopt;
+    }
     virtual ~ByteBlame() = default;
 };
 

@@ -73,9 +73,10 @@ struct AimedBytes
 };
 
 // The offsets the rule may pick from the ROM and code map as they are now. With
-// aim.in_busy_functions, only those `busy` marks (none when it's null).
+// aim.in_busy_functions, only those `busy` marks (none when it's null); with aim.low_risk,
+// only those `low_risk` marks (likewise).
 std::vector<uint32_t> aim_rule(const Rule &rule, std::span<const uint8_t> rom, std::span<const uint8_t> flags,
-                               const HotMask *busy = nullptr);
+                               const HotMask *busy = nullptr, const HotMask *low_risk = nullptr);
 
 // Runs one rule for one frame. `frame` counts from activation, starting at 1.
 // `scale` multiplies the rule's intensity (the recipe's intensity). With rule.avoid_hot,

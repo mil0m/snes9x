@@ -1,6 +1,10 @@
 #include "doctest/doctest.h"
 
 #include "corrupt/change_risk.h"
+#include "corrupt/engine.h"
+#include "corrupt/recipe_json.h"
+#include "corrupt/rule_text.h"
+#include "fake_memory.h"
 
 #include <initializer_list>
 
@@ -141,10 +145,43 @@ TEST_SUITE("change risk")
 
     TEST_CASE("branches: back is a loop, forward skips a block")
     {
-        Game g;
-        g.code({ { 0xEA }, { 0xD0, 0xFD }, { 0xF0, 0x01 }, { 0xEA }, { 0x60 } });
-        CHECK(g.at(1).feed == Feed::LoopBranch);
-        CHECK(g.at(3).feed == Feed::ForwardBranch);
+        Game g; // STA $0D40,X; DEX; BNE back; BEQ over the NOP
+        g.code({ { 0x9D, 0x40, 0x0D }, { 0xCA }, { 0xD0, 0xFA }, { 0xF0, 0x01 }, { 0xEA }, { 0x60 } });
+        CHECK(g.at(4).feed == Feed::LoopBranch);
+        CHECK(g.at(6).feed == Feed::ForwardBranch);
+    }
+
+    TEST_CASE("a branch that only ever went one way")
+    {
+        Game g; // BEQ over the NOP, but the NOP never ran: the branch was always taken
+        g.code({ { 0xF0, 0x01 }, { 0xEA }, { 0x60 } });
+        g.flags[2] = 0;
+        auto r = g.at(0);
+        CHECK(r.feed == Feed::UnseenPath);
+        CHECK(r.why.find("always taken") != std::string::npos);
+    }
+
+    TEST_CASE("a loop that only reads is a wait; flipped, it can wait forever")
+    {
+        Game g; // LDA $4212, BPL back: wait for the vertical blank
+        g.code({ { 0xAD, 0x12, 0x42 }, { 0x10, 0xFB }, { 0x60 } });
+        CHECK(g.at(3).feed == Feed::WaitLoop);
+    }
+
+    TEST_CASE("a skipped block that changes the width or the stack for the code after it")
+    {
+        Game a; // BEQ over REP #$20: the code after runs 8- or 16-bit
+        a.code({ { 0xF0, 0x02 }, { 0xC2, 0x20 }, { 0xA9, 0x01 }, { 0x60 } });
+        CHECK(a.at(0).feed == Feed::WidthPath);
+        Game b; // BEQ over REP #$20 ... SEP #$20: put back, fine
+        b.code({ { 0xF0, 0x05 }, { 0xC2, 0x20 }, { 0xEA }, { 0xE2, 0x20 }, { 0x60 } });
+        CHECK(b.at(0).feed == Feed::ForwardBranch);
+        Game c; // BEQ over PHA
+        c.code({ { 0xF0, 0x01 }, { 0x48 }, { 0x60 } });
+        CHECK(c.at(0).feed == Feed::StackPath);
+        Game d; // BEQ over PLA RTS: an early return, not a join
+        d.code({ { 0xF0, 0x02 }, { 0x68 }, { 0x60 }, { 0x60 } });
+        CHECK(d.at(0).feed == Feed::ForwardBranch);
     }
 
     TEST_CASE("a skipped call: does the caller read its result?")
@@ -159,5 +196,85 @@ TEST_SUITE("change risk")
         c.code({ { 0x20, 0x00, 0x81 }, { 0xA9, 0x00 }, { 0xA2, 0x00 }, { 0xA0, 0x00 }, { 0x18 }, { 0x8D, 0x40, 0x0D },
                  { 0x60 } });
         CHECK(c.skip_at(0).feed == Feed::ResultUnused);
+    }
+
+    TEST_CASE("risk levels follow what was measured")
+    {
+        CHECK(risk_of(Feed::Variable) == Risk::Low);
+        CHECK(risk_of(Feed::ForwardBranch) == Risk::Low);
+        CHECK(risk_of(Feed::Index) == Risk::Medium);
+        CHECK(risk_of(Feed::Pointer) == Risk::High);
+        CHECK(risk_of(Feed::UnseenPath) == Risk::Medium); // alone 5%, but stacked they add up
+        CHECK(risk_of(Feed::LoopBound) == Risk::High);
+        CHECK(risk_of(Feed::StackPath) == Risk::Unclear);
+        CHECK(risk_of(Feed::Unknown) == Risk::Unclear);
+        CHECK(measured_failures(Feed::Variable) == 4);
+        CHECK(measured_failures(Feed::Hardware) == -1);
+        CHECK(std::string(risk_name(Risk::Medium)) == "medium");
+    }
+
+    TEST_CASE("the low-risk mask: a number's value, a branch's opcode, never an index")
+    {
+        Game g; // LDA #4, STA $0D40 (a value); LDX #8, LDA $9000,X (an index); BEQ over a NOP (both ran); RTS
+        g.code({ { 0xA9, 0x04 }, { 0x8D, 0x40, 0x0D }, { 0xA2, 0x08 }, { 0xBD, 0x00, 0x90 }, { 0xF0, 0x01 }, { 0xEA },
+                 { 0x60 } });
+        FunctionBodies bodies;
+        bodies[0] = function_body(g.rom, g.flags, 0, g.where);
+        auto mask = low_risk_mask(bodies, g.rom, g.flags, g.where);
+        CHECK(mask.is_hot(Target::ROM, 1));      // the 4 stored as a value
+        CHECK_FALSE(mask.is_hot(Target::ROM, 0)); // its opcode isn't the change
+        CHECK_FALSE(mask.is_hot(Target::ROM, 6)); // the 8 becomes an index
+        CHECK(mask.is_hot(Target::ROM, 10));      // the branch
+        CHECK(mask.count(Target::ROM) == 2);
+    }
+
+    TEST_CASE("rules aimed at low-risk changes pick only those, and say so")
+    {
+        FakeMemory mem;
+        std::vector<uint8_t> flags(mem.size(Target::ROM), 0);
+        for (uint32_t o = 0x100; o < 0x200; o++)
+            flags[o] = codeflag::Opcode;
+        Rule r;
+        r.range = { Target::ROM, 0x100, 0x1FF };
+        r.op.type = OpType::Random;
+        r.op.min = 1;
+        r.op.max = 255;
+        r.when.type = TriggerType::EveryFrames;
+        r.when.every = 1;
+        r.count = 4;
+        r.aim.low_risk = true;
+        CHECK(describe_rule(r).find("where a change is low risk") != std::string::npos);
+        HotMask low;
+        for (uint32_t o = 0x180; o < 0x188; o++)
+            low.add(Target::ROM, o);
+        CHECK(aim_rule(r, mem.of(Target::ROM), flags, nullptr, &low).size() == 8);
+        CHECK(aim_rule(r, mem.of(Target::ROM), flags, nullptr, nullptr).empty());
+
+        Engine e;
+        Recipe recipe;
+        recipe.rules.push_back(r);
+        e.set_recipe(recipe);
+        e.set_code_flags([&] { return std::span<const uint8_t>(flags); });
+        int asked = 0;
+        e.set_low_risk_code([&] {
+            asked++;
+            return low;
+        });
+        e.set_active(true);
+        for (int i = 0; i < 4; i++)
+            e.on_frame(mem);
+        CHECK(asked == 1);
+        REQUIRE_FALSE(e.event_log().empty());
+        for (auto &ev : e.event_log())
+            CHECK(low.is_hot(Target::ROM, ev.write.offset));
+
+        auto text = write_recipe(recipe);
+        CHECK(text.find("\"risk\": \"low\"") != std::string::npos);
+        auto back = parse_recipe(text, {});
+        REQUIRE(back.errors.empty());
+        CHECK(back.recipe->rules[0].aim.low_risk);
+        auto wrong = text;
+        wrong.replace(wrong.find("\"low\""), 5, "\"all\"");
+        CHECK_FALSE(parse_recipe(wrong, {}).errors.empty());
     }
 }

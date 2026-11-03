@@ -80,6 +80,9 @@ class Engine
     // Where rules aimed inside busy functions (#60) learn which bytes those are: the bodies of
     // the busiest functions, taken once per run when such a rule first aims.
     void set_busy_code(std::function<HotMask()> busy) { busy_code = std::move(busy); }
+    // Where rules aimed at low-risk changes (#77) learn which bytes those are
+    // (corrupt/change_risk.h), taken once per run like the busy code.
+    void set_low_risk_code(std::function<HotMask()> low) { low_risk_code = std::move(low); }
     // How many bytes an aimed rule picks from this run, or entries a pointer swap may change
     // (0 until it first fires).
     size_t aimed_count(size_t index) const;
@@ -241,6 +244,9 @@ class Engine
     std::function<HotMask()> busy_code;
     HotMask run_busy;      // the busy functions' bodies this run aims inside
     bool run_busy_taken = false;
+    std::function<HotMask()> low_risk_code;
+    HotMask run_low_risk; // where changes are low risk, this run
+    bool run_low_risk_taken = false;
     std::vector<Function> run_functions;                           // the functions this run may turn off
     std::unordered_map<uint64_t, std::vector<Function>> kills;     // by rule id, for this run
     std::vector<Flip> flips;

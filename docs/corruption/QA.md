@@ -799,3 +799,16 @@ Removed on 2026-11-01: it didn't pay off (see FEATURES.md, *Tried and removed*).
    - [ ] Functions shows those names as *name (claude)*; a function you named yourself shows yours first, then *· name (claude)*.
 2. Pick five names from `mapping.claude.md` and do what its *how to check* column says (turn the function off).
    - [ ] Note for each whether the game did what the name says; add the count to the plan's *How it went*.
+
+## 53. Which changes don't crash (#77)
+1. Load Goof Troop (or any game you've played with the app), open **Functions**, select a busy function and **Change It…**.
+   - [ ] A *Risk* column says *Low*, *Medium*, *High* or *Unclear* and a few words (*a value in memory*, *an index*); Medium is orange, High red.
+   - [ ] Selecting a line shows a line under the choices: the risk, why (*Stored into $7E:0D40*) and *about N in 100 changes like this stopped the game*.
+   - [ ] Clicking the Risk header sorts lowest first; clicking Address puts code order back; the controls act on the line you picked.
+2. Press **Corrupt (F7)**, apply a few *Low* lines one by one, playing a minute after each.
+   - [ ] Note how many kept the game going; then the same with *High* lines.
+3. Apply a change that breaks the game (a High line in the busiest function usually does), and wait.
+   - [ ] The crash guard goes back to before you applied it (the message says how far), the line's *Now* is empty again, and the game plays on normally.
+4. Make a **Flip branches** rule on the ROM and tick **Only where a change is low risk**.
+   - [ ] The note under it says what that picks; the rule's line in the recipe ends *where a change is low risk*; saved and loaded, it stays ticked.
+

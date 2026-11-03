@@ -178,7 +178,7 @@ std::vector<WriteEvent> tick_rule(const Rule &rule, RuleRuntime &rt, MemoryAcces
 }
 
 std::vector<uint32_t> aim_rule(const Rule &rule, std::span<const uint8_t> rom, std::span<const uint8_t> flags,
-                               const HotMask *busy)
+                               const HotMask *busy, const HotMask *low_risk)
 {
     if (rule.range.target != Target::ROM || flags.empty() || is_jump_op(rule.op.type) || is_function_op(rule.op.type))
         return {};
@@ -186,6 +186,8 @@ std::vector<uint32_t> aim_rule(const Rule &rule, std::span<const uint8_t> rom, s
                                         : aimed_bytes(rom, flags, rule.range.first, rule.range.last, rule.aim);
     if (rule.aim.in_busy_functions)
         std::erase_if(out, [&](uint32_t o) { return !busy || !busy->is_hot(Target::ROM, o); });
+    if (rule.aim.low_risk)
+        std::erase_if(out, [&](uint32_t o) { return !low_risk || !low_risk->is_hot(Target::ROM, o); });
     return out;
 }
 

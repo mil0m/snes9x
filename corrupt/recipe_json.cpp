@@ -369,7 +369,7 @@ std::optional<Rule> parse_rule(Ctx &ctx, const json &r, size_t index, const Regi
 
     size_t errors_before = ctx.errors.size();
     check_keys(ctx, r, path, { "name", "target", "range", "rect", "op", "when", "count", "pick", "enabled", "intensity",
-                               "avoid_hot", "salt", "role", "classes", "except", "within" });
+                               "avoid_hot", "salt", "role", "classes", "except", "within", "risk" });
 
     Rule rule;
     rule.name = r.contains("name") && r["name"].is_string() ? r["name"].get<std::string>() : "rule " + std::to_string(index + 1);
@@ -454,6 +454,13 @@ std::optional<Rule> parse_rule(Ctx &ctx, const json &r, size_t index, const Regi
             rule.aim.in_busy_functions = true;
         else
             ctx.fail(path + ".within", "expected \"busy_functions\"");
+    }
+    if (r.contains("risk"))
+    {
+        if (r["risk"].is_string() && r["risk"].get<std::string>() == "low")
+            rule.aim.low_risk = true;
+        else
+            ctx.fail(path + ".risk", "expected \"low\"");
     }
     for (auto [key, out] : { std::pair{ "classes", &rule.aim.classes }, std::pair{ "except", &rule.aim.except } })
         if (r.contains(key))
@@ -1315,6 +1322,8 @@ std::string write_recipe(const Recipe &recipe)
             j["role"] = role_name(r.aim.role);
         if (r.aim.in_busy_functions)
             j["within"] = "busy_functions";
+        if (r.aim.low_risk)
+            j["risk"] = "low";
         for (auto [key, list] : { std::pair{ "classes", &r.aim.classes }, std::pair{ "except", &r.aim.except } })
             if (!list->empty())
             {

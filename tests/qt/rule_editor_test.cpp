@@ -504,6 +504,26 @@ TEST_CASE("an empty name is not allowed")
     CHECK(child<QLabel>(e, "error")->text().contains("name"));
 }
 
+TEST_CASE("low-risk changes only: a ROM aim, explained in view, kept both ways (#77)")
+{
+    SizedMemory sizes;
+    Rule r = default_rule();
+    r.range = { Target::ROM, 0, 0xFFFF };
+    r.op.type = OpType::BranchFlip;
+    RuleEditor e(r, sample_regions(), sizes);
+    auto low = child<QCheckBox>(e, "low_risk");
+    CHECK_FALSE(low->isChecked());
+    CHECK(child<QLabel>(e, "low_risk_note")->text().contains("rarely stopped the game"));
+    CHECK(low->accessibleDescription().contains("ways the code never took"));
+    low->setChecked(true);
+    CHECK(e.rule().aim.low_risk);
+    CHECK(ok_enabled(e));
+    RuleEditor again(e.rule(), sample_regions(), sizes);
+    CHECK(child<QCheckBox>(again, "low_risk")->isChecked());
+    CHECK(as_json(again.rule()) == as_json(e.rule()));
+    maybe_shot(again, "rule-editor-low-risk");
+}
+
 TEST_CASE("avoid dangerous bytes is a checkbox, kept both ways")
 {
     SizedMemory sizes;

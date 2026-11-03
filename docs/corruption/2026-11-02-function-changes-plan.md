@@ -385,3 +385,74 @@ number instead of any value (87% vs 83%).
 **What it can't see:** FE4 still fails 12% on low risk, mostly in one region of bank $1B
 (its demo script code) where nearly everything fails: some functions are fragile as a whole.
 That's what testing each option ahead would catch.
+
+## What made flips feel like crashes, and the UI (#77, second round)
+
+Mikael (3 Nov): "What we tried was to change the operations BEQ to BNE and so on." So the
+question narrowed to branch flips in Change It, and three things were built and measured.
+
+**Branch facts.** A flipped branch swaps which case goes where; both ways start from the
+same registers and stack. `feed_of` now reads what the ways are: *unseen path* (one way
+never ran while the tracer watched: flipped, it runs every time), *wait loop* (a short
+loop back that only reads: flipped, it can wait forever), *width path* / *stack path* (the
+skipped block or loop body leaves REP/SEP or the stack different where the ways join; a
+REP…SEP pair, or a block that ends in a return or jump, doesn't count).
+
+**Risk in Change It.** A *Risk* column (*Low · a value in memory*, *Medium · an index*,
+*High · a call's input*, *Unclear · can't tell*), sortable, code order by default; the
+selected line's reason in words and the measured share under the choices, not in a tooltip
+(Mikael's rule: explain the detail, don't hide it). Levels come from the measurements:
+under 10% failed is Low, 10-25% Medium, above High; fewer than 10 seen is said as *too few
+measured*. The busiest functions get a line of their own (below).
+
+**Low-risk aim.** `Aim::low_risk` (`"risk": "low"`): a rule picks only bytes where a
+change is Low (a number's value bytes, a branch's or math instruction's opcode, a call's
+whole instruction), from every known body, taken once a run like the busy code.
+
+**Your own change, rolled back far enough.** When the guard blames a byte you changed
+yourself (Change It, or the recipe's changes), it goes back to the newest checkpoint
+before the game first ran it, as far as its 30 s of checkpoints reach, instead of just
+before the crash.
+
+### How it went (#77, second round)
+
+**Branch flips alone rarely kill a game.** 533 flips from the 64 busiest functions
+(`--risk 200 1800 branch`): 6% failed in 30 s. The new branch facts don't predict it:
+unseen path 5% (235), wait loop 10% (74), width path 0% (12), stack path never seen. So
+they're said in words but rated by what was measured (ways that never ran: Medium,
+for what they do stacked; see below).
+
+**The busiest functions are fragile as a whole.** 952 single changes of every kind with
+the function each is in: in the 16 busiest functions 18% failed, further down 8%
+(Goof 18% vs 6%, Pocky 8% vs 9%, FE4 26% vs 11%). Failures cluster in a few functions
+(Goof's main loop around `$80:80B1`, FE4's `$1B:E08A` region). The tour showed it at once:
+Goof's busiest function opens with `BEQ $83CE`, which kills the game when flipped. The
+Functions window lists busiest first, which is where anyone starts; Change It now says so
+for the 16 busiest.
+
+**The real culprit behind "they crashed": the rollback.** With the guard on, a flip that
+stops the CPU 12 s in was caught and put back, but the guard went back only 2 s, to a
+moment that already carried the damage in RAM, and Goof stayed stuck: the picture changed
+in 146 of the remaining 2,870 frames (clean: 2,271). Going back to before the game first
+ran the change (13 s): 1,832, the game plays on. When the crash comes soon after the
+change, the normal step back already reaches before it (pressed at 20 s, caught at 26 s:
+both recover).
+
+**Final measured levels** (single changes, 30 s, unguarded; 952 of every kind plus the 533
+branch flips): variable 4%, condition 4%, unseen path 5%, result used 6%, unused 7%,
+forward branch 8%, loop branch 10%, wait loop 10%, unknown 10%, scratch 16%, index 21%,
+loop bound 28%, argument 37%, pointer 40% (10), loop count 6 of 7. Grouped: low 5% (567),
+risky 26% (261).
+
+**The low-risk aim, stacked** (`--change 20 6`: six changes a minute inside the 64 busiest
+functions, unguarded, still moving at the end): any of them 33 of 60, low-risk only **45 of
+60** (Goof 11 → 13, Pocky 12 → 17, FE4 10 → 15). A first cut that rated ways that never
+ran as low gave 38 of 60: alone they're safe (5%), but several each send the game down
+code it never ran, and that adds up, so they're Medium. The low-risk picks still change
+the game: 59 of 60 ended on another picture than a clean run.
+
+**Not done: testing each option ahead.** A *Test* button in Change It that plays the
+change a few seconds ahead, unseen (#52's `RunAhead::play`), would catch the fragile
+functions directly; its crash detector only takes definite crashes, and many failures
+here are freezes, so it needs the freeze check first.
+

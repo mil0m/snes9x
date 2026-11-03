@@ -54,6 +54,47 @@ struct Editing
 };
 } // namespace
 
+TEST_CASE("Change It says each line's risk, why, and what was measured (#77)")
+{
+    Editing e;
+    auto t = e.lines();
+    REQUIRE(t->rowCount() == 5);
+    CHECK(t->item(0, 3)->text() == "Low · a value in memory");
+    CHECK(t->item(1, 3)->text() == "High · a call's input");
+    CHECK(t->item(2, 3)->text() == "Unclear · the stack");
+    CHECK(t->item(4, 3)->text() == "Unclear · can't tell");
+    CHECK(t->item(0, 3)->toolTip().contains("Stored into $7E:0020"));
+    // The selected line explains itself in view, not only on hover.
+    t->selectRow(1);
+    QApplication::processEvents();
+    auto note = child<QLabel>(*e.editor, "risk_note");
+    CHECK(note->isVisible());
+    CHECK(note->text().contains("High risk."));
+    CHECK(note->text().contains("handed to a call"));
+    CHECK(note->text().contains("about 37 in 100"));
+    t->selectRow(2);
+    CHECK(note->text().contains("Risk unclear."));
+    CHECK(note->text().contains("Too few changes like this"));
+    // Sorted by risk, low first; the controls still act on the line picked.
+    t->sortByColumn(3, Qt::AscendingOrder);
+    CHECK(t->item(0, 1)->text() == "LDA #$04");
+    CHECK(t->item(1, 1)->text() == "INC $20");
+    CHECK(t->item(2, 1)->text() == "ADC #$01");
+    CHECK(t->item(3, 1)->text() == "BEQ $99F6");
+    t->selectRow(3);
+    QApplication::processEvents();
+    CHECK(child<QComboBox>(*e.editor, "branch")->isVisible()); // the BEQ's page
+    CHECK(note->text().contains("stack deeper"));
+    // Back to code order.
+    t->sortByColumn(0, Qt::AscendingOrder);
+    CHECK(t->item(2, 1)->text() == "BEQ $99F6");
+    // The busiest function: the whole function's risk, in view.
+    auto whole = child<QLabel>(*e.editor, "function_note");
+    CHECK(whole->isVisible());
+    CHECK(whole->text().contains("busiest function number 1"));
+    CHECK(whole->text().contains("about 18 in 100"));
+}
+
 TEST_CASE("Change It lists the lines that can change and what each can become")
 {
     Editing e;
@@ -66,7 +107,7 @@ TEST_CASE("Change It lists the lines that can change and what each can become")
     CHECK(t->item(2, 2)->text().contains("BNE"));
     CHECK(t->item(3, 2)->text() == "DEC");
     CHECK(t->item(4, 2)->text().contains("another function"));
-    CHECK(t->item(0, 3)->text().isEmpty()); // as the game has it
+    CHECK(t->item(0, 4)->text().isEmpty()); // as the game has it
     // Hovering says what it means (#71): the instruction, its operand, and the change.
     CHECK(t->item(0, 1)->toolTip().contains("Loads a value into A"));
     CHECK(t->item(0, 1)->toolTip().contains("#$04 is the number itself: 4"));
@@ -105,7 +146,7 @@ TEST_CASE("a number: apply it, the line says what it is now, put it back")
     CHECK(c.was == std::vector<uint8_t>{ 0xA9, 0x04 });
     QApplication::processEvents();
     e.editor->refresh();
-    CHECK(e.lines()->item(0, 3)->text() == "now LDA #$01");
+    CHECK(e.lines()->item(0, 4)->text() == "now LDA #$01");
 
     e.lines()->selectRow(0);
     child<QPushButton>(*e.editor, "put_back")->click();
@@ -179,7 +220,7 @@ TEST_CASE("a change is kept with its hotkey and start, shows as kept, and is rem
     CHECK_FALSE(e.src.kept_changes[0].start_on);
     CHECK(e.src.kept_changes[0].note == "scroll (erik)");
     QApplication::processEvents();
-    CHECK(e.lines()->item(3, 3)->text().contains("kept, button 4"));
+    CHECK(e.lines()->item(3, 4)->text().contains("kept, button 4"));
     CHECK(forget->isEnabled());
     forget->click();
     CHECK(e.src.forgotten_changes == std::vector<uint32_t>{ 0x19F4 });
@@ -223,7 +264,7 @@ TEST_CASE("a change kept with a timer; a timer longer than its cycle is refused"
     CHECK(e.src.kept_changes[0].for_frames == 60);
     CHECK(e.src.kept_changes[0].every == 240);
     QApplication::processEvents();
-    CHECK(e.lines()->item(3, 3)->text().contains("on 1 s every 4 s"));
+    CHECK(e.lines()->item(3, 4)->text().contains("on 1 s every 4 s"));
     child<QDoubleSpinBox>(*e.editor, "timer_for")->setValue(5);
     child<QPushButton>(*e.editor, "keep")->click();
     CHECK(e.src.kept_changes.size() == 1);

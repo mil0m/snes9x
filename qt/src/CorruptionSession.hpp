@@ -167,6 +167,7 @@ class CorruptionSession
     std::string setFunctionName(uint32_t entry, const std::string &name);
     // Change a function (#60): see FunctionSource. Applying needs corruption on, like a flip.
     std::vector<corrupt::ChangeOption> changeOptions(uint32_t entry);
+    std::vector<corrupt::FeedReading> changeFeeds(uint32_t entry); // #77, in changeOptions' order
     std::vector<uint8_t> romBytes(uint32_t at, size_t n, bool clean);
     std::optional<std::vector<uint8_t>> redirectBytes(const corrupt::ChangeOption &o, uint32_t entry);
     std::string applyChange(const corrupt::Change &c, bool on);

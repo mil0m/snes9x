@@ -225,6 +225,8 @@ std::string describe_aim(const Aim &aim)
         text = (text.empty() ? std::string("code") : text) + " except " + names(aim.except);
     if (aim.in_busy_functions)
         text = (text.empty() ? std::string("bytes") : text) + " inside busy functions";
+    if (aim.low_risk)
+        text = (text.empty() ? std::string("bytes") : text) + " where a change is low risk";
     return text;
 }
 

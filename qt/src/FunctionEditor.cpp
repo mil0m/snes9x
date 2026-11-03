@@ -31,6 +31,7 @@ enum Col
     Address,
     InstructionCol,
     Becomes,
+    RiskCol,
     Now,
     Cols
 };
@@ -82,6 +83,85 @@ QString text_of(const ChangeOption &o, const std::vector<uint8_t> &bytes)
     return QString::fromStdString(d.text);
 }
 
+// Sorts by a key of its own (the risk column: low first, then by place in the code).
+class KeyedItem : public QTableWidgetItem
+{
+  public:
+    KeyedItem(const QString &text, qint64 key) : QTableWidgetItem(text), key(key) {}
+    bool operator<(const QTableWidgetItem &other) const override
+    {
+        auto *o = dynamic_cast<const KeyedItem *>(&other);
+        return o ? key < o->key : QTableWidgetItem::operator<(other);
+    }
+
+  private:
+    qint64 key;
+};
+
+QString risk_word(Risk r)
+{
+    switch (r)
+    {
+    case Risk::Low: return QObject::tr("Low");
+    case Risk::Medium: return QObject::tr("Medium");
+    case Risk::High: return QObject::tr("High");
+    case Risk::Unclear: return QObject::tr("Unclear");
+    }
+    return {};
+}
+
+ui::Tone risk_tone(Risk r)
+{
+    return r == Risk::High ? ui::Tone::Error : r == Risk::Medium ? ui::Tone::Warning : ui::Tone::Normal;
+}
+
+// What the value feeds into, in a few words, for the risk column.
+QString feed_words(Feed f)
+{
+    switch (f)
+    {
+    case Feed::Variable: return QObject::tr("a value in memory");
+    case Feed::Scratch: return QObject::tr("a temporary byte");
+    case Feed::Hardware: return QObject::tr("a hardware register");
+    case Feed::Index: return QObject::tr("an index");
+    case Feed::LoopCount: return QObject::tr("a loop's count");
+    case Feed::LoopBound: return QObject::tr("a loop's end");
+    case Feed::Condition: return QObject::tr("a decision");
+    case Feed::Pointer: return QObject::tr("a pointer");
+    case Feed::Argument: return QObject::tr("a call's input");
+    case Feed::Overwritten: return QObject::tr("nothing: replaced at once");
+    case Feed::LoopBranch: return QObject::tr("a loop");
+    case Feed::ForwardBranch: return QObject::tr("a block it skips");
+    case Feed::ResultUsed: return QObject::tr("its result is used");
+    case Feed::ResultUnused: return QObject::tr("its result isn't used");
+    case Feed::UnseenPath: return QObject::tr("a way that never ran");
+    case Feed::WaitLoop: return QObject::tr("a wait");
+    case Feed::WidthPath: return QObject::tr("the register width");
+    case Feed::StackPath: return QObject::tr("the stack");
+    case Feed::Unknown: return QObject::tr("can't tell");
+    }
+    return {};
+}
+
+// The whole story for the selected line: the risk, why, and what was measured.
+QString risk_story(const FeedReading &r)
+{
+    auto risk = risk_of(r.feed);
+    QString why = QString::fromStdString(r.why);
+    if (!why.isEmpty())
+        why[0] = why[0].toUpper();
+    QString level = risk == Risk::Unclear ? QObject::tr("<b>Risk unclear.</b>") : QObject::tr("<b>%1 risk.</b>").arg(risk_word(risk));
+    int failed = measured_failures(r.feed);
+    QString measured = failed < 0 ? QObject::tr("Too few changes like this were measured to say how often they stop the game.")
+                                  : QObject::tr("In tests on three games, about %1 in 100 changes like this stopped the "
+                                                "game within 30 seconds.")
+                                        .arg(failed);
+    if (r.feed == Feed::UnseenPath)
+        measured += QObject::tr(" Several such changes together add up, though: each sends the game down code it "
+                                "has never run, so it counts as medium.");
+    return level + " " + why.toHtmlEscaped() + ". " + measured;
+}
+
 QString function_label(const FunctionRow &r)
 {
     QString where = cpu(r.address, r.f.entry);
@@ -95,18 +175,25 @@ FunctionEditor::FunctionEditor(FunctionSource &source, const FunctionRow &row, Q
 {
     setObjectName("function_editor");
     setWindowTitle(tr("Change %1").arg(cpu(row.address, row.f.entry)));
-    resize(680, 560);
+    resize(680, 640);
     auto layout = new QVBoxLayout(this);
     layout->addWidget(ui::heading(tr("Change %1").arg(function_label(row)), this));
     auto intro = new QLabel(tr("Its code, line by line, and what each line can become without breaking the shape of "
                                "the code: another number, the opposite decision, the other half of a sum, or a call "
                                "skipped or sent to another function. <b>Apply</b> changes it at the next frame; "
-                               "<b>Put Back</b> undoes it. If a change breaks the game, the crash guard puts it "
-                               "back. Nothing else corrupts this function while you change it."),
+                               "<b>Put Back</b> undoes it. If a change breaks the game, the crash guard goes back to "
+                               "before the game first ran it and puts it back. Nothing else corrupts this function while you change it. <b>Risk</b> says how often a change "
+                               "like it stopped the game in tests, from where the changed value goes next."),
                             this);
     intro->setWordWrap(true);
     ui::setTone(intro, ui::Tone::Secondary);
     layout->addWidget(intro);
+
+    // How fragile the whole function is (#77): the busiest ones break more easily.
+    function_note = new QLabel(this);
+    function_note->setObjectName("function_note");
+    function_note->setWordWrap(true);
+    layout->addWidget(function_note);
 
     not_running = new ui::StatusLine(this);
     not_running->setObjectName("not_running");
@@ -124,7 +211,7 @@ FunctionEditor::FunctionEditor(FunctionSource &source, const FunctionRow &row, Q
     table = new QTableWidget(0, Cols, this);
     table->setObjectName("lines");
     table->setAccessibleName(tr("Lines of its code"));
-    table->setHorizontalHeaderLabels({ tr("Address"), tr("Instruction"), tr("Can Become"), tr("Now") });
+    table->setHorizontalHeaderLabels({ tr("Address"), tr("Instruction"), tr("Can Become"), tr("Risk"), tr("Now") });
     table->setSelectionBehavior(QAbstractItemView::SelectRows);
     table->setSelectionMode(QAbstractItemView::SingleSelection);
     table->setEditTriggers(QAbstractItemView::NoEditTriggers);
@@ -132,8 +219,11 @@ FunctionEditor::FunctionEditor(FunctionSource &source, const FunctionRow &row, Q
     table->verticalHeader()->hide();
     table->horizontalHeader()->setSectionResizeMode(QHeaderView::ResizeToContents);
     table->horizontalHeader()->setSectionResizeMode(Now, QHeaderView::Stretch);
+    table->horizontalHeader()->setSortIndicator(Address, Qt::AscendingOrder); // code order until a header is clicked
     table->horizontalHeaderItem(InstructionCol)->setToolTip(tr("Hover an instruction to see what it does, in plain words"));
     table->horizontalHeaderItem(Becomes)->setToolTip(tr("Hover to see what that kind of change does to the game"));
+    table->horizontalHeaderItem(RiskCol)->setToolTip(tr("How likely a change here is to stop the game, from what the "
+                                                         "changed value goes into next. Click a header to sort."));
     layout->addWidget(table, 1);
 
     // What the selected line becomes.
@@ -194,6 +284,12 @@ FunctionEditor::FunctionEditor(FunctionSource &source, const FunctionRow &row, Q
     call_form->addRow(call_label, ui::row(call));
     pages->addWidget(call_page);
     editor_layout->addWidget(pages);
+    // Why the selected line is as risky as it is (#77), always in view, not in a tooltip.
+    risk_note = new QLabel(editor);
+    risk_note->setObjectName("risk_note");
+    risk_note->setWordWrap(true);
+    risk_note->setTextFormat(Qt::RichText);
+    editor_layout->addWidget(risk_note);
 
     // A timer (#61): on for a while, again and again.
     auto timer_row = new QHBoxLayout;
@@ -312,6 +408,27 @@ const Change *FunctionEditor::kept(uint32_t at) const
 void FunctionEditor::refresh()
 {
     options = source.changeOptions(function.f.entry);
+    feeds = source.changeFeeds(function.f.entry);
+    {
+        size_t rank = 0;
+        auto all = source.functions(); // busiest first
+        while (rank < all.size() && all[rank].f.entry != function.f.entry)
+            rank++;
+        bool busy = rank < all.size() && rank < kBusiestFragile;
+        function_note->setVisible(busy);
+        if (busy)
+            function_note->setText(tr("This is the game's busiest function number %1. In tests, changes in its 16 "
+                                      "busiest functions stopped the game about %2 in 100 times, against %3 in 100 "
+                                      "further down the list: they run every frame, often the main loop itself. "
+                                      "The Risk column is about each line; this is about the whole function.")
+                                       .arg(rank + 1)
+                                       .arg(kBusiestFailures)
+                                       .arg(kOthersFailures));
+        ui::setTone(function_note, ui::Tone::Warning);
+    }
+    if (feeds.size() != options.size())
+        feeds.assign(options.size(), FeedReading{});
+    table->setSortingEnabled(false);
     for (auto &r : source.functions())
         if (r.f.entry == function.f.entry)
             function = r;
@@ -321,7 +438,7 @@ void FunctionEditor::refresh()
     {
         auto &o = options[i];
         auto set = [&](int col, const QString &text, bool mono) {
-            auto *it = new QTableWidgetItem(text);
+            auto *it = new KeyedItem(text, qint64(o.at));
             if (mono)
                 it->setFont(fixed);
             table->setItem(int(i), col, it);
@@ -333,7 +450,14 @@ void FunctionEditor::refresh()
         table->item(int(i), InstructionCol)->setToolTip(QString::fromStdString(explain_instruction(o.opcode, o.text)));
         table->item(int(i), Becomes)->setToolTip(QString::fromStdString(explain_change(o.kind)));
         set(Now, QString(), false);
+        table->item(int(i), Address)->setData(Qt::UserRole, int(i)); // the option, however the rows are sorted
+        auto risk = risk_of(feeds[i].feed);
+        auto *r = new KeyedItem(risk_word(risk) + " · " + feed_words(feeds[i].feed), (qint64(risk) << 32) | o.at);
+        r->setForeground(ui::toneColor(risk_tone(risk), table->palette()));
+        r->setToolTip(risk_story(feeds[i]));
+        table->setItem(int(i), RiskCol, r);
     }
+    table->setSortingEnabled(true);
     bool any = !options.empty();
     table->setVisible(any);
     empty_label->setVisible(!any);
@@ -346,9 +470,12 @@ void FunctionEditor::update()
     for (auto &r : source.functions())
         if (r.f.entry == function.f.entry)
             function.changes = r.changes;
-    for (size_t i = 0; i < options.size() && int(i) < table->rowCount(); i++)
+    for (int row = 0; row < table->rowCount(); row++)
     {
-        auto &o = options[i];
+        int i = optionAt(row);
+        if (i < 0)
+            continue;
+        auto &o = options[size_t(i)];
         auto now = source.romNow(o.at, o.length);
         auto clean = source.romClean(o.at, o.length);
         QStringList parts;
@@ -358,18 +485,27 @@ void FunctionEditor::update()
             parts << (k->hotkey ? tr("kept, button %1").arg(k->hotkey) : tr("kept")) +
                          (k->start_on ? tr(", starts on") : QString()) +
                          (k->every ? tr(", on %1 s every %2 s").arg(k->for_frames / 60.0).arg(k->every / 60.0) : QString());
-        if (auto *it = table->item(int(i), Now); it && it->text() != parts.join(" · "))
+        if (auto *it = table->item(row, Now); it && it->text() != parts.join(" · "))
             it->setText(parts.join(" · "));
     }
     not_running->setVisible(!source.running());
 }
 
+int FunctionEditor::optionAt(int row) const
+{
+    auto *it = table->item(row, Address);
+    if (!it)
+        return -1;
+    int i = it->data(Qt::UserRole).toInt();
+    return i >= 0 && size_t(i) < options.size() ? i : -1;
+}
+
 int FunctionEditor::selectedRow() const
 {
     auto rows = table->selectionModel() ? table->selectionModel()->selectedRows() : QModelIndexList{};
-    if (rows.isEmpty() || size_t(rows.front().row()) >= options.size())
+    if (rows.isEmpty())
         return -1;
-    return rows.front().row();
+    return optionAt(rows.front().row());
 }
 
 void FunctionEditor::selectionChanged()
@@ -380,6 +516,7 @@ void FunctionEditor::selectionChanged()
         return;
     auto &o = options[size_t(row)];
     auto *k = kept(o.at);
+    risk_note->setText(risk_story(feeds[size_t(row)]));
     switch (o.kind)
     {
     case ChangeKind::Number: {

@@ -558,6 +558,17 @@ void RuleEditor::buildForm()
     in_functions->setToolTip(tr("Only the code of the 64 functions the game runs most (Functions… lists them): "
                                 "changes land where the game is busy, inside its own functions"));
     aim->addRow(tr("Where"), ui::row(in_functions));
+    low_risk = new QCheckBox(tr("Only where a change is low risk"), aim_group);
+    low_risk->setObjectName("low_risk");
+    aim->addRow(tr("Risk"), ui::row(low_risk));
+    auto low_risk_note = hint_label(tr("Only numbers, branches, sums and calls in known functions whose changed value "
+                                       "goes somewhere that rarely stopped the game in tests: a value in memory, a "
+                                       "decision, a block it skips. Leaves out indexes, pointers, a call's inputs, "
+                                       "waits and ways the code never took. Change It shows each line's risk."),
+                                    aim_group);
+    low_risk_note->setObjectName("low_risk_note");
+    low_risk->setAccessibleDescription(low_risk_note->text());
+    aim->addRow(low_risk_note);
     aim->addRow(hint_label(tr("Only bytes the code map knows: play first, and the map grows. Width (REP, SEP, "
                               "XCE) and stack instructions almost always crash at once."),
                            aim_group));
@@ -843,6 +854,7 @@ void RuleEditor::load(const Rule &r)
 
     select(role_combo, role_name(r.aim.role));
     in_functions->setChecked(r.aim.in_busy_functions);
+    low_risk->setChecked(r.aim.low_risk);
     {
         QSignalBlocker quiet(class_mode); // no suggestion while loading
         select(class_mode, !r.aim.classes.empty() ? "only" : !r.aim.except.empty() ? "except" : "all");
@@ -1034,6 +1046,7 @@ RuleEditor::Built RuleEditor::build() const
         else if (class_mode->currentData() == "except")
             r.aim.except = ticked;
         r.aim.in_busy_functions = in_functions->isChecked();
+        r.aim.low_risk = low_risk->isChecked();
     }
 
     if (err.isEmpty())

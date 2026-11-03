@@ -1,5 +1,6 @@
 #pragma once
 #include "corrupt/calls.h"
+#include "corrupt/change_risk.h"
 #include "corrupt/function_change.h"
 #include "corrupt/patches.h"
 
@@ -46,6 +47,8 @@ struct FunctionSource
 
     // Change a function (#60). What in its code can change (from the clean ROM).
     virtual std::vector<corrupt::ChangeOption> changeOptions(uint32_t entry) = 0;
+    // What each of those options' value feeds into (#77), in the same order; empty: unknown.
+    virtual std::vector<corrupt::FeedReading> changeFeeds(uint32_t /*entry*/) { return {}; }
     // The bytes there now, and in the clean ROM.
     virtual std::vector<uint8_t> romNow(uint32_t at, size_t n) = 0;
     virtual std::vector<uint8_t> romClean(uint32_t at, size_t n) = 0;

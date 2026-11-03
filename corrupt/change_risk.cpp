@@ -26,6 +26,10 @@ const char *feed_name(Feed f)
     case Feed::Overwritten: return "overwritten";
     case Feed::LoopBranch: return "loop branch";
     case Feed::ForwardBranch: return "forward branch";
+    case Feed::UnseenPath: return "unseen path";
+    case Feed::WaitLoop: return "wait loop";
+    case Feed::WidthPath: return "width path";
+    case Feed::StackPath: return "stack path";
     case Feed::ResultUsed: return "result used";
     case Feed::ResultUnused: return "result unused";
     case Feed::Unknown: return "unknown";
@@ -78,6 +82,82 @@ std::string hexa(uint32_t v)
     char buf[16];
     snprintf(buf, sizeof buf, "$%02X:%04X", (v >> 16) & 0xFF, v & 0xFFFF);
     return buf;
+}
+
+// A branch flipped swaps which way each case goes; both ways start from the same registers
+// and stack, so what matters is what the ways are: one that never ran, a wait that can last
+// forever, a block that leaves the register width or the stack different at the join.
+template <class StepAt>
+FeedReading branch_reading(const ChangeOption &option, std::span<const uint8_t> rom, std::span<const uint8_t> flags,
+                           StepAt step_at)
+{
+    std::string_view m = kOpcodes[option.opcode].mnemonic;
+    int8_t rel = option.at + 1 < rom.size() ? int8_t(rom[option.at + 1]) : 0;
+    uint32_t fall = option.at + 2;
+    int64_t target64 = int64_t(fall) + rel;
+    if (target64 < 0 || uint64_t(target64) >= rom.size())
+        return { Feed::Unknown, "branches out of the ROM" };
+    uint32_t target = uint32_t(target64);
+    auto ran = [&](uint32_t at) { return at < flags.size() && (flags[at] & codeflag::Opcode); };
+    bool back = rel < 0;
+    if (!ran(target) || !ran(fall))
+        return { Feed::UnseenPath, std::string(!ran(target) ? "the branch was never taken" : "the branch was always taken") +
+                                       " while the tracer watched: flipped, the way that never ran runs every time" };
+
+    // The block between: a loop's body (back) or the block the branch skips (forward).
+    uint32_t from = back ? target : fall, to = back ? option.at : target;
+    int pushes = 0, stores = 0, calls = 0;
+    bool width_unknown = false, leaves = false, readable = true;
+    // Per width bit (M, X): the first and the last REP/SEP that touch it. REP first and SEP last
+    // (or the other way) puts it back as it was; only one kind leaves it changed.
+    char first[2] = { 0, 0 }, last[2] = { 0, 0 };
+    for (uint32_t at = from; at < to;)
+    {
+        auto s = step_at(at);
+        if (!s)
+        {
+            readable = false;
+            break;
+        }
+        auto sm = s->m;
+        if (any(sm, { "PHA", "PHX", "PHY", "PHP", "PHB", "PHD", "PHK", "PEA", "PEI", "PER" }))
+            pushes++;
+        else if (any(sm, { "PLA", "PLX", "PLY", "PLP", "PLB", "PLD" }))
+            pushes--;
+        if ((sm == "REP" || sm == "SEP") && s->at + 1 < rom.size())
+            for (int b = 0; b < 2; b++)
+                if (rom[s->at + 1] & (b == 0 ? 0x20 : 0x10))
+                {
+                    if (!first[b])
+                        first[b] = sm[0];
+                    last[b] = sm[0];
+                }
+        if (sm == "PLP" || sm == "XCE")
+            width_unknown = true;
+        if (op_class(s->op) == OpClass::Store || any(sm, { "INC", "DEC", "TSB", "TRB", "MVN", "MVP" }))
+            stores++;
+        if (any(sm, { "JSR", "JSL" }))
+            calls++;
+        if (any(sm, { "RTS", "RTL", "RTI", "JMP", "JML", "BRA", "BRL" }) && s->at + uint32_t(s->length) >= to)
+            leaves = true; // the block ends by going elsewhere: it doesn't fall into the join
+        at = s->at + uint32_t(s->length);
+    }
+    bool width_changed = false;
+    for (int b = 0; b < 2; b++)
+        width_changed |= first[b] && first[b] == last[b];
+    if (back && readable && stores == 0 && calls == 0 && to - from <= 16)
+        return { Feed::WaitLoop, "a loop that only reads and checks (" + std::string(m) +
+                                     " back): it waits for something; flipped, it can wait forever" };
+    if (readable && !leaves && (width_changed || width_unknown))
+        return { Feed::WidthPath, std::string(back ? "the loop" : "the skipped block") +
+                                      " changes the register width (REP/SEP): code after it then runs at a width it "
+                                      "never ran at" };
+    if (readable && !leaves && pushes != 0)
+        return { Feed::StackPath, std::string(back ? "the loop" : "the skipped block") + " leaves the stack " +
+                                      (pushes > 0 ? "deeper" : "shallower") + ": a later pull or return finds the wrong value" };
+    if (back)
+        return { Feed::LoopBranch, "both ways ran; branches back: the loop runs once, or for a different count" };
+    return { Feed::ForwardBranch, "both ways ran; swaps which case skips the block" };
 }
 
 } // namespace
@@ -164,12 +244,7 @@ FeedReading feed_of(const ChangeOption &option, const FunctionBody &body, std::s
     switch (option.kind)
     {
     case ChangeKind::Branch:
-    {
-        int8_t rel = option.at + 1 < rom.size() ? int8_t(rom[option.at + 1]) : 0;
-        if (rel < 0)
-            return { Feed::LoopBranch, "branches back: a loop's exit or continue" };
-        return { Feed::ForwardBranch, "branches forward over a block" };
-    }
+        return branch_reading(option, rom, flags, step_at);
     case ChangeKind::Skip:
     case ChangeKind::Redirect:
     {
@@ -354,6 +429,95 @@ FeedReading feed_of(const ChangeOption &option, const FunctionBody &body, std::s
         }
     }
     return { Feed::Unknown, after.size() == 10 ? "the trail goes cold" : "the trail ends at a branch or the body's end" };
+}
+
+} // namespace corrupt
+
+namespace corrupt
+{
+
+// Measured with corrupt-smoke --risk (docs/corruption/2026-11-02-function-changes-plan.md,
+// "Changes that don't crash"): the share of single changes the game ran that left it frozen
+// or dead within 30 s, on Goof Troop, Pocky & Rocky and FE4 together (952 changes of every
+// kind, and 533 more branch flips measured alone). -1: fewer than 10 seen.
+int measured_failures(Feed f)
+{
+    switch (f)
+    {
+    case Feed::Variable: return 4;       // 123 changes
+    case Feed::Condition: return 4;      // 153
+    case Feed::ResultUsed: return 6;     // 64
+    case Feed::ResultUnused: return 7;   // 14
+    case Feed::UnseenPath: return 5;     // 235
+    case Feed::ForwardBranch: return 8;  // 369
+    case Feed::LoopBranch: return 10;    // 52
+    case Feed::WaitLoop: return 10;      // 74
+    case Feed::WidthPath: return 0;      // 12
+    case Feed::Unknown: return 10;       // 120
+    case Feed::Scratch: return 16;       // 45
+    case Feed::Index: return 21;         // 110
+    case Feed::LoopBound: return 28;     // 43
+    case Feed::Argument: return 37;      // 46
+    case Feed::Pointer: return 40;       // 10
+    case Feed::Hardware:                 // 6, none failed
+    case Feed::Overwritten:              // 2
+    case Feed::LoopCount:                // 7, 6 failed
+    case Feed::StackPath: return -1;     // none seen
+    }
+    return -1;
+}
+
+Risk risk_of(Feed f)
+{
+    switch (f)
+    {
+    // Can't tell, or not seen: a stack change at the join reads as dangerous, but none
+    // turned up in 533 branch flips.
+    case Feed::Unknown:
+    case Feed::StackPath: return Risk::Unclear;
+    case Feed::LoopCount: return Risk::High; // 6 of the 7 seen failed
+    // Alone, a way that never ran failed 5% of the time; six changes a minute kept the game
+    // moving in 38 of 60 runs with them among the low-risk picks, 45 of 60 without.
+    case Feed::UnseenPath: return Risk::Medium;
+    case Feed::Hardware:
+    case Feed::Overwritten: return Risk::Low;
+    default: break;
+    }
+    int failed = measured_failures(f);
+    return failed < 10 ? Risk::Low : failed <= 25 ? Risk::Medium : Risk::High;
+}
+
+const char *risk_name(Risk r)
+{
+    switch (r)
+    {
+    case Risk::Low: return "low";
+    case Risk::Medium: return "medium";
+    case Risk::High: return "high";
+    case Risk::Unclear: return "unclear";
+    }
+    return "?";
+}
+
+HotMask low_risk_mask(const FunctionBodies &bodies, std::span<const uint8_t> rom, std::span<const uint8_t> flags,
+                      const RomAddresses &where)
+{
+    HotMask mask;
+    for (auto &[entry, body] : bodies)
+        for (auto &o : change_options(body, rom, flags, where))
+        {
+            if (risk_of(feed_of(o, body, rom, flags, where).feed) != Risk::Low)
+                continue;
+            if (o.kind == ChangeKind::Number)
+                for (int i = 1; i <= o.width; i++)
+                    mask.add(Target::ROM, o.at + uint32_t(i));
+            else if (o.kind == ChangeKind::Skip || o.kind == ChangeKind::Redirect)
+                for (uint32_t i = 0; i < o.length; i++)
+                    mask.add(Target::ROM, o.at + i);
+            else
+                mask.add(Target::ROM, o.at);
+        }
+    return mask;
 }
 
 } // namespace corrupt

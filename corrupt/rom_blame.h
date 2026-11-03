@@ -44,6 +44,9 @@ class RomBlame : public ByteBlame
 
     // Bytes kept on purpose (the recipe's pins): never watched, so never blamed.
     void set_pinned(const std::vector<uint32_t> &offsets);
+    // Bytes you changed yourself (Change It, the recipe's changes): still watched and blamed,
+    // but a crash they're blamed for goes back to before the game first used them.
+    void set_own(const std::vector<uint32_t> &offsets) { own = { offsets.begin(), offsets.end() }; }
 
     void collect(uint64_t frame); // after every frame, before the guard
     // The changed bytes the last collect found used (it cleared their touched bits), for
@@ -53,6 +56,7 @@ class RomBlame : public ByteBlame
 
     size_t suspects(uint64_t after, uint64_t through, bool only_new = false) const override;
     ByteBlameResult act(uint64_t after, uint64_t through, unsigned attempt, bool only_new = false) override;
+    std::optional<uint64_t> own_first_use(uint64_t after, uint64_t through, bool only_new) const override;
 
     // Deals with these changed bytes now, the way the policy says (revert or re-roll), for
     // good: the instant revert's culprits. Bytes that aren't changed are left alone.
@@ -86,6 +90,7 @@ class RomBlame : public ByteBlame
     std::unordered_map<uint32_t, size_t> index;
     std::vector<uint32_t> survivals;
     std::unordered_set<uint32_t> pinned;
+    std::unordered_set<uint32_t> own;
 };
 
 } // namespace corrupt

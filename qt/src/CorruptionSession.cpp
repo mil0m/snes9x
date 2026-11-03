@@ -1,4 +1,5 @@
 #include "CorruptionSession.hpp"
+#include "corrupt/change_risk.h"
 #include "EmuConfig.hpp"
 #include "corrupt/hook.h"
 #include "corrupt/journal.h"
@@ -409,6 +410,8 @@ void CorruptionSession::gameLoaded()
             busy.push_back({ f.entry, false });
         return guard_mask(busy, bodies, nullptr);
     });
+    // What rules aimed at low-risk changes pick from (#77): every known body's low-risk bytes.
+    engine.set_low_risk_code([this] { return low_risk_mask(bodies, rom.clean(), code_map.combined().flags(), rom_where); });
 
     backupNow("load"); // before the first frame runs
     note({}); // the panel's title names the game
@@ -1660,6 +1663,19 @@ std::vector<ChangeOption> CorruptionSession::changeOptions(uint32_t entry)
     return change_options(it->second, rom.clean(), flags, rom_where);
 }
 
+std::vector<FeedReading> CorruptionSession::changeFeeds(uint32_t entry)
+{
+    std::lock_guard lock(mutex);
+    auto it = bodies.find(entry);
+    if (!game_loaded || it == bodies.end())
+        return {};
+    auto flags = code_map.combined().flags();
+    std::vector<FeedReading> out;
+    for (auto &o : change_options(it->second, rom.clean(), flags, rom_where))
+        out.push_back(feed_of(o, it->second, rom.clean(), flags, rom_where));
+    return out;
+}
+
 std::vector<uint8_t> CorruptionSession::romBytes(uint32_t at, size_t n, bool clean)
 {
     std::lock_guard lock(mutex);
@@ -1831,6 +1847,13 @@ void CorruptionSession::rebuildGuard()
     HotMask mask = guard_mask(in_play, bodies, &calls);
     // Your own bytes stay as you made them: the recipe's, and what the window did.
     HotMask own = own_bytes(engine.recipe(), window_off, window_changes);
+    // A crash blamed on a change you made goes back to before the game first ran it.
+    std::vector<uint32_t> changed_by_you;
+    for (const std::vector<Change> *list : { &engine.recipe().changes, static_cast<const std::vector<Change> *>(&window_changes) })
+        for (auto &c : *list)
+            for (size_t i = 0; i < c.value.size(); i++)
+                changed_by_you.push_back(uint32_t(c.at + i));
+    rom_blame.set_own(changed_by_you);
     if (const uint8_t *now = memory.data(Target::ROM))
     {
         auto fix = guard_cleanup(mask, own, rom.clean(), { now, size });

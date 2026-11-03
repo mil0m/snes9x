@@ -129,6 +129,8 @@ void Engine::restart()
     run_functions.clear();
     run_busy = {};
     run_busy_taken = false;
+    run_low_risk = {};
+    run_low_risk_taken = false;
     flips.clear();
     frame = 0;
     pending_hotkeys = 0;
@@ -611,18 +613,28 @@ const AimedBytes *Engine::aim_for(uint32_t index, MemoryAccess &mem)
         aimed_now = { nullptr, flags };
         return &aimed_now;
     }
+    if (rule.aim.low_risk && !run_low_risk_taken && low_risk_code)
+    {
+        run_low_risk = low_risk_code();
+        run_low_risk_taken = !run_low_risk.empty();
+    }
+    if (rule.aim.low_risk && run_low_risk.empty() && !aimed.count(ids[index]))
+    {
+        aimed_now = { nullptr, flags };
+        return &aimed_now;
+    }
     auto [it, fresh] = aimed.try_emplace(ids[index]);
     if (fresh)
     {
         size_t size = mem.size(Target::ROM);
         if (const uint8_t *raw = mem.data(Target::ROM))
-            it->second = aim_rule(rule, { raw, size }, flags, &run_busy);
+            it->second = aim_rule(rule, { raw, size }, flags, &run_busy, &run_low_risk);
         else
         {
             std::vector<uint8_t> rom(size);
             for (size_t i = 0; i < size; i++)
                 rom[i] = mem.read(Target::ROM, uint32_t(i));
-            it->second = aim_rule(rule, rom, flags, &run_busy);
+            it->second = aim_rule(rule, rom, flags, &run_busy, &run_low_risk);
         }
     }
     aimed_now = { &it->second, flags };

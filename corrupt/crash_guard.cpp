@@ -166,6 +166,22 @@ GuardOutcome CrashGuard::handle(const CrashVerdict &verdict, Engine &engine, Cor
     }
     if (!cp)
         return {};
+    // A byte you changed yourself is to blame: everything since the game first ran it carries
+    // what it did (in RAM, not only the ROM), so go back to before that, as far as the
+    // checkpoints reach, and the change is put back from there.
+    if (bytes && byte_suspects)
+        if (auto first = bytes->own_first_use(cp->frame, through, verdict.heuristic); first && *first <= cp->frame + 1)
+        {
+            const Checkpoint *before = &ring.front();
+            for (auto &c : ring)
+                if (c.frame < *first)
+                    before = &c;
+            if (before->frame < cp->frame)
+            {
+                cp = before;
+                blame_after(*cp);
+            }
+        }
 
     if (suspects.empty() && !byte_suspects)
     {

@@ -112,6 +112,16 @@ struct FakeFunctions : FunctionSource
     {
         return entry == 0x0019EE ? busy_options() : std::vector<ChangeOption>{};
     }
+    std::vector<FeedReading> changeFeeds(uint32_t entry) override
+    {
+        if (entry != 0x0019EE)
+            return {};
+        return { { Feed::Variable, "stored into $7E:0020" },
+                 { Feed::Argument, "the sum is handed to a call (JSR $9D3C)" },
+                 { Feed::StackPath, "the skipped block leaves the stack deeper: a later pull or return finds the wrong value" },
+                 { Feed::Variable, "changes the memory directly: stored into $7E:0020" },
+                 { Feed::Unknown, "can't tell whether the caller uses the result" } };
+    }
     std::vector<uint8_t> romNow(uint32_t at, size_t n) override { return { now.begin() + at, now.begin() + at + n }; }
     std::vector<uint8_t> romClean(uint32_t at, size_t n) override { return { clean.begin() + at, clean.begin() + at + n }; }
     std::optional<std::vector<uint8_t>> redirectBytes(const ChangeOption &o, uint32_t entry) override

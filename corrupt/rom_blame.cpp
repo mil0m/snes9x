@@ -147,6 +147,17 @@ size_t RomBlame::suspects(uint64_t after, uint64_t through, bool only_new) const
     return n;
 }
 
+std::optional<uint64_t> RomBlame::own_first_use(uint64_t after, uint64_t through, bool only_new) const
+{
+    if (!flags || own.empty())
+        return std::nullopt;
+    std::optional<uint64_t> first;
+    for (size_t i = 0; i < uses.size(); i++)
+        if (own.count(offsets[i]) && in_window(uses[i], after, through, only_new))
+            first = std::min(first.value_or(UINT64_MAX), uses[i].first_used);
+    return first;
+}
+
 ByteBlameResult RomBlame::act(uint64_t after, uint64_t through, unsigned attempt, bool only_new)
 {
     ByteBlameResult out;

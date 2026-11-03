@@ -123,6 +123,7 @@ class RuleEditor : public QDialog
     int shown_page = -1, shown_when_page = -1;
     QComboBox *role_combo;
     QCheckBox *in_functions;
+    QCheckBox *low_risk; // #77
     QComboBox *class_mode;
     std::vector<std::pair<corrupt::OpClass, QCheckBox *>> class_checks;
 

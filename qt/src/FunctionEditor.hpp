@@ -34,7 +34,8 @@ class FunctionEditor : public QDialog
   private:
     void update(); // each line's state now
     void selectionChanged();
-    int selectedRow() const;
+    int selectedRow() const;     // the selected line's option, or -1
+    int optionAt(int row) const; // the option a table row shows (rows can be sorted), or -1
     // The change the editor describes for the selected line; nullopt (with why) if none.
     std::optional<corrupt::Change> wanted(QString &why) const;
     void apply();
@@ -47,9 +48,11 @@ class FunctionEditor : public QDialog
     FunctionSource &source;
     FunctionRow function;
     std::vector<corrupt::ChangeOption> options;
+    std::vector<corrupt::FeedReading> feeds; // what each option's value goes into (#77)
     std::vector<FunctionRow> callable; // functions a call may go to, busiest first
     QTimer *timer;
     ui::StatusLine *not_running;
+    QLabel *function_note; // the busiest functions break more easily (#77)
     QLabel *empty_label;
     QTableWidget *table;
     QWidget *editor;
@@ -57,6 +60,7 @@ class FunctionEditor : public QDialog
     QSpinBox *number;
     QCheckBox *swap_math; // a number's instruction can also swap (ADC # -> SBC #)
     QComboBox *branch;
+    QLabel *risk_note;
     QLabel *math_label;
     QComboBox *call;
     QComboBox *hotkey;

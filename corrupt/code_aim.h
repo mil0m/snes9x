@@ -34,8 +34,14 @@ struct Aim
     // Only bytes in the bodies of the game's busiest functions (#60): changes that land in
     // code the game is running all the time, inside functions.
     bool in_busy_functions = false;
+    // Only bytes where a change is low risk (#77): what the changed value goes into next was
+    // measured to stop the game rarely (corrupt/change_risk.h). Inside known functions only.
+    bool low_risk = false;
 
-    bool active() const { return role != Role::Any || !classes.empty() || !except.empty() || in_busy_functions; }
+    bool active() const
+    {
+        return role != Role::Any || !classes.empty() || !except.empty() || in_busy_functions || low_risk;
+    }
 };
 
 // The opcodes `op` may be swapped with, itself included, in opcode order: the same

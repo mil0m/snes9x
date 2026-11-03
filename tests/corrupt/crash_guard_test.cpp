@@ -566,6 +566,41 @@ TEST_SUITE("blaming single bytes the game used (ROM)")
         CHECK(rig.outcomes[0].restored_frame == 120); // the newest checkpoint with the use after it
     }
 
+    // A byte you changed yourself, run every frame since `first`.
+    struct OwnBytes : ByteBlame
+    {
+        uint64_t first = 0;
+        bool own = true;
+        size_t suspects(uint64_t, uint64_t through, bool) const override { return first && first <= through ? 1 : 0; }
+        ByteBlameResult act(uint64_t, uint64_t, unsigned, bool) override { return { { 0x30 }, "reverted 1 ROM byte" }; }
+        std::optional<uint64_t> own_first_use(uint64_t, uint64_t through, bool) const override
+        {
+            return own && first && first <= through ? std::optional<uint64_t>(first) : std::nullopt;
+        }
+    };
+
+    TEST_CASE("a crash blamed on your own change goes back to before the game first ran it")
+    {
+        for (bool own : { false, true })
+        {
+            Rig rig(idle_recipe());
+            OwnBytes bytes;
+            bytes.own = own;
+            rig.guard.set_byte_blame(&bytes);
+            rig.frames(150);
+            bytes.first = 150; // changed, and run every frame from here
+            rig.frames(250);
+            rig.mem.of(Target::WRAM)[kCrashByte] = kCrashValue;
+            rig.frame();
+            REQUIRE(rig.outcomes.size() == 1);
+            CAPTURE(own);
+            // Someone else's byte: just before the trouble. Yours: before your change, so the
+            // damage it did in RAM goes too.
+            CHECK(rig.outcomes[0].restored_frame == (own ? 120u : 360u));
+            CHECK(rig.outcomes[0].rom_blamed == std::vector<uint32_t>{ 0x30 });
+        }
+    }
+
     TEST_CASE("repeat crashes tell it which attempt this is")
     {
         Rig rig(idle_recipe());
