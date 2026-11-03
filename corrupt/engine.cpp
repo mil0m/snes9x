@@ -243,6 +243,15 @@ void Engine::flip_function(uint32_t entry, uint8_t ret, uint8_t clean)
     flip_bytes({ entry, { ret }, { clean } });
 }
 
+std::optional<bool> Engine::queued_state(uint32_t at, bool on_now) const
+{
+    std::optional<bool> state;
+    for (auto &f : flips)
+        if (f.at == at)
+            state = f.how == Flip::How::Toggle ? !state.value_or(on_now) : f.how == Flip::How::On;
+    return state;
+}
+
 void Engine::flip_bytes(Flip f)
 {
     if (is_active && !f.on.empty() && f.on.size() == f.off.size())

@@ -357,18 +357,31 @@ The app can't know which one is gravity: try the busy ones near the top and watc
 stops. When you find a good one, give it a **Name** (*gravity*): double-click its **Name**
 cell in the table (or select it and press Return), type, and press Return; Esc cancels, and
 an empty name removes yours. The **Name** field under the table does the same. What you did
-with a function (its button, *protected*, a timer) shows in the **In play** column. Names are
+with a function (its button, a timer, changes) shows in the **In play** column. Names are
 saved in the library (*names.<you>.json*), so everyone who shares it sees yours, and you
 see theirs with who named it: *jump (erik)*. Then pick a button (**Button 1** to **9**) and **Keep in Recipe**:
 that button turns it off and on again while you play (in the panel's **Buttons**, or on
 the remote page). **Starts off** has it off from the start of every run. **Save** to
 keep it.
 
+**Finding one again.** Type in **Find by address or name**, and pick what to **Show**
+beside it: *Running now* (ran in the last 5 seconds), *Off*, *In play* (a switch, a button,
+changes or protected), *Guarded*, *Named* or *Not named yet*. Both apply at once, and
+*12 of 545* says how many are left when some are hidden. The table doesn't reorder or hide
+rows while you look at it: what you change shows in place, and the list sorts and filters
+again when you pick another filter or come back to the page.
+
+A paused game (the game pauses when you click in the Workshop, unless you turned *Pause when
+unfocused* off) keeps your tick until it runs its next frame: the box stays ticked and its
+tooltip says *Turns off when the game runs its next frame*.
+
 **Keeping it safe from other corruption.** A function you play with is *guarded*: its code
 (the *Size* column says how much the code map knows) is left alone by every other rule and
 by paint, so only your change touches it. That's automatic for a function you switched off
-or kept as a switch; tick **Protect it from other corruption** to guard one without
-changing it, and **And what it calls** to guard the functions it calls too. When a guard
+or kept as a switch; tick its box in the **Guard** column (or **Protect it from other
+corruption** under the table) to guard one without changing it, and **And what it calls**
+to guard the functions it calls too (the Guard cell then says *+ calls*). *auto* in the Guard
+column means it's guarded anyway, while it's off or changed; hover it to see why. When a guard
 goes up, bytes other corruption had already changed in it are put back. Paint stops at
 guarded bytes and the message line says which function kept them. **Show in ROM** opens the
 Memory page on its code with the **Functions** colours: function code light, guarded code

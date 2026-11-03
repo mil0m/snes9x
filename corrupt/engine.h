@@ -138,6 +138,10 @@ class Engine
     // Flips asked for and not done yet (a snapshot doesn't hold them; a run ahead must).
     std::vector<Flip> pending_flips() const { return flips; }
     void set_pending_flips(std::vector<Flip> f) { flips = std::move(f); }
+    // What the flips queued at `at` leave it as after the next frame, starting from `on_now`
+    // (its bytes hold `on`): nothing when none is queued there. A paused game holds its flips,
+    // and a window reading the ROM would show the old state until it runs (#72).
+    std::optional<bool> queued_state(uint32_t at, bool on_now) const;
     void add_switch(const Switch &s);      // one on the same entry is replaced; no restart
     void remove_switch(uint32_t entry);    // no restart
     void add_change(const Change &c);      // one at the same offset is replaced; no restart

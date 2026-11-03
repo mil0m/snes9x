@@ -22,8 +22,8 @@ class StatusLine;
 // Kill switches (#34) and what came after (#58, #59): the functions the game runs, busiest now
 // first. Tick one off and the game skips it; name it for everyone using the library; protect
 // it from other corruption; put it on a hotkey and keep it in the recipe; see its code in the
-// ROM. While open it updates twice a second in place (rows keep their order until Refresh, so
-// nothing moves under the mouse).
+// ROM. While open it updates twice a second in place (rows keep their order, and the filters
+// apply, until it's shown again or a filter changes, so nothing moves under the mouse).
 class FunctionsPage : public QWidget
 {
   public:
@@ -42,7 +42,9 @@ class FunctionsPage : public QWidget
 
   private:
     void fill(int row, const FunctionRow &r);
+    void itemChanged(QTableWidgetItem *item); // a box in Off or Guard
     void offChanged(QTableWidgetItem *item);
+    void guardChanged(QTableWidgetItem *item);
     void selectionChanged();
     void applyFilter();
     void keepSelected();
@@ -63,6 +65,8 @@ class FunctionsPage : public QWidget
     QLabel *empty_label;
     ui::StatusLine *not_running;
     QLineEdit *filter;
+    QComboBox *show_filter; // which functions (#72)
+    QLabel *count;          // "12 of 545" while some are hidden
     QTableWidget *table;
     QWidget *details;
     QLabel *selected_label;

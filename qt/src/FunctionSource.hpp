@@ -15,7 +15,8 @@ struct FunctionRow
 {
     corrupt::Function f;
     std::optional<uint32_t> address;    // the CPU address it's called at, for showing
-    bool off = false;                   // its entry holds the return byte now
+    bool off = false;                   // its entry holds the return byte now (or will at the next frame)
+    bool pending = false;               // a flip is queued: `off` is what the next frame makes it (#72)
     std::optional<corrupt::Switch> kept; // the recipe's switch for it, if any
     std::string label;                  // everyone's names for it (#59), empty if nobody named it
     std::string my_name;                // yours

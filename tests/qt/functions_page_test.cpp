@@ -35,6 +35,7 @@ enum Col
     Frames,
     Size,
     Off,
+    Guard,   // protected, or guarded anyway
     About,   // the names
     InPlay   // what you did with it
 };
@@ -62,11 +63,22 @@ TEST_CASE("the functions window lists what runs, busiest now first, and shows wh
     CHECK(table->item(0, About)->text() == "scroll (erik)");
     CHECK(table->item(1, About)->text() == "gravity"); // names only...
     CHECK(table->item(1, InPlay)->text().contains("button 3")); // ...and what you did, apart
-    CHECK(table->item(1, InPlay)->text().contains("protected with what it calls"));
+    CHECK_FALSE(table->item(1, InPlay)->text().contains("protected")); // that's the Guard column's
+    CHECK(table->item(1, Guard)->checkState() == Qt::Checked);
+    CHECK(table->item(1, Guard)->text() == "+ calls");
+    CHECK(table->item(0, Guard)->checkState() == Qt::Unchecked);
     CHECK(table->item(0, InPlay)->text().isEmpty());
-    // Protected later: the column grows to fit the new words.
-    src.rows[0].protect = Protect{ src.rows[0].f.entry, true };
+    // Kept on a button later: the column grows to fit the new words.
+    Switch s;
+    s.entry = src.rows[0].f.entry;
+    s.hotkey = 7;
+    s.start_off = true;
+    s.every = 600;
+    s.for_frames = 120;
+    src.rows[0].kept = s;
+    src.rows[0].changes.resize(3);
     d.updateRows();
+    CHECK(table->item(0, InPlay)->text().contains("button 7"));
     CHECK(table->fontMetrics().horizontalAdvance(table->item(0, InPlay)->text()) <= table->columnWidth(InPlay));
     // A function reached both ways can't be skipped safely: no box to tick.
     CHECK(!(table->item(2, Off)->flags() & Qt::ItemIsUserCheckable));
@@ -290,7 +302,7 @@ TEST_CASE("names are typed in the table: double-click, type, Return; Esc cancels
     auto table = child<QTableWidget>(d, "functions");
     // Only the name cells can be edited.
     CHECK(bool(table->item(1, About)->flags() & Qt::ItemIsEditable));
-    for (int col : { Name, Now, Frames, Size, Off, InPlay })
+    for (int col : { Name, Now, Frames, Size, Off, Guard, InPlay })
         CHECK_FALSE(bool(table->item(1, col)->flags() & Qt::ItemIsEditable));
 
     auto edit = [&](int row) -> QLineEdit * {
@@ -327,4 +339,102 @@ TEST_CASE("names are typed in the table: double-click, type, Return; Esc cancels
     editor->clear();
     press(editor, Qt::Key_Return);
     CHECK(src.named.back() == std::pair<uint32_t, std::string>{ 0x000142, "" });
+}
+
+TEST_CASE("Show picks which functions: running now, off, in play, guarded, named or not; with the search too")
+{
+    FakeFunctions src;
+    src.rows[0].guarded = true; // guarded anyway: off a moment ago, or a protected caller
+    FunctionRow quiet;          // ran once, long ago; nobody named it
+    quiet.f = { .entry = 0x002400, .type = CallType::Near, .calls = 1, .callers = 1, .frames = 1, .now = 0 };
+    quiet.address = 0x80A400;
+    quiet.body_bytes = 8;
+    src.rows.push_back(quiet);
+    FunctionsPage d(src);
+    d.show();
+    auto table = child<QTableWidget>(d, "functions");
+    auto show = child<QComboBox>(d, "show_filter");
+    auto count = child<QLabel>(d, "count");
+    auto visible = [&] {
+        std::vector<uint32_t> out;
+        for (int i = 0; i < table->rowCount(); i++)
+            if (!table->isRowHidden(i))
+                out.push_back(src.rows[size_t(i)].f.entry);
+        return out;
+    };
+    auto pick = [&](const char *text) {
+        int i = show->findText(text);
+        REQUIRE_MESSAGE(i >= 0, text);
+        show->setCurrentIndex(i);
+    };
+    CHECK(visible().size() == 4);
+    CHECK_FALSE(count->isVisible()); // nothing hidden: no count
+    pick("Running now");
+    CHECK(visible() == std::vector<uint32_t>{ 0x0019EE, 0x000142 });
+    CHECK(count->isVisible());
+    CHECK(count->text() == "2 of 4");
+    pick("Off");
+    CHECK(visible() == std::vector<uint32_t>{ 0x000142 });
+    pick("In play");
+    CHECK(visible() == std::vector<uint32_t>{ 0x000142 });
+    pick("Guarded");
+    CHECK(visible() == std::vector<uint32_t>{ 0x0019EE, 0x000142 });
+    pick("Named");
+    CHECK(visible() == std::vector<uint32_t>{ 0x0019EE, 0x000142 });
+    pick("Not named yet");
+    CHECK(visible() == std::vector<uint32_t>{ 0x002000, 0x002400 });
+    child<QLineEdit>(d, "filter")->setText("24"); // and the search
+    CHECK(visible() == std::vector<uint32_t>{ 0x002400 });
+    CHECK(count->text() == "1 of 4");
+    pick("All functions");
+    child<QLineEdit>(d, "filter")->clear();
+    CHECK(visible().size() == 4);
+    CHECK_FALSE(count->isVisible());
+}
+
+TEST_CASE("the Guard column: tick to protect, untick to stop; auto when guarded anyway; no box without its code")
+{
+    FakeFunctions src;
+    src.rows[0].guarded = true;
+    FunctionsPage d(src);
+    d.show();
+    auto table = child<QTableWidget>(d, "functions");
+    CHECK(table->item(0, Guard)->text() == "auto");
+    CHECK(table->item(0, Guard)->toolTip().contains("Guarded while"));
+    CHECK(table->item(1, Guard)->toolTip().contains("with what it calls"));
+    CHECK_FALSE(bool(table->item(2, Guard)->flags() & Qt::ItemIsUserCheckable)); // its code isn't known
+    CHECK(table->item(2, Guard)->toolTip().contains("isn't known"));
+
+    table->selectRow(0);
+    table->item(0, Guard)->setCheckState(Qt::Checked);
+    REQUIRE(src.protects.size() == 1);
+    CHECK(src.protects[0].entry == 0x0019EE);
+    CHECK(src.protects[0].on);
+    CHECK_FALSE(src.protects[0].deep);
+    CHECK(child<QWidget>(d, "message")->isVisible());
+
+    table->item(1, Guard)->setCheckState(Qt::Unchecked);
+    REQUIRE(src.protects.size() == 2);
+    CHECK(src.protects[1].entry == 0x000142);
+    CHECK_FALSE(src.protects[1].on);
+}
+
+TEST_CASE("a tick that waits for the next frame stays ticked (a paused game), and says so")
+{
+    FakeFunctions src;
+    FunctionsPage d(src);
+    d.show();
+    auto table = child<QTableWidget>(d, "functions");
+    table->item(0, Off)->setCheckState(Qt::Checked);
+    REQUIRE(src.flipped.size() == 1);
+    // The session reports the queued flip: off, pending.
+    src.rows[0].off = true;
+    src.rows[0].pending = true;
+    d.updateRows();
+    CHECK(table->item(0, Off)->checkState() == Qt::Checked);
+    CHECK(table->item(0, Off)->toolTip().contains("next frame"));
+    src.rows[0].pending = false; // the game ran
+    d.updateRows();
+    CHECK(table->item(0, Off)->checkState() == Qt::Checked);
+    CHECK_FALSE(table->item(0, Off)->toolTip().contains("next frame"));
 }

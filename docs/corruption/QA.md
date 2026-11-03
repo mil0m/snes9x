@@ -736,3 +736,20 @@ Removed on 2026-11-01: it didn't pay off (see FEATURES.md, *Tried and removed*).
    - [ ] Each tooltip says what the instruction does in plain words, then what its operand is: *#$04 is the number itself: 4*, *…where it jumps to*, *…the function it calls*, *…X picks the entry*.
 3. Hover the **Can Become** cells.
    - [ ] Each says what that kind of change does to the game (a number, a decision, a sum, a call).
+
+## 48. Functions: filters, the Guard column, ticks on a paused game (#72)
+1. Workshop > Functions on a game you've played a while (with the default *Pause when unfocused* on). Press **Corrupt (F7)** in the panel, then click in the Workshop: the game pauses.
+2. Tick **Off** on a busy function and wait a few seconds without going back to the game.
+   - [ ] The box stays ticked; its tooltip says *Turns off when the game runs its next frame*. The panel's ROM line already counts it as off.
+3. Click the game window so it runs.
+   - [ ] The function goes off (watch what stops); the box is still ticked and the tooltip no longer mentions the next frame.
+4. Pick **Show: Off**.
+   - [ ] Only that function is left, and *1 of N* shows beside the combo. **Show: All functions** brings everything back and the count goes away.
+5. Pick **Running now**, then type part of an address in the search field.
+   - [ ] Both apply: only functions that ran in the last 5 seconds and match the text.
+6. Tick the **Guard** box on another function.
+   - [ ] The message says it's protected; select the row: **Protect it from other corruption** is ticked under the table. Tick **And what it calls**: the Guard cell says *+ calls*.
+7. Look at the function you turned off in step 2.
+   - [ ] Its Guard cell says *auto*; hovering it says it's guarded while it's off. **Show: Guarded** lists it and the one you protected.
+8. A function whose Size is *–* (its code isn't known yet).
+   - [ ] No box in Guard; hovering says there's nothing to protect yet.

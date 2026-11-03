@@ -1190,8 +1190,9 @@ CorruptionSession::Status CorruptionSession::status()
         for (auto &f : call_log.functions())
         {
             s.functions++;
-            s.functions_off += f.entry < rom.clean().size() &&
-                               function_off(f.type, memory.read(Target::ROM, f.entry), rom.clean()[f.entry]);
+            bool off = f.entry < rom.clean().size() &&
+                       function_off(f.type, memory.read(Target::ROM, f.entry), rom.clean()[f.entry]);
+            s.functions_off += engine.queued_state(f.entry, off).value_or(off); // as Functions shows it (#72)
         }
         s.functions_guarded = in_play.size();
         s.library_generation = library_generation;
@@ -1528,6 +1529,12 @@ std::vector<FunctionRow> CorruptionSession::functions()
         r.address = rom_where.cpu_address(f.entry);
         r.off = f.entry < size && f.entry < rom.clean().size() &&
                 function_off(f.type, memory.read(Target::ROM, f.entry), rom.clean()[f.entry]);
+        // A paused game holds its flips: say what the next frame makes it, not the old byte (#72).
+        if (auto queued = engine.queued_state(f.entry, r.off))
+        {
+            r.pending = *queued != r.off;
+            r.off = *queued;
+        }
         for (auto &s : engine.recipe().switches)
             if (s.entry == f.entry)
                 r.kept = s;

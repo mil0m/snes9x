@@ -46,6 +46,23 @@ Switch near_switch(int hotkey = 0)
 
 TEST_SUITE("kill switches")
 {
+    TEST_CASE("a queued flip says what the entry will be after the next frame; two toggles cancel")
+    {
+        auto mem = rom_with_functions();
+        auto engine = running();
+        CHECK_FALSE(engine.queued_state(kNearEntry, false).has_value()); // nothing queued
+        engine.flip_function(kNearEntry, kRts, kClean);
+        CHECK(engine.queued_state(kNearEntry, false) == true); // off at the next frame
+        CHECK_FALSE(engine.queued_state(kLongEntry, false).has_value());
+        engine.flip_function(kNearEntry, kRts, kClean);
+        CHECK(engine.queued_state(kNearEntry, false) == false); // ticked and unticked while paused
+        engine.flip_bytes({ kNearEntry, { kRts }, { kClean }, Engine::Flip::How::On });
+        CHECK(engine.queued_state(kNearEntry, false) == true);
+        engine.on_frame(mem);
+        CHECK(mem.of(Target::ROM)[kNearEntry] == kRts);
+        CHECK_FALSE(engine.queued_state(kNearEntry, true).has_value()); // done: the ROM says it now
+    }
+
     TEST_CASE("a flip puts the return at the entry, the next puts the clean byte back, never as a rule's write")
     {
         auto mem = rom_with_functions();

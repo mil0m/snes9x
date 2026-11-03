@@ -39,10 +39,72 @@ enum Col
     Frames,
     Size,
     Off,
+    Guard,  // protected (a box), or guarded anyway (#72)
     About,  // the names: yours first, then others' (editable: yours)
     InPlay, // what you did with it
     Cols
 };
+
+// The Show filter (#72), in the combo's order.
+enum Show
+{
+    ShowAll,
+    ShowRunning,
+    ShowOff,
+    ShowInPlay,
+    ShowGuarded,
+    ShowNamed,
+    ShowUnnamed,
+};
+
+bool shows(const FunctionRow &r, int show)
+{
+    switch (show)
+    {
+    case ShowRunning:
+        return r.f.now > 0;
+    case ShowOff:
+        return r.off;
+    case ShowInPlay:
+        return r.kept || !r.changes.empty() || r.protect;
+    case ShowGuarded:
+        return r.guarded || r.protect;
+    case ShowNamed:
+        return !r.label.empty();
+    case ShowUnnamed:
+        return r.label.empty();
+    }
+    return true;
+}
+
+// The Guard column: a ticked box is the recipe's protect; "auto" is guarded for another reason.
+QString guard_text(const FunctionRow &r)
+{
+    if (r.protect)
+        return r.protect->deep ? QObject::tr("+ calls") : QString();
+    return r.guarded ? QObject::tr("auto") : QString();
+}
+
+QString guard_tip(const FunctionRow &r)
+{
+    if (!r.body_bytes)
+        return QObject::tr("Its code isn't known yet, so there's nothing to protect");
+    if (r.protect)
+        return r.protect->deep ? QObject::tr("Protected, with what it calls: no rule and no paint changes their code. "
+                                             "Untick to stop.")
+                               : QObject::tr("Protected: no rule and no paint changes its code. Untick to stop.");
+    if (r.guarded)
+    {
+        QString why = r.off                ? QObject::tr("it's off")
+                      : !r.changes.empty() ? QObject::tr("its changes are in play")
+                                           : QObject::tr("a protected function calls it, or it was off a moment ago");
+        return QObject::tr("Guarded while %1: rules and paint leave its code alone. Tick to protect it for good (kept "
+                           "in the recipe).")
+            .arg(why);
+    }
+    return QObject::tr("Tick to protect it from other corruption: no rule and no paint changes its code. Kept in the "
+                       "recipe.");
+}
 
 QString cpu(const FunctionRow &r)
 {
@@ -87,11 +149,7 @@ QString in_play(const FunctionRow &r)
     }
     if (!r.changes.empty())
         parts << (r.changes.size() == 1 ? QObject::tr("1 change") : QObject::tr("%1 changes").arg(r.changes.size()));
-    if (r.protect)
-        parts << (r.protect->deep ? QObject::tr("protected with what it calls") : QObject::tr("protected"));
-    else if (r.guarded)
-        parts << QObject::tr("guarded");
-    return parts.join(" · ");
+    return parts.join(" · "); // protected and guarded have their own column (#72)
 }
 
 // The Name column (#67): everyone's names, and yours to type over. The editor starts from your
@@ -185,17 +243,37 @@ FunctionsPage::FunctionsPage(FunctionSource &source, QWidget *parent) : QWidget(
     empty_label->setWordWrap(true);
     layout->addWidget(empty_label);
 
-    filter = new QLineEdit(this);
+    auto filter_row = new QWidget(this);
+    filter_row->setObjectName("filter_row");
+    auto filter_layout = new QHBoxLayout(filter_row);
+    filter_layout->setContentsMargins(0, 0, 0, 0);
+    filter = new QLineEdit(filter_row);
     filter->setObjectName("filter");
     filter->setPlaceholderText(tr("Find by address or name"));
     filter->setAccessibleName(tr("Find a function"));
-    layout->addWidget(filter);
+    show_filter = new QComboBox(filter_row);
+    show_filter->setObjectName("show_filter");
+    show_filter->setAccessibleName(tr("Show which functions"));
+    // In the order of Show.
+    show_filter->addItems({ tr("All functions"), tr("Running now"), tr("Off"), tr("In play"), tr("Guarded"),
+                            tr("Named"), tr("Not named yet") });
+    show_filter->setItemData(ShowRunning, tr("Ran in the last 5 seconds"), Qt::ToolTipRole);
+    show_filter->setItemData(ShowInPlay, tr("A switch or button in the recipe, changes, or protected"),
+                             Qt::ToolTipRole);
+    show_filter->setItemData(ShowGuarded, tr("Rules and paint leave its code alone"), Qt::ToolTipRole);
+    count = new QLabel(filter_row);
+    count->setObjectName("count");
+    ui::setTone(count, ui::Tone::Secondary);
+    filter_layout->addWidget(filter, 1);
+    filter_layout->addWidget(show_filter);
+    filter_layout->addWidget(count);
+    layout->addWidget(filter_row);
 
     table = new QTableWidget(0, Cols, this);
     table->setObjectName("functions");
     table->setAccessibleName(tr("Functions"));
     table->setHorizontalHeaderLabels(
-        { tr("Function"), tr("Now"), tr("Frames"), tr("Size"), tr("Off"), tr("Name"), tr("In play") });
+        { tr("Function"), tr("Now"), tr("Frames"), tr("Size"), tr("Off"), tr("Guard"), tr("Name"), tr("In play") });
     table->setSelectionBehavior(QAbstractItemView::SelectRows);
     table->setSelectionMode(QAbstractItemView::SingleSelection);
     // Only the Name cells are editable (their flags): double-click, or Return on the row (#67).
@@ -213,11 +291,14 @@ FunctionsPage::FunctionsPage(FunctionSource &source, QWidget *parent) : QWidget(
     table->horizontalHeaderItem(Now)->setToolTip(tr("Of the last 5 seconds, how many frames it ran in"));
     table->horizontalHeaderItem(Frames)->setToolTip(tr("Frames it ran in, in all (everyone's play)"));
     table->horizontalHeaderItem(Size)->setToolTip(tr("How many bytes of its own code the code map knows"));
+    table->horizontalHeaderItem(Guard)->setToolTip(tr("Ticked: protected, no rule and no paint changes its code "
+                                                      "(+ calls: what it calls too). auto: guarded anyway, while "
+                                                      "it's off or changed."));
     table->horizontalHeaderItem(About)->setToolTip(tr("What people called it: yours first, then others' with their "
                                                       "names. Double-click to give it yours; everyone sharing the "
                                                       "library sees it."));
     table->horizontalHeaderItem(InPlay)->setToolTip(tr("What you did with it: a switch or a button, a timer, "
-                                                       "changes, protected or guarded"));
+                                                       "changes"));
     layout->addWidget(table, 1);
 
     // The selected function.
@@ -334,13 +415,14 @@ FunctionsPage::FunctionsPage(FunctionSource &source, QWidget *parent) : QWidget(
     timer = new QTimer(this);
     timer->setInterval(500);
     connect(timer, &QTimer::timeout, this, &FunctionsPage::updateRows);
-    connect(table, &QTableWidget::itemChanged, this, &FunctionsPage::offChanged);
+    connect(table, &QTableWidget::itemChanged, this, &FunctionsPage::itemChanged);
     connect(table, &QTableWidget::itemSelectionChanged, this, &FunctionsPage::selectionChanged);
     connect(table->horizontalHeader(), &QHeaderView::sectionResized, table, [this](int col) {
         if (col == About)
             table->resizeRowsToContents();
     });
     connect(filter, &QLineEdit::textChanged, this, &FunctionsPage::applyFilter);
+    connect(show_filter, &QComboBox::currentIndexChanged, this, &FunctionsPage::applyFilter);
     connect(keep_button, &QPushButton::clicked, this, &FunctionsPage::keepSelected);
     connect(forget_button, &QPushButton::clicked, this, &FunctionsPage::forgetSelected);
     connect(name, &QLineEdit::editingFinished, this, &FunctionsPage::nameSelected);
@@ -424,11 +506,31 @@ void FunctionsPage::fill(int row, const FunctionRow &r)
         auto state = r.off ? Qt::Checked : Qt::Unchecked;
         if (off->data(Qt::CheckStateRole).isNull() || off->checkState() != state)
             off->setCheckState(state);
-        QString tip = r.off ? tr("Off: the game skips it. Untick to put it back.")
-                            : tr("Tick to turn it off: the game skips it");
+        QString tip = r.pending ? (r.off ? tr("Turns off when the game runs its next frame")
+                                         : tr("Back on when the game runs its next frame"))
+                      : r.off ? tr("Off: the game skips it. Untick to put it back.")
+                              : tr("Tick to turn it off: the game skips it");
         if (off->toolTip() != tip)
             off->setToolTip(tip);
     }
+    auto *guard = item(Guard);
+    if (!r.body_bytes)
+    {
+        if (guard->flags() & Qt::ItemIsUserCheckable)
+            guard->setFlags(Qt::ItemIsSelectable | Qt::ItemIsEnabled);
+        if (!guard->data(Qt::CheckStateRole).isNull())
+            guard->setData(Qt::CheckStateRole, QVariant());
+    }
+    else
+    {
+        auto flags = Qt::ItemIsSelectable | Qt::ItemIsEnabled | Qt::ItemIsUserCheckable;
+        if (guard->flags() != flags)
+            guard->setFlags(flags);
+        auto state = r.protect ? Qt::Checked : Qt::Unchecked;
+        if (guard->data(Qt::CheckStateRole).isNull() || guard->checkState() != state)
+            guard->setCheckState(state);
+    }
+    set(guard, guard_text(r), guard_tip(r));
     auto *ab = item(About);
     auto name_flags = Qt::ItemIsSelectable | Qt::ItemIsEnabled | Qt::ItemIsEditable;
     if (ab->flags() != name_flags)
@@ -459,7 +561,7 @@ void FunctionsPage::refresh()
     filling = false;
     for (size_t i = 0; i < shown.size(); i++)
         fill(int(i), shown[i]);
-    for (int col : { int(FunctionCol), int(Now), int(Frames), int(Size), int(Off), int(InPlay) })
+    for (int col : { int(FunctionCol), int(Now), int(Frames), int(Size), int(Off), int(Guard), int(InPlay) })
         table->resizeColumnToContents(col);
     // Frames keeps counting while the page is shown: room for 46 hours of play, so the
     // numbers never outgrow the column between re-sorts.
@@ -470,7 +572,7 @@ void FunctionsPage::refresh()
     table->resizeRowsToContents();
     bool any = !shown.empty();
     table->setVisible(any);
-    filter->setVisible(any);
+    filter->parentWidget()->setVisible(any);
     empty_label->setVisible(!any);
     not_running->setVisible(!source.running());
     applyFilter();
@@ -512,10 +614,39 @@ int FunctionsPage::selectedRow() const
     return rows.front().row();
 }
 
+void FunctionsPage::itemChanged(QTableWidgetItem *item)
+{
+    if (filling || size_t(item->row()) >= shown.size())
+        return;
+    if (item->column() == Off)
+        offChanged(item);
+    else if (item->column() == Guard)
+        guardChanged(item);
+}
+
+void FunctionsPage::guardChanged(QTableWidgetItem *item)
+{
+    auto &r = shown[size_t(item->row())];
+    bool on = item->checkState() == Qt::Checked;
+    if (on == r.protect.has_value() || !r.body_bytes)
+        return;
+    auto err = source.protect(r.f.entry, on, false); // with what it calls: the box below the table
+    if (!err.empty())
+    {
+        fill(item->row(), r);
+        say(tr("Couldn't protect it: %1").arg(QString::fromStdString(err)), int(ui::Tone::Error));
+        return;
+    }
+    say(on ? tr("Protected %1: no rule and no paint changes its code now. Save the recipe to keep it.").arg(cpu(r))
+           : tr("%1 isn't protected any more.").arg(cpu(r)),
+        int(ui::Tone::Ok));
+    updateRows();
+    if (item->row() == selectedRow())
+        selectionChanged(); // the Protect box below agrees
+}
+
 void FunctionsPage::offChanged(QTableWidgetItem *item)
 {
-    if (filling || item->column() != Off || size_t(item->row()) >= shown.size())
-        return;
     auto &r = shown[size_t(item->row())];
     bool want_off = item->checkState() == Qt::Checked;
     if (want_off == r.off)
@@ -576,6 +707,7 @@ void FunctionsPage::selectionChanged()
 void FunctionsPage::applyFilter()
 {
     QString want = filter->text().trimmed().toLower().remove('$').remove(':');
+    int show = show_filter->currentIndex(), visible = 0;
     for (size_t i = 0; i < shown.size(); i++)
     {
         auto &r = shown[i];
@@ -584,9 +716,14 @@ void FunctionsPage::applyFilter()
         QString text = QString::fromStdString(r.label).toLower();
         if (r.kept)
             text += " " + QString::fromStdString(r.kept->note).toLower();
-        bool match = want.isEmpty() || fn.contains(want) || offset.contains(want) || text.contains(want);
+        bool match = (want.isEmpty() || fn.contains(want) || offset.contains(want) || text.contains(want)) &&
+                     shows(r, show);
         table->setRowHidden(int(i), !match);
+        visible += match;
     }
+    // Some hidden: say how many are left, so an empty table never reads as "no functions".
+    count->setText(tr("%1 of %2").arg(visible).arg(shown.size()));
+    count->setVisible(size_t(visible) < shown.size());
 }
 
 void FunctionsPage::nameSelected()

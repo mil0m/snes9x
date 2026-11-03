@@ -269,3 +269,74 @@ What came back from playing, one line each, with what was done about it.
   loading the run's start. What rules did to RAM stays until the game overwrites it (it
   can't be undone without going back), which its tooltip says. The state bar reads *ROM
   clean, playing on from here*; the button greys out once there's nothing to clean.
+
+## Functions: filters, a Guard column, and Off that stays ticked (#72)
+
+From the review's leftovers (*Functions filters and a status column*) and a play-test
+finding. Mikael: "Function filters next! Also a column if they've guarded. Also, when
+tapping a checkbox right now they LOOK like they directly toggle off again, but that's just
+a visual glitch until the game runs more."
+
+**The glitch, found.** Clicking in the Workshop deactivates the game's window, and with
+*Pause when unfocused* (on by default) the game pauses. A tick asks the engine for a flip at
+the next frame; the page re-reads the ROM twice a second, the ROM still holds the old byte,
+and the box unticks itself until the game runs again. The fix is in the session, not the
+page: `functions()` counts the flips still queued for an entry (`Engine::pending_flips`) and
+reports the state they lead to, with `pending` set so the tooltip can say *at the next
+frame*. The page stays a plain view of what the session says.
+
+**Filters.** A *Show* combo box beside the search field (a combo, not a row of chips: the
+Workshop's minimum width is set by its widest page, #68):
+
+| Show | Rows |
+|---|---|
+| All functions | every one (the default) |
+| Running now | ran in the last 5 seconds (*Now* above 0%) |
+| Off | switched off now (or at the next frame) |
+| In play | a switch or button in the recipe, changes, or protected |
+| Guarded | rules and paint leave its code alone, for whatever reason |
+| Named | someone named it |
+| Not named yet | nobody has |
+
+The search field and the combo both apply. A quiet count says *12 of 545* when either hides
+rows, so an empty table never looks like "no functions". The choice isn't remembered between
+launches (the page has no settings of its own yet; cheap to add if missed).
+
+**A Guard column**, after *Off*, the same kind of cell: a box to tick.
+- Ticked = protected by the recipe (the same as *Protect it from other corruption* below,
+  which follows it). The cell's text says *+ calls* when what it calls is protected too.
+- Not ticked but guarded anyway (it's off, has changes in play, or a protected function calls
+  it): the text *auto*, and the tooltip says why.
+- No box when its code isn't known yet (nothing to protect), as *Off* does for a function
+  called both ways.
+- *protected* and *guarded* leave the *In play* column, which keeps switches, buttons,
+  timers and changes: nothing is said twice.
+
+**Tests (offscreen Qt, the fake):** each filter's rows, filter and search together, the
+count; the Guard box protects and unprotects, *+ calls* and *auto* with their tooltips, no
+box without a body; In play no longer says protected. **Session:** a unit test that a queued
+toggle flips the reported state (two queued toggles cancel). No smoke numbers: nothing here
+changes how a game is corrupted.
+
+### How it went (#72)
+
+- **The glitch was the pause, as suspected.** `EmuMainWindow` pauses on `WindowDeactivate`,
+  and the Workshop is its own window, so every click in it paused the game with the flip
+  still queued. `Engine::queued_state` replays the queued flips for an entry (a toggle twice
+  cancels, On/Off win); the session's `functions()` uses it for the rows and the status's
+  *functions off* count, so the panel's ROM line and the table agree on a paused game. The
+  page didn't change for it beyond a tooltip.
+- **Filters.** The combo and the search apply together, and only when one of them changes or
+  the page is shown: a row you untick under *Off* stays until you filter again, so nothing
+  jumps away under the mouse (the page's old rule). On the tour's Pocky & Rocky
+  *Running now* leaves the 14 that ran in the last 5 seconds.
+- **Guard column.** Ticking it is the same call as *Protect it…* below (`source.protect`,
+  not deep); the box below follows when the row is selected. *protected* left the *In play*
+  column.
+- **Width:** the Functions page needs 460 px at most (its details), so the Workshop's
+  smallest width is still set elsewhere (887 px in today's tour, the same with and without
+  this change's page).
+- **Not done:** the Show choice isn't remembered between launches; the clear button in the
+  search field was tried and dropped (its icon button has no accessible name, which the
+  audit catches).
+- Tests 545/57/180 (unit/real-core/Qt), ASan clean, tour read (Functions, selected).
