@@ -793,3 +793,9 @@ Removed on 2026-11-01: it didn't pay off (see FEATURES.md, *Tried and removed*).
    - [ ] The line under it says what each one does, and every one ends *Changed ROM bytes the game used just before the crash are put back either way*.
 4. With VoiceOver, move to each switch.
    - [ ] It reads the switch's line as its description.
+
+## 52. Claude's names in Functions (#42)
+1. Put a `names.claude.json` (from the map-game skill) in a game's library folder and load the game.
+   - [ ] Functions shows those names as *name (claude)*; a function you named yourself shows yours first, then *· name (claude)*.
+2. Pick five names from `mapping.claude.md` and do what its *how to check* column says (turn the function off).
+   - [ ] Note for each whether the game did what the name says; add the count to the plan's *How it went*.

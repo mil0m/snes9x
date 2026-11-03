@@ -13,7 +13,8 @@ except for a few small, null-guarded hooks in the core.
 - Why it is the way it is: the plan docs in `docs/corruption/` (dated; each ends with
   *How it went*, with measurements). Ideas not built yet: `2026-10-31-horizons.md`.
 - Manual test steps, one section per feature: [docs/corruption/QA.md](docs/corruption/QA.md).
-- Qt widget house rules: the `qt-widgets-ui` skill in `.claude/skills/`.
+- Qt widget house rules: the `qt-widgets-ui` skill in `.claude/skills/`. Naming a game's code
+  from its dossier (optional, never needed by the app): the `map-game` skill.
 
 ## Layers
 
@@ -51,6 +52,7 @@ build/tests/corrupt-smoke <rom> <recipe.json> <frames> <warmup> [--mode ...]   #
 tests/qt/ui_tour.sh <out dir> <rom>          # screenshots of every window, offscreen
 TOUR_LIBRARY=<dir> tests/qt/ui_tour.sh ...  # the same with a copy of a real library (real data)
 tests/remote/remote_e2e.sh <out dir> <rom>   # the remote page in a headless browser
+build/tests/game-dossier <rom> <library game folder> --out f.md   # what the tracer knows, as Markdown (#42)
 tools/privacy_check.sh [--staged]            # nothing private in tracked files
 ```
 

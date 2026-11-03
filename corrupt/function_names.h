@@ -8,7 +8,9 @@
 
 // Shared names (#59): what players call a game's functions ("gravity"), one file per person
 // in the game's library folder, merged with everyone's like the code map. Names come from
-// people, never from a model. Plan: docs/corruption/2026-11-02-function-changes-plan.md.
+// people; a model's (the optional map-game skill, #42) are its own file, names.claude.json,
+// so they always show as "name (claude)", beside people's and never instead of them. Plans:
+// docs/corruption/2026-11-02-function-changes-plan.md, 2026-11-03-game-mapping-plan.md.
 namespace corrupt
 {
 

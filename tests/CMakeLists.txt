@@ -42,6 +42,9 @@ if(ZLIB_FOUND AND PNG_FOUND)
     add_executable(corrupt-smoke headless/corrupt_smoke.cpp)
     target_link_libraries(corrupt-smoke PRIVATE snes9x-headless)
 
+    add_executable(game-dossier headless/game_dossier.cpp)
+    target_link_libraries(game-dossier PRIVATE snes9x-headless)
+
     add_executable(corrupt-headless-tests headless/guard_integration_test.cpp headless/test_rom.cpp)
     target_link_libraries(corrupt-headless-tests PRIVATE snes9x-headless)
     add_test(NAME corrupt-headless-tests COMMAND corrupt-headless-tests)
