@@ -340,3 +340,68 @@ changes how a game is corrupted.
   search field was tried and dropped (its icon button has no accessible name, which the
   audit catches).
 - Tests 545/57/180 (unit/real-core/Qt), ASan clean, tour read (Functions, selected).
+
+## Strength, for one rule and for all rules (#73)
+
+From the review's leftovers (*Chaos vs Strength*). Mikael: "Chaos vs strength is very
+unclear to me." Then, after hearing what they do: keep both (with ten rules on, one slider
+outside is quicker than editing each), "let's name these the same if we keep both. But say
+that the outer one is for all rules", and keep them multiplied. The other half of the
+complaint: "since a rule can be super complicated … and then you have like strength
+outside. How do you know what that means?"
+
+**What they are (unchanged).** A rule's *Strength* and the recipe's *Chaos* are the same
+kind of knob at two levels; a rule hits at its own × the recipe's (`tick_rule`). Below 100 %
+it picks fewer bytes (count × strength), smaller deltas for *Add* and fewer bits for *Flip
+bits*; once that is under one byte a firing, it fires that much less often instead. Area ops
+always do their whole area, so for them it only means how often.
+
+**Names.** *Chaos* becomes **Strength, all rules** in the panel, on the remote page and in
+tooltips. Each rule's slider stays **Strength**. The recipe file keeps `intensity`, the remote
+protocol keeps its `chaos` action (renaming wire names breaks shared pages for nothing).
+
+**What it means, said for each rule.** A new `describe_strength(rule, all_rules)` in
+`corrupt/rule_text` says what this rule does at this setting, in its own units, from the
+same numbers `tick_rule` uses (`scaled_op` moves to `rule.h` so the text can't drift from
+the engine):
+- *At 50%: 4 of its 8 bytes each time it fires, adding -1..1 instead of -2..2.*
+- *At 25% (50% × 50% for all rules): …* when all rules is below 100 %.
+- *At 10%: it fires about 1 time in 10, changing 1 byte.*
+- In the rule's own units: instructions for code ops, jump table entries, functions; *the
+  whole area* for area ops; *the pair* for a fixed swap. *Does nothing* at 0 %.
+
+Where it shows: the tooltip (and accessible description) of every rule slider, in the panel
+and on the Workshop's Recipe page, following both sliders as they move; a line under
+*Strength* in the rule editor (which now gets the recipe's all-rules value); a second line
+under each rule on the remote page (touch has no hover). The all-rules slider's tooltip says
+it multiplies: *a rule at 50% with this at 50% hits at 25%*.
+
+**Not done:** no "→ 25%" next to each slider (the panel's rule column has no room, and the
+tooltip says it); no presets.
+
+**Tests:** `describe_strength` for each kind (bytes with Add and bit flips, thinning, area,
+fixed swap, code/jump/kill units, the all-rules product, 0 %), and that its numbers match
+`tick_rule` on a fake memory; the panel and Recipe page sliders' tooltips follow both
+sliders; the editor's line; the remote status carries `effect`. No smoke numbers: nothing
+changes how a game is corrupted.
+
+### How it went (#73)
+
+- **Named alike.** The panel's slider is *Strength, all rules* (form label, accessible name,
+  tooltip saying they multiply), and so is the remote page's; the column headers say
+  *times Strength, all rules*. The object name (`chaos`), the recipe's `intensity` and the
+  remote action `chaos` stayed: nothing anyone sees, and old pages and files keep working.
+- **What it means, per rule.** `describe_strength` is built on the engine's own numbers:
+  `scaled_op` moved out of `rule.cpp`'s anonymous namespace into `rule.h`, and a test checks
+  that the bytes and bits it promises are what `tick_rule` changes (8 bytes, 4 bits, at
+  50% × 50%: 2 bytes, 1 bit each). Percentages keep one decimal, so a guard's halving shows
+  as *12.5%*, not a rounded 13%.
+- **Where.** `IntensitySlider` got a `describe` callback: its tooltip and the slider's
+  accessible description follow every move, and `redescribe()` runs when the other slider
+  changes (at once in the panel, on the next refresh for the Recipe page and when the remote
+  moves it). The editor's line sits under *Strength* and follows the whole form (count, op);
+  it gets all rules from `RecipeActions`. On the remote page the line sits under each rule's
+  slider (`effect` in the status), since a phone has no hover.
+- **Fit:** the label is longer than *Chaos*; the tour's running panel shows it whole, with
+  the slider beside it.
+- Tests 548/57/183 (unit/real-core/Qt), ASan clean, tour and the remote end-to-end read.

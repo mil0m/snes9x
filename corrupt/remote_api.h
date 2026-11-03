@@ -33,6 +33,7 @@ struct RuleView
     bool enabled = true;
     double strength = 1.0;
     int hotkey = 0; // 1-9 for a hotkey rule, else 0
+    std::string effect; // what it does at that strength times all rules' (describe_strength)
 };
 
 // A button of the recipe (#63): slot 1-9, named after what it does.

@@ -198,10 +198,16 @@ Cockpit::Cockpit(CorruptionControl &control, RecipeActions &actions, QWidget *pa
     run_form->setContentsMargins(0, 0, 0, 0);
     chaos_slider = new IntensitySlider(this);
     chaos_slider->setObjectName("chaos");
-    chaos_slider->setToolTip(tr("How hard the whole recipe hits: turns every rule up or down together."));
-    chaos_slider->setAccessibleName(tr("Chaos"));
-    chaos_slider->onChanged = [this](double v) { this->control.setIntensity(v); };
-    run_form->addRow(tr("Chaos"), chaos_slider);
+    chaos_slider->setToolTip(tr("Turns every rule's strength up or down together: a rule at 50% with this at 50% "
+                                "hits at 25%. Hover a rule's slider to see what that means for it."));
+    chaos_slider->setAccessibleName(tr("Strength, all rules"));
+    chaos_slider->onChanged = [this](double v) {
+        this->control.setIntensity(v);
+        all_rules = v;
+        for (auto slider : rule_sliders)
+            slider->redescribe();
+    };
+    run_form->addRow(tr("Strength, all rules"), chaos_slider);
     auto seed_row = new QHBoxLayout;
     seed_edit = new QLineEdit(this);
     seed_edit->setObjectName("seed");
@@ -261,7 +267,7 @@ Cockpit::Cockpit(CorruptionControl &control, RecipeActions &actions, QWidget *pa
     rules_table = new QTableWidget(0, kColumns, rules_box);
     rules_table->setObjectName("rules");
     rules_table->setHorizontalHeaderLabels({ tr("On"), tr("Rule"), tr("Strength") });
-    rules_table->horizontalHeaderItem(kStrength)->setToolTip(tr("How hard this rule hits, on top of Chaos"));
+    rules_table->horizontalHeaderItem(kStrength)->setToolTip(tr("How hard each rule hits, times Strength, all rules. Hover a slider to see what it means for that rule."));
     rules_table->verticalHeader()->setVisible(false);
     auto header = rules_table->horizontalHeader();
     header->setSectionResizeMode(kOn, QHeaderView::ResizeToContents);
@@ -440,6 +446,12 @@ void Cockpit::refresh()
     run_controls->setVisible(status.has_recipe); // hidden rather than greyed out
     mark_button->setVisible(status.has_recipe);
     chaos_slider->refresh(status.intensity);
+    if (status.intensity != all_rules)
+    {
+        all_rules = status.intensity;
+        for (auto slider : rule_sliders)
+            slider->redescribe();
+    }
     for (size_t i = 0; i < rule_sliders.size() && i < status.rules.size(); i++)
         rule_sliders[i]->refresh(status.rules[i].intensity); // a crash-guard dampen moves it
     {
@@ -614,6 +626,11 @@ void Cockpit::rebuildRules(const PanelStatus &status)
         name->setToolTip(qs(describe_rule(r)));
         rules_table->setItem(i, kName, name);
         auto slider = new IntensitySlider;
+        slider->describe = [this, r](double v) {
+            auto rule = r;
+            rule.intensity = v;
+            return qs(describe_strength(rule, all_rules));
+        };
         slider->setIntensity(r.intensity);
         slider->setAccessibleName(tr("Strength of %1").arg(qs(r.name)));
         slider->onChanged = [this, i](double v) { control.setRuleIntensity(size_t(i), v); };

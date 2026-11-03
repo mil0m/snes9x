@@ -83,7 +83,7 @@ There are four ways to undo something. Only one of them undoes everything.
 | **Rule** | One line of a recipe: "every 2 seconds, put a random value in 1 byte of work RAM". |
 | **Run** | Corruption switched on, from the moment you press Corrupt until you stop. |
 | **Seed** | The dice. The same recipe with the same seed, from the same start, does exactly the same thing. **Re-roll** picks a new seed; click the number next to it and type to set one. |
-| **Chaos** | How hard the whole recipe hits. **Strength** is the same for one rule. They multiply. |
+| **Strength** | How hard a rule hits: fewer bytes each time, smaller changes, and below one byte, less often. Each rule has one; **Strength, all rules** turns them all up or down together. They multiply: a rule at 50% with all rules at 50% hits at 25%. Hover a rule's slider to see what that means for it ("changes 2 of its 8 bytes each time it fires"). |
 | **Memory** | Which part of the console a rule changes (see below). |
 | **Start moment** | A save state taken when a run starts. **Back to Normal** goes back to it, and **Save** stores it with the recipe (with *Remember where each run starts* on), so loading the recipe replays from the same spot. |
 | **Crash guard** | Notices when the game crashes, goes back a few seconds and changes what caused it. |
@@ -136,7 +136,8 @@ loading it goes back there, so the same seed plays out the same way. Untick it t
 save recipes without touching where the game is.
 
 **Rules** are listed in the panel: tick **On** to switch one off for a while, drag
-**Strength** to tone it down, double-click to edit. The Workshop's **Recipe** page lists them
+**Strength** to tone it down (hover the slider: it says what the rule does at that
+setting, times **Strength, all rules**), double-click to edit. The Workshop's **Recipe** page lists them
 in full, and shows how often the crash guard blamed each under **Crashes**. **Add Rule…**
 is there too; the small pencil, copy and bin buttons
 beside it edit, duplicate and remove the selected rule. Edits apply on the next frame, to
@@ -532,7 +533,7 @@ is never committed) or anything shaped like a secret.
 - **Is it on?** The Corrupt button reads *Stop* and the state bar reads *Corrupting* and counts changes.
 - **Some memories bounce back.** Sprites and colours are often repainted every frame; see
   Tips.
-- **Gentle recipes are gentle.** Turn **Chaos** up, or a rule's **Strength**.
+- **Gentle recipes are gentle.** Turn **Strength, all rules** up, or a rule's **Strength**.
 - **An aimed ROM rule needs a code map.** If the ROM line says nothing is known about
   its code yet, play the game a while first.
 - **The game must be running.** A start waits for the next frame, so nothing happens while

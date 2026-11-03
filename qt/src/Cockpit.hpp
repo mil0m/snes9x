@@ -22,7 +22,7 @@ class StatusLine;
 enum class Tone;
 }
 
-// The corruption panel while you play (#63): the recipe, Corrupt and Back to Normal, Chaos
+// The corruption panel while you play (#63): the recipe, Corrupt and Back to Normal, Strength for all rules
 // and the dice, the recipe's buttons, its rules (on and strength), and one line each about
 // the crash guard and the ROM. Everything else is in the Workshop, a link away.
 class Cockpit : public QWidget
@@ -81,6 +81,7 @@ class Cockpit : public QWidget
     QWidget *rules_box;
     QTableWidget *rules_table;
     std::vector<IntensitySlider *> rule_sliders;
+    double all_rules = 1.0; // Strength, all rules, for the rule sliders' tooltips
     QLabel *rules_empty;
     QLabel *guard_label;
     QLabel *guard_icon;

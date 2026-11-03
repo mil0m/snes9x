@@ -56,6 +56,7 @@ RecipeActions::RecipeActions(CorruptionControl &control, QWidget *parent, std::v
         SizedMemory sizes;
         sizes.sizes = status.sizes;
         RuleEditor dialog(rule, this->control.regions(), sizes, dialogParent());
+        dialog.setAllRules(status.intensity);
         dialog.setWindowTitle(title);
         if (dialog.exec() != QDialog::Accepted)
             return std::nullopt;

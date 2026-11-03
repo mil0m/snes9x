@@ -1,5 +1,10 @@
 #include "rule_text.h"
 
+#include "area_ops.h"
+#include "code_aim.h"
+
+#include <algorithm>
+#include <cmath>
 #include <cstdio>
 
 namespace corrupt
@@ -20,7 +25,78 @@ std::string plural(long n, const char *word)
     return std::to_string(n) + " " + word + (n == 1 ? "" : "s");
 }
 
+// "50%", "12.5%", "0.5%": a dampened strength isn't rounded away.
+std::string percent(double fraction)
+{
+    char buf[16];
+    snprintf(buf, sizeof(buf), "%.1f", fraction * 100.0);
+    std::string text = buf;
+    if (text.size() > 2 && text.compare(text.size() - 2, 2, ".0") == 0)
+        text.resize(text.size() - 2);
+    return text + "%";
+}
+
 } // namespace
+
+std::string describe_strength(const Rule &rule, double all_rules)
+{
+    double own = std::clamp(rule.intensity, 0.0, 1.0);
+    all_rules = std::clamp(all_rules, 0.0, 1.0);
+    double e = std::clamp(rule.intensity * all_rules, 0.0, 1.0); // as tick_rule
+    std::string text = "At " + percent(e);
+    if (all_rules < 1.0)
+        text += " (" + percent(own) + " × " + percent(all_rules) + " for all rules)";
+    text += ": ";
+    if (e <= 0.0)
+        return text + "it does nothing.";
+
+    const Op &op = rule.op;
+    bool whole = is_area_op(op.type) || (op.type == OpType::Swap && op.a && op.b);
+    const char *verb = op.type == OpType::Kill ? "turns off" : whole && op.type == OpType::Swap ? "swaps"
+                       : op.type == OpType::PointerSwap                                    ? "swaps"
+                                                                                           : "changes";
+    auto things = [&](long n) {
+        if (op.type == OpType::PointerSwap)
+            return std::to_string(n) + (n == 1 ? " jump table entry" : " jump table entries");
+        return plural(n, is_code_op(op.type) ? "instruction" : op.type == OpType::Kill ? "function" : "byte");
+    };
+    // Add and Flip bits also hit softer (scaled_op); the rest only do less of it.
+    std::string how;
+    Op scaled = scaled_op(op, e);
+    if (op.type == OpType::Add)
+    {
+        how = ", adding " + std::to_string(scaled.min) + ".." + std::to_string(scaled.max);
+        if (scaled.min != op.min || scaled.max != op.max)
+            how += " instead of " + std::to_string(op.min) + ".." + std::to_string(op.max);
+    }
+    else if (op.type == OpType::Bitflip && !op.mask)
+    {
+        how = ", flipping " + plural(scaled.bits, "bit");
+        if (scaled.bits != op.bits)
+            how += " instead of " + std::to_string(op.bits);
+    }
+
+    double expected = rule.count * e;
+    std::string what = whole ? std::string(verb) + (op.type == OpType::Swap ? " the pair" : " the whole area") : "";
+    if (expected < 1.0)
+    {
+        char chances[48];
+        if (expected <= 0.5)
+            snprintf(chances, sizeof(chances), "about 1 in %ld", std::lround(1.0 / expected));
+        else
+            snprintf(chances, sizeof(chances), "about %s", percent(expected).c_str());
+        if (!whole)
+            what = std::string(verb) + " " + things(1);
+        return text + "it fires on " + chances + " of its chances, and then " + what + how + ".";
+    }
+    if (!whole)
+    {
+        long n = std::max(1L, std::lround(expected));
+        what = std::string(verb) + " " + (n < long(rule.count) ? std::to_string(n) + " of its " + things(long(rule.count))
+                                                              : things(n));
+    }
+    return text + what + " each time it fires" + how + ".";
+}
 
 std::string describe_op(const Rule &rule)
 {

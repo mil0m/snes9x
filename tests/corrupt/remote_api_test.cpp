@@ -301,7 +301,7 @@ TEST_SUITE("remote control")
         s.seed = 5101;
         s.crashes = 2;
         s.message = "Caught at $80:1234";
-        s.rules = { { "drip", "rom: random", true, 1.0, 0 }, { "swap", "pointer swap", false, 0.5, 1 } };
+        s.rules = { { "drip", "rom: random", true, 1.0, 0 }, { "swap", "pointer swap", false, 0.5, 1, "At 25%: swaps 1 jump table entry" } };
         s.sizes[size_t(Target::WRAM)] = 0x20000;
         s.clients = { "erik@example.com" };
         s.starters = { "Gentle noise" };
@@ -313,6 +313,7 @@ TEST_SUITE("remote control")
         CHECK(j["seed"] == "5101"); // as text: JavaScript numbers lose 64-bit seeds
         CHECK(j["rules"].size() == 2);
         CHECK(j["rules"][1]["hotkey"] == 1);
+        CHECK(j["rules"][1]["effect"] == "At 25%: swaps 1 jump table entry");
         CHECK(j["rules"][1]["enabled"] == false);
         CHECK(j["sizes"]["wram"] == 0x20000);
         CHECK(j["clients"][0] == "erik@example.com");

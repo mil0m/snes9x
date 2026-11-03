@@ -614,3 +614,20 @@ TEST_CASE("leaving the ROM with a code op picked moves to Random value and says 
     choose(e, "op", "add"); // the note was about that switch only
     CHECK(note->isHidden());
 }
+
+TEST_CASE("under Strength, a line says what the rule does at it, times all rules (#73)")
+{
+    SizedMemory sizes;
+    Rule r = default_rule();
+    r.op = { .type = OpType::Add, .min = -2, .max = 2 };
+    r.count = 8;
+    RuleEditor e(r, sample_regions(), sizes);
+    auto note = child<QLabel>(e, "strength_note");
+    CHECK(note->text() == "At 100%: changes 8 bytes each time it fires, adding -2..2.");
+    child<QDoubleSpinBox>(e, "intensity")->setValue(50.0);
+    CHECK(note->text() == "At 50%: changes 4 of its 8 bytes each time it fires, adding -1..1 instead of -2..2.");
+    e.setAllRules(0.5);
+    CHECK(note->text().startsWith("At 25% (50% × 50% for all rules): changes 2 of its 8 bytes"));
+    child<QSpinBox>(e, "count")->setValue(1); // follows the rest of the form too
+    CHECK(note->text().contains("1 in 4 of its chances"));
+}

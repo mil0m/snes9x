@@ -128,7 +128,7 @@ function renderRules(rules) {
       li.innerHTML =
         '<div class="rule-head"><b></b><label class="check"><input type="checkbox"> On</label></div>' +
         '<p class="rule-what"></p><label class="field"><span>Strength <output></output></span>' +
-        '<input type="range" min="0" max="100" step="1"></label>';
+        '<input type="range" min="0" max="100" step="1"></label><p class="rule-effect"></p>';
       li.querySelector("input[type=checkbox]").addEventListener("change", (e) =>
         send({ do: "rule_enabled", rule: i, on: e.target.checked }));
       const slider = li.querySelector("input[type=range]");
@@ -144,6 +144,7 @@ function renderRules(rules) {
     }
     li.querySelector("b").textContent = r.name || "Rule " + (i + 1);
     li.querySelector(".rule-what").textContent = r.what;
+    li.querySelector(".rule-effect").textContent = r.effect || "";
     li.querySelector("input[type=checkbox]").checked = r.enabled;
     if (!state.ruleTimers[i]) {
       li.querySelector("input[type=range]").value = Math.round(r.strength * 100);

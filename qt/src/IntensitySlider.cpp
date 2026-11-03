@@ -48,4 +48,15 @@ void IntensitySlider::refresh(double intensity)
 void IntensitySlider::showValue()
 {
     label->setText(QString("%1%").arg(std::lround(value * 100)));
+    redescribe();
+}
+
+void IntensitySlider::redescribe()
+{
+    if (!describe)
+        return;
+    auto text = describe(value);
+    setToolTip(text);
+    slider->setToolTip(text);
+    slider->setAccessibleDescription(text);
 }

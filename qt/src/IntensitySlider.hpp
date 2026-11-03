@@ -6,7 +6,7 @@
 class QLabel;
 class QSlider;
 
-// A 0-100 % slider with its value beside it, for rule and recipe intensity.
+// A 0-100 % slider with its value beside it, for a rule's strength and all rules'.
 // Setting it from code is silent; moving it calls onChanged with 0..1.
 class IntensitySlider : public QWidget
 {
@@ -20,6 +20,11 @@ class IntensitySlider : public QWidget
     void refresh(double intensity);
 
     std::function<void(double)> onChanged;
+
+    // Says what a value means (#73): the slider's tooltip and accessible description follow
+    // it as it moves. Call redescribe() when something else it depends on changes.
+    std::function<QString(double)> describe;
+    void redescribe();
 
   private:
     void showValue();

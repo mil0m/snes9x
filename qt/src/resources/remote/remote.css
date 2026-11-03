@@ -44,6 +44,8 @@ input:not([type]), input[class~=mono], select { font: inherit; color: var(--text
 .rule-head { display: flex; align-items: center; gap: 8px; }
 .rule-head b { flex: 1; }
 .rule-what { font-size: 0.85rem; color: var(--muted); margin: 2px 0 0; overflow-wrap: anywhere; }
+.rule-effect { font-size: 0.85rem; color: var(--muted); margin: 4px 0 0; }
+.rule-effect:empty { display: none; }
 .canvas-wrap { margin-top: 10px; overflow: auto; border: 1px solid var(--line); border-radius: 8px; max-height: 70vh; }
 canvas { display: block; width: 100%; image-rendering: pixelated; touch-action: none; }
 .paint canvas { cursor: crosshair; }

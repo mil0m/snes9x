@@ -139,7 +139,7 @@ the crash map marks dangerous), and for `rom` rules, aiming by the code map: `ro
 `arith`, `logic`, `shift`, `compare`, `load`, `store`, `transfer`, `branch`, `jump`,
 `return`, `stack`, `flags`, `width`, `block`, `misc`).
 
-**Per recipe, optional**: `intensity` (0–1, default 1; the Chaos slider), which multiplies
+**Per recipe, optional**: `intensity` (0–1, default 1; the *Strength, all rules* slider, once called Chaos), which multiplies
 every rule's intensity, `anchor_state`, the file name of the recipe's saved moment, and
 `patches`, the painted bytes: `[{ "target": "rom", "at": "0x21A3F", "bytes": "EAEA" }]`, and
 `pins`, kept ROM changes: `[{ "rom": "0x21A3F", "value": "0xF0", "was": "0xD0", "note": "…" }]`

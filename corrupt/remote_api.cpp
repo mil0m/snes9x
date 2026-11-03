@@ -278,6 +278,7 @@ std::string status_json(const StatusView &s)
                           { "what", r.what },
                           { "enabled", r.enabled },
                           { "strength", r.strength },
+                          { "effect", r.effect },
                           { "hotkey", r.hotkey } });
     json buttons = json::array();
     for (auto &b : s.buttons)

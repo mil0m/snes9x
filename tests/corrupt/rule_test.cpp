@@ -354,3 +354,21 @@ TEST_SUITE("avoiding the crash map's hot bytes")
         CHECK(touched(mem).empty());
     }
 }
+
+TEST_CASE("describe_strength's byte count is what tick_rule changes")
+{
+    // 8 bytes, 4 bits each, at 50% x 50%: 2 bytes a firing, 1 bit each (scaled_op).
+    Rule r;
+    r.range = { Target::WRAM, 0x2000, 0x2FFF };
+    r.op = { .type = OpType::Bitflip, .bits = 4 };
+    r.when = { .type = TriggerType::EveryFrames, .every = 1 };
+    r.count = 8;
+    r.intensity = 0.5;
+    FakeMemory mem;
+    RuleRuntime rt;
+    auto events = tick_rule(r, rt, mem, 42, 0, 1, 0, 0.5);
+    CHECK(events.size() == 2);
+    for (auto &e : events)
+        CHECK(std::popcount(uint8_t(e.old_value ^ e.new_value)) == 1);
+    CHECK(scaled_op(r.op, 0.25).bits == 1);
+}

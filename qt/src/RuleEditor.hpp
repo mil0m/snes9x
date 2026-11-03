@@ -32,6 +32,10 @@ class RuleEditor : public QDialog
     corrupt::Rule rule() const; // the rule as the form stands
     QString error() const;      // why it isn't valid; empty when it is
 
+    // The recipe's Strength, all rules, so the line under Strength says what the rule
+    // really does (#73). 100% when not set.
+    void setAllRules(double all_rules);
+
   protected:
     // Fits again once the style has polished everything: the Mac's controls are taller.
     void showEvent(QShowEvent *event) override;
@@ -105,6 +109,8 @@ class RuleEditor : public QDialog
     QSpinBox *count_spin;
     QComboBox *pick_combo;
     QDoubleSpinBox *intensity_spin;
+    QLabel *strength_note;
+    double all_rules = 1.0;
     QCheckBox *enabled_check;
     QCheckBox *avoid_check;
 

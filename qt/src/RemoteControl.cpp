@@ -128,6 +128,7 @@ remote::StatusView SessionRemote::status()
         rv.what = describe_rule(r);
         rv.enabled = r.enabled;
         rv.strength = r.intensity;
+        rv.effect = describe_strength(r, s.intensity);
         rv.hotkey = r.when.type == TriggerType::Hotkey ? int(r.when.hotkey) : 0;
         v.rules.push_back(std::move(rv));
     }

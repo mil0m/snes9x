@@ -63,6 +63,7 @@ class RecipePage : public QWidget
     QPushButton *save_button;
     QTableWidget *rules_table;
     std::vector<IntensitySlider *> rule_sliders;
+    double all_rules = 1.0; // Strength, all rules, for the rule sliders' tooltips
     QLabel *rules_empty;
     QPushButton *add_button;
     QPushButton *edit_button;

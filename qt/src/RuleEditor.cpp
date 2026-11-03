@@ -644,9 +644,12 @@ void RuleEditor::buildForm()
     intensity_spin->setDecimals(2);
     intensity_spin->setSingleStep(5);
     intensity_spin->setSuffix(" %");
-    intensity_spin->setToolTip(tr("How hard this rule hits, on top of the recipe's Chaos. Below one byte each "
+    intensity_spin->setToolTip(tr("How hard this rule hits, times Strength, all rules. Below one byte each "
                                   "time, it fires less often instead"));
     how->addRow(tr("Strength"), intensity_spin);
+    strength_note = hint_label({}, how_box);
+    strength_note->setObjectName("strength_note");
+    how->addRow(QString(), strength_note);
     enabled_check = new QCheckBox(tr("Enabled"), how_box);
     enabled_check->setObjectName("enabled");
     enabled_check->setToolTip(tr("Off: the rule stays in the recipe but does nothing"));
@@ -1071,6 +1074,12 @@ QString RuleEditor::error() const
     return build().error;
 }
 
+void RuleEditor::setAllRules(double value)
+{
+    all_rules = value;
+    refresh();
+}
+
 void RuleEditor::refresh()
 {
     // What follows Where (#69): code ops only for the ROM; leaving the ROM with one picked
@@ -1157,6 +1166,7 @@ void RuleEditor::refresh()
         last_edit->setText(hexa(b.rule.range.last, b.rule.range.target)); // the rectangle's bottom-right byte
     }
     summary_label->setText(qs(describe_rule(b.rule)));
+    strength_note->setText(qs(describe_strength(b.rule, all_rules)));
     error_label->setText(b.error);
     error_icon->setVisible(!b.error.isEmpty());
     if (!b.error.isEmpty())

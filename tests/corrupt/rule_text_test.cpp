@@ -129,3 +129,61 @@ TEST_CASE("sized memory validates against the sizes it was given")
     CHECK(err->find("sram") != std::string::npos);
     CHECK(no_save.read(Target::WRAM, 5) == 0);
 }
+
+TEST_CASE("describe_strength says what a rule does at its strength, in its own units")
+{
+    Rule add = with_op({ .type = OpType::Add, .min = -2, .max = 2 }, 8);
+    CHECK(describe_strength(add) == "At 100%: changes 8 bytes each time it fires, adding -2..2.");
+    add.intensity = 0.5;
+    CHECK(describe_strength(add) == "At 50%: changes 4 of its 8 bytes each time it fires, adding -1..1 instead of -2..2.");
+    // The two sliders multiply, and the text says so.
+    CHECK(describe_strength(add, 0.5) ==
+          "At 25% (50% × 50% for all rules): changes 2 of its 8 bytes each time it fires, adding -1..1 instead of -2..2.");
+
+    Rule flip = with_op({ .type = OpType::Bitflip, .bits = 4 }, 2);
+    flip.intensity = 0.5;
+    CHECK(describe_strength(flip) == "At 50%: changes 1 of its 2 bytes each time it fires, flipping 2 bits instead of 4.");
+    Rule mask = with_op({ .type = OpType::Bitflip, .mask = uint8_t(0x81) }, 1);
+    CHECK(describe_strength(mask) == "At 100%: changes 1 byte each time it fires.");
+
+    // Under one byte a firing, it fires less often instead.
+    Rule one = with_op({ .type = OpType::Random, .min = 0, .max = 255 }, 1);
+    one.intensity = 0.1;
+    CHECK(describe_strength(one) == "At 10%: it fires on about 1 in 10 of its chances, and then changes 1 byte.");
+    one.intensity = 0.7;
+    CHECK(describe_strength(one) == "At 70%: it fires on about 70% of its chances, and then changes 1 byte.");
+    one.intensity = 0.125; // a crash guard's halving isn't rounded away
+    CHECK(describe_strength(one) == "At 12.5%: it fires on about 1 in 8 of its chances, and then changes 1 byte.");
+
+    one.intensity = 1.0;
+    CHECK(describe_strength(one, 0.0) == "At 0% (100% × 0% for all rules): it does nothing.");
+    one.intensity = 0.0;
+    CHECK(describe_strength(one) == "At 0%: it does nothing.");
+}
+
+TEST_CASE("describe_strength: areas, a fixed swap, code, jump tables and functions")
+{
+    Rule shift = with_op({ .type = OpType::Shift, .dx = 1 }, 1);
+    CHECK(describe_strength(shift) == "At 100%: changes the whole area each time it fires.");
+    shift.intensity = 0.25;
+    CHECK(describe_strength(shift) == "At 25%: it fires on about 1 in 4 of its chances, and then changes the whole area.");
+
+    Rule pair = with_op({ .type = OpType::Swap, .a = 0x10u, .b = 0x20u }, 1);
+    CHECK(describe_strength(pair) == "At 100%: swaps the pair each time it fires.");
+
+    Rule code = with_op({ .type = OpType::NopOut }, 4);
+    code.range = { Target::ROM, 0, 0xFFFF };
+    code.intensity = 0.5;
+    CHECK(describe_strength(code) == "At 50%: changes 2 of its 4 instructions each time it fires.");
+
+    Rule jumps = with_op({ .type = OpType::PointerSwap }, 1);
+    jumps.range = code.range;
+    CHECK(describe_strength(jumps) == "At 100%: swaps 1 jump table entry each time it fires.");
+    jumps.count = 3;
+    CHECK(describe_strength(jumps) == "At 100%: swaps 3 jump table entries each time it fires.");
+
+    Rule kill = with_op({ .type = OpType::Kill }, 2);
+    kill.range = code.range;
+    kill.intensity = 0.25;
+    CHECK(describe_strength(kill) == "At 25%: it fires on about 1 in 2 of its chances, and then turns off 1 function.");
+}

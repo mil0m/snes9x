@@ -47,10 +47,10 @@ Between frames, `CorruptionSession::betweenFrames()` (`qt/src/CorruptionSession.
 - Tests: `tests/corrupt/examples_test.cpp` (checks the qrc too), `tests/qt/cockpit_test.cpp`.
 - Docs: `phase1-engine-recipes-plan`, `ux-pass-plan`; QA 0, 1; GUIDE "Start here".
 
-**Intensity and Chaos (#15)** - a live strength slider per rule and one for the whole recipe. Below 1 it thins firings rather than shrinking values.
-- Code: `Engine::set_intensity`, `set_rule_intensity` (`corrupt/engine.cpp`), `qt/src/IntensitySlider.cpp`, the cockpit's Chaos slider.
-- Tests: `tests/corrupt/engine_test.cpp`, `tests/qt/intensity_slider_test.cpp`.
-- Docs: `phase3-live-panel-plan` "#15"; QA 9; GUIDE "The words".
+**Strength, per rule and for all rules (#15, #73)** - a live strength slider per rule and one for the whole recipe (*Strength, all rules*, once *Chaos*); they multiply. Below 1 a rule picks fewer bytes, Add and Flip bits hit softer (`scaled_op`), and under one byte a firing it fires less often. Since #73 every rule slider's tooltip (and the editor's line under Strength, and the remote page under each rule) says what that means for the rule, in its units: `describe_strength` in `corrupt/rule_text.cpp`, from the numbers `tick_rule` uses. The file and the remote protocol keep `intensity` and `chaos`.
+- Code: `Engine::set_intensity`, `set_rule_intensity` (`corrupt/engine.cpp`), `qt/src/IntensitySlider.cpp`, the cockpit's *Strength, all rules* slider, `describe_strength` (`corrupt/rule_text.cpp`).
+- Tests: `tests/corrupt/engine_test.cpp`, `rule_text_test.cpp`, `rule_test.cpp`, `tests/qt/intensity_slider_test.cpp`, `cockpit_test.cpp`, `workshop_test.cpp`, `rule_editor_test.cpp`.
+- Docs: `phase3-live-panel-plan` "#15", `cockpit-workshop-plan` "#73"; QA 9, 49; GUIDE "The words".
 
 **One key and the Buttons (#4, #63)** - one corruption shortcut, Corrupt/Stop (F7). The recipe's slots 1-9 (`"hotkey"` in the JSON) are named **Buttons** in the cockpit and on the remote page: a rule on a slot fires each press; a slot with only switches and changes is a toggle that shows whether it's on.
 - Code: `qt/src/EmuConfig.hpp` (`eCorruptionToggle` only, num_shortcuts 56), `EmuApplication::handleCorruptionBinding`; `corrupt/buttons.cpp` (`recipe_buttons`: labels, toggles, on; `recipe_kept`), `qt/src/ButtonsBar.cpp`, `Engine::press_hotkey`; `status_json`'s `buttons`.

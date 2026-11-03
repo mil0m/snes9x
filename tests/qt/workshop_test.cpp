@@ -1,5 +1,6 @@
 #include "doctest/doctest.h"
 #include "FunctionsPage.hpp"
+#include "IntensitySlider.hpp"
 #include "MemoryViewer.hpp"
 #include "RecipeActions.hpp"
 #include "UiKit.hpp"
@@ -121,6 +122,24 @@ TEST_SUITE("workshop")
         remove->click();
         CHECK(f.control.calls.back() == "remove kept gravity off");
         f.shot("workshop-recipe");
+    }
+
+    TEST_CASE("Recipe: each rule's Strength slider says what it means, times all rules (#73)")
+    {
+        Fixture f;
+        f.control.running(1);
+        f.control.s.rules[0].op = { .type = OpType::NopOut };
+        f.control.s.rules[0].range = { Target::ROM, 0, 0xFFFF };
+        f.control.s.rules[0].count = 4;
+        auto &page = *f.workshop.recipePage();
+        page.refresh(f.control.status());
+        auto slider = dynamic_cast<IntensitySlider *>(child<QTableWidget>(page, "rules")->cellWidget(0, 3));
+        REQUIRE(slider);
+        CHECK(slider->toolTip() == "At 100%: changes 4 instructions each time it fires.");
+        CHECK(child<QTableWidget>(page, "rules")->horizontalHeaderItem(3)->toolTip().contains("all rules"));
+        f.control.s.intensity = 0.5;
+        page.refresh(f.control.status());
+        CHECK(slider->toolTip() == "At 50% (100% × 50% for all rules): changes 2 of its 4 instructions each time it fires.");
     }
 
     TEST_CASE("Recipe: Add Rule goes through the editor; New asks for a name; Remember runs")

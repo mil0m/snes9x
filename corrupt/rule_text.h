@@ -13,6 +13,11 @@ std::string describe_trigger(const Trigger &t);   // "every 30 frames"
 std::string describe_range(const Rule &rule);     // "wram 0x2000..0x2FFF" or "wram enemy_table"
 std::string describe_rule(const Rule &rule);      // all three: "wram ...: add -2..2 x4, every 30 frames"
 
+// What the rule does at its strength times `all_rules` (the recipe's), in its own units and
+// from the numbers tick_rule uses: "At 25% (50% × 50% for all rules): changes 2 of its 8
+// bytes each time it fires, adding -1..1 instead of -2..2."
+std::string describe_strength(const Rule &rule, double all_rules = 1.0);
+
 std::string describe_aim(const Aim &aim); // "operands of arith, compare"; empty without an aim
 
 // What "Add Rule" starts from: one random byte every 2 s in upper work RAM,

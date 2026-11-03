@@ -90,6 +90,10 @@ std::vector<WriteEvent> tick_rule(const Rule &rule, RuleRuntime &rt, MemoryAcces
 
 std::optional<std::string> validate_rule(const Rule &rule, const MemoryAccess &mem);
 
+// The op as a rule at `intensity` (0..1, its own times the recipe's) runs it: Add's range and
+// Flip bits' count shrink toward +-1, never to nothing; other ops are unchanged.
+Op scaled_op(const Op &op, double intensity);
+
 // Makes the rule cover a rectangle with its top-left at `start` (range.last follows).
 void set_rect(Rule &rule, Target target, uint32_t start, Rect rect);
 

@@ -1,17 +1,20 @@
 #include "doctest/doctest.h"
 #include "ButtonsBar.hpp"
 #include "Cockpit.hpp"
+#include "IntensitySlider.hpp"
 #include "RecipeActions.hpp"
 #include "UiKit.hpp"
 #include "fake_control.h"
 
 #include <QApplication>
+#include <algorithm>
 #include <QComboBox>
 #include <QElapsedTimer>
 #include <QDir>
 #include <QLabel>
 #include <QLineEdit>
 #include <QPushButton>
+#include <QSlider>
 #include <QTableWidget>
 
 using namespace corrupt;
@@ -93,7 +96,7 @@ TEST_SUITE("cockpit")
         f.shot("cockpit-no-recipe");
     }
 
-    TEST_CASE("running: Stop, Back to Normal, Chaos and the dice act on the session")
+    TEST_CASE("running: Stop, Back to Normal and the dice act on the session")
     {
         Fixture f;
         f.control.running();
@@ -131,6 +134,39 @@ TEST_SUITE("cockpit")
         CHECK(table->item(1, 1)->toolTip().contains("wram")); // what it does, on hover
         table->item(1, 0)->setCheckState(Qt::Unchecked);
         CHECK(f.control.calls.back() == "rule 1 off");
+    }
+
+    TEST_CASE("Strength, all rules: named like each rule's Strength, and every rule slider says what it means (#73)")
+    {
+        Fixture f;
+        f.control.running(2);
+        f.control.s.rules[0].op = { .type = OpType::Add, .min = -2, .max = 2 };
+        f.control.s.rules[0].count = 8;
+        f.cockpit->refresh();
+        auto &c = *f.cockpit;
+        auto all = child<QWidget>(c, "chaos");
+        CHECK(all->accessibleName() == "Strength, all rules");
+        auto labels = c.findChildren<QLabel *>();
+        CHECK(std::any_of(labels.begin(), labels.end(), [](QLabel *l) { return l->text() == "Strength, all rules"; }));
+        CHECK_FALSE(std::any_of(labels.begin(), labels.end(), [](QLabel *l) { return l->text().contains("Chaos"); }));
+        CHECK(all->toolTip().contains("50% with this at 50% hits at 25%"));
+
+        auto table = child<QTableWidget>(c, "rules");
+        auto rule = dynamic_cast<IntensitySlider *>(table->cellWidget(0, 2));
+        REQUIRE(rule);
+        CHECK(rule->toolTip() == "At 100%: changes 8 bytes each time it fires, adding -2..2.");
+        // Moving the all-rules slider: the rule's words follow at once.
+        all->findChild<QSlider *>()->setValue(50);
+        CHECK(f.control.calls.back() == "chaos 50");
+        CHECK(rule->toolTip().startsWith("At 50% (100% × 50% for all rules): changes 4 of its 8 bytes"));
+        // The session moving it (the remote page): the words follow on the next refresh.
+        f.control.s.intensity = 0.25;
+        f.cockpit->refresh();
+        CHECK(rule->toolTip().startsWith("At 25% (100% × 25% for all rules): changes 2 of its 8 bytes"));
+        // Moving the rule's own slider.
+        rule->findChild<QSlider *>()->setValue(50);
+        CHECK(rule->toolTip().startsWith("At 12.5% (50% × 25% for all rules): changes 1 of its 8 bytes"));
+        CHECK(rule->findChild<QSlider *>()->accessibleDescription() == rule->toolTip());
     }
 
     TEST_CASE("the recipe's buttons show, named, and a press reaches the session")

@@ -60,6 +60,8 @@ int scale(int value, double intensity)
     return scaled;
 }
 
+} // namespace
+
 Op scaled_op(const Op &op, double intensity)
 {
     if (intensity >= 1.0)
@@ -74,8 +76,6 @@ Op scaled_op(const Op &op, double intensity)
         out.bits = std::max(1, scale(op.bits, intensity));
     return out;
 }
-
-} // namespace
 
 std::vector<WriteEvent> tick_rule(const Rule &rule, RuleRuntime &rt, MemoryAccess &mem,
                                   uint64_t seed, uint32_t rule_index, uint64_t frame,

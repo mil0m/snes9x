@@ -181,7 +181,7 @@ RecipePage::RecipePage(CorruptionControl &control, RecipeActions &actions, QWidg
     rules_table = new QTableWidget(0, kColumns, this);
     rules_table->setObjectName("rules");
     rules_table->setHorizontalHeaderLabels({ tr("On"), tr("Rule"), tr("What it does"), tr("Strength"), tr("Crashes") });
-    rules_table->horizontalHeaderItem(kStrength)->setToolTip(tr("How hard this rule hits, on top of Chaos"));
+    rules_table->horizontalHeaderItem(kStrength)->setToolTip(tr("How hard each rule hits, times Strength, all rules in the panel. Hover a slider to see what it means for that rule."));
     rules_table->horizontalHeaderItem(kCrashes)->setToolTip(tr("How often the crash guard blamed this rule"));
     rules_table->horizontalHeaderItem(kCrashes)->setTextAlignment(Qt::AlignRight | Qt::AlignVCenter);
     rules_table->verticalHeader()->setVisible(false);
@@ -338,6 +338,12 @@ void RecipePage::refresh(const PanelStatus &status)
     }
     for (size_t i = 0; i < rule_sliders.size() && i < status.rules.size(); i++)
         rule_sliders[i]->refresh(status.rules[i].intensity);
+    if (status.intensity != all_rules)
+    {
+        all_rules = status.intensity;
+        for (auto slider : rule_sliders)
+            slider->redescribe();
+    }
     {
         QSignalBlocker block(rules_table);
         for (int i = 0; i < rules_table->rowCount() && i < int(status.rules.size()); i++)
@@ -382,6 +388,11 @@ void RecipePage::rebuildRules(const PanelStatus &status)
         crash->setTextAlignment(Qt::AlignRight | Qt::AlignVCenter);
         rules_table->setItem(i, kCrashes, crash);
         auto slider = new IntensitySlider;
+        slider->describe = [this, r](double v) {
+            auto rule = r;
+            rule.intensity = v;
+            return qs(describe_strength(rule, all_rules));
+        };
         slider->setIntensity(r.intensity);
         slider->setAccessibleName(tr("Strength of %1").arg(qs(r.name)));
         slider->onChanged = [this, i](double v) { control.setRuleIntensity(size_t(i), v); };
@@ -794,7 +805,7 @@ SharingPage::SharingPage(CorruptionControl &control, QWidget *parent) : QWidget(
     layout->addWidget(ui::heading(tr("Remote Control"), this));
     remote_check = new QCheckBox(tr("Allow remote control from a browser"), this);
     remote_check->setObjectName("remote");
-    remote_check->setToolTip(tr("Lets a browser with this page's link run the corruption: on and off, Chaos, rules, "
+    remote_check->setToolTip(tr("Lets a browser with this page's link run the corruption: on and off, strength, rules, "
                                 "buttons and painting memory. It listens on this computer only; to reach it from "
                                 "elsewhere, put it behind a tunnel with a login (see the guide)."));
     layout->addLayout(ui::row(remote_check));

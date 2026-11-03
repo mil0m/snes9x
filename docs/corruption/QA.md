@@ -132,21 +132,21 @@ Use a game you have never set up (a fresh library folder, so no recipes exist fo
 9. If the game has a `regions.json` (add one by hand; see README), open the editor.
    - [ ] **Region** lists the names; picking one fills the range and greys it out, and the saved JSON uses the name.
 
-## 9. Chaos and Strength
-1. Pick **Starter: Tile rot** (or any visible recipe), press **Corrupt (F7)**, and drag **Chaos** down to 20 %.
+## 9. Strength, per rule and for all rules
+1. Pick **Starter: Tile rot** (or any visible recipe), press **Corrupt (F7)**, and drag **Strength, all rules** down to 20 %.
    - [ ] The effect slows down right away, and **Save** becomes enabled.
 2. Drag it to 0 %.
    - [ ] The changes made stop counting up. Back to 100 %: they resume, and the state bar's time never resets.
 3. With two rules, drag one rule's **Strength** slider to 0 %.
    - [ ] Only that rule goes quiet.
-4. Drag **Chaos** in steps.
-   - [ ] The on-screen message says `Corruption chaos 40%` and so on. (There are no More / Less Chaos shortcuts any more.)
+4. Drag **Strength, all rules** in steps, and hover a rule's slider after each.
+   - [ ] Its tooltip follows, e.g. *At 40% (100% × 40% for all rules): …*.
 5. Pick **Starter: Music mangler** (one byte each time), set its rule to 20 %, and listen for a minute.
    - [ ] Glitches come noticeably less often than at 100 %.
 6. Set **After a crash** to *Halve the guilty rule's strength* and play **Starter: Low WRAM roulette** until a crash is caught.
    - [ ] The guilty rule's slider drops to half.
 7. **Save**, then choose the recipe in the **Recipe** list again.
-   - [ ] Chaos and the rule sliders come back where they were.
+   - [ ] **Strength, all rules** and the rule sliders come back where they were.
 
 ## 10. Where each run starts
 1. Make sure **Remember where each run starts** is ticked. Choose a recipe, play to a memorable spot, and press **Corrupt (F7)**.
@@ -753,3 +753,19 @@ Removed on 2026-11-01: it didn't pay off (see FEATURES.md, *Tried and removed*).
    - [ ] Its Guard cell says *auto*; hovering it says it's guarded while it's off. **Show: Guarded** lists it and the one you protected.
 8. A function whose Size is *–* (its code isn't known yet).
    - [ ] No box in Guard; hovering says there's nothing to protect yet.
+
+## 49. What Strength means, for each rule (#73)
+1. Pick **Starter: Low WRAM roulette** (or any recipe with a rule that changes several bytes), press **Corrupt (F7)**.
+   - [ ] The panel says **Strength, all rules**; the word *Chaos* is gone (panel, Workshop, remote page).
+2. Hover the rule's **Strength** slider.
+   - [ ] It says what the rule does at 100%, in its words: *At 100%: changes 3 bytes each time it fires.*
+3. Drag the rule to 50% and **Strength, all rules** to 50%, then hover again.
+   - [ ] *At 25% (50% × 50% for all rules): …*, with fewer bytes; an *Add* rule also says *adding -1..1 instead of -2..2*.
+4. Drag a one-byte rule to 10%.
+   - [ ] *it fires on about 1 in 10 of its chances*; glitches come that much less often.
+5. Workshop > Recipe: hover the same slider; then double-click the rule.
+   - [ ] The same words on the Recipe page; in the editor, a line under **Strength** says them and follows the spin box and **Bytes each time** as you change them.
+6. A code rule (Starter: Code drip, or an NOP-out or pointer swap rule).
+   - [ ] It counts in its own things: *instructions*, *jump table entries*, *functions*.
+7. On the remote page (QA 31), drag **Strength, all rules**.
+   - [ ] Under each rule's slider, a line says what it does, and it follows within a second.
