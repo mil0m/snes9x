@@ -486,3 +486,13 @@ recipe reads as none. No smoke numbers: nothing changes how a game is corrupted.
   start and is only re-set when the seed changes.
 - Narrowest Workshop still 887 px; tests 548/57/187 (unit/real-core/Qt), ASan clean, tour
   (28 pictures, three new) and the remote end-to-end read.
+
+## Rejected: one Careful/Balanced/Wild safety choice (review item 15)
+
+The review after #63 suggested replacing the Safety page's three switches (catch crashes,
+try ROM changes ahead, put back a bad jump at once) and *After a crash* with one
+Careful / Balanced / Wild choice, the switches tucked under *Details*. **Rejected by Mikael
+(3 Nov), not to be rebuilt.** A preset hides what each setting does, and that makes it
+truly impossible to understand. The direction here is the opposite: explain the details
+themselves, in plain words, where they are, as #73 did for Strength. If the switches are
+hard to parse, fix their words and explanations, not their visibility.
