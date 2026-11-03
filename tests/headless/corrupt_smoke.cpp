@@ -1,7 +1,7 @@
 // End-to-end check of the corruption engine inside the real emulator, no window
 // needed:
 //
-//   corrupt-smoke <rom> <recipe.json> [frames=600] [warmup=600] [--guard | --instant [seeds] | --ahead [seeds] | --eyes [seeds] | --derail-fp [learn] | --learn [held=3] [from=0] | --replay | --copies | --map | --access [dir] | --codemap [file] | --jumps [file] | --calls | --bodies | --kill [seeds] [count] | --change [seeds] [count] | --dump <dir>]
+//   corrupt-smoke <rom> <recipe.json> [frames=600] [warmup=600] [--guard | --instant [seeds] | --ahead [seeds] | --eyes [seeds] | --derail-fp [learn] | --learn [held=3] [from=0] | --replay | --copies | --map | --access [dir] | --codemap [file] | --jumps [file] | --calls | --bodies | --kill [seeds] [count] | --change [seeds] [count] | --risk [count] [trial] | --dump <dir>]
 //
 // Boots the ROM, runs `warmup` frames, saves a state, then runs `frames` twice
 // from that state: once clean, once with the recipe. Reports what the recipe
@@ -73,6 +73,7 @@
 #include "corrupt/calls.h"
 #include "corrupt/function_guard.h"
 #include "corrupt/function_change.h"
+#include "corrupt/change_risk.h"
 #include "corrupt/jump_tables.h"
 #include "corrupt/pointer_swap.h"
 #include "corrupt/crash_guard.h"
@@ -100,6 +101,7 @@
 #include <cstdio>
 #include <fstream>
 #include <map>
+#include <set>
 #include <random>
 #include <sstream>
 
@@ -1289,6 +1291,191 @@ int run_change(int frames, int seeds, int count)
     return 0;
 }
 
+// --risk [count] [trial]: does what a change feeds into (corrupt/change_risk.h) say whether
+// the game survives it? Learns `frames` from the warmed-up start, then from that moment tries
+// `count` single changes from the 64 busiest functions' bodies (numbers, branches, math,
+// skipped calls, a quarter each), one per run of `trial` frames, unguarded, and counts per
+// class: still moving, frozen (running but the picture still) or dead. Numbers are tried twice:
+// any new value, and nudged (±1, ×2, ÷2). CORRUPT_RISK_TSV=<file> writes one line per run.
+int run_risk(int frames, int count, int trial)
+{
+    CodeMap map(Memory.CalculatedSize);
+    CallKeeper calls;
+    RomTracer tracer;
+    if (!tracer.start(map, nullptr, &calls.mine()))
+        return 1;
+    for (int i = 0; i < frames; i++)
+    {
+        headless::run_frames(1);
+        calls.end_frame();
+    }
+    tracer.stop();
+    auto mid = headless::save_state();
+    auto where = SnesCoreAccess::rom_addresses();
+    const auto &clean = rom.clean();
+
+    struct Pick
+    {
+        ChangeOption option;
+        FeedReading feed;
+    };
+    std::vector<Pick> by_kind[4]; // number, branch, math, skip
+    std::set<std::pair<uint32_t, int>> seen_options;
+    for (auto &f : busiest(calls.functions(), 64))
+    {
+        auto body = function_body(clean, map.flags(), f.entry, where);
+        for (auto &o : change_options(body, clean, map.flags(), where))
+        {
+            int k = o.kind == ChangeKind::Number ? 0 : o.kind == ChangeKind::Branch ? 1 : o.kind == ChangeKind::Math ? 2
+                    : o.kind == ChangeKind::Skip                                     ? 3
+                                                                                     : -1;
+            if (k < 0 || !seen_options.insert({ o.at, k }).second)
+                continue;
+            bool locked = false;
+            for (uint32_t i = 0; i < o.length; i++)
+                locked |= rom.locked_mask().is_hot(Target::ROM, o.at + i);
+            if (!locked)
+                by_kind[k].push_back({ o, feed_of(o, body, clean, map.flags(), where) });
+        }
+    }
+    printf("learned  %zu functions; options in the 64 busiest: %zu numbers, %zu branches, %zu math, %zu calls; "
+           "%d changes, %d frames each\n",
+           calls.functions().size(), by_kind[0].size(), by_kind[1].size(), by_kind[2].size(), by_kind[3].size(), count,
+           trial);
+
+    // One run from the moment: the end picture, and whether the game is alive, frozen or dead.
+    enum Outcome
+    {
+        Moving,
+        Frozen,
+        Dead
+    };
+    auto run_one = [&](const std::vector<std::pair<uint32_t, uint8_t>> &writes, bool &ran, uint64_t &picture) {
+        headless::load_state(mid);
+        rom.restore_clean();
+        CodeMap seen(Memory.CalculatedSize);
+        RomTracer watch;
+        watch.start(seen);
+        for (auto [at, b] : writes)
+        {
+            rom.write(Target::ROM, at, b);
+            seen.data()[at] &= uint8_t(~codeflag::Touched);
+        }
+        picture = 0;
+        int moving_late = 0, nmi_late = 0;
+        uint32_t reboots = access.sample().reboots;
+        for (int i = 0; i < trial; i++)
+        {
+            headless::run_frames(1);
+            auto signals = access.sample();
+            if (signals.picture_valid && signals.picture_hash != picture && i >= trial - 300)
+                moving_late++;
+            if (signals.nmi_enabled && i >= trial - 300)
+                nmi_late++;
+            if (signals.picture_valid)
+                picture = signals.picture_hash;
+            if (signals.cpu_halted || signals.emulation_stopped)
+                break;
+        }
+        watch.stop();
+        auto end = access.sample();
+        ran = false;
+        for (auto [at, b] : writes)
+            ran |= (seen.at(at) & codeflag::Touched) != 0;
+        bool running = !end.cpu_halted && !end.emulation_stopped && end.reboots == reboots && (nmi_late || moving_late);
+        return !running ? Dead : moving_late >= 3 ? Moving : Frozen;
+    };
+    bool clean_ran = false;
+    uint64_t clean_picture = 0;
+    auto clean_outcome = run_one({}, clean_ran, clean_picture);
+    printf("clean    %s\n", clean_outcome == Moving ? "moving" : clean_outcome == Frozen ? "frozen" : "dead");
+
+    FILE *tsv = getenv("CORRUPT_RISK_TSV") ? fopen(getenv("CORRUPT_RISK_TSV"), "w") : nullptr;
+    if (tsv)
+        fprintf(tsv, "at\tkind\tarm\ttext\tfeed\twhy\tran\toutcome\tdiffers\n");
+    struct Tally
+    {
+        int n = 0, moving = 0, frozen = 0, dead = 0, differs = 0, unran = 0;
+    };
+    std::map<std::string, Tally> by_feed, by_kind_feed;
+    Rng rng{ 0x5EED };
+    const char *kind_names[4] = { "number", "branch", "math", "skip" };
+    for (int k = 0; k < 4; k++)
+    {
+        auto &list = by_kind[k];
+        std::vector<size_t> order(list.size());
+        for (size_t i = 0; i < order.size(); i++)
+            order[i] = i;
+        for (size_t i = order.size(); i > 1; i--) // a seeded shuffle
+            std::swap(order[i - 1], order[size_t(rng.range(0, int64_t(i) - 1))]);
+        for (size_t n = 0; n < order.size() && n < size_t(count / 4); n++)
+        {
+            auto &p = list[order[n]];
+            auto &o = p.option;
+            std::vector<std::pair<std::string, std::vector<uint8_t>>> arms;
+            if (k == 0)
+            {
+                uint32_t top = o.width == 2 ? 0xFFFF : 0xFF, v;
+                do
+                    v = uint32_t(rng.range(0, top));
+                while (v == o.value);
+                arms.push_back({ "any", number_bytes(o, v) });
+                uint32_t nudges[4] = { (o.value + 1) & top, (o.value - 1) & top, (o.value * 2) & top, o.value / 2 };
+                uint32_t nv = nudges[rng.range(0, 3)];
+                if (nv == o.value)
+                    nv = (o.value + 1) & top;
+                arms.push_back({ "nudged", number_bytes(o, nv) });
+            }
+            else if (k == 1)
+                arms.push_back({ "opposite", branch_bytes(o, BranchTo::Opposite) });
+            else if (k == 2)
+                arms.push_back({ "swap", math_bytes(o) });
+            else
+                arms.push_back({ "skip", skip_bytes(o) });
+            for (auto &[arm, bytes] : arms)
+            {
+                std::vector<std::pair<uint32_t, uint8_t>> writes;
+                for (size_t j = 0; j < bytes.size(); j++)
+                    writes.push_back({ uint32_t(o.at + j), bytes[j] });
+                bool ran = false;
+                uint64_t picture = 0;
+                auto outcome = run_one(writes, ran, picture);
+                bool differs = picture != clean_picture;
+                const char *out_name = outcome == Moving ? "moving" : outcome == Frozen ? "frozen" : "dead";
+                if (tsv)
+                    fprintf(tsv, "%06X\t%s\t%s\t%s\t%s\t%s\t%d\t%s\t%d\n", o.at, kind_names[k], arm.c_str(),
+                            o.text.c_str(), feed_name(p.feed.feed), p.feed.why.c_str(), ran, out_name, differs);
+                std::string feed = feed_name(p.feed.feed);
+                for (auto *t : { &by_feed[feed + (k == 0 ? " (" + arm + ")" : "")],
+                                 &by_kind_feed[std::string(kind_names[k]) + " / " + arm] })
+                {
+                    if (!ran)
+                    {
+                        t->unran++;
+                        continue;
+                    }
+                    t->n++;
+                    t->moving += outcome == Moving;
+                    t->frozen += outcome == Frozen;
+                    t->dead += outcome == Dead;
+                    t->differs += differs;
+                }
+            }
+        }
+    }
+    if (tsv)
+        fclose(tsv);
+    rom.restore_clean();
+    auto print = [](const char *title, const std::map<std::string, Tally> &m) {
+        printf("\n%-28s %4s %7s %7s %5s %8s %6s\n", title, "ran", "moving", "frozen", "dead", "differs", "unran");
+        for (auto &[name, t] : m)
+            printf("%-28s %4d %7d %7d %5d %8d %6d\n", name.c_str(), t.n, t.moving, t.frozen, t.dead, t.differs, t.unran);
+    };
+    print("by what it feeds", by_feed);
+    print("by kind", by_kind_feed);
+    return 0;
+}
+
 // A code map saved earlier (CORRUPT_CODEMAP, --codemap's file) merged into `map`.
 bool load_saved_map(CodeMap &map)
 {
@@ -1823,6 +2010,8 @@ int main(int argc, char **argv)
         return run_kill(frames, argc > 6 ? atoi(argv[6]) : 10, argc > 7 ? atoi(argv[7]) : 6);
     if (argc > 5 && std::string(argv[5]) == "--calls")
         return run_calls(frames);
+    if (argc > 5 && std::string(argv[5]) == "--risk")
+        return run_risk(frames, argc > 6 ? atoi(argv[6]) : 200, argc > 7 ? atoi(argv[7]) : 1800);
     if (argc > 5 && std::string(argv[5]) == "--change")
         return run_change(frames, argc > 6 ? atoi(argv[6]) : 10, argc > 7 ? atoi(argv[7]) : 6);
     if (argc > 5 && std::string(argv[5]) == "--bodies")

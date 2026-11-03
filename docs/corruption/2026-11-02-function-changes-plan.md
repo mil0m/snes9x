@@ -319,3 +319,69 @@ the Change It… cells carry them as tooltips.
 Built the same evening, test first. The test that every one of the 92 mnemonics has words
 (and that the opcode table really has 92) is what keeps it complete. Not done: the memory
 viewer's ROM hover still shows bare assembly; it can take the same words.
+
+## Changes that don't crash: what a change feeds into (#77)
+
+Mikael (3 Nov): "We tried changing functions and most of the time they crashed. I'd like
+suggestions somehow how to modify them without crash." #60's measurements already said no
+kind of change is the safe one. The idea here: the risk isn't in the kind of change but in
+**what the changed value feeds into**. On the 65816, `4 → 1` is harmless as a speed and
+deadly as an index; flipping a forward branch takes another real path, flipping a loop's
+exit loops forever; skipping a call is fine unless the caller reads its result.
+
+**First a measurement, then UI.** `corrupt/change_risk.{h,cpp}`: `feed_of(option, body…)`
+follows the changed value through the straight-line code after it and names where it goes:
+*variable* (stored into RAM), *hardware*, *index* (`TAX`, `,X`, a jump table), *loop count*,
+*loop bound* (compared, branch back), *condition* (compared, branch forward), *pointer*
+(stored where the body reads a pointer, or into D/S), *argument* (to a call, pushed,
+returned), *overwritten*; branches as *loop* or *forward*; a skipped call as *result used*
+or *unused*; *unknown* when the trail goes cold. Unit tests for each.
+
+`corrupt-smoke --risk [count] [trial]`: from one learned moment, single changes from the 64
+busiest functions (a quarter each numbers, branches, math, skipped calls), one per 30 s
+run, unguarded; each scored *moving*, *frozen* or *dead*, tallied per class. Numbers get
+two arms: any new value, and nudged (±1, ×2, ÷2). Goof Troop, Pocky & Rocky, FE4.
+
+**If the classes separate survivors from crashes:** Change It shows each line's class and
+reason in words (*stored into $7E:0D40: low risk*, *becomes an index: high risk*), sorts low
+risk first without hiding anything, offers nudges for numbers, and the chaos rules get an
+aim of *low-risk changes only*. If they don't, the measurement says so and the next idea is
+testing each option ahead (#52's run-ahead) instead.
+
+### How it went (#77, the measurement)
+
+`--risk 240 1800` on Goof Troop, Pocky & Rocky and FE4: 884 single changes from the 64
+busiest functions, 767 of which the game ran (the rest never ran in 30 s and don't count).
+Runs are deterministic: a second run with the same picks gave the same 767 outcomes.
+
+**A single change rarely kills the game in 30 s of its demo**: 89% kept moving (numbers
+83% for any value, 87% nudged; branches 93%; math 87%; skipped calls 94%). #60's runs
+stacked six changes in a minute, which is where most stalls came from.
+
+**What it feeds into separates them** (failed = frozen or dead after 30 s):
+
+| Feeds into | Changes | Failed | Moving and the picture differs |
+|---|---|---|---|
+| variable (RAM, used as a value) | 105 | 4% | 31% |
+| condition (compared, branch forward) | 122 | 5% | 20% |
+| forward branch flipped | 136 | 7% | 35% |
+| loop branch flipped | 25 | 8% | 48% |
+| skipped call, result used / unused | 53 / 11 | 8% / 9% | 47% / 36% |
+| unknown (trail went cold) | 102 | 9% | 17% |
+| loop bound (compared, branch back) | 32 | 16% | 50% |
+| scratch byte ($00-$1F) | 35 | 20% | 26% |
+| index (`TAX`, `,X`, jump table) | 94 | 21% | 28% |
+| argument (to a call, pushed, returned) | 34 | 38% | 9% |
+| pointer (D, S, a pointer, DMA address) | 7 | 43% | 0% |
+
+Grouped: **low risk 6% failed (27 of 461), risky 25% (50 of 204)**, four times as often,
+on every game: Goof 6% vs 23%, Pocky 1% vs 33%, FE4 12% vs 21%. Low-risk changes aren't
+dull: about a third of them leave a visibly different game. Two refinements came from the
+first pass's failures: temporary bytes `$00-$1F` fail 16-20% where real variables fail
+3-7%, so they're their own class; a value written to a DMA address or size is a pointer.
+What doesn't separate: whether a skipped call's result is used (8% vs 9%), and nudging a
+number instead of any value (87% vs 83%).
+
+**What it can't see:** FE4 still fails 12% on low risk, mostly in one region of bank $1B
+(its demo script code) where nearly everything fails: some functions are fragile as a whole.
+That's what testing each option ahead would catch.
