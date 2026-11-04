@@ -172,6 +172,8 @@ class CorruptionSession
     std::optional<std::vector<uint8_t>> redirectBytes(const corrupt::ChangeOption &o, uint32_t entry);
     std::string applyChange(const corrupt::Change &c, bool on);
     std::string keepChange(const corrupt::Change &c);
+    std::string tryChange(const corrupt::Change &c); // #78: queued for between frames
+    std::optional<TriedChange> lastTry();
     void forgetChange(uint32_t at);
 
     // Save backups.
@@ -239,6 +241,11 @@ class CorruptionSession
     corrupt::TestAhead ahead;       // live ROM changes played ahead, unseen, before they land (#52)
     bool running_ahead = false;     // the frame hook runs inside betweenFrames, which holds the lock
     void testAhead();
+    std::optional<corrupt::Change> pending_try; // a change to try ahead (#78), at the end of betweenFrames
+    std::optional<TriedChange> last_try;
+    uint64_t tries_made = 0;
+    corrupt::RunAhead try_runner;
+    void tryPending();
     corrupt::RomAddresses rom_where;        // for disassembly in the viewer
     std::vector<uint8_t> code_shown;        // everyone's map, copied between frames while the viewer shows the ROM
     std::vector<uint8_t> code_for_aim;      // everyone's map as aimed rules saw it when this run started

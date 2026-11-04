@@ -270,3 +270,56 @@ TEST_CASE("a change kept with a timer; a timer longer than its cycle is refused"
     CHECK(e.src.kept_changes.size() == 1);
     CHECK(message(*e.editor).contains("shorter"));
 }
+
+TEST_CASE("Try 5 s Ahead asks for this choice, waits, and shows what happened under the risk (#78)")
+{
+    Editing e;
+    auto t = e.lines();
+    t->selectRow(2); // BEQ
+    QApplication::processEvents();
+    auto line = static_cast<ui::StatusLine *>(child<QWidget>(*e.editor, "try_line"));
+    auto button = child<QPushButton>(*e.editor, "try");
+    CHECK(line->isHidden());
+    CHECK(button->isEnabled());
+    CHECK(button->toolTip().contains("unseen"));
+    button->click();
+    REQUIRE(e.src.tries.size() == 1);
+    CHECK(e.src.tries[0].at == 0x19F2);
+    CHECK(e.src.tries[0].value == std::vector<uint8_t>{ 0xD0 }); // the opposite: BNE
+    CHECK(e.src.applied.empty());                                      // trying changes nothing
+    CHECK(line->isVisible());
+    CHECK(line->text().contains("Trying it 5 s ahead"));
+    CHECK_FALSE(button->isEnabled()); // one at a time
+
+    e.src.finish_try(TryResult::Froze, "With it, the game froze after 1.2 s: the picture stopped, and without the "
+                                       "change it kept moving.");
+    e.editor->refresh(); // the answer is picked up on the next look
+    CHECK(button->isEnabled());
+    CHECK(line->isVisible());
+    CHECK(line->text().contains("Tried 5 s ahead: With it, the game froze after 1.2 s"));
+    CHECK(line->tone() == ui::Tone::Error);
+
+    // Another choice for the line: that answer was for the old one.
+    child<QComboBox>(*e.editor, "branch")->setCurrentIndex(1); // always
+    CHECK(line->isHidden());
+
+    // Running: and it says it's for this moment only.
+    button->click();
+    e.src.finish_try(TryResult::Running, "Still running after 5.0 s; the picture differs from without it.");
+    e.editor->refresh();
+    CHECK(line->tone() == ui::Tone::Ok);
+    CHECK(line->text().contains("this moment of the game"));
+
+    // An answer for another line isn't shown on this one.
+    button->click();
+    t->selectRow(0);
+    QApplication::processEvents();
+    e.src.finish_try(TryResult::Crashed, "With it, the game crashed: CPU stopped. Without it, it didn't.");
+    e.editor->refresh();
+    CHECK(line->isHidden());
+
+    // With corruption off, there's nothing to try with.
+    e.src.on = false;
+    e.editor->refresh();
+    CHECK_FALSE(button->isEnabled());
+}

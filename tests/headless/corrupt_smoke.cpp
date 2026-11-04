@@ -1,7 +1,7 @@
 // End-to-end check of the corruption engine inside the real emulator, no window
 // needed:
 //
-//   corrupt-smoke <rom> <recipe.json> [frames=600] [warmup=600] [--guard | --instant [seeds] | --ahead [seeds] | --eyes [seeds] | --derail-fp [learn] | --learn [held=3] [from=0] | --replay | --copies | --map | --access [dir] | --codemap [file] | --jumps [file] | --calls | --bodies | --kill [seeds] [count] | --change [seeds] [count] | --risk [count] [trial] [number|branch|math|skip] | --dump <dir>]
+//   corrupt-smoke <rom> <recipe.json> [frames=600] [warmup=600] [--guard | --instant [seeds] | --ahead [seeds] | --eyes [seeds] | --derail-fp [learn] | --learn [held=3] [from=0] | --replay | --copies | --map | --access [dir] | --codemap [file] | --jumps [file] | --calls | --bodies | --kill [seeds] [count] | --change [seeds] [count] | --risk [count] [trial] [number|branch|math|skip] | --foresee [count] [trial] [kind] | --try [count] [trial] [kind] | --dump <dir>]
 //
 // Boots the ROM, runs `warmup` frames, saves a state, then runs `frames` twice
 // from that state: once clean, once with the recipe. Reports what the recipe
@@ -74,6 +74,7 @@
 #include "corrupt/function_guard.h"
 #include "corrupt/function_change.h"
 #include "corrupt/change_risk.h"
+#include "corrupt/try_change.h"
 #include "corrupt/jump_tables.h"
 #include "corrupt/pointer_swap.h"
 #include "corrupt/crash_guard.h"
@@ -1322,8 +1323,78 @@ int run_change(int frames, int seeds, int count)
 // skipped calls, a quarter each), one per run of `trial` frames, unguarded, and counts per
 // class: still moving, frozen (running but the picture still) or dead. Numbers are tried twice:
 // any new value, and nudged (±1, ×2, ÷2). CORRUPT_RISK_TSV=<file> writes one line per run.
-int run_risk(int frames, int count, int trial, int only = -1)
+// What a run ahead would have seen of one run, frame by frame (--foresee, #78).
+struct Trace
 {
+    std::vector<uint64_t> picture;
+    std::vector<uint8_t> nmi, stopped, reboot, runaway;
+    int first_use = -1; // the frame the changed bytes first ran (1-based), -1: never
+};
+
+// Would a test of `window` frames have called this run a failure? Checks, by name:
+// "definite": what #52's run ahead sees (CPU stopped, deadlock, a reboot, 30 frames running
+// from I/O or open bus); "still": the picture is one picture for the window's last `hold`
+// frames while the clean run's picture changed at least 3 times in them; "still-any": the
+// same in any `hold` frames of the window; "nmi": NMI off for the last `hold` frames while
+// the clean run's was on in some of them.
+bool foresees(const std::string &check, const Trace &t, const Trace &clean, int window, int hold = 60)
+{
+    int n = std::min<int>(window, int(t.picture.size()));
+    if (check == "definite")
+    {
+        int run = 0;
+        for (int i = 0; i < n; i++)
+        {
+            if (t.stopped[i] || t.reboot[i])
+                return true;
+            run = t.runaway[i] ? run + 1 : 0;
+            if (run >= 30)
+                return true;
+        }
+        return false;
+    }
+    if (int(t.picture.size()) < window)
+        return foresees("definite", t, clean, window); // it stopped early: the CPU did
+    auto still_at = [&](int end) { // frames (end-hold, end]
+        if (end < hold || end > int(clean.picture.size()))
+            return false;
+        int clean_changes = 0;
+        for (int i = end - hold + 1; i < end; i++)
+        {
+            if (t.picture[i] != t.picture[end - hold])
+                return false;
+            clean_changes += clean.picture[i] != clean.picture[i - 1];
+        }
+        return clean_changes >= 3;
+    };
+    if (check == "still")
+        return still_at(window);
+    if (check == "still-any")
+    {
+        for (int end = hold; end <= window; end++)
+            if (still_at(end))
+                return true;
+        return false;
+    }
+    if (check == "nmi")
+    {
+        bool clean_on = false;
+        for (int i = window - hold; i < window; i++)
+        {
+            if (t.nmi[i])
+                return false;
+            clean_on |= i < int(clean.nmi.size()) && clean.nmi[i];
+        }
+        return clean_on;
+    }
+    return false;
+}
+
+// mode: 0 --risk, 1 --foresee (#78: what a test of 3/5/10 s would have seen), 2 --try (#78:
+// try_change itself, 5 s from the same moment, against the 30 s outcome).
+int run_risk(int frames, int count, int trial, int only = -1, int mode = 0)
+{
+    bool foresee = mode == 1;
     CodeMap map(Memory.CalculatedSize);
     CallKeeper calls;
     RomTracer tracer;
@@ -1376,7 +1447,8 @@ int run_risk(int frames, int count, int trial, int only = -1)
         Frozen,
         Dead
     };
-    auto run_one = [&](const std::vector<std::pair<uint32_t, uint8_t>> &writes, bool &ran, uint64_t &picture) {
+    auto run_one = [&](const std::vector<std::pair<uint32_t, uint8_t>> &writes, bool &ran, uint64_t &picture,
+                       Trace *trace) {
         headless::load_state(mid);
         rom.restore_clean();
         CodeMap seen(Memory.CalculatedSize);
@@ -1394,6 +1466,20 @@ int run_risk(int frames, int count, int trial, int only = -1)
         {
             headless::run_frames(1);
             auto signals = access.sample();
+            if (trace)
+            {
+                trace->picture.push_back(signals.picture_valid ? signals.picture_hash
+                                         : trace->picture.empty() ? 0
+                                                                  : trace->picture.back());
+                trace->nmi.push_back(signals.nmi_enabled);
+                trace->stopped.push_back(signals.cpu_halted || signals.emulation_stopped);
+                trace->reboot.push_back(signals.reboots != reboots);
+                trace->runaway.push_back(signals.pc_class != PcClass::Ok);
+                if (trace->first_use < 0)
+                    for (auto [at, b] : writes)
+                        if (seen.at(at) & codeflag::Touched)
+                            trace->first_use = i + 1;
+            }
             if (signals.picture_valid && signals.picture_hash != picture && i >= trial - 300)
                 moving_late++;
             if (signals.nmi_enabled && i >= trial - 300)
@@ -1413,7 +1499,28 @@ int run_risk(int frames, int count, int trial, int only = -1)
     };
     bool clean_ran = false;
     uint64_t clean_picture = 0;
-    auto clean_outcome = run_one({}, clean_ran, clean_picture);
+    Trace clean_trace;
+    auto clean_outcome = run_one({}, clean_ran, clean_picture, foresee ? &clean_trace : nullptr);
+    struct Seen
+    {
+        Trace trace;
+        bool failed;
+        Risk risk;
+    };
+    std::vector<Seen> foreseen;
+    // --try: the engine runs in the frame hook, as in the app, so try_change's flips land.
+    RunAhead runner;
+    std::map<std::string, std::pair<int, int>> tried; // verdict -> (failed in 30 s, kept moving)
+    double try_ms = 0;
+    int tries = 0;
+    if (mode == 2)
+    {
+        Recipe none;
+        none.name = "try";
+        engine.set_recipe(none);
+        engine.set_active(true);
+        S9xCorruptFrameHook = &frame_hook;
+    }
     printf("clean    %s\n", clean_outcome == Moving ? "moving" : clean_outcome == Frozen ? "frozen" : "dead");
 
     FILE *tsv = getenv("CORRUPT_RISK_TSV") ? fopen(getenv("CORRUPT_RISK_TSV"), "w") : nullptr;
@@ -1467,7 +1574,34 @@ int run_risk(int frames, int count, int trial, int only = -1)
                     writes.push_back({ uint32_t(o.at + j), bytes[j] });
                 bool ran = false;
                 uint64_t picture = 0;
-                auto outcome = run_one(writes, ran, picture);
+                Trace trace;
+                auto outcome = run_one(writes, ran, picture, foresee ? &trace : nullptr);
+                if (foresee && ran)
+                    foreseen.push_back({ std::move(trace), outcome != Moving, risk_of(p.feed.feed) });
+                if (mode == 2 && ran)
+                {
+                    headless::load_state(mid);
+                    rom.restore_clean();
+                    CodeMap seen(Memory.CalculatedSize);
+                    RomTracer watch;
+                    watch.start(seen);
+                    Change c;
+                    c.at = o.at;
+                    c.value = bytes;
+                    for (size_t j = 0; j < bytes.size(); j++)
+                        c.was.push_back(clean[o.at + j]);
+                    auto t0 = std::chrono::steady_clock::now();
+                    auto r = try_change(runner, engine, rom, access, { seen.data(), seen.size() }, {}, c, 300, true);
+                    try_ms += std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0).count();
+                    tries++;
+                    watch.stop();
+                    const char *names[] = { "running", "froze", "crashed", "unused", "unclear", "failed" };
+                    auto &t = tried[names[r.kind]];
+                    (outcome != Moving ? t.first : t.second)++;
+                    if (getenv("CORRUPT_TRY_VERBOSE"))
+                        printf("  %06X %-8s %-7s %s\n", o.at, outcome != Moving ? "failed" : "moving", names[r.kind],
+                               r.text.c_str());
+                }
                 bool differs = picture != clean_picture;
                 const char *out_name = outcome == Moving ? "moving" : outcome == Frozen ? "frozen" : "dead";
                 if (tsv)
@@ -1502,6 +1636,68 @@ int run_risk(int frames, int count, int trial, int only = -1)
     };
     print("by what it feeds", by_feed);
     print("by kind", by_kind_feed);
+    if (mode == 2)
+    {
+        S9xCorruptFrameHook = nullptr;
+        engine.set_active(false);
+        printf("\ntry 5 s   %d tries, %.0f ms each (both runs)\n%-10s %8s %8s\n", tries, tries ? try_ms / tries : 0.0,
+               "verdict", "failed", "moving");
+        for (auto &[name, t] : tried)
+            printf("%-10s %8d %8d\n", name.c_str(), t.first, t.second);
+    }
+    if (foresee)
+    {
+        // Would a test of 3, 5 or 10 s have told the failures from the survivors? (#78)
+        int failed = 0, survived = 0;
+        for (auto &f : foreseen)
+            (f.failed ? failed : survived)++;
+        printf("\nforesee  %d ran in %d frames: %d failed, %d kept moving\n", failed + survived, trial, failed, survived);
+        printf("%-10s %6s %8s %8s %8s %8s\n", "check", "window", "unran", "caught", "missed", "false");
+        for (int window : { 180, 300, 600 })
+            for (const char *check : { "definite", "still", "still-any", "nmi", "any" })
+            {
+                int unran = 0, caught = 0, missed = 0, false_alarms = 0;
+                for (auto &f : foreseen)
+                {
+                    bool said = std::string(check) == "any"
+                                    ? foresees("definite", f.trace, clean_trace, window) ||
+                                          foresees("still-any", f.trace, clean_trace, window) ||
+                                          foresees("nmi", f.trace, clean_trace, window)
+                                    : foresees(check, f.trace, clean_trace, window);
+                    if (f.trace.first_use < 0 || f.trace.first_use > window)
+                    {
+                        unran++;
+                        continue;
+                    }
+                    if (f.failed)
+                        (said ? caught : missed)++;
+                    else
+                        false_alarms += said;
+                }
+                printf("%-10s %5.0fs %8d %8d %8d %8d\n", check, window / 60.0, unran, caught, missed, false_alarms);
+            }
+        int risk_caught = 0, risk_false = 0;
+        for (auto &f : foreseen)
+            if (f.risk == Risk::Medium || f.risk == Risk::High)
+                (f.failed ? risk_caught : risk_false)++;
+        printf("%-10s %6s %8s %8d %8d %8d   (Medium or High in Change It)\n", "risk", "-", "-", risk_caught,
+               failed - risk_caught, risk_false);
+        // When the failures showed: frames from first use to the first definite or still sign.
+        printf("\nfailures by when a sign showed (from first use):");
+        int buckets[5] = {}; // <1 s, 1-3 s, 3-5 s, 5-10 s, later or never
+        for (auto &f : foreseen)
+            if (f.failed && f.trace.first_use > 0)
+            {
+                int at = -1;
+                for (int w = f.trace.first_use; w <= int(f.trace.picture.size()) && at < 0; w += 10)
+                    if (foresees("definite", f.trace, clean_trace, w) || foresees("still-any", f.trace, clean_trace, w) ||
+                        foresees("nmi", f.trace, clean_trace, w))
+                        at = w - f.trace.first_use;
+                buckets[at < 0 ? 4 : at < 60 ? 0 : at < 180 ? 1 : at < 300 ? 2 : at < 600 ? 3 : 4]++;
+            }
+        printf(" <1 s %d, 1-3 s %d, 3-5 s %d, 5-10 s %d, later or never %d\n", buckets[0], buckets[1], buckets[2],
+               buckets[3], buckets[4]);
+    }
     return 0;
 }
 
@@ -2039,14 +2235,15 @@ int main(int argc, char **argv)
         return run_kill(frames, argc > 6 ? atoi(argv[6]) : 10, argc > 7 ? atoi(argv[7]) : 6);
     if (argc > 5 && std::string(argv[5]) == "--calls")
         return run_calls(frames);
-    if (argc > 5 && std::string(argv[5]) == "--risk")
+    if (argc > 5 && (std::string(argv[5]) == "--risk" || std::string(argv[5]) == "--foresee" || std::string(argv[5]) == "--try"))
     {
         int only = -1;
         const char *kinds[4] = { "number", "branch", "math", "skip" };
         for (int k = 0; argc > 8 && k < 4; k++)
             if (std::string(argv[8]) == kinds[k])
                 only = k;
-        return run_risk(frames, argc > 6 ? atoi(argv[6]) : 200, argc > 7 ? atoi(argv[7]) : 1800, only);
+        return run_risk(frames, argc > 6 ? atoi(argv[6]) : 200, argc > 7 ? atoi(argv[7]) : 1800, only,
+                        std::string(argv[5]) == "--foresee" ? 1 : std::string(argv[5]) == "--try" ? 2 : 0);
     }
     if (argc > 5 && std::string(argv[5]) == "--change")
         return run_change(frames, argc > 6 ? atoi(argv[6]) : 10, argc > 7 ? atoi(argv[7]) : 6);

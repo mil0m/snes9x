@@ -270,8 +270,8 @@ bool8 S9xDeinitUpdate(int width, int height)
     int yoffset = 0;
 
     auto &display = Snes9xController::get()->screen_output_function;
-    if (display == nullptr)
-        return true;
+    if (display == nullptr || corrupt::SnesCoreAccess::unseen())
+        return true; // a frame drawn while trying a change ahead (#78): nobody sees the future
 
     if (width < 256 || height < 224)
         return false;

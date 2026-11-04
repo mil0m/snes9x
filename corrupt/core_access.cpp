@@ -472,9 +472,11 @@ void SnesCoreAccess::begin_unseen()
     unseen_now = true;
 }
 
-void SnesCoreAccess::run_unseen_frame()
+void SnesCoreAccess::run_unseen_frame(bool draw)
 {
-    IPPU.RenderThisFrame = FALSE; // the front end's S9xSyncSpeed sets it again after each frame
+    // The front end's S9xSyncSpeed sets it again after each frame; a drawn frame isn't shown
+    // (the front end's S9xDeinitUpdate checks unseen()).
+    IPPU.RenderThisFrame = draw ? TRUE : FALSE;
     S9xMainLoop();
 }
 

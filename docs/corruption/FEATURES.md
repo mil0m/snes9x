@@ -26,7 +26,8 @@ Between frames, `CorruptionSession::betweenFrames()` (`qt/src/CorruptionSession.
 8. `MemoryWatch::observe` (heat, hits), WRAM access counters, `RomHeat::observe` (Live overlay).
 9. Code map, jump log and call log housekeeping: reload, tick, `call_log.end_frame()` (#26), save, copy for the viewer twice a second, jump-table search.
 10. Guard notice to the status line.
-11. `testAhead()` (#52), last: plays the next frame's ROM changes ahead from exactly here.
+11. `testAhead()` (#52): plays the next frame's ROM changes ahead from exactly here.
+12. `tryPending()` (#78), last: a change asked for with Change It's *Try 5 s Ahead*, played ahead with and without it.
 
 ## Phases 1 and 4: recipes, panel, shaping while playing (#2-#5, #14-#17)
 
@@ -294,6 +295,13 @@ Plan: `rom-corruption-plan` (six phases, each with "Phase N in detail"). QA 20-2
 - Tests: `tests/corrupt/change_risk_test.cpp`; `crash_guard_test.cpp` ("a crash blamed on your own change…"); `function_editor_test.cpp`, `rule_editor_test.cpp` (#77 cases).
 - Measure: `--risk [count] [trial] [kind]` (single changes from the 64 busiest functions, 30 s each, unguarded, per feed; TSV with the function each is in), `--change` has a *low risk* arm; `--guard` takes `CORRUPT_PRESS=<hotkey>@<frame>` and `CORRUPT_OWN_OFF`.
 - Docs: `function-changes-plan` (#77 sections); GUIDE "Changing how a function works"; QA 53.
+
+**Try a change before it lands (#78)** - *Try 5 s Ahead* in Change It… plays the chosen change 5 s ahead, unseen, and once without it, and says under the risk whether the game kept running, froze, crashed, or didn't run that code.
+- Code: `corrupt/try_change.cpp` (`froze_at`: the window's last second one picture while the run without the change moved 3+ times; `judge_try`; `try_change`: both runs as queued flips through `RunAhead::play`, pending flips put back; `kTryFrames` 300). `RunSpec::pictures` / `RunVerdict::pictures`; `CoreAccess::run_unseen_frame(bool draw)` (a drawn unseen frame; Qt's `S9xDeinitUpdate` shows nothing while `unseen()`). Session `tryChange` (queued), `tryPending` (last in `betweenFrames`, after `testAhead`), `lastTry` (`TriedChange` with a growing id); `FunctionSource::tryChange/lastTry`. App: `FunctionEditor` `try` button and `try_line` (shown only for the choice it answers; red froze/crashed, green running).
+- Tests: `tests/corrupt/try_change_test.cpp`; `guard_integration_test.cpp` suite "try a change before it lands (#78)" (test ROM `build_freeze`: the backdrop colour counts frames unless a flag is set); `function_editor_test.cpp` (#78 case); the UI tour tries the first line (`try.txt`, `14a-function-editor-tried.png`).
+- Measure: `--foresee [count] [trial] [kind]` (each single change recorded frame by frame beside a clean run; candidate checks scored at 3, 5, 10 s against the 30 s outcome), `--try [count] [trial] [kind]` (`try_change` itself at 5 s; `CORRUPT_TRY_VERBOSE=1`).
+- Docs: `function-changes-plan` (#78 sections); GUIDE "Changing how a function works"; QA 54.
+- Gotchas: needs corruption on (flips need the engine) and a running game (it runs between frames). Drawing the unseen frames costs time: about 0.75-1 s per try (both runs). The answer is for this moment; code that doesn't run in 5 s gets no answer.
 
 **Timed switches (#61)** - a switch off for a while every so often, a change on for a while; a kill rule that puts its functions back; the kill rule keeps learning.
 - Code: `Switch::every/for_frames`, `Change::every/for_frames` (`"every"`, `"for"`, in frames), timer flips at the start of `on_frame` from `(frame - 1) % every`; `Op::put_back` (`"put_back"`, frames) with `RuleRuntime::put_backs` (in the snapshot, so rollbacks keep them; not logged as writes); the kill list taken again every 300 frames while it has fewer than 64. App: the Functions window's *Timer* row, Change It…'s *Kept with a timer*, the rule editor's *Back on after*.

@@ -271,6 +271,29 @@ void CorruptionSession::betweenFrames()
         S9xSetInfoString(out.summary.c_str());
     }
     testAhead(); // last: it plays the next frame's ROM changes ahead from exactly here
+    tryPending(); // and a change asked for in Change It (#78), from the same place
+}
+
+void CorruptionSession::tryPending()
+{
+    if (!pending_try)
+        return;
+    Change c = std::move(*pending_try);
+    pending_try.reset();
+    AheadHooks hooks;
+    bool tracing = tracer.tracing();
+    if (watching_derails && tracing)
+        hooks.take_derail = [this] { return tracer.take_derail(); };
+    if (tracing)
+    {
+        hooks.begin = [this] { tracer.note_jumps(false); };
+        hooks.end = [this] { tracer.note_jumps(true); };
+    }
+    running_ahead = true;
+    auto result = try_change(try_runner, engine, rom, access, { code_map.mine().data(), code_map.mine().size() }, hooks,
+                             c, kTryFrames, tracing);
+    running_ahead = false;
+    last_try = TriedChange{ ++tries_made, std::move(c), std::move(result) };
 }
 
 void CorruptionSession::testAhead()
@@ -1709,6 +1732,26 @@ std::string CorruptionSession::applyChange(const Change &c, bool on)
         window_changes.push_back(c); // in play while it's on (#58)
     guard_dirty = true;
     return {};
+}
+
+std::string CorruptionSession::tryChange(const Change &c)
+{
+    std::lock_guard lock(mutex);
+    if (!game_loaded || !engine.active())
+        return "corruption is off";
+    if (c.value.empty() || c.value.size() != c.was.size() || c.at + c.value.size() > rom.clean().size())
+        return "that change doesn't fit the ROM";
+    for (size_t i = 0; i < c.was.size(); i++)
+        if (rom.clean()[c.at + i] != c.was[i] || rom.locked_mask().is_hot(Target::ROM, uint32_t(c.at + i)))
+            return "those bytes can't be changed";
+    pending_try = c;
+    return {};
+}
+
+std::optional<TriedChange> CorruptionSession::lastTry()
+{
+    std::lock_guard lock(mutex);
+    return last_try;
 }
 
 std::string CorruptionSession::keepChange(const Change &c)

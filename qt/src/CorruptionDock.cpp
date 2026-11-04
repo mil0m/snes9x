@@ -115,6 +115,8 @@ struct SessionFunctions : FunctionSource
     std::string applyChange(const Change &c, bool on) override { return s.applyChange(c, on); }
     std::string keepChange(const Change &c) override { return s.keepChange(c); }
     void forgetChange(uint32_t at) override { s.forgetChange(at); }
+    std::string tryChange(const Change &c) override { return s.tryChange(c); }
+    std::optional<TriedChange> lastTry() override { return s.lastTry(); }
 };
 
 } // namespace
@@ -417,8 +419,26 @@ void CorruptionDock::tour(const QString &dir)
             if (QFile audit(dir + "/audit-editor.txt"); audit.open(QIODevice::WriteOnly | QIODevice::Text))
                 for (auto &issue : ui::audit(editor))
                     audit.write(QString("change it: %1\n").arg(issue).toUtf8());
+        }
+        // Trying ahead (#78) needs corruption on: a gentle recipe, then the first line.
+        load(":/corruption-examples/gentle-wram-noise.json");
+    });
+    steps->push_back([=, this] {
+        if (auto editor = workshop->functionsPage()->findChild<QDialog *>("function_editor"))
+            if (auto try_button = editor->findChild<QPushButton *>("try"); try_button && try_button->isEnabled())
+                try_button->click(); // the answer comes between frames
+    });
+    steps->push_back([=, this] {
+        if (auto editor = workshop->functionsPage()->findChild<QDialog *>("function_editor"))
+        {
+            QApplication::processEvents();
+            shot(editor, "14a-function-editor-tried");
+            if (auto line = static_cast<ui::StatusLine *>(editor->findChild<QWidget *>("try_line")); line)
+                if (QFile out(dir + "/try.txt"); out.open(QIODevice::WriteOnly | QIODevice::Text))
+                    out.write((line->isVisible() ? line->text() : QString("(hidden)")).toUtf8());
             editor->close();
         }
+        CorruptionSession::get().backToNormal();
         if (auto show = workshop->functionsPage()->findChild<QPushButton *>("show"); show && show->isEnabled())
             show->click();
     });

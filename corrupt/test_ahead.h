@@ -66,6 +66,7 @@ struct RunSpec
     std::optional<uint64_t> quiet_after;
     uint32_t frames = 180;
     uint32_t settle_frames = 60; // stops early once every watched byte was used this long ago
+    bool pictures = false; // draw each frame and keep its picture (#78's freeze check); slower
 };
 
 struct RunVerdict
@@ -82,6 +83,7 @@ struct RunVerdict
     std::vector<uint32_t> unused;   // watched bytes the game never ran or read in the window
     uint32_t frames = 0;            // frames played
     std::string text;
+    std::vector<uint64_t> pictures; // with RunSpec::pictures: each frame's picture (an undrawn frame repeats the last)
 };
 
 class RunAhead

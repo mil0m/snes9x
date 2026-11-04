@@ -32,8 +32,10 @@ struct CoreAccess
     // Frames nobody sees or hears, for testing a change before it's applied (#52): begin,
     // run some, end. Between begin and end nothing is drawn or played, and what the front
     // end counts per frame (the reset watch, the WRAM counters) is put back at the end.
+    // `draw`: the frame is drawn (into the core's screen, never shown) so sample() has its
+    // picture, for telling a frozen game (#78); it costs time, so only when asked.
     virtual void begin_unseen() {}
-    virtual void run_unseen_frame() {}
+    virtual void run_unseen_frame(bool /*draw*/ = false) {}
     virtual void end_unseen() {}
     virtual ~CoreAccess() = default;
 };

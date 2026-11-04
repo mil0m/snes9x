@@ -21,6 +21,7 @@ class StatusLine;
 // can become: another number, the opposite branch (or always, or never), the other half of a
 // math pair, or a call skipped or sent to another function. Apply changes it at the next
 // frame, Put Back undoes it, Keep in Recipe keeps it (on a hotkey, starting on or not).
+// Try 5 s Ahead (#78) plays it ahead, unseen, and once without it, and says what happened.
 class FunctionEditor : public QDialog
 {
   public:
@@ -38,6 +39,9 @@ class FunctionEditor : public QDialog
     int optionAt(int row) const; // the option a table row shows (rows can be sorted), or -1
     // The change the editor describes for the selected line; nullopt (with why) if none.
     std::optional<corrupt::Change> wanted(QString &why) const;
+    void tryAhead();
+    void forgetTry(); // the shown try is for another choice now
+    void showTry(const TriedChange &t);
     void apply();
     void putBack();
     void keep();
@@ -61,6 +65,10 @@ class FunctionEditor : public QDialog
     QCheckBox *swap_math; // a number's instruction can also swap (ADC # -> SBC #)
     QComboBox *branch;
     QLabel *risk_note;
+    ui::StatusLine *try_line;           // what the last try of this line did (#78)
+    std::optional<uint64_t> try_after;  // waiting for a try newer than this id
+    std::optional<corrupt::Change> try_shown; // the change try_line answers for
+    QPushButton *try_button;
     QLabel *math_label;
     QComboBox *call;
     QComboBox *hotkey;

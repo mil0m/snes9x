@@ -456,3 +456,103 @@ change a few seconds ahead, unseen (#52's `RunAhead::play`), would catch the fra
 functions directly; its crash detector only takes definite crashes, and many failures
 here are freezes, so it needs the freeze check first.
 
+
+## Try it before it lands (#78)
+
+Mikael (4 Nov) picked this as the next package. #77 gives each line in Change It a risk,
+but that's an average over changes of its kind. This plays **the exact change** a few
+seconds ahead, unseen, from this moment of this game, and says what happened.
+
+**The warning in *Tried and removed*.** #55 tested a changed byte from its first use and
+failed because crashes come seconds later, from damage already done. Two things differ
+here. #55 judged against a definite crash, and many of #77's failures are freezes, which
+it couldn't see. And here the answer goes to the player as information beside the risk;
+nothing is kept or put back on its own. Still, if a short test can't see most failures,
+it isn't worth a button. So the measurement comes first and decides.
+
+**Step 1, the freeze check, measured offline.** A run ahead is deterministic, so a test of
+*N* seconds is the first *N* seconds of #77's 30 s runs. `corrupt-smoke --foresee [count]
+[trial]` records every frame of a clean run and of each single change from the same moment:
+the picture, NMI, a halted CPU, a reboot, and the frame the changed bytes first ran. Then
+it scores candidate checks at 3, 5 and 10 s against the 30 s outcome:
+
+- **definite**: what #52 sees today (CPU stopped, deadlock, runaway, reboot);
+- **+ still picture**: the last second of the window shows one picture while the clean run's
+  picture changed in that same second. The clean run is the control: a menu nobody touches
+  is still in both, so it's no verdict. Real play has a player who stops moving too, which
+  is why it's compared with a control rather than with a threshold;
+- **+ NMI off**: the frame interrupt stays off for the last second while the clean run's is on.
+
+For each: how many of the 30 s failures it catches, how many survivors it wrongly calls
+failed, and how many changes didn't run in the window (no answer). Compared with the Risk
+column on the same changes. **Go** if a 5 s check catches most failures (half or more) with
+few false alarms (under 1 in 20), and does better than the Risk column. Otherwise this
+section ends with the numbers and nothing is built.
+
+**Step 2, if it goes.** `FreezeCheck` in `corrupt/` (the check that won, with a control run),
+and `RunAhead` gains it as an option (#52 keeps definite only until measured there).
+
+**Step 3, the button.** *Test* beside the choices in Change It. It plays the selected
+change *N* seconds ahead from now, with the same buttons held as now, and once without it
+(the control). Then it shows, under the risk:
+*Tried 5 s ahead: still running; the picture differs from without it* /
+*froze after 1.2 s (the picture stopped; without the change it kept moving)* /
+*stopped the CPU 0.4 s in* / *the game didn't run this code in 5 s, so it says nothing yet*.
+The game pauses for the test (a fraction of a second). A result is for this moment; it
+says so.
+
+**Maybe step 4.** The low-risk aim could test each change ahead before it lands, like #52
+does for ROM rules. Only if it beats the 45 of 60 the aim gets alone.
+
+### How it went (#78, step 1: does a short test see the failures?)
+
+`--foresee 240 1800` on Goof Troop, Pocky & Rocky and FE4: the same 767 single changes as
+#77 that the game ran within 30 s, each recorded frame by frame with the clean run beside it.
+The window counts from the moment of the change, as a test from now would.
+
+| Check, at 5 s | Failures caught | Survivors called failed | No answer (code not run yet) |
+|---|---|---|---|
+| definite (what #52 sees today) | 10 of 79 | 0 of 610 | 78 of 767 |
+| NMI off for the last second, clean on | 31 of 79 | 2 | |
+| **still picture for the last second, clean moving** | **64 of 79 (81%)** | **4 (0.7%)** | |
+| still picture for any second of the window | 64 of 79 | 14 | |
+| the Risk column (Medium or High) | 53 of 86 (62%) | 222 of 681 (33%) | none |
+
+Per game, the still check at 5 s: Goof 20 of 27 caught, 1 false; Pocky 17 of 19, 0; FE4
+27 of 33, 3. At 3 s it catches 53 with 4 false and more changes haven't run yet (118); at
+10 s 71 with 14 false. **5 s is the window.**
+
+**Why this works where #55 didn't.** #55 judged against definite crashes, and those really
+are rare and late: here they're 10 of 79. The failures from a function change are mostly
+freezes, and they show fast: of 86 failures, the first sign (a still picture, NMI off, a
+stopped CPU) came within 3 s of the change's first use in 69, 3-10 s in 8, later or never
+in 9. The still picture has to be judged against a run without the change, or a menu nobody
+touches would look frozen; with the control, survivors almost never trip it.
+
+**Go.** The check is *definite, or a still picture for the window's last second while the
+run without the change moved at least 3 times in it*. What it can't do: answer for code
+that doesn't run in the 5 s (1 in 10 here), or for a failure that builds up later (1 in 10
+of failures). All of it is attract mode; real play has a player pressing buttons, which the
+test holds as they are now.
+
+### How it went (#78, steps 2 and 3: the check and the button)
+
+**The real thing matches the measurement.** `--try 240 1800`: `try_change` itself (two runs
+ahead, drawn but unseen, through `RunAhead`) from the same moment as `--foresee`, against
+the 30 s outcome. Of the 79 failures whose code ran within 5 s it called 64 froze or crashed
+(Goof 20 of 27, Pocky 17 of 19, FE4 27 of 33); of 610 survivors it called 6 failed (Goof 1,
+FE4 5); 78 changes got *didn't run this code* (7 of them failures). About 0.75-1 s per try
+for both runs, three games at once under `nice`.
+
+**One thing the plan didn't know: unseen frames aren't drawn.** #52's run ahead skips
+rendering for speed, so there was no picture to judge. `run_unseen_frame(true)` draws into
+the core's screen, and the Qt front end shows nothing while unseen, as it already did for
+sound.
+
+**In the app.** The tour opens Change It on Goof Troop's busiest function, where the first
+line, `BEQ $83CE`, is *Low · a block it skips* (flips like it fail 8 in 100). Tried: *froze
+after 2.1 s: the picture stopped, and without the change it kept moving*, which is the flip
+#77 found kills the game. The average and the exact change disagree, and both are in view.
+
+**Not done:** step 4 (the low-risk aim testing each change ahead) waits for play-testing of
+the button; #52 keeps definite crashes only.

@@ -67,7 +67,7 @@ struct Game : CoreAccess
         return s;
     }
     void begin_unseen() override { unseen_begins++; }
-    void run_unseen_frame() override
+    void run_unseen_frame(bool = false) override
     {
         unseen_frames++;
         frame_once();

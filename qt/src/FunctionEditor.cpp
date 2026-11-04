@@ -183,7 +183,8 @@ FunctionEditor::FunctionEditor(FunctionSource &source, const FunctionRow &row, Q
                                "skipped or sent to another function. <b>Apply</b> changes it at the next frame; "
                                "<b>Put Back</b> undoes it. If a change breaks the game, the crash guard goes back to "
                                "before the game first ran it and puts it back. Nothing else corrupts this function while you change it. <b>Risk</b> says how often a change "
-                               "like it stopped the game in tests, from where the changed value goes next."),
+                               "like it stopped the game in tests, from where the changed value goes next; <b>Try 5 s "
+                               "Ahead</b> plays this change ahead, unseen, and says what it did here and now."),
                             this);
     intro->setWordWrap(true);
     ui::setTone(intro, ui::Tone::Secondary);
@@ -290,6 +291,12 @@ FunctionEditor::FunctionEditor(FunctionSource &source, const FunctionRow &row, Q
     risk_note->setWordWrap(true);
     risk_note->setTextFormat(Qt::RichText);
     editor_layout->addWidget(risk_note);
+    // What trying it ahead did (#78), right under the risk: the risk is the average, this is
+    // this change at this moment.
+    try_line = new ui::StatusLine(editor);
+    try_line->setObjectName("try_line");
+    try_line->hide();
+    editor_layout->addWidget(try_line);
 
     // A timer (#61): on for a while, again and again.
     auto timer_row = new QHBoxLayout;
@@ -318,6 +325,11 @@ FunctionEditor::FunctionEditor(FunctionSource &source, const FunctionRow &row, Q
     editor_layout->addLayout(timer_row);
 
     auto apply_row = new QHBoxLayout;
+    try_button = new QPushButton(ui::icon("eye"), tr("Try 5 s Ahead"), editor);
+    try_button->setObjectName("try");
+    try_button->setAutoDefault(false);
+    try_button->setToolTip(tr("Plays this change 5 seconds ahead, unseen, and once without it, then says whether the "
+                              "game kept running, froze or crashed. Your game doesn't change, and pauses for a moment."));
     apply_button = new QPushButton(ui::icon("bolt"), tr("Apply"), editor);
     apply_button->setObjectName("apply");
     apply_button->setAutoDefault(false);
@@ -344,6 +356,7 @@ FunctionEditor::FunctionEditor(FunctionSource &source, const FunctionRow &row, Q
     forget_button->setObjectName("forget");
     forget_button->setAutoDefault(false);
     forget_button->setToolTip(tr("Take the change out of the recipe. The code stays as it is now."));
+    apply_row->addWidget(try_button);
     apply_row->addWidget(apply_button);
     apply_row->addWidget(put_back_button);
     apply_row->addStretch(1);
@@ -371,7 +384,13 @@ FunctionEditor::FunctionEditor(FunctionSource &source, const FunctionRow &row, Q
     connect(timer, &QTimer::timeout, this, &FunctionEditor::update);
     connect(close_button, &QPushButton::clicked, this, &QDialog::close);
     connect(table, &QTableWidget::itemSelectionChanged, this, &FunctionEditor::selectionChanged);
+    connect(try_button, &QPushButton::clicked, this, &FunctionEditor::tryAhead);
     connect(apply_button, &QPushButton::clicked, this, &FunctionEditor::apply);
+    // Another choice: the try shown was for the old one.
+    connect(number, &QSpinBox::valueChanged, this, &FunctionEditor::forgetTry);
+    connect(swap_math, &QCheckBox::toggled, this, &FunctionEditor::forgetTry);
+    connect(branch, &QComboBox::currentIndexChanged, this, &FunctionEditor::forgetTry);
+    connect(call, &QComboBox::currentIndexChanged, this, &FunctionEditor::forgetTry);
     connect(put_back_button, &QPushButton::clicked, this, &FunctionEditor::putBack);
     connect(keep_button, &QPushButton::clicked, this, &FunctionEditor::keep);
     connect(forget_button, &QPushButton::clicked, this, &FunctionEditor::forget);
@@ -489,6 +508,68 @@ void FunctionEditor::update()
             it->setText(parts.join(" · "));
     }
     not_running->setVisible(!source.running());
+    try_button->setEnabled(!try_after && source.running());
+    if (try_after)
+        if (auto t = source.lastTry(); t && t->id > *try_after)
+        {
+            try_after.reset();
+            try_button->setEnabled(source.running());
+            showTry(*t);
+        }
+}
+
+void FunctionEditor::tryAhead()
+{
+    QString why;
+    auto c = wanted(why);
+    if (!c)
+        return say(tr("Nothing to try: %1.").arg(why), int(ui::Tone::Warning));
+    auto before = source.lastTry();
+    auto err = source.tryChange(*c);
+    if (!err.empty())
+        return say(tr("Couldn't try it: %1").arg(QString::fromStdString(err)), int(ui::Tone::Error));
+    try_after = before ? before->id : 0;
+    try_shown = *c;
+    try_button->setEnabled(false);
+    try_line->setMessage(tr("Trying it 5 s ahead… (it runs while the game runs)"), ui::Tone::Secondary);
+    try_line->show();
+    timer->start(); // the answer comes at the next frame
+    QTimer::singleShot(100, this, &FunctionEditor::update);
+}
+
+void FunctionEditor::showTry(const TriedChange &t)
+{
+    QString why;
+    auto c = wanted(why);
+    if (!c || c->at != t.change.at || c->value != t.change.value)
+    {
+        try_line->hide(); // another line or choice since: not this one's answer
+        try_shown.reset();
+        return;
+    }
+    using K = TryResult::Kind;
+    auto tone = t.result.kind == K::Froze || t.result.kind == K::Crashed ? ui::Tone::Error
+                : t.result.kind == K::Running                            ? ui::Tone::Ok
+                : t.result.kind == K::Failed                             ? ui::Tone::Warning
+                                                                         : ui::Tone::Normal;
+    QString text = tr("Tried 5 s ahead: %1").arg(QString::fromStdString(t.result.text));
+    if (t.result.kind == K::Running)
+        text += tr(" That's for this moment of the game; later, or somewhere else, it may do more.");
+    try_line->setMessage(text, tone);
+    try_line->show();
+    try_shown = t.change;
+}
+
+void FunctionEditor::forgetTry()
+{
+    if (try_after)
+        return; // the answer decides when it comes
+    QString why;
+    auto c = wanted(why);
+    if (try_shown && c && c->at == try_shown->at && c->value == try_shown->value)
+        return; // still the choice it answers for
+    try_line->hide();
+    try_shown.reset();
 }
 
 int FunctionEditor::optionAt(int row) const
@@ -517,6 +598,7 @@ void FunctionEditor::selectionChanged()
     auto &o = options[size_t(row)];
     auto *k = kept(o.at);
     risk_note->setText(risk_story(feeds[size_t(row)]));
+    forgetTry();
     switch (o.kind)
     {
     case ChangeKind::Number: {

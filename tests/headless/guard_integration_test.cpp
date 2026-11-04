@@ -11,6 +11,7 @@
 #include "corrupt/hook.h"
 #include "corrupt/instant_revert.h"
 #include "corrupt/test_ahead.h"
+#include "corrupt/try_change.h"
 #include "corrupt/jump_tables.h"
 #include "corrupt/pointer_swap.h"
 #include "corrupt/rom_heat.h"
@@ -1752,5 +1753,81 @@ TEST_SUITE("function changes")
         c.h.rom.revert_after(before);
         CHECK_FALSE(change_on(change, c.h.memory));
         CHECK(c.h.memory.read(Target::ROM, adc.at + 1) == 0x01);
+    }
+}
+
+TEST_SUITE("try a change before it lands (#78)")
+{
+    namespace fz = testrom::freeze;
+
+    struct Trying
+    {
+        Harness h{ testrom::build_freeze(), Recipe{}, PolicyKind::Skip };
+        CodeMap map{ 0 };
+        RomTracer tracer;
+        RunAhead runner;
+
+        Trying()
+        {
+            map = CodeMap(Memory.CalculatedSize);
+            REQUIRE(tracer.start(map));
+            h.run(30);
+        }
+        Change change(uint32_t at, uint8_t value)
+        {
+            Change c;
+            c.at = at;
+            c.value = { value };
+            c.was = { h.rom.clean()[at] };
+            return c;
+        }
+        TryResult go(const Change &c)
+        {
+            return try_change(runner, h.engine, h.rom, h.access, { map.data(), map.size() }, {}, c, 300, true);
+        }
+    };
+
+    TEST_CASE("the freeze ROM's picture moves, unseen frames drawn for a try included")
+    {
+        Trying t;
+        uint64_t a = t.h.access.sample().picture_hash;
+        t.h.run(1);
+        CHECK(t.h.access.sample().picture_valid);
+        CHECK(t.h.access.sample().picture_hash != a);
+    }
+
+    TEST_CASE("a value that stops the picture is a freeze; one nothing reads keeps running; the game is as it was")
+    {
+        Trying t;
+        uint8_t frames = t.h.wram(testrom::kFrameCounterAddr);
+        uint64_t frame = t.h.engine.current_frame();
+        auto map_before = std::vector<uint8_t>(t.map.data(), t.map.data() + t.map.size());
+
+        auto froze = t.go(t.change(fz::kStill, 0x01));
+        CAPTURE(froze.text);
+        CHECK(froze.kind == TryResult::Froze);
+        CHECK(froze.at <= 2); // at once: the routine runs every frame
+        CHECK(froze.text.find("froze after") != std::string::npos);
+
+        auto fine = t.go(t.change(fz::kInnocent, 0x07));
+        CAPTURE(fine.text);
+        CHECK(fine.kind == TryResult::Running);
+        CHECK(!fine.differs); // nothing reads it: the same picture
+        CHECK(!fine.still_anyway);
+
+        // Nothing of either try is left: the ROM, the frame, the map, the counter.
+        CHECK(t.h.memory.read(Target::ROM, fz::kStill) == 0x00);
+        CHECK(t.h.memory.read(Target::ROM, fz::kInnocent) == 0x00);
+        CHECK(t.h.rom.changed() == 0);
+        CHECK(t.h.engine.current_frame() == frame);
+        CHECK(t.h.wram(testrom::kFrameCounterAddr) == frames);
+        CHECK(std::equal(map_before.begin(), map_before.end(), t.map.data()));
+        CHECK(t.h.engine.pending_flips().empty());
+        CHECK(!SnesCoreAccess::unseen());
+        CHECK(alive(t.h));
+        // And the game plays on with its picture moving.
+        uint64_t a = t.h.access.sample().picture_hash;
+        t.h.run(1);
+        CHECK(t.h.access.sample().picture_hash != a);
     }
 }

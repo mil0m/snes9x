@@ -158,6 +158,24 @@ struct FakeFunctions : FunctionSource
         for (auto &r : rows)
             std::erase_if(r.changes, [&](const Change &k) { return k.at == at; });
     }
+    // Trying ahead (#78): asked for here, answered by finish_try (as the session does between frames).
+    std::vector<Change> tries;
+    std::optional<TriedChange> last;
+    std::string tryChange(const Change &c) override
+    {
+        if (!on)
+            return "corruption is off";
+        tries.push_back(c);
+        return {};
+    }
+    std::optional<TriedChange> lastTry() override { return last; }
+    void finish_try(TryResult::Kind kind, const std::string &text)
+    {
+        TryResult r;
+        r.kind = kind;
+        r.text = text;
+        last = TriedChange{ last ? last->id + 1 : 1, tries.back(), r };
+    }
     std::string protect(uint32_t entry, bool on, bool deep) override
     {
         protects.push_back({ entry, on, deep });

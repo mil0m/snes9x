@@ -63,8 +63,13 @@ RunVerdict RunAhead::play(Engine &engine, RomKeeper &rom, CoreAccess &core, std:
     uint32_t last_first_use = 0;
     for (uint32_t f = 1; f <= spec.frames; f++)
     {
-        core.run_unseen_frame();
+        core.run_unseen_frame(spec.pictures);
         v.frames = f;
+        auto signals = core.sample();
+        if (spec.pictures)
+            v.pictures.push_back(signals.picture_valid ? signals.picture_hash
+                                 : v.pictures.empty() ? 0
+                                                      : v.pictures.back());
         for (size_t i = 0; i < written.size(); i++)
             if (!seen[i] && written[i] < flags.size() && (flags[written[i]] & codeflag::Touched))
             {
@@ -84,7 +89,7 @@ RunVerdict RunAhead::play(Engine &engine, RomKeeper &rom, CoreAccess &core, std:
                 v.text = std::string(landing_text(note->kind)) + " at " + describe_pc(note->pc) + seconds_in(f);
                 break;
             }
-        if (auto crash = detector.observe(start + f, core.sample()))
+        if (auto crash = detector.observe(start + f, signals))
         {
             v.kind = RunVerdict::Crashed;
             v.text = crash->text + seconds_in(f);

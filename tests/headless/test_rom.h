@@ -131,6 +131,18 @@ constexpr uint32_t kNearSite = 0x0012, kLongSite = 0x0015, kMixedNearSite = 0x00
 constexpr uint32_t kCounts = 0x20; // WRAM: runs of near, long, mixed (twice a frame), inline at $20-$23
 } // namespace calls
 
+// Crash::None whose picture moves (#78): the NMI handler writes the frame counter into the
+// backdrop colour each frame, unless $7E:0012 is set. Each frame the main loop calls a
+// routine: LDA #$00 / STA $12 (kStill: nonzero freezes the picture, with the CPU and NMI
+// still running) / LDA #$00 / STA $13 (kInnocent: a value nothing reads) / RTS. ROM offsets.
+std::vector<uint8_t> build_freeze();
+namespace freeze
+{
+constexpr uint32_t kRoutine = 0x0060;  // $8060
+constexpr uint32_t kStill = 0x0061;    // LDA #$00's immediate
+constexpr uint32_t kInnocent = 0x0065; // the second LDA's immediate
+} // namespace freeze
+
 // A main loop calling a function with a body worth changing (#58, #60): step adds 1 to a
 // counter with ADC #$01, counts every other frame past a BEQ, and calls a helper; another
 // near function is called beside it, for redirecting the helper's call.

@@ -24,7 +24,7 @@ class SnesCoreAccess : public CoreAccess
     // the on-screen message's timer put back at the end. The sound is the front end's to
     // drop while unseen() says so.
     void begin_unseen() override;
-    void run_unseen_frame() override;
+    void run_unseen_frame(bool draw = false) override;
     void end_unseen() override;
     static bool unseen() { return unseen_now; }
 

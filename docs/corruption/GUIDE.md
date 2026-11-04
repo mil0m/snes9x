@@ -451,6 +451,16 @@ sort the lowest first; nothing is hidden. It's about the line, not the whole fun
 game's busiest functions (its main loop and what runs every frame) break more easily than
 their lines suggest, so start a little further down the list.
 
+**Try 5 s Ahead** plays the change you've set up five seconds ahead, unseen, and once
+without it, then says what happened, under the risk: *still running* (and whether the picture
+differs from without it), *froze after 1.2 s* (the picture stopped, where without the change
+it kept moving), *crashed*, or *the game didn't run this code in 5 s* (try again where the
+game uses it). Your game doesn't change; it pauses for about a second. The Risk column is the
+average for changes like this one; the try is this change, here, now. In tests it saw about
+4 in 5 of the changes that stopped a game within 30 seconds, and almost never called a
+healthy one broken. What it can't see: a change that only does harm later, or somewhere
+else in the game. It needs corruption on, like Apply, and runs while the game runs.
+
 For chaos: the code rules (*Swap opcodes*, *Flip branches*, *NOP out*) and the aimed byte
 rules can tick **Only inside the busiest functions**, so their changes land in the code the
 game is running all the time, and **Only where a change is low risk**, so they pick the

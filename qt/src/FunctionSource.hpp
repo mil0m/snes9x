@@ -3,6 +3,7 @@
 #include "corrupt/change_risk.h"
 #include "corrupt/function_change.h"
 #include "corrupt/patches.h"
+#include "corrupt/try_change.h"
 
 #include <cstdint>
 #include <utility>
@@ -27,6 +28,14 @@ struct FunctionRow
     bool guarded = false;               // other rules and paint leave it alone
     std::optional<corrupt::Protect> protect; // the recipe protects it
     std::vector<corrupt::Change> changes;    // the recipe's changes in it (#60)
+};
+
+// A finished try of a change (#78); ids grow, so a window can tell a new one from the last.
+struct TriedChange
+{
+    uint64_t id = 0;
+    corrupt::Change change;
+    corrupt::TryResult result;
 };
 
 // What the Functions window needs from the running game.
@@ -58,5 +67,9 @@ struct FunctionSource
     virtual std::string applyChange(const corrupt::Change &c, bool on) = 0;
     virtual std::string keepChange(const corrupt::Change &c) = 0; // into the recipe (replacing one at the same place)
     virtual void forgetChange(uint32_t at) = 0;                    // out of the recipe; the ROM stays as it is
+    // Try it 5 s ahead, unseen, and once without it (#78): played between frames, while the
+    // game runs; the answer comes as lastTry(). Error or empty.
+    virtual std::string tryChange(const corrupt::Change & /*c*/) { return "it can't be tried here"; }
+    virtual std::optional<TriedChange> lastTry() { return std::nullopt; }
     virtual ~FunctionSource() = default;
 };

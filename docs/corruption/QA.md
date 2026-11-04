@@ -812,3 +812,19 @@ Removed on 2026-11-01: it didn't pay off (see FEATURES.md, *Tried and removed*).
 4. Make a **Flip branches** rule on the ROM and tick **Only where a change is low risk**.
    - [ ] The note under it says what that picks; the rule's line in the recipe ends *where a change is low risk*; saved and loaded, it stays ticked.
 
+## 54. Try a change before it lands (#78)
+1. Load Goof Troop (or any game you've played with the app), press **Corrupt (F7)**, open **Functions**, select the busiest function and **Change It…**.
+   - [ ] **Try 5 s Ahead** sits left of Apply; hovering says it plays the change unseen and once without it.
+2. Select the first line (in Goof Troop a `BEQ`), leave *The opposite*, press **Try 5 s Ahead**.
+   - [ ] The game stops for about a second (no sound glitch beyond that, nothing odd on screen), then runs on as before.
+   - [ ] A line under the risk says *Tried 5 s ahead:* and what happened (*froze after…*, *crashed…*, *Still running…*); froze and crashed are red, still running green.
+   - [ ] The game itself didn't change: the line's *Now* is empty.
+3. Pick another choice (*Always*): the answer goes away; try again and it answers for that one.
+4. Apply a change the try called *froze* or *crashed*.
+   - [ ] The game does go wrong within a few seconds (the crash guard then puts it back).
+5. Apply a few changes the try called *still running* and play a minute after each.
+   - [ ] Note how many kept the game going.
+6. Try a line in a function that runs only somewhere else (a menu's, from the Functions list with few frames).
+   - [ ] It says the game didn't run this code in 5 s.
+7. Pause the game (or turn corruption off) and press Try.
+   - [ ] Paused: it says *Trying…* and answers once the game runs. Corruption off: the button is greyed out.
