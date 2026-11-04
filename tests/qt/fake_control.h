@@ -168,6 +168,30 @@ struct FakeControl : CorruptionControl
     std::vector<std::string> conflicts() override { return conflict_list; }
     std::string me() override { return "mikael"; }
 
+    std::vector<corrupt::MomentInfo> moment_list;
+    void keepMoment() override { call("keep"); }
+    std::vector<corrupt::MomentInfo> moments() override { return moment_list; }
+    std::string playMoment(const std::filesystem::path &path) override
+    {
+        call("play " + path.filename().string());
+        return {};
+    }
+    void stopMoment() override { call("stop moment"); }
+    std::string renameMoment(const std::filesystem::path &path, const std::string &name) override
+    {
+        call("rename " + path.filename().string() + " to " + name);
+        for (auto &m : moment_list)
+            if (m.path == path)
+                m.name = name;
+        return {};
+    }
+    std::string deleteMoment(const std::filesystem::path &path) override
+    {
+        call("delete " + path.filename().string());
+        std::erase_if(moment_list, [&](const corrupt::MomentInfo &m) { return m.path == path; });
+        return {};
+    }
+
     RemoteState remote() override { return remote_state; }
     std::string setRemote(bool on) override
     {

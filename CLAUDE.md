@@ -90,3 +90,7 @@ tools/privacy_check.sh [--staged]            # nothing private in tracked files
   them. Changed bytes *read as data* after a landing are still unseen (the core's marks are off).
 - A run ahead from a frame-start checkpoint must restore the engine's snapshot too: the
   frame hook fires at line 1, after the checkpoint.
+- A Snes9x save state doesn't hold everything the core runs on. `VBlankStarted` (a static in
+  `cpuexec.cpp`) is now set on load (#47); `GFX.EndY` isn't (no measured effect). A new
+  static in the core needs the same care. `corrupt-smoke --keep` with `CORRUPT_KEEP_DIAG=1`
+  finds such gaps: the first frame a playback drifts and which globals differed.

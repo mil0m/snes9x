@@ -3,6 +3,7 @@
 #include "engine.h"
 #include "policy.h"
 
+#include <array>
 #include <deque>
 #include <functional>
 #include <map>
@@ -15,6 +16,9 @@ namespace corrupt
 
 // What the guard needs from the emulator. Only ever called between frames,
 // where loading a state is safe.
+// The pads' buttons, one 16-bit word per joypad (the core has eight).
+using Pads = std::array<uint16_t, 8>;
+
 struct CoreAccess
 {
     virtual std::vector<uint8_t> save_state() = 0;
@@ -37,6 +41,11 @@ struct CoreAccess
     virtual void begin_unseen() {}
     virtual void run_unseen_frame(bool /*draw*/ = false) {}
     virtual void end_unseen() {}
+    // The buttons held now, and setting them (a kept moment's playback, #47). Between frames.
+    virtual Pads pads() { return {}; }
+    virtual void set_pads(const Pads &) {}
+    // Counts state loads and resets: the game jumped elsewhere when it moves (#47).
+    virtual uint64_t timeline() const { return 0; }
     virtual ~CoreAccess() = default;
 };
 

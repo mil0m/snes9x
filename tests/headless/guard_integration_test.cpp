@@ -12,6 +12,7 @@
 #include "corrupt/instant_revert.h"
 #include "corrupt/test_ahead.h"
 #include "corrupt/try_change.h"
+#include "corrupt/moment.h"
 #include "corrupt/jump_tables.h"
 #include "corrupt/pointer_swap.h"
 #include "corrupt/rom_heat.h"
@@ -170,6 +171,27 @@ TEST_CASE("a game flipping overscan around VBlank can't freeze the emulator")
     done = true;
     watchdog.join();
     CHECK(uint8_t(Memory.RAM[testrom::kFrameCounterAddr] - before) >= 29); // one NMI a frame
+}
+
+TEST_CASE("a state loaded after the core stopped mid-frame plays its next frame whole (#47)")
+{
+    // A deadlock stops S9xMainLoop mid-frame, before VBlank. The core's own note of whether
+    // VBlank had started stayed unset through the next load, and the loaded frame ended 15
+    // lines early at line 240: a playback of the same moment then went its own way.
+    REQUIRE(headless::init());
+    REQUIRE(headless::load_rom_memory(testrom::build(testrom::Crash::None)));
+    SnesCoreAccess access;
+    headless::run_frames(30);
+    auto start = access.save_state();
+    headless::run_frames(1);
+    auto clean = headless::save_state();
+    S9xCorruptFrameHook = [] { CPU.Flags |= SCAN_KEYS_FLAG; }; // at line 1: the loop leaves, mid-frame
+    headless::run_frames(1);
+    S9xCorruptFrameHook = nullptr;
+    CHECK(CPU.V_Counter < 100);
+    REQUIRE(access.load_state(start));
+    headless::run_frames(1);
+    CHECK(headless::save_state() == clean);
 }
 
 TEST_CASE("the test ROM runs and its NMI counts frames")
@@ -1829,5 +1851,158 @@ TEST_SUITE("try a change before it lands (#78)")
         uint64_t a = t.h.access.sample().picture_hash;
         t.h.run(1);
         CHECK(t.h.access.sample().picture_hash != a);
+    }
+}
+
+TEST_SUITE("keep a golden moment (#47)")
+{
+    namespace pd = testrom::pads;
+
+    // Wired like the app: corruption writes reach the recorder, before_frame() right before
+    // each frame, the frame hook plays a moment back when one is playing.
+    struct Keeping
+    {
+        static inline Keeping *current = nullptr;
+        Engine engine;
+        CoreMemory memory;
+        MomentRecorder rec;
+        RecordedMemory recorded{ memory, rec };
+        RomKeeper rom{ recorded };
+        SnesCoreAccess access;
+        MomentPlayer player;
+        Pads pads{};
+        int frame = 0;
+
+        Keeping()
+        {
+            REQUIRE(headless::init());
+            REQUIRE(headless::load_rom_memory(testrom::build_pads()));
+            rom.game_loaded(SnesCoreAccess::locked_rom());
+            Rule noise;
+            noise.name = "noise";
+            noise.range = { Target::WRAM, pd::kNoise, pd::kNoise };
+            noise.op = { .type = OpType::Random, .min = 0, .max = 255 };
+            noise.when = { .type = TriggerType::EveryFrames, .every = 1 };
+            Recipe r;
+            r.name = "noise";
+            r.seed = 5;
+            r.rules.push_back(noise);
+            engine.set_recipe(r);
+            engine.set_active(true);
+            rec.set_config({ .keyframe_every = 120, .keyframes = 3, .lead = 120 });
+            current = this;
+            S9xCorruptFrameHook = [] {
+                auto &k = *current;
+                if (k.player.playing())
+                    k.player.in_hook(k.memory);
+                else
+                {
+                    k.rec.hook_begin();
+                    k.engine.on_frame(k.rom);
+                    k.rec.hook_end();
+                }
+                k.access.note_frame_start();
+            };
+            headless::run_frames(10); // past the boot
+        }
+        ~Keeping()
+        {
+            S9xCorruptFrameHook = nullptr;
+            current = nullptr;
+        }
+        std::span<const uint8_t> clean() { return { rom.clean().data(), rom.clean().size() }; }
+        void run(int n)
+        {
+            for (int i = 0; i < n; i++, frame++)
+            {
+                if (frame % 17 == 0)
+                    pads[0] = uint16_t(0x0101u * (1 + frame % 7)) << (frame % 3);
+                access.set_pads(pads);
+                rec.before_frame(access, memory, clean(), access.timeline());
+                headless::run_frames(1);
+            }
+        }
+        std::vector<uint8_t> wram() { return std::vector<uint8_t>(memory.data(Target::WRAM), memory.data(Target::WRAM) + memory.size(Target::WRAM)); }
+        MomentCheck check(const Moment &m, bool draw = true)
+        {
+            CheckHooks hooks;
+            hooks.draw = draw;
+            rec.hold(true);
+            auto c = check_moment(m, player, access, memory, clean(), hooks);
+            rec.hold(false);
+            rec.accept(access.timeline());
+            return c;
+        }
+    };
+
+    TEST_CASE("a kept moment plays back exactly in the real core: the buttons, the writes and the ROM")
+    {
+        Keeping k;
+        k.run(200);
+        k.rom.write(Target::ROM, pd::kRomByte, 0x05); // between frames, like Paint
+        k.run(200);
+        CHECK(k.wram()[pd::kPadSum] != 0); // the pads reach the game
+        auto m = k.rec.take();
+        REQUIRE(m);
+        CHECK(m->frames.size() == 160); // keyframes at 120, 240, 360: 240 is the newest 2 s back
+        REQUIRE(m->rom.size() == 1);
+        CHECK(m->rom[0] == std::pair<uint32_t, uint8_t>{ pd::kRomByte, 0x05 });
+        auto before = k.wram();
+        auto drawn = k.check(*m);
+        CAPTURE(drawn.text);
+        CHECK(drawn.exact);
+        CHECK(drawn.frames == 160);
+        CHECK(k.check(*m, false).exact);
+        // Without its buttons, its writes or its ROM byte, it ends somewhere else.
+        Moment no_pads = *m, no_writes = *m, no_rom = *m;
+        for (auto &f : no_pads.frames)
+            f.pads = {};
+        for (auto &f : no_writes.frames)
+            f.during.clear();
+        no_rom.rom.clear();
+        CHECK(!k.check(no_pads).exact);
+        CHECK(!k.check(no_writes).exact);
+        CHECK(!k.check(no_rom).exact);
+        // Nothing of the checks is left, and the game goes on.
+        CHECK(k.wram() == before);
+        CHECK(k.memory.read(Target::ROM, pd::kRomByte) == 0x05);
+        CHECK(!SnesCoreAccess::unseen());
+        k.run(10);
+        CHECK(k.rec.take());
+    }
+
+    TEST_CASE("a state loaded from elsewhere starts the history again")
+    {
+        Keeping k;
+        k.run(300);
+        auto s = k.access.save_state();
+        k.run(50);
+        REQUIRE(k.access.load_state(s));
+        k.run(100);
+        auto m = k.rec.take();
+        REQUIRE(m);
+        CHECK(m->frames.size() == 100);
+        CHECK(m->starts == "the game jumped to another moment");
+        CHECK(k.check(*m).exact);
+    }
+
+    TEST_CASE("playing a moment for real ends on the game as it was when it was kept")
+    {
+        Keeping k;
+        k.run(400);
+        auto kept = k.wram();
+        auto m = k.rec.take();
+        REQUIRE(m);
+        k.run(150); // the game moves on
+        CHECK(k.wram() != kept);
+        REQUIRE(k.player.start(*m, k.access, k.rom, k.clean()));
+        int played = 0;
+        while (k.player.before_frame(k.access, k.memory))
+        {
+            headless::run_frames(1);
+            played++;
+        }
+        CHECK(played == int(m->frames.size()));
+        CHECK(k.wram() == kept);
     }
 }

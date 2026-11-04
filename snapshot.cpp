@@ -1709,6 +1709,7 @@ int S9xUnfreezeFromStream (STREAM stream)
 		CPU.InDMA = CPU.InHDMA = FALSE;
 		CPU.InDMAorHDMA = CPU.InWRAMDMAorHDMA = FALSE;
 		CPU.HDMARanInDMA = 0;
+		S9xVBlankStartedFromState();
 
 		S9xFixColourBrightness();
 		S9xBuildDirectColourMaps();

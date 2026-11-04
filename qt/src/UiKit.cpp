@@ -99,7 +99,7 @@ class ToneKeeper : public QObject
 const QStringList kIcons = { "alert-circle", "alert-triangle", "arrow-back-up", "arrow-forward-up", "bolt", "chevron-down", "circle-check", "copy",
                              "device-floppy", "dice-5", "eraser", "file-export", "file-plus", "folder-open",
                              "grid-dots", "help-circle", "history", "info-circle", "pencil", "pin", "pinned-off", "power", "shield", "eye", "adjustments-horizontal", "clock",
-                             "player-stop", "plus", "refresh", "restore", "search", "tag", "trash", "zoom-in",
+                             "player-stop", "player-play", "star", "plus", "refresh", "restore", "search", "tag", "trash", "zoom-in",
                              "zoom-out", "tool", "list-details", "cpu", "users" };
 
 QByteArray svg_source(const QString &name)

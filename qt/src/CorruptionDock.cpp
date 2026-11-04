@@ -143,6 +143,7 @@ CorruptionDock::CorruptionDock(EmuApplication &app, QWidget *parent) : QDockWidg
     scroll->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
     cockpit = new Cockpit(*control, *actions, scroll);
     cockpit->setToggleKey(toggleKey());
+    cockpit->setKeepKey(keepKey());
     cockpit->openWorkshop = [this](WorkshopPage page) { openWorkshop(page); };
     cockpit->openWorkshopAgain = [this] { openWorkshopAgain(); };
     cockpit->openGuide = [this] { openGuide({}); };
@@ -170,6 +171,17 @@ QString CorruptionDock::toggleKey() const
     for (int i = 0; i < EmuConfig::allowed_bindings; i++)
     {
         auto b = app.config->binding.shortcuts[EmuConfig::eCorruptionToggle * EmuConfig::allowed_bindings + i];
+        if (b.type != EmuBinding::None)
+            return qs(b.to_string());
+    }
+    return {};
+}
+
+QString CorruptionDock::keepKey() const
+{
+    for (int i = 0; i < EmuConfig::allowed_bindings; i++)
+    {
+        auto b = app.config->binding.shortcuts[EmuConfig::eCorruptionKeep * EmuConfig::allowed_bindings + i];
         if (b.type != EmuBinding::None)
             return qs(b.to_string());
     }
@@ -212,7 +224,7 @@ void CorruptionDock::openWorkshop(WorkshopPage page)
 void CorruptionDock::openWorkshopAgain()
 {
     int page = app.config->corruption_workshop_page;
-    openWorkshop(page >= 0 && page <= int(WorkshopPage::Sharing) ? WorkshopPage(page) : WorkshopPage::Recipe);
+    openWorkshop(page >= 0 && page <= int(WorkshopPage::Moments) ? WorkshopPage(page) : WorkshopPage::Recipe);
 }
 
 void CorruptionDock::openGuide(const QString &section)
@@ -452,6 +464,28 @@ void CorruptionDock::tour(const QString &dir)
     });
     steps->push_back([=, this] {
         shot(workshop, "17-workshop-sharing");
+        // Keep a golden moment (#47): from the cockpit, as a player would.
+        if (auto keep = cockpit->findChild<QPushButton *>("keep_moment"); keep && keep->isEnabled())
+            keep->click();
+    });
+    steps->push_back([=, this] {
+        if (QFile out(dir + "/keep.txt"); out.open(QIODevice::WriteOnly | QIODevice::Text))
+            out.write(qs(CorruptionSession::get().status().keep_news).toUtf8());
+        openWorkshop(WorkshopPage::Moments);
+        workshop->refresh();
+    });
+    steps->push_back([=, this] {
+        shot(workshop, "17a-workshop-moments");
+        if (auto play = workshop->momentsPage()->findChild<QPushButton *>("play_moment"); play && play->isEnabled())
+            play->click();
+    });
+    steps->push_back([=, this] {
+        cockpit->refresh();
+        shot(cockpit, "17b-cockpit-moment-playing");
+        log(QString("moment playing=%1 at %2 of %3")
+                .arg(int(CorruptionSession::get().status().moment_playing))
+                .arg(CorruptionSession::get().status().moment_at)
+                .arg(CorruptionSession::get().status().moment_seconds));
         openWorkshop(WorkshopPage::Recipe);
     });
     steps->push_back([=, this] {

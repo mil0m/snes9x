@@ -304,6 +304,7 @@ void EmuMainWindow::createWidgets()
     };
     page_item(tr("The &ROM (Export, Restore Clean)…"), WorkshopPage::Rom);
     page_item(tr("&Library and Remote Control…"), WorkshopPage::Sharing);
+    page_item(tr("Kept &Moments…"), WorkshopPage::Moments);
     corruption_menu->addSeparator();
     auto paused_item = corruption_menu->addAction(tr("Start Games &Paused"));
     paused_item->setCheckable(true);

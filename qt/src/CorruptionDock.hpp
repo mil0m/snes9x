@@ -36,6 +36,7 @@ class CorruptionDock : public QDockWidget
   private:
     void say(const QString &text, bool error);
     QString toggleKey() const; // the Corrupt/Stop shortcut, or empty
+    QString keepKey() const;   // Keep This Moment's (#47), or empty
     // SNES9X_UI_TOUR=<dir>: screenshots of the cockpit and every Workshop page, for UX work
     // (see docs/corruption/README.md, "Developing").
     void tour(const QString &dir);

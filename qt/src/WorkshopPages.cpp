@@ -843,9 +843,9 @@ QString recipe_state(const PanelStatus &status)
     return status.edited ? QObject::tr("Changed since saved") : QObject::tr("Saved");
 }
 
-std::array<SidebarNote, 6> sidebar_notes(const PanelStatus &status, size_t others, bool remote_on)
+std::array<SidebarNote, 7> sidebar_notes(const PanelStatus &status, size_t others, bool remote_on)
 {
-    std::array<SidebarNote, 6> notes;
+    std::array<SidebarNote, 7> notes;
     auto note = [&](WorkshopPage page) -> SidebarNote & { return notes[size_t(page)]; };
     auto count = [](size_t n, const char *one, const char *many) {
         return n == 1 ? QObject::tr(one) : QObject::tr(many).arg(QLocale().toString(qulonglong(n)));
@@ -870,11 +870,230 @@ std::array<SidebarNote, 6> sidebar_notes(const PanelStatus &status, size_t other
         else if (status.crashes)
             note(WorkshopPage::Safety) = { count(status.crashes, "1 crash", "%1 crashes"), true };
     }
+    if (status.moment_playing)
+        note(WorkshopPage::Moments).text = QObject::tr("playing");
     if (remote_on)
         note(WorkshopPage::Sharing).text = QObject::tr("remote on");
     else if (others)
         note(WorkshopPage::Sharing).text = count(others, "1 here", "%1 here");
     return notes;
+}
+
+// ---------------------------------------------------------------- Moments (#47)
+
+MomentsPage::MomentsPage(CorruptionControl &control, QWidget *parent) : QWidget(parent), control(control)
+{
+    setObjectName("moments_page");
+    auto layout = pageLayout(this);
+    layout->addWidget(ui::heading(tr("Kept moments"), this));
+    auto intro = new QLabel(tr("<b>Keep This Moment</b> in the panel keeps the last 10-20 s: the game from a little "
+                               "before, and every button and change since, so it plays back exactly. Everyone's in "
+                               "the library show here; the file is what you share."),
+                            this);
+    intro->setObjectName("moments_intro");
+    intro->setWordWrap(true);
+    ui::setTone(intro, ui::Tone::Secondary);
+    layout->addWidget(intro);
+
+    table = new QTableWidget(0, 3, this);
+    table->setObjectName("moments");
+    table->setHorizontalHeaderLabels({ tr("Moment"), tr("Length"), tr("Kept") });
+    table->verticalHeader()->setVisible(false);
+    auto header = table->horizontalHeader();
+    header->setSectionResizeMode(0, QHeaderView::Stretch);
+    header->setSectionResizeMode(1, QHeaderView::Interactive);
+    header->setSectionResizeMode(2, QHeaderView::Interactive);
+    header->setHighlightSections(false);
+    table->setWordWrap(true);
+    table->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    table->setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOff); // as tall as its rows; the page scrolls
+    table->setEditTriggers(QAbstractItemView::NoEditTriggers); // Rename starts it
+    table->setSelectionMode(QAbstractItemView::SingleSelection);
+    table->setSelectionBehavior(QAbstractItemView::SelectRows);
+    table->setAccessibleName(tr("Kept moments"));
+    table->setToolTip(tr("Double-click a moment to play it"));
+    layout->addWidget(table);
+    // Names wrap: the rows fit again whenever the name column changes width.
+    connect(header, &QHeaderView::sectionResized, this, [this](int section) {
+        if (section == 0)
+            QTimer::singleShot(0, this, [this] { fitTable(table); });
+    });
+    empty_label = new QLabel(tr("Nothing kept yet. When something wonderful happens, press Keep This Moment in the "
+                                "panel: it keeps the last 10-20 s."),
+                             this);
+    empty_label->setObjectName("moments_empty");
+    empty_label->setWordWrap(true);
+    ui::setTone(empty_label, ui::Tone::Secondary);
+    layout->addWidget(empty_label);
+    details = new QLabel(this);
+    details->setObjectName("moment_details");
+    details->setWordWrap(true);
+    details->setTextFormat(Qt::PlainText);
+    ui::setTone(details, ui::Tone::Secondary);
+    layout->addWidget(details);
+
+    actions_row = new QWidget(this);
+    auto row = new QHBoxLayout(actions_row);
+    row->setContentsMargins(0, 0, 0, 0);
+    play_button = new QPushButton(ui::icon("player-play"), tr("Play"), actions_row);
+    play_button->setObjectName("play_moment");
+    play_button->setAutoDefault(false);
+    play_button->setToolTip(tr("Turn corruption off and play the moment from its start, as it happened. Press any "
+                               "button on the pad to take over; at its end the game is yours, corrupted ROM and all. "
+                               "Back to Normal cleans up as usual."));
+    auto icon_button = [this](const char *icon, const QString &name, const QString &tip, const char *object) {
+        auto b = new QPushButton(ui::icon(icon), QString(), actions_row);
+        b->setObjectName(object);
+        b->setAutoDefault(false);
+        b->setToolTip(tip);
+        b->setAccessibleName(name);
+        return b;
+    };
+    rename_button = icon_button("pencil", tr("Rename"), tr("Rename the moment"), "rename_moment");
+    delete_button = icon_button("trash", tr("Delete"), tr("Delete the moment's file"), "delete_moment");
+    folder_button = icon_button("folder-open", tr("Show in Folder"),
+                                tr("Show the moments' folder: send the file to share a moment"), "moments_folder");
+    row->addWidget(play_button);
+    row->addStretch(1);
+    row->addWidget(rename_button);
+    row->addWidget(delete_button);
+    row->addWidget(folder_button);
+    layout->addWidget(actions_row);
+    message = new ui::StatusLine(this);
+    message->setObjectName("moments_message");
+    message->hide();
+    layout->addWidget(message);
+    layout->addStretch(0);
+
+    confirm = [this](const QString &title, const QString &question) {
+        return QMessageBox::question(this, title, question) == QMessageBox::Yes;
+    };
+    auto say = [this](const std::string &error, const QString &done = {}) {
+        if (error.empty() && done.isEmpty())
+            return message->hide();
+        message->setMessage(error.empty() ? done : qs(error), error.empty() ? ui::Tone::Normal : ui::Tone::Error);
+        message->show();
+    };
+    auto play = [this, say] {
+        if (auto m = selected())
+            say(this->control.playMoment(m->path), tr("Playing \u201c%1\u201d: press any button to take over").arg(qs(m->name)));
+    };
+    connect(play_button, &QPushButton::clicked, this, play);
+    connect(table, &QTableWidget::cellDoubleClicked, this, play);
+    connect(table->selectionModel(), &QItemSelectionModel::selectionChanged, this, &MomentsPage::showSelected);
+    connect(rename_button, &QPushButton::clicked, this, [this] {
+        auto rows = table->selectionModel()->selectedRows();
+        if (rows.isEmpty())
+            return;
+        renaming = true; // the list isn't read again under the editor
+        table->editItem(table->item(rows.front().row(), 0));
+    });
+    connect(table->itemDelegate(), &QAbstractItemDelegate::closeEditor, this, [this] { renaming = false; });
+    connect(table, &QTableWidget::itemChanged, this, [this, say](QTableWidgetItem *item) {
+        if (filling || item->column() != 0 || size_t(item->row()) >= list.size())
+            return;
+        auto &m = list[size_t(item->row())];
+        auto name = item->text().trimmed().toStdString();
+        if (name == m.name)
+            return;
+        say(this->control.renameMoment(m.path, name));
+        reload();
+    });
+    connect(delete_button, &QPushButton::clicked, this, [this, say] {
+        auto m = selected();
+        if (!m || !confirm(tr("Delete this moment"),
+                           tr("Delete \u201c%1\u201d? Its file goes, for everyone sharing the library.").arg(qs(m->name))))
+            return;
+        say(this->control.deleteMoment(m->path));
+        reload();
+    });
+    connect(folder_button, &QPushButton::clicked, this, [this] {
+        auto dir = this->control.gameFolder() / "moments";
+        QDir().mkpath(qs(dir.string()));
+        QDesktopServices::openUrl(QUrl::fromLocalFile(qs(dir.string())));
+    });
+    reload();
+}
+
+std::optional<MomentInfo> MomentsPage::selected() const
+{
+    auto rows = table->selectionModel()->selectedRows();
+    if (rows.isEmpty() || size_t(rows.front().row()) >= list.size())
+        return std::nullopt;
+    return list[size_t(rows.front().row())];
+}
+
+void MomentsPage::showSelected()
+{
+    auto m = selected();
+    play_button->setEnabled(m.has_value());
+    rename_button->setEnabled(m.has_value());
+    delete_button->setEnabled(m.has_value());
+    if (!m)
+    {
+        details->setText(list.empty() ? QString() : tr("Pick a moment to play it."));
+        return;
+    }
+    QStringList parts;
+    parts << (m->recipe_name.empty() ? tr("Kept with no recipe running") : tr("From the recipe %1").arg(qs(m->recipe_name)));
+    if (!m->made_by.empty())
+        parts << tr("kept by %1").arg(qs(m->made_by));
+    QString text = parts.join(", ") + ".";
+    if (!m->starts.empty())
+        text += " " + tr("It starts where %1, so it's shorter than usual.").arg(qs(m->starts));
+    details->setText(text);
+}
+
+void MomentsPage::reload()
+{
+    std::string current;
+    if (auto m = selected())
+        current = m->path.string();
+    list = control.moments();
+    filling = true;
+    table->setRowCount(int(list.size()));
+    int select = list.empty() ? -1 : 0;
+    for (int i = 0; i < int(list.size()); i++)
+    {
+        auto &m = list[size_t(i)];
+        auto name = new QTableWidgetItem(qs(m.name));
+        name->setFlags(name->flags() | Qt::ItemIsEditable);
+        name->setToolTip(qs(m.path.filename().string()));
+        table->setItem(i, 0, name);
+        auto length = new QTableWidgetItem(tr("%1 s").arg(QLocale().toString(m.seconds, 'f', 1)));
+        length->setTextAlignment(Qt::AlignRight | Qt::AlignVCenter);
+        length->setFlags(length->flags() & ~Qt::ItemIsEditable);
+        table->setItem(i, 1, length);
+        QString when = qs(m.made_at.substr(0, 16)); // to the minute
+        auto kept = new QTableWidgetItem(m.made_by.empty() ? when : tr("%1 · %2").arg(qs(m.made_by), when));
+        kept->setFlags(kept->flags() & ~Qt::ItemIsEditable);
+        table->setItem(i, 2, kept);
+        if (m.path.string() == current)
+            select = i;
+    }
+    filling = false;
+    table->resizeColumnToContents(1);
+    table->resizeColumnToContents(2);
+    fitTable(table);
+    if (select >= 0)
+        table->selectRow(select);
+    table->setVisible(!list.empty());
+    empty_label->setVisible(list.empty());
+    actions_row->setVisible(!list.empty());
+    showSelected();
+}
+
+void MomentsPage::refresh(const PanelStatus &status)
+{
+    std::string game = status.game_loaded ? status.game.sha256 : std::string();
+    bool editing = renaming;
+    // A new Keep, another game, or every few seconds (someone sharing the library kept one).
+    if (!editing && (status.keeps != shown_keeps || game != shown_game || ++ticks % 10 == 0))
+    {
+        shown_keeps = status.keeps;
+        shown_game = game;
+        reload();
+    }
 }
 
 // ---------------------------------------------------------------- Sharing

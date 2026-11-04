@@ -356,6 +356,54 @@ std::vector<uint8_t> build_freeze()
     return rom;
 }
 
+std::vector<uint8_t> build_pads()
+{
+    auto rom = build(Crash::None);
+    put(rom, 0x800E, { 0x4C, 0x90, 0x80 }); // JMP $8090 (instead of STA $4200)
+    put(rom, 0x8090, {
+        0x64, 0x20,       // STZ $20
+        0x64, 0x21,       // STZ $21
+        0x64, 0x22,       // STZ $22
+        0x64, 0x23,       // STZ $23
+        0xA9, 0x81,       // LDA #$81
+        0x8D, 0x00, 0x42, // STA $4200    NMI and the automatic pad read on
+        0x4C, 0x11, 0x80, // JMP main
+    });
+    put(rom, 0x8011, {
+        0xCB,             // WAI          main
+        0x80, 0xFD,       // BRA main
+    });
+    put(rom, 0x8030, { 0x4C, 0x40, 0x80 }); // nmi: JMP $8040
+    put(rom, 0x8040, {
+        0xAD, 0x12, 0x42, // LDA $4212    wait: the pad read is busy
+        0x29, 0x01,       // AND #$01
+        0xD0, 0xF9,       // BNE wait
+        0xA5, 0x20,       // LDA $20
+        0x18,             // CLC
+        0x6D, 0x18, 0x42, // ADC $4218    pad 1, low byte
+        0x85, 0x20,       // STA $20
+        0xA5, 0x21,       // LDA $21
+        0x4D, 0x19, 0x42, // EOR $4219    pad 1, high byte
+        0x2A,             // ROL A
+        0x85, 0x21,       // STA $21
+        0xA5, 0x23,       // LDA $23
+        0x18,             // CLC
+        0x65, 0x22,       // ADC $22      what the rule wrote
+        0x6D, 0x00, 0x90, // ADC $9000    the ROM byte
+        0x85, 0x23,       // STA $23
+        0x9C, 0x21, 0x21, // STZ $2121    the backdrop
+        0x45, 0x20,       // EOR $20
+        0x8D, 0x22, 0x21, // STA $2122
+        0xA5, 0x21,       // LDA $21
+        0x8D, 0x22, 0x21, // STA $2122
+        0xE6, 0x11,       // INC $11
+        0x40,             // RTI
+    });
+    rom[0x1000] = 0x01;
+    fix_checksum(rom);
+    return rom;
+}
+
 std::vector<uint8_t> build_bodies()
 {
     auto rom = build(Crash::None);

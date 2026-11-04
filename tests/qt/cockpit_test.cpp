@@ -64,6 +64,7 @@ struct Fixture
         cockpit->openWorkshop = [this](WorkshopPage p) { opened.push_back(p); };
         cockpit->openWorkshopAgain = [this] { reopened++; };
         cockpit->setToggleKey("F7");
+        cockpit->setKeepKey("F8");
         cockpit->resize(360, 700);
         cockpit->refresh();
     }
@@ -94,6 +95,39 @@ TEST_SUITE("cockpit")
         CHECK(child<QWidget>(c, "buttons_section")->isHidden());
         CHECK(ui::audit(&c).isEmpty());
         f.shot("cockpit-no-recipe");
+    }
+
+    TEST_CASE("Keep This Moment (#47): with or without corruption; says how far back; Stop Playing while one plays")
+    {
+        Fixture f;
+        auto &c = *f.cockpit;
+        auto keep = child<QPushButton>(c, "keep_moment");
+        CHECK(!keep->isHidden()); // no recipe needed: a clean game is worth keeping too
+        CHECK(keep->text() == "Keep This Moment (F8)");
+        CHECK(keep->toolTip().contains("once the game has run"));
+        f.control.s.keep_seconds = 14.2;
+        c.refresh();
+        CHECK(keep->toolTip().contains("Keep the last 14 s"));
+        keep->click();
+        CHECK(f.control.calls.back() == "keep");
+        f.control.s.keep_pending = true; // waiting for the next frame
+        c.refresh();
+        CHECK(!keep->isEnabled());
+        f.control.s.keep_pending = false;
+
+        f.control.s.moment_playing = true;
+        f.control.s.moment_at = 6.1;
+        f.control.s.moment_seconds = 14.2;
+        c.refresh();
+        CHECK(keep->text() == "Stop Playing");
+        CHECK(child<QLabel>(c, "state")->text() == "Playing a kept moment · 6.1 of 14.2 s · any button takes over");
+        CHECK(ui::audit(&c).isEmpty());
+        f.shot("cockpit-moment-playing");
+        keep->click();
+        CHECK(f.control.calls.back() == "stop moment");
+        f.control.s.game_loaded = false;
+        c.refresh();
+        CHECK(keep->isHidden());
     }
 
     TEST_CASE("running: Stop, Back to Normal and the dice act on the session")

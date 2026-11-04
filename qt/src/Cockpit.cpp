@@ -62,6 +62,8 @@ std::optional<WorkshopPage> pageFor(const QString &name)
         return WorkshopPage::Safety;
     if (name == "sharing")
         return WorkshopPage::Sharing;
+    if (name == "moments")
+        return WorkshopPage::Moments;
     return std::nullopt;
 }
 
@@ -181,8 +183,13 @@ Cockpit::Cockpit(CorruptionControl &control, RecipeActions &actions, QWidget *pa
     here_button->setToolTip(tr("Turn corruption off and put the ROM back to clean, but keep playing from where you "
                                "are. What it did to RAM (health, positions) stays until the game writes over it; "
                                "Back to Normal goes back to the run's start instead."));
+    // Keep a golden moment (#47): the last 10-20 s, so it plays back exactly. While one plays,
+    // the same button stops it.
+    keep_button = button(tr("Keep This Moment"), this, "star");
+    keep_button->setObjectName("keep_moment");
     run_row->addWidget(corrupt_button, 0, 0);
     run_row->addWidget(back_button, 0, 1);
+    run_row->addWidget(keep_button, 1, 0);
     run_row->addWidget(here_button, 1, 1);
     run_row->setColumnStretch(0, 1);
     run_row->setColumnStretch(1, 1);
@@ -228,6 +235,13 @@ Cockpit::Cockpit(CorruptionControl &control, RecipeActions &actions, QWidget *pa
         refresh();
     });
     connect(back_button, &QPushButton::clicked, this, [this] { this->control.backToNormal(); });
+    connect(keep_button, &QPushButton::clicked, this, [this] {
+        if (this->control.status().moment_playing)
+            this->control.stopMoment();
+        else
+            this->control.keepMoment();
+        refresh();
+    });
     connect(here_button, &QPushButton::clicked, this, [this] { this->control.normalHere(); });
     connect(reroll_button, &QPushButton::clicked, this,
             [this] { showSeed(QString::number(this->control.reroll())); });
@@ -344,6 +358,12 @@ void Cockpit::setToggleKey(const QString &key)
                            "2. Press <b>Corrupt</b>%1 and watch the game. 3. <b>Back to Normal</b> undoes "
                            "everything. The <b>?</b> explains the rest.")
                             .arg(key.isEmpty() ? QString() : QString(" (%1)").arg(key)));
+}
+
+void Cockpit::setKeepKey(const QString &key)
+{
+    keep_key = key;
+    shown_keep.clear(); // the button's words again
 }
 
 void Cockpit::showMessage(const QString &text, bool error)
@@ -484,6 +504,29 @@ void Cockpit::refresh()
                                    : on ? tr("Stop corrupting. What it already changed stays; Back to Normal undoes it.")
                                         : tr("Start the recipe."));
     }
+    // Keep This Moment, or Stop Playing (#47); it works corrupting or not.
+    keep_button->setVisible(status.game_loaded);
+    {
+        QString key = keep_key.isEmpty() ? QString() : QString(" (%1)").arg(keep_key);
+        QString state = status.moment_playing ? "playing" : status.keep_pending ? "pending" : "ready";
+        QString tip = status.moment_playing
+                          ? tr("Stop the playback here; the game is yours from this frame. Pressing any button on "
+                               "the pad does the same.")
+                      : status.keep_seconds >= 1
+                          ? tr("Keep the last %1 s: the game from a little before, and every button and change "
+                               "since, so it plays back exactly, here or on a friend's machine. It's checked as "
+                               "it's kept, and goes to the Workshop's Moments page.")
+                                .arg(QLocale().toString(status.keep_seconds, 'f', 0))
+                          : tr("Keeps the last 10-20 s of play, once the game has run a moment.");
+        if (state + key + tip != shown_keep)
+        {
+            shown_keep = state + key + tip;
+            keep_button->setText(status.moment_playing ? tr("Stop Playing") : tr("Keep This Moment") + key);
+            keep_button->setIcon(ui::icon(status.moment_playing ? "player-stop" : "star"));
+            keep_button->setToolTip(tip);
+        }
+        keep_button->setEnabled(status.moment_playing || !status.keep_pending);
+    }
     back_button->setEnabled(status.can_go_back || status.engine.active);
     here_button->setEnabled(status.engine.active || status.rom_changed > 0);
     if (!seed_edit->hasFocus())
@@ -494,6 +537,10 @@ void Cockpit::refresh()
         showState("idle", tr("Load a game to start"));
     else if (status.paused)
         showState("idle", tr("Paused · Emulation > Run starts it"));
+    else if (status.moment_playing)
+        showState("normal", tr("Playing a kept moment · %1 of %2 s · any button takes over")
+                                .arg(QLocale().toString(status.moment_at, 'f', 1))
+                                .arg(QLocale().toString(status.moment_seconds, 'f', 1)));
     else if (!usable)
         showState("idle", tr("Pick a recipe to start"));
     else if (status.starting)

@@ -336,6 +336,11 @@
        <string>Corruption: Corrupt / Stop</string>
       </property>
      </row>
+     <row>
+      <property name="text">
+       <string>Corruption: Keep This Moment</string>
+      </property>
+     </row>
      <column>
       <property name="text">
        <string>Binding #1</string>

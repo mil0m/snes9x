@@ -237,6 +237,7 @@ void Snes9xController::mainLoop()
                 joypads[i] = MovieGetJoypad(i);
 
             rewinding = g_state_manager.pop();
+            CorruptionSession::get().timeJumped("you rewound"); // a kept moment can't reach back past it (#47)
 
             for (int i = 0; i < 8; i++)
                 MovieSetJoypad(i, joypads[i]);
@@ -250,6 +251,7 @@ void Snes9xController::mainLoop()
             Settings.Mute &= ~0x80;
     }
 
+    CorruptionSession::get().beforeFrame(); // kept moments: the pads, a keyframe, a playback (#47)
     S9xMainLoop();
     CorruptionSession::get().betweenFrames();
 }
@@ -827,11 +829,13 @@ bool Snes9xController::isAbnormalSpeed()
 void Snes9xController::reset()
 {
     S9xReset();
+    CorruptionSession::get().timeJumped("the game was reset");
 }
 
 void Snes9xController::softReset()
 {
     S9xSoftReset();
+    CorruptionSession::get().timeJumped("the game was reset");
 }
 
 bool Snes9xController::saveState(int slot)

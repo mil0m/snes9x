@@ -69,15 +69,15 @@ struct Fixture
 
 TEST_SUITE("workshop")
 {
-    TEST_CASE("six pages in the sidebar; showPage switches to one")
+    TEST_CASE("seven pages in the sidebar; showPage switches to one")
     {
         Fixture f;
         auto sidebar = child<QListWidget>(f.workshop, "workshop_pages");
-        REQUIRE(sidebar->count() == 6);
+        REQUIRE(sidebar->count() == 7);
         QStringList names;
         for (int i = 0; i < sidebar->count(); i++)
             names << sidebar->item(i)->text();
-        CHECK(names == QStringList{ "Recipe", "Functions", "Memory", "ROM", "Safety", "Sharing" });
+        CHECK(names == QStringList{ "Recipe", "Functions", "Memory", "ROM", "Safety", "Sharing", "Moments" });
         CHECK(f.workshop.page() == WorkshopPage::Recipe);
         f.workshop.showPage(WorkshopPage::Safety);
         CHECK(f.workshop.page() == WorkshopPage::Safety);
@@ -323,8 +323,10 @@ TEST_SUITE("workshop")
         Fixture f;
         f.control.running(2);
         f.control.s.kept = { { KeptItem::Kind::Switch, 0x8000, "gravity off", "" } };
+        f.control.moment_list = { { "/tmp/library/POCKY/moments/a.s9xmoment", "Gravity mess, 4 Nov 21.13", "Gravity mess",
+                                    "mikael", "2026-11-04 21:13:05", "", 14.2, {} } };
         for (auto page : { WorkshopPage::Recipe, WorkshopPage::Functions, WorkshopPage::Memory, WorkshopPage::Rom,
-                           WorkshopPage::Safety, WorkshopPage::Sharing })
+                           WorkshopPage::Safety, WorkshopPage::Sharing, WorkshopPage::Moments })
         {
             f.workshop.showPage(page);
             f.workshop.refresh();
@@ -579,7 +581,7 @@ TEST_CASE("the Workshop can be made narrow: no page needs more than about 900 px
     f.control.running(3);
     f.workshop.show();
     for (auto page : { WorkshopPage::Recipe, WorkshopPage::Functions, WorkshopPage::Memory, WorkshopPage::Rom,
-                       WorkshopPage::Safety, WorkshopPage::Sharing })
+                       WorkshopPage::Safety, WorkshopPage::Sharing, WorkshopPage::Moments })
     {
         f.workshop.showPage(page);
         QApplication::processEvents();
@@ -591,9 +593,72 @@ TEST_CASE("the Workshop can be made narrow: no page needs more than about 900 px
         QApplication::processEvents();
         for (QWidget *content : { static_cast<QWidget *>(f.workshop.recipePage()), static_cast<QWidget *>(f.workshop.functionsPage()),
                                   static_cast<QWidget *>(f.workshop.memoryPage()), static_cast<QWidget *>(f.workshop.romPage()),
-                                  static_cast<QWidget *>(f.workshop.safetyPage()), static_cast<QWidget *>(f.workshop.sharingPage()) })
+                                  static_cast<QWidget *>(f.workshop.safetyPage()), static_cast<QWidget *>(f.workshop.sharingPage()),
+                                  static_cast<QWidget *>(f.workshop.momentsPage()) })
             if (content->isVisible())
                 CHECK(content->width() >= content->minimumSizeHint().width());
     }
+    f.workshop.close();
+}
+
+TEST_CASE("Moments (#47): the kept moments, newest first; play, rename, delete; an empty list says what to do")
+{
+    Fixture f;
+    f.control.running(2);
+    f.workshop.showPage(WorkshopPage::Moments);
+    f.workshop.refresh();
+    auto &page = *f.workshop.momentsPage();
+    auto table = child<QTableWidget>(page, "moments");
+    auto empty = child<QLabel>(page, "moments_empty");
+    CHECK(!table->isVisibleTo(&page));
+    CHECK(empty->isVisibleTo(&page));
+    CHECK(empty->text().contains("Keep This Moment"));
+    CHECK(!child<QPushButton>(page, "play_moment")->isVisibleTo(&page));
+    f.shot("workshop-moments-empty");
+
+    f.control.moment_list = {
+        { "/tmp/library/POCKY/moments/the-hud-eats-max.s9xmoment", "The HUD eats Max", "Gravity mess", "erik",
+          "2026-11-04 21:20:00", "", 18.6, {} },
+        { "/tmp/library/POCKY/moments/gravity-mess-4-nov-21-13.s9xmoment", "Gravity mess, 4 Nov 21.13", "Gravity mess",
+          "mikael", "2026-11-04 21:13:05", "the crash guard rolled back", 4.6, {} },
+    };
+    f.control.s.keeps = 1; // a Keep reads the list again
+    f.workshop.refresh();
+    REQUIRE(table->isVisibleTo(&page));
+    CHECK(!empty->isVisibleTo(&page));
+    REQUIRE(table->rowCount() == 2);
+    CHECK(table->item(0, 0)->text() == "The HUD eats Max");
+    CHECK(table->item(0, 1)->text() == "18.6 s");
+    CHECK(table->item(1, 2)->text() == "mikael · 2026-11-04 21:13");
+    CHECK(table->currentRow() == 0); // the newest is picked
+    auto details = child<QLabel>(page, "moment_details");
+    CHECK(details->text() == "From the recipe Gravity mess, kept by erik.");
+    table->selectRow(1);
+    CHECK(details->text().contains("It starts where the crash guard rolled back"));
+    f.shot("workshop-moments");
+
+    child<QPushButton>(page, "play_moment")->click();
+    CHECK(f.control.calls.back() == "play gravity-mess-4-nov-21-13.s9xmoment");
+    CHECK(child<QWidget>(page, "moments_message")->isVisibleTo(&page));
+
+    // Rename: the name cell is edited in place.
+    table->selectRow(0);
+    child<QPushButton>(page, "rename_moment")->click();
+    table->item(0, 0)->setText("Max walks on the ceiling");
+    CHECK(f.control.calls.back() == "rename the-hud-eats-max.s9xmoment to Max walks on the ceiling");
+    CHECK(table->item(0, 0)->text() == "Max walks on the ceiling");
+
+    page.confirm = [](const QString &, const QString &) { return false; };
+    child<QPushButton>(page, "delete_moment")->click();
+    CHECK(f.control.calls.back().rfind("rename", 0) == 0); // asked, and no
+    page.confirm = [](const QString &, const QString &) { return true; };
+    child<QPushButton>(page, "delete_moment")->click();
+    CHECK(f.control.calls.back() == "delete the-hud-eats-max.s9xmoment");
+    CHECK(table->rowCount() == 1);
+    CHECK(ui::audit(&page).isEmpty());
+
+    // While one plays, the sidebar says so.
+    f.control.s.moment_playing = true;
+    CHECK(sidebar_notes(f.control.status(), 0, false)[size_t(WorkshopPage::Moments)].text == "playing");
     f.workshop.close();
 }

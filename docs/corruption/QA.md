@@ -828,3 +828,28 @@ Removed on 2026-11-01: it didn't pay off (see FEATURES.md, *Tried and removed*).
    - [ ] It says the game didn't run this code in 5 s.
 7. Pause the game (or turn corruption off) and press Try.
    - [ ] Paused: it says *Trying…* and answers once the game runs. Corruption off: the button is greyed out.
+
+## 55. Keep a golden moment (#47)
+1. Load Goof Troop (or any game), pick *Gentle WRAM noise*, press **Corrupt (F7)** and play for half a minute.
+   - [ ] **Keep This Moment (F8)** sits under Corrupt; hovering says how far back it reaches (*Keep the last 14 s…*).
+2. Press **F8** while something is moving on screen.
+   - [ ] The game stops for about half a second, then runs on.
+   - [ ] The message line says *Kept the last N s: it plays back exactly*; hovering it gives the moment's name.
+3. Open the Workshop's **Moments** page (or Corruption > Kept Moments…).
+   - [ ] The moment is first, with its length and *your name · date time*; the line under the table names the recipe.
+4. Select it and press **Play**.
+   - [ ] Corruption turns off; the game jumps back and plays what you saw, your own moves included.
+   - [ ] The panel's bar counts *Playing a kept moment · 3.2 of 14.2 s*, and Keep has become **Stop Playing**.
+   - [ ] At the end, the message says the game is yours; you play on from there.
+5. Play it again and press a pad button halfway.
+   - [ ] The playback stops at once and you're in control (*You took over*).
+6. Press **Back to Normal**, play 3 seconds, press F8.
+   - [ ] It keeps about 3 s and says it starts where you went back to normal.
+7. Rename the moment (pencil, type, Enter), then delete it (bin, confirm).
+   - [ ] The file in the game's `moments` folder (folder button) follows both.
+8. With a crash-prone recipe (*ROM code drip*), keep a few moments after the crash guard has rolled back.
+   - [ ] Each says *plays back exactly*; Play shows the same crash-and-recover you saw.
+9. Pause the game (Emulation > Pause) and press F8.
+   - [ ] It keeps at once, from the frame on screen.
+10. Copy a moment's file to Erik's library (or open the shared library on another machine) and Play it there.
+   - [ ] It plays the same. On another version of the ROM, Play says it was kept on another version.

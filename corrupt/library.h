@@ -3,6 +3,7 @@
 #include "calls.h"
 #include "function_names.h"
 #include "jump_tables.h"
+#include "moment.h"
 #include "crash_map.h"
 #include "recipe.h"
 #include "recipe_json.h"
@@ -118,6 +119,15 @@ class Library
         size_t files = 0;
     };
     std::vector<Player> players(const GameId &game) const;
+
+    // Kept moments (#47): moments/<name>.s9xmoment in the game's folder, everyone's, newest
+    // first. Saving picks a free file name from the moment's name; renaming rewrites the name
+    // inside and moves the file to match. Errors or empty.
+    std::filesystem::path moments_dir(const GameId &game) const;
+    std::vector<MomentInfo> list_moments(const GameId &game, std::vector<std::string> *errors = nullptr) const;
+    SaveResult save_moment(const GameId &game, const Moment &moment) const;
+    SaveResult rename_moment(const std::filesystem::path &path, const std::string &name) const;
+    std::string delete_moment(const std::filesystem::path &path) const;
 
     Regions load_regions(const GameId &game, std::vector<std::string> &errors) const;
     std::string save_regions(const GameId &game, const Regions &regions) const; // error or empty

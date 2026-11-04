@@ -56,6 +56,13 @@ class SessionControl : public CorruptionControl
     std::vector<std::string> conflicts() override;
     std::string me() override;
 
+    void keepMoment() override;
+    std::vector<corrupt::MomentInfo> moments() override;
+    std::string playMoment(const std::filesystem::path &path) override;
+    void stopMoment() override;
+    std::string renameMoment(const std::filesystem::path &path, const std::string &name) override;
+    std::string deleteMoment(const std::filesystem::path &path) override;
+
     RemoteState remote() override;
     std::string setRemote(bool on) override;
     void setRemoteAddress(const std::string &address) override;

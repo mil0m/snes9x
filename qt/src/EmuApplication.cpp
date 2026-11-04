@@ -487,6 +487,11 @@ void EmuApplication::handleCorruptionBinding(const std::string &name)
             text = std::string("Corruption ") + (on ? "ON" : "OFF") + " - " + status.engine.recipe_name +
                    " - seed " + std::to_string(status.engine.seed);
     }
+    else if (name == "CorruptionKeep")
+    {
+        session.keepMoment(); // between frames (or at once while paused); it says how it went (#47)
+        text = "Corruption: keeping this moment...";
+    }
     else
         return;
 

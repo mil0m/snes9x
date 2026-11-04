@@ -77,6 +77,16 @@ struct PanelStatus
     corrupt::CodeCoverage code; // the code map (everyone's), updated every few seconds
     size_t jump_tables = 0;     // jump tables found (everyone's), updated with it
     size_t jump_swappable = 0;  // ...of which have another entry to swap with
+
+    // Kept moments (#47).
+    double keep_seconds = 0;  // how far back Keep reaches now
+    bool keep_pending = false; // asked for, waiting for the game to run
+    uint64_t keeps = 0;        // moments kept this session
+    std::string keep_news;     // what the last Keep did, in full
+    bool keep_exact = false;   // ...and whether it plays back exactly
+    bool moment_playing = false;
+    double moment_at = 0, moment_seconds = 0; // played so far, of
+    std::string moment_name;
 };
 
 // Remote control from a browser (#53), as the Sharing page shows it.
@@ -141,6 +151,15 @@ class CorruptionControl
     virtual std::vector<corrupt::Library::Player> players() = 0;
     virtual std::vector<std::string> conflicts() = 0;
     virtual std::string me() = 0; // this player's name in the library
+
+    // Kept moments (#47): Keep saves the last 10-20 s to the library (status().keep_news says
+    // how it went); Play plays one back, and any button takes over. Errors or empty.
+    virtual void keepMoment() = 0;
+    virtual std::vector<corrupt::MomentInfo> moments() = 0; // this game's, newest first
+    virtual std::string playMoment(const std::filesystem::path &path) = 0;
+    virtual void stopMoment() = 0;
+    virtual std::string renameMoment(const std::filesystem::path &path, const std::string &name) = 0;
+    virtual std::string deleteMoment(const std::filesystem::path &path) = 0;
 
     // Remote control.
     virtual RemoteState remote() = 0;

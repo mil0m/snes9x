@@ -34,6 +34,7 @@ class Cockpit : public QWidget
     std::function<void()> openWorkshopAgain;             // the Workshop button: where it was last
     std::function<void()> openGuide;
     void setToggleKey(const QString &key); // the Corrupt/Stop shortcut's name ("F7"), or empty
+    void setKeepKey(const QString &key);   // Keep This Moment's (#47), or empty
     void refresh();                        // runs four times a second while shown
     void refreshRecipes();                 // the recipe list, read again
     void showMessage(const QString &text, bool error = false);
@@ -56,7 +57,7 @@ class Cockpit : public QWidget
     CorruptionControl &control;
     RecipeActions &actions;
     QTimer *timer;
-    QString toggle_key;
+    QString toggle_key, keep_key;
 
     QLabel *game_label;
     QLabel *state_label;
@@ -72,6 +73,8 @@ class Cockpit : public QWidget
     QPushButton *corrupt_button;
     QPushButton *back_button;
     QPushButton *here_button; // Normal, Stay Here (#70)
+    QPushButton *keep_button; // Keep This Moment, or Stop Playing while one plays (#47)
+    QString shown_keep;
     IntensitySlider *chaos_slider;
     QLineEdit *seed_edit;
     QPushButton *reroll_button;

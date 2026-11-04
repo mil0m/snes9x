@@ -475,6 +475,93 @@ SaveResult Library::save_recipe(const GameId &game, const Recipe &recipe) const
     return result;
 }
 
+fs::path Library::moments_dir(const GameId &game) const
+{
+    return game_dir(game) / "moments";
+}
+
+std::vector<MomentInfo> Library::list_moments(const GameId &game, std::vector<std::string> *errors) const
+{
+    std::vector<MomentInfo> out;
+    std::error_code ec;
+    for (auto &entry : fs::directory_iterator(moments_dir(game), ec))
+    {
+        if (!entry.is_regular_file() || entry.path().extension() != ".s9xmoment" ||
+            is_sync_leftover(entry.path().filename().string()))
+            continue;
+        std::string error;
+        if (auto info = read_moment_info(entry.path(), error))
+            out.push_back(std::move(*info));
+        else if (errors)
+            errors->push_back(entry.path().filename().string() + ": " + error);
+    }
+    std::sort(out.begin(), out.end(), [](const MomentInfo &a, const MomentInfo &b) {
+        return a.made_at != b.made_at ? a.made_at > b.made_at : a.path.filename() < b.path.filename();
+    });
+    return out;
+}
+
+namespace
+{
+// A file name for `name` in `dir` nobody has: "the-hud-eats-max", then "-2", "-3"...
+fs::path free_moment_path(const fs::path &dir, const std::string &name, const fs::path &except = {})
+{
+    std::string stem = recipe_file_stem(name);
+    if (stem == "recipe")
+        stem = "moment";
+    for (int i = 1;; i++)
+    {
+        auto path = dir / (stem + (i == 1 ? "" : "-" + std::to_string(i)) + ".s9xmoment");
+        std::error_code ec;
+        if (path == except || !fs::exists(path, ec))
+            return path;
+    }
+}
+} // namespace
+
+SaveResult Library::save_moment(const GameId &game, const Moment &moment) const
+{
+    SaveResult result;
+    if (auto err = ensure_game_dir(game); !err.empty())
+    {
+        result.error = err;
+        return result;
+    }
+    result.path = free_moment_path(moments_dir(game), moment.name);
+    result.error = write_file_atomic(result.path, encode_moment(moment));
+    return result;
+}
+
+SaveResult Library::rename_moment(const fs::path &path, const std::string &name) const
+{
+    SaveResult result;
+    auto bytes = read_file(path);
+    std::string error;
+    auto m = bytes ? decode_moment(*bytes, error) : std::nullopt;
+    if (!m)
+    {
+        result.error = bytes ? "It can't be renamed: " + error : "It can't be read any more";
+        return result;
+    }
+    m->name = name;
+    result.path = free_moment_path(path.parent_path(), name, path);
+    result.error = write_file_atomic(result.path, encode_moment(*m));
+    if (result.error.empty() && result.path != path)
+    {
+        std::error_code ec;
+        fs::remove(path, ec);
+    }
+    return result;
+}
+
+std::string Library::delete_moment(const fs::path &path) const
+{
+    std::error_code ec;
+    if (!fs::remove(path, ec))
+        return ec ? "It couldn't be deleted: " + ec.message() : "It was already gone";
+    return {};
+}
+
 Regions Library::load_regions(const GameId &game, std::vector<std::string> &errors) const
 {
     auto text = read_file(game_dir(game) / "regions.json");

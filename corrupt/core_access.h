@@ -27,6 +27,11 @@ class SnesCoreAccess : public CoreAccess
     void run_unseen_frame(bool draw = false) override;
     void end_unseen() override;
     static bool unseen() { return unseen_now; }
+    // Kept moments (#47): the eight joypads' buttons, and every load and reset counted
+    // (the front end's own loads and resets aren't: it tells the session).
+    Pads pads() override;
+    void set_pads(const Pads &p) override;
+    uint64_t timeline() const override { return loads; }
 
     // The ROM bytes the CPU sees at $00:FFB0-$FFFF (the header and the interrupt vectors),
     // wherever this game's mapping puts them. Nothing may corrupt them.
@@ -61,6 +66,7 @@ class SnesCoreAccess : public CoreAccess
 
   private:
     bool drawing = true;
+    uint64_t loads = 0;
     static inline bool unseen_now = false;
     struct
     {

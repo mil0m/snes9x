@@ -454,9 +454,24 @@ void install()
 
 void SnesCoreAccess::reset_console()
 {
+    loads++;
     S9xReset();
     if (reset_watch::installed)
         reset_watch::install(); // the reset code's first opcode may be a different one now
+}
+
+Pads SnesCoreAccess::pads()
+{
+    Pads p{};
+    for (int i = 0; i < int(p.size()); i++)
+        p[i] = MovieGetJoypad(i);
+    return p;
+}
+
+void SnesCoreAccess::set_pads(const Pads &p)
+{
+    for (int i = 0; i < int(p.size()); i++)
+        MovieSetJoypad(i, p[i]);
 }
 
 void SnesCoreAccess::begin_unseen()
@@ -638,6 +653,7 @@ bool SnesCoreAccess::load_state(const std::vector<uint8_t> &state)
 {
     if (state.empty() || S9xUnfreezeGameMem(state.data(), uint32(state.size())) != SUCCESS)
         return false;
+    loads++;
     // The CPU flags come back from the state; the core's own stop switch doesn't.
     Settings.StopEmulation = FALSE;
     return true;

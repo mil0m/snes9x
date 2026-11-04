@@ -31,6 +31,14 @@ uint32 S9xRomFetchFrom = 0, S9xRomFetchTo = 0;
 // S9xMainLoop would never return: the emulator freezes. Found by corrupted games.
 static bool8 VBlankStarted = FALSE;
 
+// After a state loads (#47): whether VBlank has started follows from where the frame is. Left
+// as it was, a load after the core stopped mid-frame (a deadlock in a corrupted game) kept it
+// unset, and the loaded frame got a second VBlank at line 240 that a playback of it didn't.
+void S9xVBlankStartedFromState (void)
+{
+	VBlankStarted = CPU.V_Counter >= PPU.ScreenHeight + FIRST_VISIBLE_LINE;
+}
+
 void S9xMainLoop (void)
 {
 	#define CHECK_FOR_IRQ_CHANGE() \

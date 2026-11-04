@@ -126,6 +126,7 @@ Workshop::Workshop(CorruptionControl &control, RecipeActions &actions, FunctionS
         { "cpu", tr("ROM"), tr("What changed in the game itself, what's learned, survivors and pins") },
         { "shield", tr("Safety"), tr("The crash guard and your game's save backups") },
         { "users", tr("Sharing"), tr("The library and who's in it, and remote control") },
+        { "star", tr("Moments"), tr("Kept moments: play them back, rename, share") },
     };
     int widest = 0;
     for (auto &e : entries)
@@ -179,13 +180,15 @@ Workshop::Workshop(CorruptionControl &control, RecipeActions &actions, FunctionS
     rom = new RomPage(control, survivor_source);
     safety = new SafetyPage(control);
     sharing = new SharingPage(control);
+    moments = new MomentsPage(control);
     stack->addWidget(scrolling(recipe, stack));
     stack->addWidget(functions);
     stack->addWidget(scrollingTall(memory, stack));
     stack->addWidget(capped(rom, stack));
     stack->addWidget(scrolling(safety, stack));
     stack->addWidget(scrolling(sharing, stack));
-    text_pages = { recipe, rom, safety, sharing };
+    stack->addWidget(scrolling(moments, stack));
+    text_pages = { recipe, rom, safety, sharing, moments };
     layout->addWidget(stack, 1);
 
     functions->onShowInRom = [this](uint32_t first, uint32_t last) {
@@ -230,6 +233,7 @@ void Workshop::refresh()
     case WorkshopPage::Rom: rom->refresh(status); break;
     case WorkshopPage::Safety: safety->refresh(status); break;
     case WorkshopPage::Sharing: sharing->refresh(status); break;
+    case WorkshopPage::Moments: moments->refresh(status); break;
     case WorkshopPage::Functions:
     case WorkshopPage::Memory: break; // they keep themselves fresh while shown
     }

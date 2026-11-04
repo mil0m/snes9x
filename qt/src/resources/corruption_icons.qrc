@@ -27,6 +27,8 @@
     <file alias="adjustments-horizontal.svg">corruption-icons/adjustments-horizontal.svg</file>
     <file alias="clock.svg">corruption-icons/clock.svg</file>
     <file alias="player-stop.svg">corruption-icons/player-stop.svg</file>
+    <file alias="player-play.svg">corruption-icons/player-play.svg</file>
+    <file alias="star.svg">corruption-icons/star.svg</file>
     <file alias="plus.svg">corruption-icons/plus.svg</file>
     <file alias="refresh.svg">corruption-icons/refresh.svg</file>
     <file alias="restore.svg">corruption-icons/restore.svg</file>

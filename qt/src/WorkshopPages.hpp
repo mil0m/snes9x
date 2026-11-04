@@ -3,6 +3,7 @@
 
 #include <array>
 #include <functional>
+#include <optional>
 #include <vector>
 
 #include "CorruptionControl.hpp"
@@ -49,7 +50,7 @@ QString ahead_note(const PanelStatus &status);
 QString instant_note(const PanelStatus &status);
 QString policy_note(corrupt::PolicyKind policy);
 
-std::array<SidebarNote, 6> sidebar_notes(const PanelStatus &status, size_t others, bool remote_on);
+std::array<SidebarNote, 7> sidebar_notes(const PanelStatus &status, size_t others, bool remote_on);
 
 // The recipe: its rules in full, everything else it keeps, and saving and sharing it.
 class RecipePage : public QWidget
@@ -135,6 +136,35 @@ class SafetyPage : public QWidget
     QPushButton *restore_backup_button;
     ui::StatusLine *message;
     int ticks = 0;
+};
+
+// Kept moments (#47): this game's, everyone's in the library, newest first. Play one back
+// (corruption off, any button takes over), rename, delete, or show its file to share.
+class MomentsPage : public QWidget
+{
+  public:
+    MomentsPage(CorruptionControl &control, QWidget *parent = nullptr);
+    void refresh(const PanelStatus &status);
+    void reload(); // the list, read from the library again
+    std::function<bool(const QString &title, const QString &question)> confirm;
+
+  private:
+    std::optional<corrupt::MomentInfo> selected() const;
+    void showSelected();
+
+    CorruptionControl &control;
+    std::vector<corrupt::MomentInfo> list;
+    QTableWidget *table;
+    QLabel *empty_label;
+    QLabel *details;
+    QWidget *actions_row;
+    QPushButton *play_button, *rename_button, *delete_button, *folder_button;
+    ui::StatusLine *message;
+    int ticks = 0;
+    uint64_t shown_keeps = UINT64_MAX;
+    std::string shown_game;
+    bool filling = false;
+    bool renaming = false;
 };
 
 // Sharing: the library folder and who's in it, and remote control from a browser.

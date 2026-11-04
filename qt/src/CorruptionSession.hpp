@@ -7,6 +7,7 @@
 #include "corrupt/engine.h"
 #include "corrupt/library.h"
 #include "corrupt/memory_watch.h"
+#include "corrupt/moment.h"
 #include "corrupt/paint_history.h"
 #include "corrupt/paint_store.h"
 #include "corrupt/paint_watch.h"
@@ -48,6 +49,21 @@ class CorruptionSession
     void gameClosing();
     // The front end loaded a save state: checkpoints from before belong to another timeline.
     void stateLoaded();
+    // The front end moved the game elsewhere some other way (a reset, a rewind): a kept
+    // moment can't reach back past it.
+    void timeJumped(const std::string &why);
+
+    // Kept moments (#47). beforeFrame() runs right before each frame (emulation thread): the
+    // recorder notes the pads and takes its keyframes, and a moment playing back sets its
+    // pads and writes. Keep saves the last 10-20 s to the library, checked; it happens between
+    // frames, or at once while paused.
+    void beforeFrame();
+    void keepMoment();
+    std::vector<corrupt::MomentInfo> moments(); // this game's, everyone's, newest first
+    std::string playMoment(const std::filesystem::path &path); // error or empty; starts between frames
+    void stopMoment();
+    std::string renameMoment(const std::filesystem::path &path, const std::string &name);
+    std::string deleteMoment(const std::filesystem::path &path);
 
     void setLibraryRoot(const std::filesystem::path &root);
     std::filesystem::path libraryRoot();
@@ -220,7 +236,10 @@ class CorruptionSession
     std::mutex mutex;
     corrupt::Engine engine;
     corrupt::CoreMemory memory;
-    corrupt::RomKeeper rom{ memory }; // what the engine writes through: journals ROM edits, guards the header
+    // Kept moments (#47): every write below goes through the recorder.
+    corrupt::MomentRecorder recorder;
+    corrupt::RecordedMemory recorded{ memory, recorder };
+    corrupt::RomKeeper rom{ recorded }; // what the engine writes through: journals ROM edits, guards the header
     corrupt::RomBlame rom_blame{ rom }; // which changed ROM bytes the game used, for the guard
     corrupt::SnesCoreAccess access;
     corrupt::CrashGuard guard;
@@ -246,6 +265,16 @@ class CorruptionSession
     uint64_t tries_made = 0;
     corrupt::RunAhead try_runner;
     void tryPending();
+    corrupt::MomentPlayer player;  // a kept moment playing back (#47)
+    corrupt::MomentPlayer checker; // a kept moment checked unseen, as it's kept
+    bool checking = false;         // the frame hook plays the checker's writes, nothing else
+    bool keep_pending = false;
+    std::optional<corrupt::Moment> play_pending;
+    std::string keep_news;
+    bool keep_exact = false;
+    uint64_t keeps_made = 0;
+    void keepPending();
+    void startPending();
     corrupt::RomAddresses rom_where;        // for disassembly in the viewer
     std::vector<uint8_t> code_shown;        // everyone's map, copied between frames while the viewer shows the ROM
     std::vector<uint8_t> code_for_aim;      // everyone's map as aimed rules saw it when this run started

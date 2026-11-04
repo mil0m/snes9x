@@ -14,6 +14,8 @@ Each feature has a plan doc in `docs/corruption/`, tests, and a numbered section
 
 Inside the frame (core): `cpuexec.cpp` calls `S9xCorruptFrameHook` at V=1 (frame start, not VBlank start, because games copy OAM/CGRAM shadows in VBlank). That is `CorruptionSession::frameHook` -> `onFrame` -> `Engine::on_frame` (kill switches flip first, then rules fire, writes go to memory, backups tick). During a run ahead (`running_ahead`) it only calls `engine.on_frame`.
 
+Right before each frame, `CorruptionSession::beforeFrame()` (#47, from `Snes9xController::mainLoop`): a kept moment playing back sets its pads and writes (or ends, or is taken over), then `MomentRecorder::before_frame` notes the pads and takes a keyframe every 10 s. The frame hook's writes go to the recorder too (`hook_begin`/`hook_end`), and every corruption write reaches it through `RecordedMemory` under the ROM keeper.
+
 Between frames, `CorruptionSession::betweenFrames()` (`qt/src/CorruptionSession.cpp`), under the session mutex, after `S9xMainLoop()` returns:
 
 1. Back to normal, if requested: engine off, `RomKeeper::restore_clean`, load the run's anchor.
@@ -27,7 +29,8 @@ Between frames, `CorruptionSession::betweenFrames()` (`qt/src/CorruptionSession.
 9. Code map, jump log and call log housekeeping: reload, tick, `call_log.end_frame()` (#26), save, copy for the viewer twice a second, jump-table search.
 10. Guard notice to the status line.
 11. `testAhead()` (#52): plays the next frame's ROM changes ahead from exactly here.
-12. `tryPending()` (#78), last: a change asked for with Change It's *Try 5 s Ahead*, played ahead with and without it.
+12. `tryPending()` (#78): a change asked for with Change It's *Try 5 s Ahead*, played ahead with and without it.
+13. `keepPending()` and `startPending()` (#47), last: a Keep checked from here and saved; a moment to play back loads for the next frame.
 
 ## Phases 1 and 4: recipes, panel, shaping while playing (#2-#5, #14-#17)
 
@@ -350,6 +353,15 @@ Plan for all: `safety-plan` (one section per item, each with "How it went").
 - Code: `qt/src/QuitSignals.cpp` (self-pipe), wired in `qt/src/main.cpp`.
 - Tests: `tests/qt/quit_signals_test.cpp`.
 - Gotchas: use `timeout -s KILL` for launch checks.
+
+## Phase 11: golden moments (#47)
+
+**Keep a golden moment (#47)** - *Keep This Moment* (F8, and a button in the cockpit) keeps the last 10-20 s: a keyframe (a saved state and the ROM's changed bytes) and every frame since (the pads, the corruption writes before it and in its hook), so it plays back exactly, here or on a friend's machine. Outcomes, not causes: the engine, the guard and Paint don't have to replay. It's checked as it's kept. The Workshop's **Moments** page lists everyone's, and **Play** plays one with corruption off; any button takes over.
+- Code: `corrupt/moment.cpp` (`MomentRecorder`: keyframes every 600 frames, 3 kept, `take()` from the newest 600+ back; a load it wasn't told about cuts, `hold`/`accept` around runs ahead, `redo_frame` for the instant revert keeps the frame's ROM writes; `RecordedMemory`; `MomentPlayer`: `start` loads the keyframe and puts the ROM as it was, `taken_over` when the pads differ from what it set; `check_moment`: unseen playback compared with every memory, everything put back; the `.s9xmoment` file, zlib-packed where the build has it, `read_moment_info` reads only the header). `Library::moments_dir` (`<game>/moments/`), `save_moment`, `list_moments`, `rename_moment`, `delete_moment`. `CoreAccess::pads/set_pads/timeline` (`SnesCoreAccess`: `MovieGetJoypad`, loads and resets counted). Session: `beforeFrame`, `timeJumped` (rewind, reset), `keepMoment` (between frames, at once while paused), `keepPending` (the `checker` player; the frame hook plays only its writes while `checking`), `playMoment`/`startPending`, `stopMoment`, cuts named at each load (rollback, run start, Back to Normal, Paint's watch, a save state). Core: `S9xVBlankStartedFromState` (a load sets `VBlankStarted` from the frame). App: EmuConfig `eCorruptionKeep` (`CorruptionKeep`, F8), the cockpit's `keep_moment` (Stop Playing while one plays; the state bar counts), `MomentsPage` (Workshop page 7), the Corruption menu's *Kept Moments…*.
+- Tests: `tests/corrupt/moment_test.cpp` (a fake game whose every frame depends on its pads, its ROM and writes before and inside its hook); `guard_integration_test.cpp` suite "keep a golden moment (#47)" (test ROM `build_pads`) and "a state loaded after the core stopped mid-frame plays its next frame whole (#47)"; `workshop_test.cpp` (Moments), `cockpit_test.cpp` (Keep This Moment); the UI tour keeps and plays one (`keep.txt`, `17a-workshop-moments.png`, `17b-cockpit-moment-playing.png`).
+- Measure: `--keep [seeds]` (played guarded with a pseudo-player; every 7 s a moment kept and checked, drawn and not, plus the controls without its buttons and without its writes; `CORRUPT_KEEP_VERBOSE=1`; `CORRUPT_KEEP_DIAG=1` finds the first frame that drifts and diffs the core's state and globals).
+- Docs: `golden-moments-plan`; GUIDE "Kept moments"; QA 55.
+- Gotchas: a crash-guard rollback (and any load) starts the history again, so a moment after one is shorter (a third were, in crash-heavy recipes). A save state doesn't hold everything the core runs on: `VBlankStarted` is now set on load; `GFX.EndY` (the sprite overflow flags' line) isn't, and made no difference in 252 moments. Plain pads only (no mouse or Super Scope).
 
 ## Phase 12: remote control (#53)
 

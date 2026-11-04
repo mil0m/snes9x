@@ -17,6 +17,7 @@ class RecipePage;
 class RomPage;
 class SafetyPage;
 class SharingPage;
+class MomentsPage;
 struct FunctionSource;
 struct MemorySource;
 struct SurvivorSource;
@@ -39,6 +40,7 @@ class Workshop : public QWidget
     RomPage *romPage() const { return rom; }
     SafetyPage *safetyPage() const { return safety; }
     SharingPage *sharingPage() const { return sharing; }
+    MomentsPage *momentsPage() const { return moments; }
 
     void refresh(); // the current page and the sidebar's notes, from the session (twice a second while shown)
 
@@ -76,4 +78,5 @@ class Workshop : public QWidget
     RomPage *rom;
     SafetyPage *safety;
     SharingPage *sharing;
+    MomentsPage *moments;
 };

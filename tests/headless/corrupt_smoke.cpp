@@ -1,7 +1,7 @@
 // End-to-end check of the corruption engine inside the real emulator, no window
 // needed:
 //
-//   corrupt-smoke <rom> <recipe.json> [frames=600] [warmup=600] [--guard | --instant [seeds] | --ahead [seeds] | --eyes [seeds] | --derail-fp [learn] | --learn [held=3] [from=0] | --replay | --copies | --map | --access [dir] | --codemap [file] | --jumps [file] | --calls | --bodies | --kill [seeds] [count] | --change [seeds] [count] | --risk [count] [trial] [number|branch|math|skip] | --foresee [count] [trial] [kind] | --try [count] [trial] [kind] | --dump <dir>]
+//   corrupt-smoke <rom> <recipe.json> [frames=600] [warmup=600] [--guard | --instant [seeds] | --ahead [seeds] | --keep [seeds] | --eyes [seeds] | --derail-fp [learn] | --learn [held=3] [from=0] | --replay | --copies | --map | --access [dir] | --codemap [file] | --jumps [file] | --calls | --bodies | --kill [seeds] [count] | --change [seeds] [count] | --risk [count] [trial] [number|branch|math|skip] | --foresee [count] [trial] [kind] | --try [count] [trial] [kind] | --dump <dir>]
 //
 // Boots the ROM, runs `warmup` frames, saves a state, then runs `frames` twice
 // from that state: once clean, once with the recipe. Reports what the recipe
@@ -91,9 +91,16 @@
 #include "corrupt/run_control.h"
 #include "corrupt/memory_watch.h"
 #include "corrupt/memory_map.h"
+#include "corrupt/moment.h"
 
 #include "snes9x.h"
 #include "memmap.h"
+#include "cpuexec.h"
+#include "ppu.h"
+#include "dma.h"
+#include "gfx.h"
+#include "getset.h"
+#include "apu/bapu/snes/snes.hpp"
 
 #include <algorithm>
 #include <array>
@@ -113,15 +120,26 @@ namespace
 
 Engine engine;
 CoreMemory memory;
-RomKeeper rom{ memory }; // what the engine writes through, as in the app
+MomentRecorder recorder; // idle until --keep feeds it frames
+RecordedMemory recorded{ memory, recorder };
+RomKeeper rom{ recorded }; // what the engine writes through, as in the app
 SnesCoreAccess access;
+MomentPlayer player; // --keep's checks play moments back through the frame hook
 size_t verified = 0;
 size_t mismatched = 0;
 
 void frame_hook()
 {
+    if (player.playing())
+    {
+        player.in_hook(memory);
+        access.note_frame_start();
+        return;
+    }
     uint64_t frame_before = engine.status().frame;
+    recorder.hook_begin();
     engine.on_frame(rom);
+    recorder.hook_end();
     access.note_frame_start();
     // Only this frame's events; the log is bounded, so count from the end.
     for (auto it = engine.event_log().rbegin(); it != engine.event_log().rend() && it->frame > frame_before; ++it)
@@ -2136,6 +2154,401 @@ int run_instant(const Recipe &recipe, int frames, int seeds)
     return 0;
 }
 
+// --keep [seeds=3]: does a kept moment play back exactly (#47)? The recipe is played guarded
+// for `frames` frames per seed as the app plays it (the guard, the instant revert and test
+// ahead on), with buttons pressed as a player might, recording as the app does. Every 7 s a
+// moment is kept and checked: played unseen from its keyframe and compared with the game,
+// once drawing its frames and once not, and twice more without its buttons and without its
+// writes (each should drift, or the check proves nothing). CORRUPT_KEEP_VERBOSE=1 prints every
+// check. CORRUPT_KEEP_DIAG=1 finds where a moment that drifts starts to: the first frame
+// whose start differs from the live game's, which blocks of the core's state differ after it,
+// and which of the core's globals differed at the keyframe (how #47 found VBlankStarted).
+
+// Every memory in one number, for finding where a playback drifts.
+uint64_t state_hash()
+{
+    uint64_t h = 1469598103934665603ull;
+    for (auto t : { Target::WRAM, Target::VRAM, Target::OAM, Target::CGRAM, Target::ARAM, Target::ROM })
+    {
+        const uint8_t *d = memory.data(t);
+        for (size_t i = 0, n = memory.size(t); i < n; i++)
+            h = (h ^ (d ? d[i] : memory.read(t, uint32_t(i)))) * 1099511628211ull;
+    }
+    return h;
+}
+
+// The core's globals as bytes, for finding state a save doesn't hold (diagnostics).
+std::map<std::string, std::vector<uint8_t>> core_globals()
+{
+    std::map<std::string, std::vector<uint8_t>> g;
+    auto add = [&](const char *name, const void *p, size_t n) {
+        g[name].assign(static_cast<const uint8_t *>(p), static_cast<const uint8_t *>(p) + n);
+    };
+    add("CPU", &CPU, sizeof CPU);
+    add("ICPU", &ICPU, sizeof ICPU);
+    add("Registers", &Registers, sizeof Registers);
+    add("Timings", &Timings, sizeof Timings);
+    add("PPU", &PPU, sizeof PPU);
+    add("IPPU", &IPPU, sizeof IPPU);
+    add("DMA", DMA, sizeof DMA);
+    add("Settings", &Settings, sizeof Settings);
+    add("FillRAM", Memory.FillRAM, 0x8000);
+    add("smp", &SNES::smp, sizeof SNES::smp);
+    add("dsp", &SNES::dsp, sizeof SNES::dsp);
+    add("Memory", &Memory, sizeof Memory);
+    add("GFX", &GFX, sizeof GFX);
+    add("BG", &BG, sizeof BG);
+    add("OpenBus", &OpenBus, 1);
+    return g;
+}
+
+void print_globals_diff(const std::map<std::string, std::vector<uint8_t>> &a,
+                        const std::map<std::string, std::vector<uint8_t>> &b)
+{
+    for (auto &[name, va] : a)
+    {
+        auto &vb = b.at(name);
+        std::string where;
+        int n = 0;
+        for (size_t i = 0; i < va.size(); i++)
+            if (va[i] != vb[i])
+            {
+                if (n++ < 12)
+                {
+                    char buf[48];
+                    snprintf(buf, sizeof buf, " +%zu:%02X/%02X", i, va[i], vb[i]);
+                    where += buf;
+                }
+            }
+        if (n)
+            printf("        %s: %d bytes differ:%s\n", name.c_str(), n, where.c_str());
+    }
+}
+
+// Which blocks of two saved states differ ("CPU", "SND", ...), and where in them.
+void print_state_diff(const std::vector<uint8_t> &a, const std::vector<uint8_t> &b)
+{
+    // A freeze: "#!s9xsnp:0011\n", then blocks "NAM:123456:" followed by that many bytes.
+    auto blocks = [](const std::vector<uint8_t> &s) {
+        std::map<std::string, std::pair<size_t, size_t>> out; // name -> (start, length)
+        size_t at = 14;
+        while (at + 11 <= s.size())
+        {
+            std::string name(s.begin() + at, s.begin() + at + 3);
+            size_t len = std::stoul(std::string(s.begin() + at + 4, s.begin() + at + 10));
+            out[name] = { at + 11, len };
+            at += 11 + len;
+        }
+        return out;
+    };
+    auto ba = blocks(a), bb = blocks(b);
+    for (auto &[name, ra] : ba)
+    {
+        auto it = bb.find(name);
+        if (it == bb.end() || it->second.second != ra.second)
+        {
+            printf("        block %s: missing or another size\n", name.c_str());
+            continue;
+        }
+        size_t first = SIZE_MAX, n = 0;
+        for (size_t i = 0; i < ra.second; i++)
+            if (a[ra.first + i] != b[it->second.first + i])
+            {
+                if (first == SIZE_MAX)
+                    first = i;
+                n++;
+            }
+        if (n)
+            printf("        block %s: %zu of %zu bytes differ, the first at %zu\n", name.c_str(), n, ra.second, first);
+    }
+}
+
+struct KeepTotals
+{
+    int kept = 0, exact_drawn = 0, exact_plain = 0, short_ones = 0, none = 0;
+    int pads_matter = 0, writes_matter = 0, had_writes = 0, had_pads = 0; // the controls drift
+    std::map<std::string, int> starts, differ;
+    double ms_drawn = 0, ms_plain = 0, seconds = 0;
+    size_t raw = 0, state = 0;
+    int caught = 0, reverts = 0, tested = 0;
+};
+
+void keep_seed(const Recipe &recipe, int frames, const CodeMap &learned, const std::vector<uint8_t> &start,
+               uint64_t input_seed, KeepTotals &k)
+{
+    headless::load_state(start);
+    rom.restore_clean();
+    CodeMap map = learned;
+    std::vector<uint8_t> aim_flags;
+    engine.set_code_flags([&] {
+        aim_flags = map.flags();
+        for (auto &f : aim_flags)
+            f &= codeflag::All;
+        return std::span<const uint8_t>(aim_flags);
+    });
+    RomTracer tracer;
+    tracer.start(map);
+    DerailWatch watch;
+    tracer.watch_derails(&watch);
+    RomBlame blame(rom);
+    blame.attach(map.data(), map.size());
+    blame.set_policy(recipe.rom_policy.value_or(RomPolicy::Revert), recipe.seed);
+    CrashGuard guard;
+    guard.set_byte_blame(&blame);
+    guard.set_policy(recipe.crash_policy.value_or(PolicyKind::Reroll));
+    guard.set_detector_config(recipe.crash_detection.value_or(DetectorConfig{}));
+    InstantRevert instant;
+    instant.set_enabled(true);
+    TestAhead ahead;
+    ahead.set_config({ .frames = uint32_t(std::lround(recipe.test_first.value_or(3.0) * 60)) });
+    std::span<const uint8_t> clean(rom.clean().data(), rom.clean().size());
+
+    recorder.reset();
+    engine.set_recipe(recipe);
+    start_run();
+    guard.between_frames(engine, access);
+    instant.keep(access, engine.current_frame(), true);
+    S9xCorruptFrameHook = &frame_hook;
+    bool verbose = getenv("CORRUPT_KEEP_VERBOSE");
+    bool diag = getenv("CORRUPT_KEEP_DIAG");
+    std::map<uint64_t, uint64_t> live; // the game's memory at each frame's start (diagnostics)
+    std::map<uint64_t, std::vector<uint8_t>> live_after; // the core's state after the first frames after a cut
+    std::map<uint64_t, std::map<std::string, std::vector<uint8_t>>> live_globals; // at each keyframe after a cut
+    std::map<uint64_t, bool> live_drawn;
+    std::mt19937 input{ uint32_t(input_seed) };
+    Pads pads{};
+    int hold_for = 0;
+    // A player: a few buttons held for a while, then others, sometimes none.
+    static const uint16_t kButtons[] = { 0x8000, 0x4000, 0x2000, 0x1000, 0x0800, 0x0400, 0x0200, 0x0100,
+                                         0x0080, 0x0040, 0x0020, 0x0010 };
+    for (int i = 0; i < frames; i++)
+    {
+        if (--hold_for <= 0)
+        {
+            pads[0] = 0;
+            if (input() % 4)
+                for (int b = 0, n = 1 + int(input() % 2); b < n; b++)
+                    pads[0] |= kButtons[input() % 12];
+            hold_for = 5 + int(input() % 40);
+        }
+        access.set_pads(pads);
+        recorder.before_frame(access, memory, clean, access.timeline());
+        if (diag)
+            live[recorder.frames_begun() - 1] = state_hash();
+        if (diag && recorder.frames_recorded() == 1)
+            live_globals[recorder.frames_begun() - 1] = core_globals();
+        if (diag)
+            live_drawn[recorder.frames_begun() - 1] = IPPU.RenderThisFrame;
+        headless::run_frames(1);
+        if (diag && recorder.frames_recorded() <= 3)
+            live_after[recorder.frames_begun() - 1] = access.save_state();
+        if (auto r = instant.after_frame(tracer.take_derail(), engine.current_frame(), access, blame))
+        {
+            k.reverts++;
+            recorder.redo_frame(access.timeline());
+            if (verbose)
+                printf("    frame %5d  %s\n", i + 1, r->summary.c_str());
+        }
+        blame.collect(engine.current_frame());
+        auto out = guard.between_frames(engine, access);
+        if (out.kind != GuardOutcome::Nothing)
+            recorder.cut("the crash guard rolled back");
+        rom.after_guard(out);
+        if (out.kind != GuardOutcome::Nothing)
+        {
+            k.caught++;
+            if (verbose)
+                printf("    frame %5d  %s\n", i + 1, out.summary.c_str());
+            if (out.kind == GuardOutcome::GaveUp)
+                break;
+        }
+        instant.keep(access, engine.current_frame(), engine.active() && tracer.tracing());
+        {
+            AheadHooks hooks;
+            hooks.take_derail = [&] { return tracer.take_derail(); };
+            recorder.hold(true);
+            auto t = ahead.before_frame(engine, rom, access, { map.data(), map.size() }, hooks);
+            recorder.hold(false);
+            recorder.accept(access.timeline());
+            k.tested += t.kind != AheadResult::Nothing;
+        }
+        if (i >= 600 && (i - 600) % 420 == 419)
+        {
+            auto m = recorder.take();
+            if (!m)
+            {
+                k.none++;
+                continue;
+            }
+            m->game = { Memory.ROMName, "", "" };
+            k.kept++;
+            k.seconds += m->seconds();
+            if (m->frames.size() < recorder.config().lead)
+            {
+                k.short_ones++;
+                k.starts[m->starts.empty() ? "(the run's start)" : m->starts]++;
+            }
+            auto bytes = encode_moment(*m);
+            k.raw += bytes.size();
+            k.state += m->state.size();
+            recorder.hold(true);
+            CheckHooks hooks;
+            hooks.flags = { map.data(), map.size() };
+            hooks.draw = true;
+            auto drawn = check_moment(*m, player, access, memory, clean, hooks);
+            hooks.draw = false;
+            auto plain = check_moment(*m, player, access, memory, clean, hooks);
+            // The controls: the same moment without its buttons, and without its writes. Each
+            // should drift, or the check proves nothing.
+            Moment no_pads = *m, no_writes = *m;
+            bool pressed = false, wrote = !m->after.empty();
+            for (auto &f : no_pads.frames)
+            {
+                pressed = pressed || f.pads != Pads{};
+                f.pads = {};
+            }
+            for (auto &f : no_writes.frames)
+            {
+                wrote = wrote || !f.before.empty() || !f.during.empty();
+                f.before.clear();
+                f.during.clear();
+            }
+            no_writes.after.clear();
+            if (pressed)
+            {
+                k.had_pads++;
+                k.pads_matter += !check_moment(no_pads, player, access, memory, clean, hooks).exact;
+            }
+            if (wrote)
+            {
+                k.had_writes++;
+                k.writes_matter += !check_moment(no_writes, player, access, memory, clean, hooks).exact;
+            }
+            recorder.hold(false);
+            recorder.accept(access.timeline());
+            tracer.take_derail(); // the playback's, which happened already
+            k.exact_drawn += drawn.exact;
+            k.exact_plain += plain.exact;
+            k.ms_drawn += drawn.ms;
+            k.ms_plain += plain.ms;
+            for (auto t : drawn.differ)
+                k.differ[target_name(t)]++;
+            if (diag && !drawn.exact)
+            {
+                // Where it starts to drift: play it again unseen, comparing each frame's start.
+                auto state = access.save_state();
+                auto rom_now = std::vector<uint8_t>(memory.data(Target::ROM), memory.data(Target::ROM) + memory.size(Target::ROM));
+                recorder.hold(true);
+                access.begin_unseen();
+                player.start(*m, access, memory, clean);
+                for (size_t f = 0;; f++)
+                {
+                    if (!player.before_frame(access, memory))
+                        break;
+                    uint64_t h = state_hash();
+                    if (auto lg = live_globals.find(m->from + f); f == 0 && lg != live_globals.end())
+                    {
+                        printf("      globals at the keyframe, live/playback:\n");
+                        print_globals_diff(lg->second, core_globals());
+                    }
+                    auto it = live.find(m->from + f);
+                    if (it == live.end() || it->second != h)
+                    {
+                        printf("      drifts at frame %zu of %zu (live frame %llu): %s; %zu before, %zu during\n", f,
+                               m->frames.size(), (unsigned long long)(m->from + f),
+                               it == live.end() ? "no live hash" : "memory differs", m->frames[f].before.size(),
+                               m->frames[f].during.size());
+                        if (f > 0)
+                            printf("      the frame before: %zu before, %zu during, pads %04X, drawn live %d\n",
+                                   m->frames[f - 1].before.size(), m->frames[f - 1].during.size(), m->frames[f - 1].pads[0],
+                                   int(live_drawn[m->from + f - 1]));
+                        if (auto a = live_after.find(m->from + f - 1); f > 0 && a != live_after.end())
+                            print_state_diff(a->second, access.save_state());
+                        // Is a playback consistent with itself? The keyframe, one frame, twice.
+                        uint64_t hs[2];
+                        for (auto &one : hs)
+                        {
+                            player.start(*m, access, memory, clean);
+                            player.before_frame(access, memory);
+                            access.run_unseen_frame(true);
+                            player.before_frame(access, memory);
+                            one = state_hash();
+                        }
+                        printf("      one frame from the keyframe, twice: %s (live %s)\n", hs[0] == hs[1] ? "the same" : "DIFFERENT",
+                               hs[0] == live[m->from + 1] ? "matches" : "differs");
+                        break;
+                    }
+                    access.run_unseen_frame(true);
+                }
+                player.stop();
+                access.end_unseen();
+                access.load_state(state);
+                for (size_t i = 0; i < rom_now.size(); i++)
+                    if (memory.read(Target::ROM, uint32_t(i)) != rom_now[i])
+                        memory.write(Target::ROM, uint32_t(i), rom_now[i]);
+                recorder.hold(false);
+                recorder.accept(access.timeline());
+            }
+            if (verbose || !drawn.exact)
+                printf("    frame %5d  kept %.1f s%s%s: drawn %s (%.0f ms), plain %s (%.0f ms)%s%s\n", i + 1,
+                       m->seconds(), m->starts.empty() ? "" : ", from where ", m->starts.c_str(),
+                       drawn.exact ? "exact" : "DRIFTS", drawn.ms, plain.exact ? "exact" : "drifts", plain.ms,
+                       drawn.exact ? "" : ": ", drawn.exact ? "" : drawn.text.c_str());
+        }
+    }
+    S9xCorruptFrameHook = nullptr;
+    tracer.stop();
+    engine.set_active(false);
+    engine.set_code_flags({});
+    recorder.reset();
+}
+
+int run_keep(const Recipe &recipe, int frames, int seeds)
+{
+    auto start = headless::save_state();
+    CodeMap learned(Memory.CalculatedSize);
+    if (!load_saved_map(learned))
+    {
+        RomTracer tracer;
+        if (!tracer.start(learned))
+            return 1;
+        access.reset_console();
+        headless::run_frames(frames);
+        tracer.stop();
+        printf("codemap  %zu code bytes learned from a clean boot of %d frames\n", learned.coverage().code, frames);
+    }
+    KeepTotals k;
+    for (int seed = 1; seed <= seeds; seed++)
+    {
+        Recipe r = recipe;
+        r.seed = recipe.seed + uint64_t(seed) - 1;
+        if (getenv("CORRUPT_KEEP_VERBOSE"))
+            printf("  seed %llu\n", (unsigned long long)r.seed);
+        keep_seed(r, frames, learned, start, 1000 + seed, k);
+    }
+    rom.restore_clean();
+    printf("seeds    %d of %d frames each; %d guard rollbacks, %d instant reverts, %d firings tested ahead\n", seeds,
+           frames, k.caught, k.reverts, k.tested);
+    if (!k.kept)
+    {
+        printf("kept     none (%d times there was nothing to keep)\n", k.none);
+        return 1;
+    }
+    printf("kept     %d moments, %.1f s long on average; %d shorter than 10 s; %d times nothing to keep\n", k.kept,
+           k.seconds / k.kept, k.short_ones, k.none);
+    for (auto &[why, n] : k.starts)
+        printf("  short: %-40s %d\n", why.c_str(), n);
+    printf("exact    %d of %d drawing the frames (%.0f ms a check), %d of %d not drawing (%.0f ms)\n", k.exact_drawn,
+           k.kept, k.ms_drawn / k.kept, k.exact_plain, k.kept, k.ms_plain / k.kept);
+    for (auto &[t, n] : k.differ)
+        printf("  differs: %-8s %d\n", t.c_str(), n);
+    printf("controls without the buttons %d of %d drift; without the writes %d of %d drift\n", k.pads_matter,
+           k.had_pads, k.writes_matter, k.had_writes);
+    printf("size     %.0f KB a moment's file, packed (its saved state alone is %.0f KB unpacked)\n",
+           k.raw / 1024.0 / k.kept, k.state / 1024.0 / k.kept);
+    return 0;
+}
+
 } // namespace
 
 int main(int argc, char **argv)
@@ -2225,6 +2638,8 @@ int main(int argc, char **argv)
         return run_nmi(frames);
     if (argc > 5 && std::string(argv[5]) == "--eyes")
         return run_eyes(*parsed.recipe, frames, argc > 6 ? atoi(argv[6]) : 5);
+    if (argc > 5 && std::string(argv[5]) == "--keep")
+        return run_keep(*parsed.recipe, frames, argc > 6 ? atoi(argv[6]) : 3);
     if (argc > 5 && std::string(argv[5]) == "--ahead")
         return run_ahead(*parsed.recipe, frames, argc > 6 ? atoi(argv[6]) : 5);
     if (argc > 5 && std::string(argv[5]) == "--instant")

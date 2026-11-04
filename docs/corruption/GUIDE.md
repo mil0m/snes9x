@@ -77,11 +77,40 @@ There are four ways to undo something. Only one of them undoes everything.
 
 | You want to keep… | Do this |
 |---|---|
+| Something wonderful that just happened | **Keep This Moment (F8)**: the last 10-20 s, to play back exactly. See *Kept moments*. |
 | A glitch you just saw | **Save**, right away, while it's still on. The recipe is saved with this run's dice (the seed) and the moment the run started, so loading it plays the same run again, as long as you press the same buttons. While the run starts from a new moment, the panel says so: *Save keeps it, so the run can be replayed.* |
 | The recipe, to play again | **Save**. With *Remember where each run starts*, it comes back to the same spot with the same dice. |
 | One exact ROM change you liked | Workshop, **ROM** page: **Survivors and pins**, **Pin Selected**, then **Save**. See *Survivors and pins*. |
 | Bytes you set by hand | They're kept in the recipe already (*paint*); **Save**. |
 | The corrupted game, to play anywhere | **Export ROM…**: a .sfc file of the ROM as it is right now (pins, paint and whatever the rules changed), for other emulators or a flash cart. |
+
+## Kept moments
+
+When something wonderful happens, press **Keep This Moment (F8)**, in the panel or on the
+keyboard. It keeps the last 10-20 seconds: the game from a little before, and every button
+you pressed and every byte corruption wrote since. Playing it back shows exactly what you
+saw, on your machine or a friend's. It works with or without corruption on.
+
+The game pauses for about half a second while the moment is checked: it plays once, unseen,
+and is compared with the game now. The message line then says *Kept the last 14.2 s: it plays
+back exactly*. If it ever says *it doesn't play back the same*, the moment is kept anyway; tell
+whoever works on the app.
+
+A moment can be shorter than 10 s. When the crash guard rolls back, or you go back to normal,
+rewind or load a save, the game jumps elsewhere, and a moment can't reach back past that.
+The message says where it starts.
+
+The Workshop's **Moments** page lists this game's kept moments, yours and everyone's in the
+library. Newest are first.
+
+- **Play** turns corruption off and plays one from its start. The panel counts *Playing a
+  kept moment · 6.1 of 14.2 s*.
+- Press any button on the pad to take over right there.
+- When it ends, the game is yours from the golden moment on, corrupted ROM and all. Back to
+  Normal cleans up as usual, and Corrupt starts a new run.
+- **Stop Playing** in the panel stops a playback where it is.
+- The pencil renames a moment and the bin deletes it.
+- The folder button shows the files: send one to share it. Its file is about 100 KB.
 
 ## The words
 
@@ -114,9 +143,10 @@ There are four ways to undo something. Only one of them undoes everything.
 
 ## The F7 key and the buttons
 
-There is one corruption key: **Corrupt / Stop (F7)**. It starts and stops a run. Change it
-under **Options > Shortcuts…** (the line *Corruption: Corrupt / Stop*). Everything else
-(Back to Normal, Re-roll, More / Less Chaos, Mark Crash, Save Recipe) is a button.
+There are two corruption keys. **Corrupt / Stop (F7)** starts and stops a run, and **Keep This
+Moment (F8)** keeps the last 10-20 s (see *Kept moments*). Change them under **Options >
+Shortcuts…** (the lines starting *Corruption:*). Everything else (Back to Normal, Re-roll,
+More / Less Chaos, Mark Crash, Save Recipe) is a button.
 
 A recipe can also have **buttons**: its slots 1-9. The panel's **Buttons** section shows one
 button for each slot in use, named after what it does (*gravity off*, *jump +3*, a rule's

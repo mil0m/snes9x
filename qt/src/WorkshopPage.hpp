@@ -9,4 +9,5 @@ enum class WorkshopPage
     Rom,
     Safety,
     Sharing,
+    Moments, // #47; last, so saved page numbers keep their meaning
 };

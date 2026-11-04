@@ -68,6 +68,7 @@ static const char *shortcut_names[] =
     "EndRecordingMovie",
     "SeekToFrame",
     "CorruptionToggle",
+    "CorruptionKeep",
 };
 
 static const char *default_controller_keys[] =
@@ -128,6 +129,7 @@ static const char *default_controller_keys[] =
     "", //    eStopRecording
     "", //    eSeekToFrame
     "Keyboard F7", //    eCorruptionToggle
+    "Keyboard F8", //    eCorruptionKeep (#47)
 };
 
 const char **EmuConfig::getDefaultShortcutKeys()

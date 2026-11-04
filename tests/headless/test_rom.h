@@ -143,6 +143,18 @@ constexpr uint32_t kStill = 0x0061;    // LDA #$00's immediate
 constexpr uint32_t kInnocent = 0x0065; // the second LDA's immediate
 } // namespace freeze
 
+// Crash::None whose every frame depends on the pads, on a byte corruption writes and on the
+// ROM (#47): the NMI handler waits for the automatic pad read, adds pad 1's low byte into
+// $7E:0020 and folds its high byte into $21, adds $22 (what a rule writes) and the ROM byte
+// at $9000 into $23, and paints the backdrop from them. A kept moment that misses a pad, a
+// write or a ROM byte ends somewhere else.
+std::vector<uint8_t> build_pads();
+namespace pads
+{
+constexpr uint32_t kPadSum = 0x20, kPadFold = 0x21, kNoise = 0x22, kMix = 0x23; // WRAM
+constexpr uint32_t kRomByte = 0x1000; // $9000
+} // namespace pads
+
 // A main loop calling a function with a body worth changing (#58, #60): step adds 1 to a
 // counter with ADC #$01, counts every other frame past a BEQ, and calls a helper; another
 // near function is called beside it, for redirecting the helper's call.

@@ -110,6 +110,16 @@ std::vector<std::string> SessionControl::conflicts()
 }
 std::string SessionControl::me() { return CorruptionSession::playerName(); }
 
+void SessionControl::keepMoment() { session().keepMoment(); }
+std::vector<MomentInfo> SessionControl::moments() { return session().moments(); }
+std::string SessionControl::playMoment(const std::filesystem::path &path) { return session().playMoment(path); }
+void SessionControl::stopMoment() { session().stopMoment(); }
+std::string SessionControl::renameMoment(const std::filesystem::path &path, const std::string &name)
+{
+    return session().renameMoment(path, name);
+}
+std::string SessionControl::deleteMoment(const std::filesystem::path &path) { return session().deleteMoment(path); }
+
 RemoteState SessionControl::remote()
 {
     RemoteState r;

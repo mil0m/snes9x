@@ -13,6 +13,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
+#include <ctime>
 #include <fstream>
 #include <random>
 #include <sstream>
@@ -76,6 +77,13 @@ CorruptionSession &CorruptionSession::get()
 void CorruptionSession::frameHook()
 {
     auto &s = get();
+    if (s.checking)
+    {
+        // A kept moment checked unseen (#47): its own writes, nothing else's.
+        s.checker.in_hook(s.memory);
+        s.access.note_frame_start();
+        return;
+    }
     if (s.running_ahead)
     {
         // A frame of a run ahead (#52): betweenFrames already holds the lock, and only the
@@ -125,6 +133,9 @@ void CorruptionSession::betweenFrames()
         engine.set_active(false);
         rom.restore_clean();
         bool moment = !stay_here && control.has_anchor() && access.load_state(control.anchor());
+        if (moment)
+            recorder.cut("you went back to normal");
+        player.stop();
         guard.reset();
         instant.drop();
         at_normal = true;
@@ -144,6 +155,7 @@ void CorruptionSession::betweenFrames()
     auto caught = instant.after_frame(tracer.take_derail(), engine.current_frame(), access, rom_blame);
     if (caught)
     {
+        recorder.redo_frame(access.timeline()); // the frame is played again: recorded again (#47)
         auto entry = journal_entry(*caught);
         entry.recipe = engine.recipe().name;
         entry.seed = engine.recipe().seed;
@@ -158,6 +170,7 @@ void CorruptionSession::betweenFrames()
     auto started = control.between_frames(engine, access, &rom);
     if (started != RunControl::Started::Nothing)
     {
+        recorder.cut("the run started");
         at_normal = false;
         moment_on_disk = started == RunControl::Started::FromAnchor;
         pinChanged();
@@ -184,6 +197,8 @@ void CorruptionSession::betweenFrames()
     // The crash map collects this frame's writes before the guard can roll them back.
     crash_map.observe(engine.event_log(), engine.current_frame());
     auto out = guard.between_frames(engine, access);
+    if (out.kind != GuardOutcome::Nothing)
+        recorder.cut("the crash guard rolled back");
     rom.after_guard(out); // save states don't hold the ROM: undo its edits after the checkpoint
     // The instant revert watches while a run could change the ROM (the watch costs a little on
     // every instruction), and keeps the state the next frame starts from meanwhile.
@@ -272,6 +287,9 @@ void CorruptionSession::betweenFrames()
     }
     testAhead(); // last: it plays the next frame's ROM changes ahead from exactly here
     tryPending(); // and a change asked for in Change It (#78), from the same place
+    if (keep_pending)
+        keepPending(); // a moment kept (#47), checked from here
+    startPending();    // and one to play back, from the next frame
 }
 
 void CorruptionSession::tryPending()
@@ -290,9 +308,12 @@ void CorruptionSession::tryPending()
         hooks.end = [this] { tracer.note_jumps(true); };
     }
     running_ahead = true;
+    recorder.hold(true);
     auto result = try_change(try_runner, engine, rom, access, { code_map.mine().data(), code_map.mine().size() }, hooks,
                              c, kTryFrames, tracing);
     running_ahead = false;
+    recorder.hold(false);
+    recorder.accept(access.timeline()); // the try put everything back
     last_try = TriedChange{ ++tries_made, std::move(c), std::move(result) };
 }
 
@@ -305,8 +326,11 @@ void CorruptionSession::testAhead()
     hooks.begin = [this] { tracer.note_jumps(false); };
     hooks.end = [this] { tracer.note_jumps(true); };
     running_ahead = true;
+    recorder.hold(true);
     auto tested = ahead.before_frame(engine, rom, access, { code_map.mine().data(), code_map.mine().size() }, hooks);
     running_ahead = false;
+    recorder.hold(false);
+    recorder.accept(access.timeline()); // the runs ahead put everything back
     if (tested.summary.empty())
         return;
     note(tested.headline.empty() ? tested.summary : tested.headline, tested.summary);
@@ -318,6 +342,8 @@ void CorruptionSession::testAhead()
 void CorruptionSession::stateLoaded()
 {
     std::lock_guard lock(mutex);
+    recorder.cut("a saved state was loaded");
+    player.stop();
     guard.reset();
     instant.drop();
     call_log.forget_now(); // what ran a moment ago is from another moment of the game
@@ -387,6 +413,11 @@ void CorruptionSession::gameLoaded()
     std::lock_guard lock(mutex);
     game_loaded = true;
     game = current_game();
+    recorder.reset();
+    player.stop();
+    play_pending.reset();
+    keep_pending = false;
+    keep_news.clear();
     rom_name = std::filesystem::path(Memory.ROMFilename).stem().string();
     engine.hold_starts(true);
     engine.set_active(false);
@@ -580,6 +611,8 @@ void CorruptionSession::gameClosing()
     rom.game_closed();
     SnesCoreAccess::unwatch_resets();
     forgetPaint();
+    recorder.reset();
+    player.stop();
     game_loaded = false;
 }
 
@@ -953,6 +986,8 @@ void CorruptionSession::setActive(bool active)
 {
     std::lock_guard lock(mutex);
     engine.set_active(active && has_recipe && game_loaded && !blankLocked());
+    if (engine.active())
+        player.stop(); // corrupting again: the playback of a kept moment ends where it is
 }
 
 bool CorruptionSession::toggleActive()
@@ -960,6 +995,8 @@ bool CorruptionSession::toggleActive()
     std::lock_guard lock(mutex);
     bool on = !engine.active() && has_recipe && game_loaded && !blankLocked();
     engine.set_active(on);
+    if (on)
+        player.stop();
     if (!has_recipe)
         note("No recipe loaded");
     else if (!engine.active() && blankLocked())
@@ -1280,6 +1317,15 @@ CorruptionSession::Status CorruptionSession::status()
     s.message = message;
     s.message_detail = message_detail;
     s.rom_name = rom_name;
+    s.keep_seconds = recorder.frames_to_keep() / 60.0;
+    s.keep_pending = keep_pending;
+    s.keeps = keeps_made;
+    s.keep_news = keep_news;
+    s.keep_exact = keep_exact;
+    s.moment_playing = player.playing() || play_pending.has_value();
+    s.moment_at = player.frame() / 60.0;
+    s.moment_seconds = (play_pending ? play_pending->frames.size() : player.frames()) / 60.0;
+    s.moment_name = play_pending ? play_pending->name : player.current().name;
     return s;
 }
 
@@ -1459,6 +1505,7 @@ bool CorruptionSession::watchPaint()
         return false;
     }
     access.load_state(out.state);
+    recorder.cut("Paint's crash watch rolled back");
     paint_history.take_back(out.entry);
     guard.reset(); // its checkpoints may be from after the restore point
     instant.drop();
@@ -1754,6 +1801,229 @@ std::optional<TriedChange> CorruptionSession::lastTry()
     return last_try;
 }
 
+// ---------------------------------------------------------------- Kept moments (#47)
+
+namespace
+{
+std::string seconds_text(double s)
+{
+    char buf[32];
+    snprintf(buf, sizeof buf, "%.1f s", s);
+    return buf;
+}
+
+std::tm local_now()
+{
+    std::time_t now = std::time(nullptr);
+    std::tm tm{};
+#ifdef _WIN32
+    localtime_s(&tm, &now);
+#else
+    localtime_r(&now, &tm);
+#endif
+    return tm;
+}
+
+std::string local_time(const char *format)
+{
+    std::tm tm = local_now();
+    char buf[64];
+    std::strftime(buf, sizeof buf, format, &tm);
+    return buf;
+}
+
+// "4 Nov 21.13": a kept moment's default name ends with when.
+std::string short_stamp()
+{
+    std::tm tm = local_now();
+    return std::to_string(tm.tm_mday) + local_time(" %b %H.%M");
+}
+} // namespace
+
+void CorruptionSession::timeJumped(const std::string &why)
+{
+    std::lock_guard lock(mutex);
+    recorder.cut(why);
+    player.stop();
+}
+
+void CorruptionSession::beforeFrame()
+{
+    std::lock_guard lock(mutex);
+    if (!game_loaded)
+        return;
+    if (player.playing())
+    {
+        if (player.taken_over(access))
+        {
+            player.stop();
+            note("You took over: the game is yours from here");
+        }
+        else if (!player.before_frame(access, rom))
+        {
+            access.set_pads({}); // let go of the moment's buttons; yours come back as you press them
+            note("The kept moment is over: the game is yours from here");
+        }
+    }
+    recorder.before_frame(access, memory, rom.clean(), access.timeline());
+}
+
+void CorruptionSession::keepMoment()
+{
+    std::lock_guard lock(mutex);
+    if (!game_loaded)
+        return;
+    keep_pending = true;
+    if (is_paused && is_paused())
+        keepPending(); // the emulation thread is idle: at once, from the frame on screen
+}
+
+void CorruptionSession::keepPending()
+{
+    keep_pending = false;
+    auto m = recorder.take();
+    if (!m)
+    {
+        keep_exact = false;
+        keep_news = "Nothing to keep yet: the game has to run a moment first";
+        note(keep_news);
+        return;
+    }
+    m->game = game;
+    m->made_by = user_name();
+    m->made_at = local_time("%Y-%m-%d %H:%M:%S");
+    std::string what = rom_name;
+    if (has_recipe && !blankLocked())
+    {
+        m->recipe = recipeJson(engine.recipe());
+        m->recipe_name = engine.recipe().name;
+        m->seed = engine.recipe().seed;
+        what = m->recipe_name;
+    }
+    m->name = what + ", " + short_stamp();
+
+    // Checked before it's kept: played unseen from its keyframe, compared with the game now.
+    CheckHooks hooks;
+    bool tracing = tracer.tracing();
+    if (tracing)
+    {
+        hooks.flags = { code_map.mine().data(), code_map.mine().size() };
+        hooks.begin = [this] { tracer.note_jumps(false); };
+        hooks.end = [this] { tracer.note_jumps(true); };
+    }
+    checking = true;
+    recorder.hold(true);
+    auto check = check_moment(*m, checker, access, memory, rom.clean(), hooks);
+    checking = false;
+    recorder.hold(false);
+    recorder.accept(access.timeline());
+    if (tracing)
+        tracer.take_derail(); // the playback's landings happened already
+
+    std::string length = seconds_text(m->seconds());
+    if (library_root.empty())
+    {
+        keep_exact = false;
+        keep_news = "It can't be kept: there's no library. Pick one on the Workshop's Sharing page.";
+        note(keep_news);
+        return;
+    }
+    auto saved = Library(library_root).save_moment(game, *m);
+    if (!saved.error.empty())
+    {
+        keep_exact = false;
+        keep_news = "It couldn't be kept: " + saved.error;
+        note(keep_news);
+        return;
+    }
+    keeps_made++;
+    keep_exact = check.exact;
+    std::string since = m->starts.empty() ? std::string() : " (it starts where " + m->starts + ")";
+    if (check.exact)
+        keep_news = "Kept the last " + length + since + " as \u201c" + m->name + "\u201d: it plays back exactly.";
+    else if (!check.played)
+        keep_news = "Kept the last " + length + since + " as \u201c" + m->name + "\u201d, but it couldn't be checked: " +
+                    check.text;
+    else
+        keep_news = "Kept the last " + length + since + " as \u201c" + m->name + "\u201d, but it doesn't play back the same: " +
+                    check.text + " Play it to see how far it holds.";
+    note(check.exact ? "Kept the last " + length + ": it plays back exactly" : "Kept the last " + length + ", but it doesn't play back the same",
+         keep_news);
+    S9xSetInfoString(check.exact ? "Corruption: moment kept" : "Corruption: moment kept (it doesn't play back the same)");
+}
+
+void CorruptionSession::startPending()
+{
+    if (!play_pending)
+        return;
+    Moment m = std::move(*play_pending);
+    play_pending.reset();
+    engine.set_active(false); // a playback is what happened then, not the recipe now
+    guard.reset();
+    instant.drop();
+    std::string name = m.name;
+    recorder.cut("a kept moment started playing");
+    if (!player.start(std::move(m), access, rom, rom.clean()))
+    {
+        note("\u201c" + name + "\u201d didn't play: its saved state didn't load");
+        return;
+    }
+    at_normal = false;
+    note("Playing \u201c" + name + "\u201d: press any button to take over");
+}
+
+std::vector<MomentInfo> CorruptionSession::moments()
+{
+    std::lock_guard lock(mutex);
+    if (!game_loaded || library_root.empty())
+        return {};
+    return Library(library_root).list_moments(game);
+}
+
+std::string CorruptionSession::playMoment(const fs::path &path)
+{
+    std::lock_guard lock(mutex);
+    if (!game_loaded)
+        return "No game loaded";
+    std::ifstream in(path, std::ios::binary);
+    std::string bytes((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+    std::string error;
+    auto m = in || !bytes.empty() ? decode_moment(bytes, error) : std::nullopt;
+    if (!m)
+        return "It can't be played: " + (error.empty() ? std::string("it can't be read") : error);
+    if (!m->game.sha256.empty() && m->game.sha256 != game.sha256)
+        return "It was kept on another version of this game (" + (m->game.title.empty() ? m->game.sha256.substr(0, 8) : m->game.title) +
+               "), so it wouldn't play back the same";
+    play_pending = std::move(*m);
+    return {};
+}
+
+void CorruptionSession::stopMoment()
+{
+    std::lock_guard lock(mutex);
+    if (play_pending)
+        play_pending.reset();
+    if (player.playing())
+    {
+        player.stop();
+        note("Stopped the playback: the game is yours from here");
+    }
+}
+
+std::string CorruptionSession::renameMoment(const fs::path &path, const std::string &name)
+{
+    std::lock_guard lock(mutex);
+    if (name.empty())
+        return "A moment needs a name";
+    return Library(library_root).rename_moment(path, name).error;
+}
+
+std::string CorruptionSession::deleteMoment(const fs::path &path)
+{
+    std::lock_guard lock(mutex);
+    return Library(library_root).delete_moment(path);
+}
+
 std::string CorruptionSession::keepChange(const Change &c)
 {
     std::lock_guard lock(mutex);
@@ -2031,7 +2301,12 @@ std::string CorruptionSession::exportRom(const fs::path &path)
 void CorruptionSession::onFrame()
 {
     std::lock_guard lock(mutex);
-    engine.on_frame(rom);
+    recorder.hook_begin();
+    if (player.playing())
+        player.in_hook(rom); // a kept moment playing back writes what was written then (#47)
+    else
+        engine.on_frame(rom);
+    recorder.hook_end();
     access.note_frame_start();
     if (++frames_since_check >= kBackupCheckFrames)
     {
