@@ -967,7 +967,7 @@ MomentsPage::MomentsPage(CorruptionControl &control, ExploreRunner *runner, QWid
         explore_button->setLayoutDirection(Qt::RightToLeft);
         explore_button->setToolTip(tr("Play this moment again and again in the background, unseen and much faster than "
                                       "real time, each time with a different corruption and your own button presses, and "
-                                      "keep the ones that look most changed while still running. About 6,000 tries an "
+                                      "keep the ones that look most changed while still running. About 4,000 tries an "
                                       "hour; the Explored page shows what it finds."));
         row->addWidget(explore_button);
     }
@@ -1035,9 +1035,9 @@ MomentsPage::MomentsPage(CorruptionControl &control, ExploreRunner *runner, QWid
                 QString text;
                 double minutes;
             };
-            for (auto c : { Choice{ tr("For 10 Minutes (about 1,000 tries)"), 10 },
-                            Choice{ tr("For an Hour (about 6,000 tries)"), 60 },
-                            Choice{ tr("Overnight (8 hours, about 50,000 tries)"), 480 } })
+            for (auto c : { Choice{ tr("For 10 Minutes (about 700 tries)"), 10 },
+                            Choice{ tr("For an Hour (about 4,000 tries)"), 60 },
+                            Choice{ tr("Overnight (8 hours, about 30,000 tries)"), 480 } })
             {
                 auto action = menu.addAction(c.text);
                 connect(action, &QAction::triggered, this, [this, say, m, c] {

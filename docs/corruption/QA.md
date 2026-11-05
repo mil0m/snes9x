@@ -857,7 +857,7 @@ Removed on 2026-11-01: it didn't pay off (see FEATURES.md, *Tried and removed*).
 
 ## 56. Explore a moment (#45, #46)
 1. Keep a moment while playing (F8), then open the Workshop's **Moments** page and pick it.
-   - [ ] **Explore** sits beside Play; hovering explains it (about 6,000 tries an hour).
+   - [ ] **Explore** sits beside Play; hovering explains it (about 4,000 tries an hour).
 2. Press **Explore** and choose **For 10 Minutes**.
    - [ ] The message says it's exploring in the background; the game keeps running smoothly.
    - [ ] The sidebar shows *exploring* beside **Explored**.

@@ -138,8 +138,9 @@ from that same play.
   Start and Select out. The lead-in still presses them, so the game gets going.
 
 **Speed.** About 1.9 s per 20 s variant in the test build, which is unoptimized. The optimized
-explorer the app runs takes **0.55 s: about 6,000 variants an hour in one process**, so around
-50,000 a night. The results are the same in both builds.
+explorer the app runs takes **0.55-0.9 s: 4,000-6,000 variants an hour in one process**
+(the ram family aimed at busy WRAM is the slow end), so 30,000-50,000 a night. The results
+are the same in both builds.
 
 **Survival is high; visible change is the hard part.** 92-99% of variants kept running for
 20 s. In the first run only the game-aware families changed anything you could see:

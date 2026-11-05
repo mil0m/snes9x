@@ -802,6 +802,6 @@ TEST_CASE("Moments: Explore starts the explorer on the picked moment (#45)")
     auto explore = child<QPushButton>(page, "explore_moment");
     CHECK(explore->isVisibleTo(&page));
     CHECK(explore->isEnabled());
-    CHECK(explore->toolTip().contains("6,000 tries an hour"));
+    CHECK(explore->toolTip().contains("4,000 tries an hour"));
     f.workshop.close();
 }

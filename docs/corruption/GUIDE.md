@@ -117,7 +117,7 @@ library. Newest are first.
 
 Found a moment you like? On the Moments page, pick it and press **Explore**, then choose how
 long: 10 minutes, an hour, or overnight. The explorer plays that moment again and again in
-the background, unseen and much faster than real time (about 6,000 tries an hour). Each try
+the background, unseen and much faster than real time (about 4,000 tries an hour). Each try
 uses a different corruption, and your own button presses, so the only difference is the
 corruption. You can keep playing meanwhile; it runs at low priority.
 
