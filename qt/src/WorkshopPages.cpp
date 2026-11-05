@@ -1,6 +1,7 @@
 #include "WorkshopPages.hpp"
 #include <QPixmap>
 #include <QMenu>
+#include "ExploreCharts.hpp"
 #include "ExploreRunner.hpp"
 #include "IntensitySlider.hpp"
 #include "RecipeActions.hpp"
@@ -1273,6 +1274,12 @@ ExploredPage::ExploredPage(CorruptionControl &control, ExploreRunner &runner, QW
     message->setObjectName("explored_message");
     message->hide();
     layout->addWidget(message);
+    // What it did (#80): which kinds worked, how the scores spread, when the finds came.
+    charts_heading = ui::heading(tr("What it did"), this);
+    charts_heading->setObjectName("explored_charts_heading");
+    layout->addWidget(charts_heading);
+    charts = new ExploreCharts(this);
+    layout->addWidget(charts);
     layout->addStretch(0);
 
     confirm = [this](const QString &title, const QString &question) {
@@ -1410,6 +1417,10 @@ void ExploredPage::showExploration()
     table->resizeColumnToContents(3);
     fitTable(table);
     bool any = e && !e->exploration.candidates.empty();
+    if (e)
+        charts->setExploration(e->exploration);
+    charts_heading->setVisible(e != nullptr);
+    charts->setVisible(e != nullptr);
     table->setVisible(any);
     actions_row->setVisible(e != nullptr);
     if (any)

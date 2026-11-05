@@ -182,6 +182,8 @@ list(APPEND QT_GUI_SOURCES
     src/Workshop.cpp
     src/WorkshopPages.cpp
     src/ExploreRunner.cpp
+    src/ExploreCharts.cpp
+    src/ExploreCharts.hpp
     src/ExploreRunner.hpp
     src/GuideWindow.cpp
     src/UiKit.cpp

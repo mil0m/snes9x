@@ -402,6 +402,11 @@ int main(int argc, char **argv)
             e.variants = tried;
             e.alive += s.alive;
             e.visible += s.alive && s.different >= kVisible;
+            e.tried.push_back({ v.family,
+                                !s.alive                    ? Tried::Stopped
+                                : s.different >= kVisible   ? Tried::Visible
+                                                            : Tried::Unchanged,
+                                float(s.score) });
             bool worth = s.alive && s.score >= kMinScore && kept_moment &&
                          (e.candidates.size() < keep || s.score > e.candidates.back().score.score);
             if (worth)

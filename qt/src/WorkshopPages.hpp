@@ -18,6 +18,7 @@ class QListWidget;
 class QPushButton;
 class QTableWidget;
 class QTableWidgetItem;
+class ExploreCharts;
 class ExploreRunner;
 class RecipeActions;
 class SurvivorsPanel;
@@ -203,6 +204,8 @@ class ExploredPage : public QWidget
     QWidget *actions_row;
     QPushButton *play_button, *keep_button, *gallery_button, *delete_button, *folder_button;
     ui::StatusLine *message;
+    QWidget *charts_heading;
+    ExploreCharts *charts; // #80
     int ticks = 0;
     unsigned shown_tried = UINT_MAX;
     std::string shown_game;

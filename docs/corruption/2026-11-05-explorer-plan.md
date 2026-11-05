@@ -244,3 +244,60 @@ look like nothing.
 **Not done:** the gallery isn't published anywhere by the app: it's a file to open or send.
 Keep as Recipe doesn't carry ROM changes the starting moment already had (its candidate's
 moment does). Families stay one change each; stacking two good finds is an idea for later.
+
+## Follow-up (5 Nov, roadmap #80): seeing what an exploration did
+
+Mikael: *shouldn't we have a way to visualise these summaries?* The Explored page and the
+gallery say "671 variants, 539 kept running, 222 visibly changed" and list the best 24. That
+leaves the useful questions unanswered. Three charts, in the app and in the gallery, each
+answering one:
+
+1. **What each kind did.** One horizontal bar per family (code, kill, swap, ...), split into
+   three: *stopped* (crashed or froze), *ran, nothing showed*, *visibly changed*. Shares of its
+   own tries, so a kind tried 90 times compares with one tried 100 times. Sorted by the
+   visible share, best first. The count kept as candidates is printed at the end. This tells
+   what works on this game: on Goof the code family, on Pocky kill and swap as well.
+2. **How the scores spread.** A histogram of the scores of the tries that visibly changed
+   something, in bins that widen as they go up (0-0.05, 0.05-0.1, ... 1-1.5, 1.5-2, 2-3, 3+),
+   with the keep line at 0.3. Bins above it are in the accent colour, below it in grey (one
+   hue plus grey: the point is above or below the line). Tries that changed nothing score 0
+   and are counted in the caption, not drawn: they would dwarf every other bar.
+3. **When the good finds turned up.** Every try that scored 0.3 or more, as a dot at (its
+   number in the run, its score), with a step line for the best score so far. One axis (the
+   score), so no second scale. A cloud that keeps rising to the right says longer runs pay
+   off; a flat line after the first few hundred says this scene is played out.
+
+**The data.** `candidates.json` gains `tried`: one entry per variant, its family, outcome
+(stopped, unchanged, visible) and score, in the order tried: `[family, outcome, score ×
+1000]`, about 12 bytes each, 600 KB for a night. Files from before have no `tried`. They
+get chart 1 from the family totals they already hold, and the other two are left out with a
+line saying why.
+
+**Where the numbers come from.** `corrupt/exploration`'s `stats_of(Exploration)` is pure and
+tested. The Qt page draws it with QPainter in the palette's colours (the house rule: no fixed
+colours), with a tooltip per bar and dot. The gallery draws the same in inline SVG, with
+theme tokens and a `<title>` per mark.
+
+**Done when:** stats_of is tested on a fake exploration and an old file; the page shows the
+charts in the widget tests and the tour (with a real exploration); the gallery shows them in
+light and dark at phone width; the chart colours pass the dataviz validator.
+
+### How it went (#80)
+
+Built as planned. The colours were checked with the dataviz validator before use. The two
+hues, blue for *visibly changed* and orange for *stopped*, pass every check in light and dark
+(the nearest pair is ΔE 24.7 for colour-blind readers, 33.6 for everyone else). *Nothing
+showed* is a recessive grey, with a legend, end labels and the table beside it, so colour is
+never the only way to read a bar. In the app the charts are drawn from the palette: the
+highlight colour, the warning tone and greys mixed from the window and text colours.
+
+On a 4-minute exploration of Pocky's temple (430 tries), the charts said what the totals
+couldn't:
+- ROM data changes and pointer swaps showed most often (48% and 44%). Code changes found the
+  most keepers (11) but stopped the game about half the time.
+- Most visible changes scored between 0.5 and 1.5.
+- Strong finds kept turning up to the very end, so this moment wasn't played out after 4
+  minutes.
+
+The gallery renders in light and dark, and at 390 px it doesn't scroll sideways; on a phone
+the SVG text gets small, and the table under the first chart carries the numbers.

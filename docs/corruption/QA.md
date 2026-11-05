@@ -874,5 +874,8 @@ Removed on 2026-11-01: it didn't pay off (see FEATURES.md, *Tried and removed*).
    - [ ] The gallery opens in the browser: every candidate's pictures and recipe, in light and dark.
 8. Delete the exploration (bin, confirm).
    - [ ] It's gone from the list and from the game's `explored` folder; the recipe you kept stays.
-9. On a quiet moment (nothing moving), explore for 10 minutes.
+9. Below the candidates, look at **What it did**.
+   - [ ] Three charts: a bar per kind (blue visibly changed, grey nothing showed, orange stopped), a histogram with the keep line, and dots over time with a best-so-far line.
+   - [ ] Hovering a bar or a dot shows its numbers. The gallery has the same charts, in light and dark.
+10. On a quiet moment (nothing moving), explore for 10 minutes.
    - [ ] Few or no candidates, rather than many that look like the moment.

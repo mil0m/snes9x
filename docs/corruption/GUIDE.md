@@ -142,6 +142,17 @@ each one's run:
   to look through or send.
 - **Stop Exploring** stops early and keeps what it found so far.
 
+Under the candidates, **What it did** shows three charts (the gallery has them too). Hover
+over a bar or a dot for its numbers.
+- **What each kind did**: for each kind of change (code, kill, swap...), how often it stopped
+  the game, ran without showing anything, or visibly changed something. It tells you what
+  works on this game.
+- **How the scores spread**: the scores of the tries that visibly changed something, with the
+  line a try has to clear to be kept.
+- **When the good finds turned up**: each strong try, by when it was tried, and the best so
+  far. Dots that keep rising to the right mean a longer exploration would likely find more; a
+  flat line means this moment is played out.
+
 Explorations live in the library (`explored/` in the game's folder), so a friend sharing it
 sees yours.
 

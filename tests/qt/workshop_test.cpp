@@ -4,6 +4,7 @@
 #include "MemoryViewer.hpp"
 #include "RecipeActions.hpp"
 #include "UiKit.hpp"
+#include "ExploreCharts.hpp"
 #include "ExploreRunner.hpp"
 #include "Workshop.hpp"
 #include "WorkshopPages.hpp"
@@ -720,6 +721,11 @@ TEST_CASE("Explored (#46): an exploration's candidates, best first, with their p
         e.candidates.push_back(c);
     }
     std::ofstream(dir / "gallery.html") << "<html></html>";
+    // Every try (#80): 40 kill and code tries, the candidates among them.
+    for (uint32_t i = 0; i < 45; i++)
+        e.tried.push_back({ i % 2 ? Family::Code : Family::Kill,
+                            i % 5 == 0 ? Tried::Stopped : i % 3 == 0 ? Tried::Visible : Tried::Unchanged,
+                            i % 3 == 0 && i % 5 ? float(0.2 + i * 0.03) : 0.f });
     f.control.exploration_list = { { dir, e } };
     page.reload();
     auto table = child<QTableWidget>(page, "candidates");
@@ -737,6 +743,19 @@ TEST_CASE("Explored (#46): an exploration's candidates, best first, with their p
     CHECK(!strip->pixmap().isNull());
     CHECK(child<QLabel>(page, "candidate_details")->text().contains("plays back exactly"));
     CHECK(child<QPushButton>(page, "open_gallery")->isEnabled());
+    // What it did (#80).
+    auto charts = static_cast<ExploreCharts *>(page.findChild<QWidget *>("explore_charts"));
+    REQUIRE(charts);
+    CHECK(charts->isVisibleTo(&page));
+    CHECK(charts->stats().detailed);
+    CHECK(charts->stats().kinds.size() == 2);
+    CHECK(charts->heightForWidth(600) > 300);
+    charts->resize(600, charts->heightForWidth(600));
+    CHECK(charts->tipAt(QPoint(4, 22 + 20 + 8)).contains("tries"));    // the first kind's row
+    CHECK(charts->tipAt(QPoint(4, 22 + 20 + 8)).contains("kept"));
+    CHECK(charts->tipAt(QPoint(599, 5)).isEmpty());                   // the title: nothing
+    if (auto shots = qgetenv("CORRUPT_SHOTS_DIR"); !shots.isEmpty())
+        charts->grab().save(QString::fromLocal8Bit(shots) + "/explore-charts.png");
     f.shot("workshop-explored");
 
     table->selectRow(1);

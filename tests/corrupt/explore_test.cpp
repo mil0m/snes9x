@@ -518,4 +518,114 @@ TEST_SUITE("the headless explorer (#45)")
         CHECK(!lib.delete_exploration(root).empty()); // not an exploration's folder
         fs::remove_all(root);
     }
+
+    TEST_CASE("what the charts show (#80): each kind's outcomes, the scores' spread, when the finds turned up")
+    {
+        Exploration e;
+        e.variants = 12;
+        // In the order tried: code finds two good ones, kill one, ram changes nothing much.
+        e.tried = {
+            { Family::Code, Tried::Visible, 0.10f },  { Family::Kill, Tried::Stopped, 0 },
+            { Family::Ram, Tried::Unchanged, 0 },     { Family::Code, Tried::Visible, 1.20f },
+            { Family::Kill, Tried::Visible, 0.40f },  { Family::Ram, Tried::Unchanged, 0 },
+            { Family::Code, Tried::Stopped, 0 },      { Family::Kill, Tried::Unchanged, 0 },
+            { Family::Ram, Tried::Visible, 0.02f },   { Family::Code, Tried::Visible, 2.50f },
+            { Family::Kill, Tried::Stopped, 0 },      { Family::Ram, Tried::Unchanged, 0 },
+        };
+        Candidate a, b;
+        a.id = 9;
+        a.family = b.family = Family::Code;
+        a.score.score = 2.5;
+        b.id = 3;
+        b.score.score = 1.2;
+        e.candidates = { a, b };
+        auto st = stats_of(e);
+        CHECK(st.detailed);
+        CHECK(st.tried == 12);
+        REQUIRE(st.kinds.size() == 3);
+        CHECK(st.kinds[0].family == Family::Code); // 3 of 4 visible
+        CHECK(st.kinds[0].visible == 3);
+        CHECK(st.kinds[0].stopped == 1);
+        CHECK(st.kinds[0].kept == 2);
+        CHECK(st.kinds[1].family == Family::Ram); // 1 of 4 visible, like kill, but it never stopped
+        CHECK(st.kinds[2].family == Family::Kill);
+        CHECK(st.kinds[2].stopped == 2);
+        CHECK(st.kinds[2].unchanged == 1);
+        CHECK(st.zero_scores == 4); // ran and changed nothing
+        uint32_t binned = 0;
+        for (auto &bin : st.bins)
+        {
+            binned += bin.count;
+            CHECK(bin.kept_side == (bin.lo >= kMinScore));
+        }
+        CHECK(binned == 5); // the visible ones
+        auto bin_of = [&](double v) {
+            for (auto &bin : st.bins)
+                if (v >= bin.lo && v < bin.hi)
+                    return bin;
+            return ScoreBin{};
+        };
+        CHECK(bin_of(2.5).count == 1);
+        CHECK(bin_of(0.02).count == 1);
+        REQUIRE(st.finds.size() == 3); // at or above the keep line
+        CHECK(st.finds[0].at == 3);
+        CHECK(st.finds[0].kept);
+        CHECK(st.finds[1].at == 4);
+        CHECK(!st.finds[1].kept); // 0.4 isn't among the candidates now
+        CHECK(st.finds[2].at == 9);
+        // The best so far: where it rose.
+        REQUIRE(st.best.size() == 3);
+        CHECK(st.best[0].first == 0);
+        CHECK(st.best[0].second == doctest::Approx(0.1).epsilon(1e-6));
+        CHECK(st.best[1].first == 3);
+        CHECK(st.best[2].first == 9);
+
+        // The file keeps them.
+        std::string error;
+        auto back = decode_exploration(encode_exploration(e), error);
+        REQUIRE(back);
+        REQUIRE(back->tried.size() == 12);
+        CHECK(back->tried[3].family == Family::Code);
+        CHECK(back->tried[3].outcome == Tried::Visible);
+        CHECK(back->tried[3].score == doctest::Approx(1.2f));
+        CHECK(back->tried[1].outcome == Tried::Stopped);
+
+        // An older file: no tries, the kinds from the family totals, nothing else.
+        Exploration old;
+        old.variants = 100;
+        old.families[size_t(Family::Swap)] = { 50, 45, 10 };
+        old.families[size_t(Family::Kill)] = { 50, 40, 20 };
+        auto os = stats_of(old);
+        CHECK(!os.detailed);
+        REQUIRE(os.kinds.size() == 2);
+        CHECK(os.kinds[0].family == Family::Kill);
+        CHECK(os.kinds[0].stopped == 10);
+        CHECK(os.kinds[0].unchanged == 20);
+        CHECK(os.kinds[0].visible == 20);
+        CHECK(os.bins.empty());
+        CHECK(os.finds.empty());
+    }
+
+    TEST_CASE("the gallery draws the charts (#80): one mark per bar and find, each with its numbers")
+    {
+        Exploration e;
+        e.game.title = "POCKY ROCKY";
+        e.moment = "Temple";
+        e.variants = 3;
+        e.tried = { { Family::Code, Tried::Visible, 1.5f }, { Family::Kill, Tried::Stopped, 0 },
+                    { Family::Ram, Tried::Unchanged, 0 } };
+        auto html = gallery_html(e, [](const std::string &) { return std::nullopt; });
+        CHECK(html.find("<svg") != std::string::npos);
+        CHECK(html.find("What each kind did") != std::string::npos);
+        CHECK(html.find("<title>code: 1 tried, 1 visibly changed") != std::string::npos);
+        CHECK(html.find("When the good finds turned up") != std::string::npos);
+        CHECK(html.find("<title>#1 (code): score 1.50") != std::string::npos);
+        // An older file says why two charts are missing.
+        Exploration old = e;
+        old.tried.clear();
+        old.families[size_t(Family::Code)] = { 1, 1, 1 };
+        auto older = gallery_html(old, [](const std::string &) { return std::nullopt; });
+        CHECK(older.find("What each kind did") != std::string::npos);
+        CHECK(older.find("explored before the explorer kept every try") != std::string::npos);
+    }
 }
