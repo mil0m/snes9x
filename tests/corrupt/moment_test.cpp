@@ -3,6 +3,7 @@
 #include "corrupt/library.h"
 #include "corrupt/moment.h"
 
+#include <algorithm>
 #include <filesystem>
 #include <fstream>
 
@@ -131,6 +132,44 @@ struct Rig
     }
     MomentCheck check(const Moment &m) { return check_moment(m, player, game, mem, clean); }
 };
+
+// The crash guard's part between frames (#79): a mark every frame, after any writes made
+// before it there; a checkpoint is the game then, and the ROM (the state doesn't hold it).
+struct Checkpoint
+{
+    uint64_t frame = 0;
+    std::vector<uint8_t> state, rom;
+};
+
+void play_marked(Rig &rig, int n)
+{
+    for (int i = 0; i < n; i++)
+    {
+        rig.step();
+        if (rig.frame % 29 == 0)
+            rig.recorded.write(Target::WRAM, 8, uint8_t(rig.rng())); // before the guard's turn
+        rig.rec.mark(rig.frame);
+    }
+}
+
+Checkpoint checkpoint(Rig &rig)
+{
+    return { rig.frame, rig.game.save_state(), rig.mem.of(Target::ROM) };
+}
+
+// Back to the checkpoint, as the guard does: the state loaded, and the ROM bytes that differ
+// from then put back through the recorder (all of them, or only those at `undo`).
+bool roll_back(Rig &rig, const Checkpoint &cp, std::vector<uint32_t> undo = {})
+{
+    rig.game.load_state(cp.state);
+    bool kept = rig.rec.back_to(cp.frame, rig.game.timeline(), "the crash guard rolled back");
+    auto &r = rig.mem.of(Target::ROM);
+    for (uint32_t i = 0; i < r.size(); i++)
+        if (r[i] != cp.rom[i] && (undo.empty() || std::find(undo.begin(), undo.end(), i) != undo.end()))
+            rig.recorded.write(Target::ROM, i, cp.rom[i]);
+    rig.frame = cp.frame;
+    return kept;
+}
 
 } // namespace
 
@@ -271,6 +310,96 @@ TEST_SUITE("keep a golden moment")
         REQUIRE(m);
         CHECK(m->starts.empty());
         CHECK(m->frames.size() == 670); // nothing lost, nothing doubled
+        auto c = rig.check(*m);
+        CHECK_MESSAGE(c.exact, c.text);
+    }
+
+    TEST_CASE("a crash-guard rollback keeps the history before its checkpoint (#79)")
+    {
+        Rig rig;
+        play_marked(rig, 783); // 783: a write before the guard's turn, which the checkpoint holds
+        auto cp = checkpoint(rig);
+        // After the guard's turn, before the next frame: lost to the load (WRAM), or not (ROM).
+        rig.recorded.write(Target::WRAM, 8, 0x77);
+        rig.recorded.write(Target::ROM, 0x11, 0x55);
+        play_marked(rig, 100); // ROM writes in the hooks at 800 and 850
+        CHECK(roll_back(rig, cp, { 0x10 })); // only 0x10 goes back: 0x11 stands, as RomKeeper leaves edits of the checkpoint's own frame
+        play_marked(rig, 400);
+        auto m = rig.rec.take();
+        REQUIRE(m);
+        CHECK(m->frames.size() == 1183); // from the keyframe at 0: nothing cut
+        CHECK(m->starts.empty());
+        auto c = rig.check(*m);
+        CHECK_MESSAGE(c.exact, c.text);
+        rig.rec.accept(rig.game.timeline()); // the check's loads put everything back
+        // Every ROM byte back too.
+        auto cp2 = checkpoint(rig);
+        play_marked(rig, 60);
+        CHECK(roll_back(rig, cp2));
+        play_marked(rig, 10);
+        m = rig.rec.take();
+        REQUIRE(m);
+        CHECK(m->frames.size() == 1193); // the keyframe at 1200 is gone with the timeline it was of
+        c = rig.check(*m);
+        CHECK_MESSAGE(c.exact, c.text);
+    }
+
+    TEST_CASE("a rollback past a keyframe drops it; one past every keyframe, or to a mark that's gone, is a cut (#79)")
+    {
+        Rig rig;
+        play_marked(rig, 590);
+        auto cp = checkpoint(rig);
+        play_marked(rig, 120); // a keyframe at 600, of the timeline that crashed
+        CHECK(roll_back(rig, cp));
+        play_marked(rig, 100);
+        auto m = rig.rec.take();
+        REQUIRE(m);
+        CHECK(m->frames.size() == 690); // from 0; the keyframe at 600 was taken again
+        CHECK(rig.check(*m).exact);
+
+        // A mark older than the history: a cut.
+        Rig old;
+        play_marked(old, 10);
+        auto gone = checkpoint(old);
+        play_marked(old, 2500); // the history starts at 1200 now
+        CHECK(!roll_back(old, gone));
+        CHECK(!old.rec.take());
+        play_marked(old, 5);
+        m = old.rec.take();
+        REQUIRE(m);
+        CHECK(m->frames.size() == 5);
+        CHECK(m->starts == "the crash guard rolled back");
+        CHECK(old.check(*m).exact);
+
+        // Back to before the first keyframe (a mark nothing was recorded for): a cut.
+        Rig early;
+        early.rec.mark(0);
+        auto start = checkpoint(early);
+        play_marked(early, 50);
+        CHECK(!roll_back(early, start));
+        play_marked(early, 5);
+        CHECK(early.rec.take()->frames.size() == 5);
+    }
+
+    TEST_CASE("a frame number marked again (the core stuck mid-frame) goes back to the newest mark (#79)")
+    {
+        Rig rig;
+        play_marked(rig, 700);
+        // The engine's frame stands still for three frames: the guard's newest checkpoint of it wins.
+        Checkpoint cp;
+        for (int i = 0; i < 3; i++)
+        {
+            rig.step();
+            rig.frame = 700;
+            rig.rec.mark(700);
+            cp = checkpoint(rig);
+        }
+        play_marked(rig, 50);
+        CHECK(roll_back(rig, cp));
+        play_marked(rig, 30);
+        auto m = rig.rec.take();
+        REQUIRE(m);
+        CHECK(m->frames.size() == 703 + 30);
         auto c = rig.check(*m);
         CHECK_MESSAGE(c.exact, c.text);
     }

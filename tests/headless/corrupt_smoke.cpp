@@ -2271,6 +2271,7 @@ struct KeepTotals
     double ms_drawn = 0, ms_plain = 0, seconds = 0;
     size_t raw = 0, state = 0;
     int caught = 0, reverts = 0, tested = 0;
+    int kept_across = 0, across = 0, across_exact = 0; // #79
 };
 
 void keep_seed(const Recipe &recipe, int frames, const CodeMap &learned, const std::vector<uint8_t> &start,
@@ -2315,6 +2316,9 @@ void keep_seed(const Recipe &recipe, int frames, const CodeMap &learned, const s
     std::map<uint64_t, std::vector<uint8_t>> live_after; // the core's state after the first frames after a cut
     std::map<uint64_t, std::map<std::string, std::vector<uint8_t>>> live_globals; // at each keyframe after a cut
     std::map<uint64_t, bool> live_drawn;
+    // #79: a rollback keeps the history before its checkpoint (CORRUPT_KEEP_CUT=1: it cuts, as #47 did).
+    bool keep_across = !getenv("CORRUPT_KEEP_CUT");
+    std::vector<uint64_t> rolled_back_at; // the recorder's frames the history went back to
     std::mt19937 input{ uint32_t(input_seed) };
     Pads pads{};
     int hold_for = 0;
@@ -2351,8 +2355,20 @@ void keep_seed(const Recipe &recipe, int frames, const CodeMap &learned, const s
         }
         blame.collect(engine.current_frame());
         auto out = guard.between_frames(engine, access);
+        if (guard.took_checkpoint())
+            recorder.mark(engine.current_frame());
         if (out.kind != GuardOutcome::Nothing)
-            recorder.cut("the crash guard rolled back");
+        {
+            if (keep_across && recorder.back_to(out.restored_frame, access.timeline(), "the crash guard rolled back"))
+            {
+                k.kept_across++;
+                while (!rolled_back_at.empty() && rolled_back_at.back() >= recorder.frames_begun())
+                    rolled_back_at.pop_back();
+                rolled_back_at.push_back(recorder.frames_begun());
+            }
+            else
+                recorder.cut("the crash guard rolled back");
+        }
         rom.after_guard(out);
         if (out.kind != GuardOutcome::Nothing)
         {
@@ -2383,6 +2399,9 @@ void keep_seed(const Recipe &recipe, int frames, const CodeMap &learned, const s
             m->game = { Memory.ROMName, "", "" };
             k.kept++;
             k.seconds += m->seconds();
+            bool across = std::any_of(rolled_back_at.begin(), rolled_back_at.end(),
+                                      [&](uint64_t r) { return r > m->from && r <= m->from + m->frames.size(); });
+            k.across += across;
             if (m->frames.size() < recorder.config().lead)
             {
                 k.short_ones++;
@@ -2428,6 +2447,7 @@ void keep_seed(const Recipe &recipe, int frames, const CodeMap &learned, const s
             recorder.accept(access.timeline());
             tracer.take_derail(); // the playback's, which happened already
             k.exact_drawn += drawn.exact;
+            k.across_exact += across && plain.exact;
             k.exact_plain += plain.exact;
             k.ms_drawn += drawn.ms;
             k.ms_plain += plain.ms;
@@ -2490,8 +2510,8 @@ void keep_seed(const Recipe &recipe, int frames, const CodeMap &learned, const s
                 recorder.accept(access.timeline());
             }
             if (verbose || !drawn.exact)
-                printf("    frame %5d  kept %.1f s%s%s: drawn %s (%.0f ms), plain %s (%.0f ms)%s%s\n", i + 1,
-                       m->seconds(), m->starts.empty() ? "" : ", from where ", m->starts.c_str(),
+                printf("    frame %5d  kept %.1f s%s%s%s: drawn %s (%.0f ms), plain %s (%.0f ms)%s%s\n", i + 1,
+                       m->seconds(), m->starts.empty() ? "" : ", from where ", m->starts.c_str(), across ? ", across a rollback" : "",
                        drawn.exact ? "exact" : "DRIFTS", drawn.ms, plain.exact ? "exact" : "drifts", plain.ms,
                        drawn.exact ? "" : ": ", drawn.exact ? "" : drawn.text.c_str());
         }
@@ -2538,6 +2558,8 @@ int run_keep(const Recipe &recipe, int frames, int seeds)
            k.seconds / k.kept, k.short_ones, k.none);
     for (auto &[why, n] : k.starts)
         printf("  short: %-40s %d\n", why.c_str(), n);
+    printf("across   %d rollbacks kept the history before them; %d moments span one, %d of those exact (not drawing)\n",
+           k.kept_across, k.across, k.across_exact);
     printf("exact    %d of %d drawing the frames (%.0f ms a check), %d of %d not drawing (%.0f ms)\n", k.exact_drawn,
            k.kept, k.ms_drawn / k.kept, k.exact_plain, k.kept, k.ms_plain / k.kept);
     for (auto &[t, n] : k.differ)

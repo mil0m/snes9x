@@ -156,6 +156,8 @@ class CrashGuard
     void reset(); // forget checkpoints and counts, e.g. for a new recipe
 
     size_t checkpoint_count() const { return ring.size(); }
+    // Whether the last between_frames() took a checkpoint (a kept moment marks where, #79).
+    bool took_checkpoint() const { return checkpointed; }
     // Crashes per rule, in the engine's current rule order. Kept by rule id, so they
     // follow a rule through edits; a replaced rule starts at 0.
     std::vector<unsigned> rule_crashes(const Engine &engine) const;
@@ -190,6 +192,7 @@ class CrashGuard
     unsigned fruitless = 0; // of those, the ones nothing was fixed for good in
     unsigned total = 0;
     bool manual_pending = false;
+    bool checkpointed = false;
 };
 
 } // namespace corrupt

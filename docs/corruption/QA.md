@@ -848,7 +848,8 @@ Removed on 2026-11-01: it didn't pay off (see FEATURES.md, *Tried and removed*).
 7. Rename the moment (pencil, type, Enter), then delete it (bin, confirm).
    - [ ] The file in the game's `moments` folder (folder button) follows both.
 8. With a crash-prone recipe (*ROM code drip*), keep a few moments after the crash guard has rolled back.
-   - [ ] Each says *plays back exactly*; Play shows the same crash-and-recover you saw.
+   - [ ] Each says *plays back exactly* and is still 10-20 s long: a rollback doesn't shorten it (#79).
+   - [ ] Play shows the game going on from before the crash, without the crash and the jump back.
 9. Pause the game (Emulation > Pause) and press F8.
    - [ ] It keeps at once, from the frame on screen.
 10. Copy a moment's file to Erik's library (or open the shared library on another machine) and Play it there.

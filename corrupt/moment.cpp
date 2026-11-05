@@ -33,6 +33,7 @@ void MomentRecorder::reset()
     keys.clear();
     frames.clear();
     pending.clear();
+    marks.clear();
     first = now = 0;
     seen.reset();
     cut_due = true;
@@ -66,6 +67,7 @@ void MomentRecorder::before_frame(CoreAccess &core, const MemoryAccess &mem, std
         keys.clear();
         frames.clear();
         pending.clear();
+        marks.clear();
         first = now;
     }
     if (keys.empty() || now - keys.back().at >= cfg.keyframe_every)
@@ -77,6 +79,7 @@ void MomentRecorder::before_frame(CoreAccess &core, const MemoryAccess &mem, std
             keys.clear();
             frames.clear();
             pending.clear();
+            marks.clear();
             cut_due = true;
             return;
         }
@@ -85,7 +88,9 @@ void MomentRecorder::before_frame(CoreAccess &core, const MemoryAccess &mem, std
         for (size_t i = 0; i < n; i++)
             if (uint8_t v = byte_at(mem, d, Target::ROM, uint32_t(i)); v != clean[i])
                 k.rom.emplace_back(uint32_t(i), v);
-        pending.clear(); // in the keyframe now
+        // The writes waiting for this frame are in the keyframe now, but they stay in the frame's
+        // list too: played again they change nothing, and a rollback to a mark before them
+        // needs them (#79).
         keys.push_back(std::move(k));
         if (cut_due)
         {
@@ -100,6 +105,8 @@ void MomentRecorder::before_frame(CoreAccess &core, const MemoryAccess &mem, std
                 frames.pop_front();
                 first++;
             }
+            while (!marks.empty() && marks.front().at < first)
+                marks.pop_front();
         }
     }
     cut_due = false;
@@ -144,6 +151,66 @@ void MomentRecorder::redo_frame(uint64_t timeline)
         if (!in_state(w.target))
             before.push_back(w);
     pending = std::move(before);
+    while (!marks.empty() && marks.back().at > now)
+        marks.pop_back();
+}
+
+void MomentRecorder::mark(uint64_t frame)
+{
+    if (held || cut_due)
+        return;
+    // A number the engine had already: it stood still (the core stuck mid-frame), or went back.
+    while (!marks.empty() && marks.back().frame >= frame)
+        marks.pop_back();
+    marks.push_back({ frame, now, pending.size() });
+}
+
+bool MomentRecorder::back_to(uint64_t frame, uint64_t timeline, const std::string &why)
+{
+    if (held)
+        return true;
+    seen = timeline;
+    auto it = std::find_if(marks.begin(), marks.end(), [&](const Mark &m) { return m.frame == frame; });
+    // A keyframe before the mark must stay: one at it or after holds the timeline that's gone.
+    if (cut_due || it == marks.end() || it->at < first || it->at > now || keys.empty() || keys.front().at >= it->at)
+    {
+        cut(why);
+        return false;
+    }
+    Mark m = *it;
+    // The writes waiting at the mark that came before it: the checkpoint has them, a replay
+    // needs them. After it, only the ROM's stand: the load put back everything else.
+    std::vector<MomentWrite> kept;
+    auto rest = [&](const std::vector<MomentWrite> &ws, size_t from) {
+        for (size_t i = from; i < ws.size(); i++)
+            if (!in_state(ws[i].target))
+                kept.push_back(ws[i]);
+    };
+    if (m.at == now)
+    {
+        kept.assign(pending.begin(), pending.begin() + std::ptrdiff_t(std::min(m.written, pending.size())));
+        rest(pending, m.written);
+    }
+    else
+    {
+        auto &f = frames[m.at - first];
+        kept.assign(f.before.begin(), f.before.begin() + std::ptrdiff_t(std::min(m.written, f.before.size())));
+        rest(f.before, m.written);
+        rest(f.during, 0);
+        for (uint64_t i = m.at + 1; i < now; i++)
+        {
+            rest(frames[i - first].before, 0);
+            rest(frames[i - first].during, 0);
+        }
+        rest(pending, 0);
+    }
+    frames.erase(frames.begin() + std::ptrdiff_t(m.at - first), frames.end());
+    now = m.at;
+    pending = std::move(kept);
+    while (!keys.empty() && keys.back().at >= now)
+        keys.pop_back();
+    marks.erase(it + 1, marks.end());
+    return true;
 }
 
 uint64_t MomentRecorder::frames_to_keep() const

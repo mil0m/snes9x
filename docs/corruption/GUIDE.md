@@ -96,9 +96,10 @@ and is compared with the game now. The message line then says *Kept the last 14.
 back exactly*. If it ever says *it doesn't play back the same*, the moment is kept anyway; tell
 whoever works on the app.
 
-A moment can be shorter than 10 s. When the crash guard rolls back, or you go back to normal,
-rewind or load a save, the game jumps elsewhere, and a moment can't reach back past that.
-The message says where it starts.
+When the crash guard rolls back, a moment keeps what came before the point it went back to.
+Playing the moment shows the game going on from there, without the crash. A moment can be
+shorter than 10 s when you go back to normal, rewind or load a save: the game jumps
+elsewhere, and a moment can't reach back past that. The message says where it starts.
 
 The Workshop's **Moments** page lists this game's kept moments, yours and everyone's in the
 library. Newest are first.

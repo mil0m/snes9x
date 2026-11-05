@@ -42,6 +42,7 @@ void CrashGuard::reset()
 
 GuardOutcome CrashGuard::between_frames(Engine &engine, CoreAccess &core)
 {
+    checkpointed = false;
     if (!engine.active())
     {
         last_frame.reset();
@@ -76,6 +77,7 @@ GuardOutcome CrashGuard::between_frames(Engine &engine, CoreAccess &core)
     if (ring.empty() || frame % kCheckpointInterval == 0)
     {
         ring.push_back({ frame, core.save_state(), engine.snapshot() });
+        checkpointed = true;
         while (ring.size() > kDefaultCheckpoints)
             ring.pop_front();
     }

@@ -178,3 +178,90 @@ plays it, and the cockpit counts *Playing a kept moment · 1.5 of 4.7 s*.
 
 **Not done:** keeping the history across a rollback (above); the remote page has no Keep
 button yet; a mouse or Super Scope isn't recorded.
+
+## Follow-up (5 Nov, roadmap #79): history across a crash-guard rollback
+
+Mikael said *start the next*, and this was the follow-up offered. A third of the moments in
+crash-heavy recipes were shorter than 10 s, because a guard rollback starts the history again.
+It doesn't have to. The guard goes back to one of its own checkpoints, and the recorder was
+there when that checkpoint was taken. Everything recorded before it is still the history of
+what's on screen after the rollback.
+
+**Marks.** Between frames, right after the guard has had its turn, the session calls
+`recorder.mark(engine frame)`. The recorder remembers which of its frames comes next and how
+many writes are waiting for it (the writes before the checkpoint are in the checkpoint; the
+ones after it aren't). One mark a frame, about 1800 small entries for 30 s. A mark for a
+frame number the engine already had (it stands still while the core is stuck) replaces the
+older one, as the guard's newest checkpoint of that frame is the one it goes back to.
+
+**Back to a mark.** On a rollback the session calls `recorder.back_to(restored frame)` instead
+of `cut`. The recorder:
+- drops the frames from the mark on and any keyframe taken at or after it (it holds the old
+  timeline);
+- keeps the writes waiting at the mark that came before the checkpoint (a replay needs them;
+  the live game has them in the checkpoint);
+- keeps every **ROM** write since the mark, in order, and the rollback's own ROM undo writes after
+  them. Save states don't hold the ROM, and `RomKeeper::revert_after` only undoes edits stamped
+  after the checkpoint's frame, so the ROM ends as it is live. This is the same rule as
+  `redo_frame`.
+
+It falls back to a cut when the mark is gone (older than the history) or no keyframe is left
+before it. A keyframe no longer folds the writes waiting for its frame into itself. They stay
+in the frame's list and are written again on playback, which changes nothing, because the
+keyframe already holds those values. A rollback can need them.
+
+A moment that spans a rollback shows the timeline that survived, not the crash and the jump
+back. That's what was on screen afterwards, and the crash never happened in it.
+
+**The risk: a load isn't the same as playing on.** Until now a moment always started at a
+keyframe, and the live game had also just loaded a state there, so both sides started from a
+load. Across a rollback, the replay plays straight through the checkpoint's frame, while the
+live game loaded the checkpoint. Anything the core doesn't save (`GFX.EndY` was one, and
+`VBlankStarted` was another until #47 fixed it) could now differ. `corrupt-smoke --keep`
+measures this on the same 3 games × 4 recipes × 3 seeds, against #47's 252 of 252. The
+numbers to report:
+- how many moments are exact;
+- how many are shorter than 10 s;
+- how many span a rollback.
+
+`CORRUPT_KEEP_DIAG` shows the first frame that drifts.
+
+**Go** if they still play back exactly (at least 19 of 20 that span a rollback, and none of
+the rest worse). Otherwise the gap is fixed in the core, or this stays a cut.
+
+Not in scope: Paint's crash watch rollback (it goes back to a state taken at Apply; rare)
+and Back to Normal (the history before the run start is another timeline).
+
+### How it went (#79)
+
+Built as planned, with one change. The recorder marks only when the guard actually took a
+checkpoint (`CrashGuard::took_checkpoint()`), not every frame. Marking every frame works
+too, but right after a guard reset, with the core stuck mid-frame, the newest mark of a
+frame number could come after the guard's only checkpoint of it. Taking the mark from the
+guard is exact, and there are about 30 marks instead of 1800.
+
+Tests first: three unit cases with the fake game: back across a rollback, with the
+checkpoint's own frame's ROM edit standing; past a keyframe; to a mark that's gone; a frame
+number marked again. When the writes waiting at the mark were dropped instead of kept, the
+cases failed. One real-core case loads a checkpoint, plays on, and checks the moment through
+it, drawn and not.
+
+`corrupt-smoke --keep 3`, the same 12 runs as #47 (3 games × 4 recipes, 3 seeds of 60 s, guarded,
+with the pseudo-player), against #47's numbers:
+
+| | #47 (a rollback cuts) | #79 (keeps the history) |
+|---|---|---|
+| exact | 252 of 252 | 252 of 252 |
+| moments that span a rollback | none | 102, all exact |
+| rollbacks whose history was kept | none | 65 of 65 |
+| shorter than 10 s | 84 | 14, all of them near the run's start (a rollback took away frames there) |
+| average length | 11.2 s | 14.2 s |
+| check (not drawing) | 0.4-0.8 s | 0.6-0.9 s (longer moments) |
+
+The risk didn't happen. A replay that plays straight through a checkpoint matches a live game
+that loaded it, in all 102 moments, including *ROM code drip* with deadlocks and instant
+reverts. Since #47's `VBlankStarted` fix, the core's save state holds what these games run on.
+
+**Go.** In the app, a moment that spans a rollback shows the timeline that survived: the
+crash and the jump back aren't in it. Paint's crash watch and Back to Normal still start
+the history again.

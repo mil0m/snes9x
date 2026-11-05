@@ -197,8 +197,13 @@ void CorruptionSession::betweenFrames()
     // The crash map collects this frame's writes before the guard can roll them back.
     crash_map.observe(engine.event_log(), engine.current_frame());
     auto out = guard.between_frames(engine, access);
+    // A kept moment keeps the history before the guard's checkpoint (#79): marked here, where
+    // the guard takes them, and gone back to on a rollback (before the ROM's undo writes, which
+    // it records).
+    if (guard.took_checkpoint())
+        recorder.mark(engine.current_frame());
     if (out.kind != GuardOutcome::Nothing)
-        recorder.cut("the crash guard rolled back");
+        recorder.back_to(out.restored_frame, access.timeline(), "the crash guard rolled back");
     rom.after_guard(out); // save states don't hold the ROM: undo its edits after the checkpoint
     // The instant revert watches while a run could change the ROM (the watch costs a little on
     // every instruction), and keeps the state the next frame starts from meanwhile.

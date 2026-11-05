@@ -92,6 +92,15 @@ class MomentRecorder
     // The frame that just ran is played again from its start (the instant revert, #51): it is
     // recorded again. Its ROM writes stay (save states don't hold the ROM), the rest is undone.
     void redo_frame(uint64_t timeline);
+    // Between frames, right after the crash guard's turn (#79): where its checkpoint of engine
+    // frame `frame`, if it took one, falls in the history. Marking a frame number again replaces
+    // the older mark (the guard goes back to its newest checkpoint of a frame).
+    void mark(uint64_t frame);
+    // The guard rolled back to its checkpoint of `frame`: the history before it stays, the frames
+    // since go (with any keyframe of theirs), and their ROM writes stand (save states don't hold
+    // the ROM; the rollback's own ROM writes come after). False: the mark is gone or no keyframe
+    // is left before it, and the history starts again, `why`.
+    bool back_to(uint64_t frame, uint64_t timeline, const std::string &why);
 
     // The moment: from the newest keyframe at least `lead` frames back (or the oldest) to now.
     // Nothing before the first keyframe.
@@ -108,8 +117,15 @@ class MomentRecorder
         std::vector<uint8_t> state;
         std::vector<std::pair<uint32_t, uint8_t>> rom;
     };
+    struct Mark
+    {
+        uint64_t frame = 0;   // the engine's
+        uint64_t at = 0;      // the recorder's frame that comes next
+        size_t written = 0;   // writes waiting for it then
+    };
     RecorderConfig cfg;
     std::deque<Keyframe> keys;
+    std::deque<Mark> marks;
     std::deque<MomentFrame> frames; // frames[i] is frame first + i
     uint64_t first = 0, now = 0;    // now: frames begun
     std::vector<MomentWrite> pending; // before the next frame

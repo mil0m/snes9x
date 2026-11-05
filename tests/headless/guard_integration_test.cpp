@@ -1986,6 +1986,27 @@ TEST_SUITE("keep a golden moment (#47)")
         CHECK(k.check(*m).exact);
     }
 
+    TEST_CASE("a rollback to a checkpoint keeps the history before it: the replay plays straight through what the game loaded (#79)")
+    {
+        Keeping k;
+        k.run(200);
+        k.rec.mark(1); // the guard's checkpoint of its frame 1
+        auto cp = k.access.save_state();
+        k.rom.write(Target::ROM, pd::kRomByte, 0x05); // after it, and it stands (save states don't hold the ROM)
+        k.run(60); // a keyframe at 240 of the timeline that's left
+        REQUIRE(k.access.load_state(cp));
+        CHECK(k.rec.back_to(1, k.access.timeline(), "the crash guard rolled back"));
+        k.run(100);
+        auto m = k.rec.take();
+        REQUIRE(m);
+        CHECK(m->frames.size() == 180); // from the keyframe at 120, through the checkpoint at 200
+        CHECK(m->starts.empty());
+        auto drawn = k.check(*m);
+        CAPTURE(drawn.text);
+        CHECK(drawn.exact);
+        CHECK(k.check(*m, false).exact);
+    }
+
     TEST_CASE("playing a moment for real ends on the game as it was when it was kept")
     {
         Keeping k;

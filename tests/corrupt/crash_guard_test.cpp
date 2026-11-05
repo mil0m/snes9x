@@ -134,8 +134,12 @@ TEST_CASE("checkpoints are taken at the start and every interval, up to the capa
     Rig rig(recipe_of({ harmless_noise() }));
     rig.frames(1);
     CHECK(rig.guard.checkpoint_count() == 1); // the start of the run
-    rig.frames(59);
+    CHECK(rig.guard.took_checkpoint());      // a kept moment marks it (#79)
+    rig.frames(1);
+    CHECK(!rig.guard.took_checkpoint());
+    rig.frames(58);
     CHECK(rig.guard.checkpoint_count() == 2); // frame 60
+    CHECK(rig.guard.took_checkpoint());
     rig.frames(60 * 40);
     CHECK(rig.guard.checkpoint_count() == CrashGuard::kDefaultCheckpoints);
     CHECK(rig.outcomes.empty());
