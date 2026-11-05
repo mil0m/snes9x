@@ -262,8 +262,24 @@ int main(int argc, char **argv)
     RunRecord control;
     ExploreKnows knows;
     {
-        WramAccessCounter reads;
-        reads.start();
+        // The WRAM it reads most, for the ram family: counted in a plain run of the moment
+        // (unseen frames don't count, by design).
+        {
+            WramAccessCounter reads;
+            reads.start();
+            core_access.load_state(start.state);
+            rom.restore_clean();
+            for (auto [o, v] : start.rom)
+                rom.write_at_start(Target::ROM, o, v);
+            for (auto &p : start.pads)
+            {
+                core_access.set_pads(p);
+                headless::run_frames(1);
+            }
+            knows.wram = busy_wram(reads.read_counts());
+            reads.stop();
+            rom.restore_clean();
+        }
         RomTracer tracer;
         tracer.start(map, &jump_logs.mine(), &call_logs.mine());
         PlayOptions learn;
@@ -275,8 +291,6 @@ int main(int argc, char **argv)
         };
         control = play_variant(rig, start, nullptr, learn);
         tracer.stop();
-        knows.wram = busy_wram(reads.read_counts());
-        reads.stop();
     }
     if (control.crashed)
     {
