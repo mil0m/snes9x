@@ -18,6 +18,7 @@ class SnesCoreAccess : public CoreAccess
     bool save_state_into(std::vector<uint8_t> &state) override;
     bool load_state(const std::vector<uint8_t> &state) override;
     FrameSignals sample() override;
+    bool picture(Picture &out, bool thumbnail) override;
     void reset_console() override; // S9xReset, then re-arms the reset watch (the ROM may have changed)
     // Test before applying (#52): frames run with nothing drawn (which also makes them
     // faster), the WRAM counters off, and the reset watch's count, the frameskip choice and
@@ -88,6 +89,8 @@ class WramAccessCounter
     bool counting() const { return !reads.empty(); }
     // Hands the counts since the last take to the watch, which starts them over.
     void take(MemoryWatch &watch);
+    // The reads per WRAM byte since the start (or the last take): what the explorer aims at (#45).
+    const std::vector<uint32_t> &read_counts() const { return reads; }
 
   private:
     std::vector<uint32_t> reads, writes;

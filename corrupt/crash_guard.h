@@ -1,6 +1,7 @@
 #pragma once
 #include "crash_detector.h"
 #include "engine.h"
+#include "picture.h"
 #include "policy.h"
 
 #include <array>
@@ -46,6 +47,9 @@ struct CoreAccess
     virtual void set_pads(const Pads &) {}
     // Counts state loads and resets: the game jumped elsewhere when it moves (#47).
     virtual uint64_t timeline() const { return 0; }
+    // The screen as last drawn (#45): the full picture, or a thumbnail (kThumbW x kThumbH, each
+    // pixel the average of its block). False when there's no picture.
+    virtual bool picture(Picture & /*out*/, bool /*thumbnail*/) { return false; }
     virtual ~CoreAccess() = default;
 };
 

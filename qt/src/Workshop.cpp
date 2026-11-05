@@ -1,6 +1,7 @@
 #include "Workshop.hpp"
 
 #include <QHideEvent>
+#include "ExploreRunner.hpp"
 #include "FunctionsPage.hpp"
 #include "MemoryViewer.hpp"
 #include "SurvivorsPanel.hpp"
@@ -126,7 +127,8 @@ Workshop::Workshop(CorruptionControl &control, RecipeActions &actions, FunctionS
         { "cpu", tr("ROM"), tr("What changed in the game itself, what's learned, survivors and pins") },
         { "shield", tr("Safety"), tr("The crash guard and your game's save backups") },
         { "users", tr("Sharing"), tr("The library and who's in it, and remote control") },
-        { "star", tr("Moments"), tr("Kept moments: play them back, rename, share") },
+        { "star", tr("Moments"), tr("Kept moments: play them back, rename, share, explore") },
+        { "compass", tr("Explored"), tr("What the explorer found from a kept moment: play it, keep it as a recipe") },
     };
     int widest = 0;
     for (auto &e : entries)
@@ -180,7 +182,9 @@ Workshop::Workshop(CorruptionControl &control, RecipeActions &actions, FunctionS
     rom = new RomPage(control, survivor_source);
     safety = new SafetyPage(control);
     sharing = new SharingPage(control);
-    moments = new MomentsPage(control);
+    runner = new ExploreRunner(this);
+    moments = new MomentsPage(control, runner);
+    explored = new ExploredPage(control, *runner);
     stack->addWidget(scrolling(recipe, stack));
     stack->addWidget(functions);
     stack->addWidget(scrollingTall(memory, stack));
@@ -188,7 +192,8 @@ Workshop::Workshop(CorruptionControl &control, RecipeActions &actions, FunctionS
     stack->addWidget(scrolling(safety, stack));
     stack->addWidget(scrolling(sharing, stack));
     stack->addWidget(scrolling(moments, stack));
-    text_pages = { recipe, rom, safety, sharing, moments };
+    stack->addWidget(scrolling(explored, stack));
+    text_pages = { recipe, rom, safety, sharing, moments, explored };
     layout->addWidget(stack, 1);
 
     functions->onShowInRom = [this](uint32_t first, uint32_t last) {
@@ -234,6 +239,7 @@ void Workshop::refresh()
     case WorkshopPage::Safety: safety->refresh(status); break;
     case WorkshopPage::Sharing: sharing->refresh(status); break;
     case WorkshopPage::Moments: moments->refresh(status); break;
+    case WorkshopPage::Explored: explored->refresh(status); break;
     case WorkshopPage::Functions:
     case WorkshopPage::Memory: break; // they keep themselves fresh while shown
     }
@@ -258,6 +264,8 @@ void Workshop::refreshNotes(const PanelStatus &status)
             others += p.who != me;
     }
     auto notes = sidebar_notes(status, others, control.remote().enabled);
+    if (runner->state().running) // the explorer runs whichever page is shown
+        notes[size_t(WorkshopPage::Explored)].text = tr("exploring");
     for (size_t i = 0; i < notes.size() && int(i) < sidebar->count(); i++)
     {
         auto item = sidebar->item(int(i));

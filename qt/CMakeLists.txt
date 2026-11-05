@@ -181,6 +181,8 @@ list(APPEND QT_GUI_SOURCES
     src/SessionControl.cpp
     src/Workshop.cpp
     src/WorkshopPages.cpp
+    src/ExploreRunner.cpp
+    src/ExploreRunner.hpp
     src/GuideWindow.cpp
     src/UiKit.cpp
     src/PixelView.cpp

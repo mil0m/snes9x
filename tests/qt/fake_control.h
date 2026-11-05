@@ -192,6 +192,21 @@ struct FakeControl : CorruptionControl
         return {};
     }
 
+    std::vector<corrupt::Library::ExplorationEntry> exploration_list;
+    std::vector<corrupt::Library::ExplorationEntry> explorations() override { return exploration_list; }
+    corrupt::SaveResult keepExplored(const std::filesystem::path &dir, const corrupt::Candidate &c,
+                                     const std::string &moment) override
+    {
+        call("keep explored " + dir.filename().string() + " " + c.moment_file + " from " + moment);
+        return { root / "POCKY" / "recipes" / "kept.json", {} };
+    }
+    std::string deleteExploration(const std::filesystem::path &dir) override
+    {
+        call("delete exploration " + dir.filename().string());
+        std::erase_if(exploration_list, [&](const corrupt::Library::ExplorationEntry &e) { return e.dir == dir; });
+        return {};
+    }
+
     RemoteState remote() override { return remote_state; }
     std::string setRemote(bool on) override
     {

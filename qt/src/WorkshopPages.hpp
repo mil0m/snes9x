@@ -18,6 +18,7 @@ class QListWidget;
 class QPushButton;
 class QTableWidget;
 class QTableWidgetItem;
+class ExploreRunner;
 class RecipeActions;
 class SurvivorsPanel;
 struct SurvivorSource;
@@ -50,7 +51,7 @@ QString ahead_note(const PanelStatus &status);
 QString instant_note(const PanelStatus &status);
 QString policy_note(corrupt::PolicyKind policy);
 
-std::array<SidebarNote, 7> sidebar_notes(const PanelStatus &status, size_t others, bool remote_on);
+std::array<SidebarNote, 8> sidebar_notes(const PanelStatus &status, size_t others, bool remote_on);
 
 // The recipe: its rules in full, everything else it keeps, and saving and sharing it.
 class RecipePage : public QWidget
@@ -143,7 +144,8 @@ class SafetyPage : public QWidget
 class MomentsPage : public QWidget
 {
   public:
-    MomentsPage(CorruptionControl &control, QWidget *parent = nullptr);
+    // With a runner, Explore starts the explorer (#45) on the selected moment.
+    MomentsPage(CorruptionControl &control, ExploreRunner *runner = nullptr, QWidget *parent = nullptr);
     void refresh(const PanelStatus &status);
     void reload(); // the list, read from the library again
     std::function<bool(const QString &title, const QString &question)> confirm;
@@ -158,13 +160,53 @@ class MomentsPage : public QWidget
     QLabel *empty_label;
     QLabel *details;
     QWidget *actions_row;
-    QPushButton *play_button, *rename_button, *delete_button, *folder_button;
+    QPushButton *play_button, *rename_button, *delete_button, *folder_button, *explore_button = nullptr;
     ui::StatusLine *message;
+    ExploreRunner *runner;
+    PanelStatus last;
     int ticks = 0;
     uint64_t shown_keeps = UINT64_MAX;
     std::string shown_game;
     bool filling = false;
     bool renaming = false;
+};
+
+// Explored (#46): what the explorer found from a kept moment, best first, with the picture
+// strip of each; Play plays a candidate's run (its kept moment), Keep as Recipe saves it.
+class ExploredPage : public QWidget
+{
+  public:
+    ExploredPage(CorruptionControl &control, ExploreRunner &runner, QWidget *parent = nullptr);
+    void refresh(const PanelStatus &status);
+    void reload(); // the explorations, read from the library again
+    std::function<bool(const QString &title, const QString &question)> confirm;
+
+  private:
+    const corrupt::Library::ExplorationEntry *exploration() const;
+    const corrupt::Candidate *selected() const;
+    void showExploration();
+    void showSelected();
+    void showRunning();
+
+    CorruptionControl &control;
+    ExploreRunner &runner;
+    std::vector<corrupt::Library::ExplorationEntry> list;
+    QWidget *running_row;
+    QLabel *running_label;
+    QPushButton *stop_button;
+    QComboBox *chooser;
+    QLabel *summary;
+    QTableWidget *table;
+    QLabel *strip;
+    QLabel *empty_label;
+    QLabel *details;
+    QWidget *actions_row;
+    QPushButton *play_button, *keep_button, *gallery_button, *delete_button, *folder_button;
+    ui::StatusLine *message;
+    int ticks = 0;
+    unsigned shown_tried = UINT_MAX;
+    std::string shown_game;
+    bool filling = false;
 };
 
 // Sharing: the library folder and who's in it, and remote control from a browser.

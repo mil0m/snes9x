@@ -475,6 +475,75 @@ SaveResult Library::save_recipe(const GameId &game, const Recipe &recipe) const
     return result;
 }
 
+fs::path Library::explored_dir(const GameId &game) const
+{
+    return game_dir(game) / "explored";
+}
+
+std::vector<Library::ExplorationEntry> Library::list_explorations(const GameId &game, std::vector<std::string> *errors) const
+{
+    std::vector<ExplorationEntry> out;
+    std::error_code ec;
+    for (auto &entry : fs::directory_iterator(explored_dir(game), ec))
+    {
+        if (!entry.is_directory() || is_sync_leftover(entry.path().filename().string()))
+            continue;
+        auto text = read_file(entry.path() / "candidates.json");
+        if (!text)
+            continue; // just begun: nothing written yet
+        std::string error;
+        if (auto e = decode_exploration(*text, error))
+            out.push_back({ entry.path(), std::move(*e) });
+        else if (errors)
+            errors->push_back(entry.path().filename().string() + ": " + error);
+    }
+    std::sort(out.begin(), out.end(), [](const ExplorationEntry &a, const ExplorationEntry &b) {
+        return a.exploration.made_at != b.exploration.made_at ? a.exploration.made_at > b.exploration.made_at
+                                                              : a.dir.filename() < b.dir.filename();
+    });
+    return out;
+}
+
+SaveResult Library::new_exploration_dir(const GameId &game, const std::string &name) const
+{
+    SaveResult result;
+    if (auto err = ensure_game_dir(game); !err.empty())
+    {
+        result.error = err;
+        return result;
+    }
+    std::string base;
+    for (char c : name)
+        base += (c == '/' || c == '\\' || c == ':') ? '-' : c;
+    if (base.empty())
+        base = "exploration";
+    std::error_code ec;
+    for (int n = 1; n < 1000; n++)
+    {
+        fs::path dir = explored_dir(game) / (n == 1 ? base : base + " " + std::to_string(n));
+        if (fs::exists(dir, ec))
+            continue;
+        if (!fs::create_directories(dir, ec))
+        {
+            result.error = "Couldn't make " + dir.string() + ": " + ec.message();
+            return result;
+        }
+        result.path = dir;
+        return result;
+    }
+    result.error = "No free folder name for " + base;
+    return result;
+}
+
+std::string Library::delete_exploration(const fs::path &dir) const
+{
+    std::error_code ec;
+    if (!fs::exists(dir / "candidates.json", ec))
+        return "That isn't an exploration's folder";
+    fs::remove_all(dir, ec);
+    return ec ? "Couldn't delete it: " + ec.message() : std::string();
+}
+
 fs::path Library::moments_dir(const GameId &game) const
 {
     return game_dir(game) / "moments";

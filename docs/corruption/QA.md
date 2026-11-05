@@ -854,3 +854,25 @@ Removed on 2026-11-01: it didn't pay off (see FEATURES.md, *Tried and removed*).
    - [ ] It keeps at once, from the frame on screen.
 10. Copy a moment's file to Erik's library (or open the shared library on another machine) and Play it there.
    - [ ] It plays the same. On another version of the ROM, Play says it was kept on another version.
+
+## 56. Explore a moment (#45, #46)
+1. Keep a moment while playing (F8), then open the Workshop's **Moments** page and pick it.
+   - [ ] **Explore** sits beside Play; hovering explains it (about 6,000 tries an hour).
+2. Press **Explore** and choose **For 10 Minutes**.
+   - [ ] The message says it's exploring in the background; the game keeps running smoothly.
+   - [ ] The sidebar shows *exploring* beside **Explored**.
+3. Open **Explored**.
+   - [ ] The line at the top counts what it tried, what kept running and what visibly changed, with **Stop Exploring**.
+   - [ ] Within a minute or two the first candidates appear, best first, with six pictures of the picked one.
+4. Pick a candidate and press **Play**.
+   - [ ] Corruption turns off and the game plays the candidate's run; a pad button takes over.
+5. Press **Keep as Recipe**.
+   - [ ] The message names the new recipe; it's in the recipe list. Load it and press Corrupt: it starts from the moment's start and does much the same.
+6. Press **Stop Exploring** (or wait the 10 minutes).
+   - [ ] The line goes away; the candidates stay. The summary says how many it tried.
+7. Press the arrow button.
+   - [ ] The gallery opens in the browser: every candidate's pictures and recipe, in light and dark.
+8. Delete the exploration (bin, confirm).
+   - [ ] It's gone from the list and from the game's `explored` folder; the recipe you kept stays.
+9. On a quiet moment (nothing moving), explore for 10 minutes.
+   - [ ] Few or no candidates, rather than many that look like the moment.

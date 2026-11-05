@@ -424,6 +424,7 @@ void CorruptionSession::gameLoaded()
     keep_pending = false;
     keep_news.clear();
     rom_name = std::filesystem::path(Memory.ROMFilename).stem().string();
+    rom_file = std::filesystem::path(Memory.ROMFilename);
     engine.hold_starts(true);
     engine.set_active(false);
     control = RunControl{};
@@ -1322,6 +1323,7 @@ CorruptionSession::Status CorruptionSession::status()
     s.message = message;
     s.message_detail = message_detail;
     s.rom_name = rom_name;
+    s.rom_file = rom_file;
     s.keep_seconds = recorder.frames_to_keep() / 60.0;
     s.keep_pending = keep_pending;
     s.keeps = keeps_made;
@@ -2027,6 +2029,60 @@ std::string CorruptionSession::deleteMoment(const fs::path &path)
 {
     std::lock_guard lock(mutex);
     return Library(library_root).delete_moment(path);
+}
+
+std::vector<Library::ExplorationEntry> CorruptionSession::explorations()
+{
+    std::lock_guard lock(mutex);
+    if (!game_loaded || library_root.empty())
+        return {};
+    return Library(library_root).list_explorations(game);
+}
+
+SaveResult CorruptionSession::keepExplored(const fs::path &dir, const Candidate &c, const std::string &moment)
+{
+    std::lock_guard lock(mutex);
+    SaveResult result;
+    if (!game_loaded || library_root.empty())
+    {
+        result.error = library_root.empty() ? "choose a library folder first" : "No game loaded";
+        return result;
+    }
+    std::ifstream in(dir / c.moment_file, std::ios::binary);
+    std::string bytes((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+    std::string why;
+    auto m = decode_moment(bytes, why);
+    if (!m)
+    {
+        result.error = "Its moment can't be read: " + (bytes.empty() ? std::string("the file is gone") : why);
+        return result;
+    }
+    // A free name, so another candidate kept from the same moment never overwrites this one.
+    Library library(library_root);
+    Recipe recipe = c.recipe;
+    recipe.game = game;
+    std::string base = moment + ": " + family_name(c.family) + " " + std::to_string(c.id + 1);
+    recipe.name = base;
+    for (int n = 2; fs::exists(library.game_dir(game) / "recipes" / (recipe_file_stem(recipe.name) + ".json")); n++)
+        recipe.name = base + " " + std::to_string(n);
+    recipe.notes = "Found by the explorer from \u201c" + moment + "\u201d: " + c.what +
+                   ". Starts from the moment's start; ROM changes the moment already had aren't in it.";
+    auto planned = library.game_dir(game) / "recipes" / (recipe_file_stem(recipe.name) + ".json");
+    auto anchor = anchor_path(planned);
+    if (auto err = save_anchor(anchor, m->state); err.empty())
+        recipe.anchor_state = anchor.filename().string();
+    else
+        note("Kept without its saved moment: " + err);
+    result = library.save_recipe(game, recipe);
+    if (result.error.empty())
+        note("Kept \u201c" + recipe.name + "\u201d as a recipe");
+    return result;
+}
+
+std::string CorruptionSession::deleteExploration(const fs::path &dir)
+{
+    std::lock_guard lock(mutex);
+    return Library(library_root).delete_exploration(dir);
 }
 
 std::string CorruptionSession::keepChange(const Change &c)

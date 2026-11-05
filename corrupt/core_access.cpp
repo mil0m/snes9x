@@ -3,6 +3,7 @@
 #include "jump_tables.h"
 #include "opcodes.h"
 
+#include <algorithm>
 #include <array>
 #include <utility>
 
@@ -10,6 +11,7 @@
 #include "memmap.h"
 #include "ppu.h"
 #include "gfx.h"
+#include "pixform.h"
 #include "snapshot.h"
 #include "movie.h"
 #include "cpuexec.h"
@@ -677,6 +679,55 @@ FrameSignals SnesCoreAccess::sample()
     s.picture_hash = drawing ? picture_hash() : 0;
     s.reboots = reset_watch::count;
     return s;
+}
+
+bool SnesCoreAccess::picture(Picture &out, bool thumbnail)
+{
+    int w = IPPU.RenderedScreenWidth, h = IPPU.RenderedScreenHeight;
+    if (!GFX.Screen || w <= 0 || h <= 0)
+        return false;
+    auto rgb = [](uint16 p, uint8_t *to) {
+        uint32 r, g, b;
+        DECOMPOSE_PIXEL(p, r, g, b);
+        to[0] = uint8_t(r << 3 | r >> 2);
+        to[1] = uint8_t(g << 3 | g >> 2);
+        to[2] = uint8_t(b << 3 | b >> 2);
+    };
+    if (!thumbnail)
+    {
+        out.w = uint16_t(w);
+        out.h = uint16_t(h);
+        out.rgb.resize(size_t(w) * h * 3);
+        for (int y = 0; y < h; y++)
+            for (int x = 0; x < w; x++)
+                rgb(GFX.Screen[y * GFX.RealPPL + x], &out.rgb[(size_t(y) * w + x) * 3]);
+        return true;
+    }
+    // Blocks of the visible 224 lines (or 448 interlaced), 4 or 8 pixels wide.
+    int bw = std::max(1, w / kThumbW), bh = std::max(1, std::min(h, h >= 448 ? 448 : 224) / kThumbH);
+    out.w = kThumbW;
+    out.h = kThumbH;
+    out.rgb.assign(size_t(kThumbW) * kThumbH * 3, 0);
+    for (int ty = 0; ty < kThumbH; ty++)
+        for (int tx = 0; tx < kThumbW; tx++)
+        {
+            uint32_t sum[3] = {};
+            int n = 0;
+            for (int y = ty * bh; y < (ty + 1) * bh && y < h; y++)
+                for (int x = tx * bw; x < (tx + 1) * bw && x < w; x++)
+                {
+                    uint8_t c[3];
+                    rgb(GFX.Screen[y * GFX.RealPPL + x], c);
+                    sum[0] += c[0];
+                    sum[1] += c[1];
+                    sum[2] += c[2];
+                    n++;
+                }
+            uint8_t *to = &out.rgb[(size_t(ty) * kThumbW + tx) * 3];
+            for (int k = 0; k < 3 && n; k++)
+                to[k] = uint8_t(sum[k] / n);
+        }
+    return true;
 }
 
 void SnesCoreAccess::note_frame_start()

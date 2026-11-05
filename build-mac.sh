@@ -2,7 +2,7 @@
 # Build Snes9x on macOS: the Qt front end, the native Cocoa app and the libretro core.
 #
 #   ./build-mac.sh            # all three
-#   ./build-mac.sh qt         # snes9x-qt   -> build/qt/snes9x-qt  (needs: brew install qt pkgconf libpng ninja)
+#   ./build-mac.sh qt         # snes9x-qt   -> build/qt/snes9x-qt, and the explorer beside it (needs: brew install qt pkgconf libpng ninja)
 #   ./build-mac.sh app        # Snes9x.app  -> build/xcode/Build/Products/Release/Snes9x.app
 #   ./build-mac.sh libretro   # core        -> libretro/snes9x_libretro.dylib
 #   ./build-mac.sh test       # build + run the corruption engine tests (tests/)
@@ -42,7 +42,11 @@ build_qt() {
   cmake -S qt -B build/qt -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH="$(brew --prefix qt)" >/dev/null
   # Quiet when it builds; the compiler's errors when it doesn't.
   if ! out=$(cmake --build build/qt 2>&1); then echo "$out" | grep -v '^\[' >&2; exit 1; fi
-  echo "Qt: $(pwd)/build/qt/snes9x-qt"
+  # The headless explorer (#45), optimized, beside the app: Explore on the Moments page runs it.
+  cmake -S tests -B build/explore -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH="$(brew --prefix qt)" >/dev/null
+  if ! out=$(cmake --build build/explore --target snes9x-explore 2>&1); then echo "$out" | grep -v '^\[' >&2; exit 1; fi
+  cp build/explore/snes9x-explore build/qt/snes9x-explore
+  echo "Qt: $(pwd)/build/qt/snes9x-qt (and snes9x-explore beside it)"
 }
 
 # Runs a test binary and shows only the lines matching $1, plus a line if it failed or

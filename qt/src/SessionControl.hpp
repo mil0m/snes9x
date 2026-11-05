@@ -62,6 +62,10 @@ class SessionControl : public CorruptionControl
     void stopMoment() override;
     std::string renameMoment(const std::filesystem::path &path, const std::string &name) override;
     std::string deleteMoment(const std::filesystem::path &path) override;
+    std::vector<corrupt::Library::ExplorationEntry> explorations() override;
+    corrupt::SaveResult keepExplored(const std::filesystem::path &dir, const corrupt::Candidate &c,
+                                     const std::string &moment) override;
+    std::string deleteExploration(const std::filesystem::path &dir) override;
 
     RemoteState remote() override;
     std::string setRemote(bool on) override;

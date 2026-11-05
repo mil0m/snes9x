@@ -4,12 +4,18 @@
 #include "MemoryViewer.hpp"
 #include "RecipeActions.hpp"
 #include "UiKit.hpp"
+#include "ExploreRunner.hpp"
 #include "Workshop.hpp"
 #include "WorkshopPages.hpp"
 #include "fake_control.h"
 #include "fake_functions.h"
 
 #include <QApplication>
+#include <QElapsedTimer>
+#include <QFile>
+#include <QImage>
+#include <QTemporaryDir>
+#include <fstream>
 #include <algorithm>
 #include <optional>
 #include <QCheckBox>
@@ -69,15 +75,15 @@ struct Fixture
 
 TEST_SUITE("workshop")
 {
-    TEST_CASE("seven pages in the sidebar; showPage switches to one")
+    TEST_CASE("eight pages in the sidebar; showPage switches to one")
     {
         Fixture f;
         auto sidebar = child<QListWidget>(f.workshop, "workshop_pages");
-        REQUIRE(sidebar->count() == 7);
+        REQUIRE(sidebar->count() == 8);
         QStringList names;
         for (int i = 0; i < sidebar->count(); i++)
             names << sidebar->item(i)->text();
-        CHECK(names == QStringList{ "Recipe", "Functions", "Memory", "ROM", "Safety", "Sharing", "Moments" });
+        CHECK(names == QStringList{ "Recipe", "Functions", "Memory", "ROM", "Safety", "Sharing", "Moments", "Explored" });
         CHECK(f.workshop.page() == WorkshopPage::Recipe);
         f.workshop.showPage(WorkshopPage::Safety);
         CHECK(f.workshop.page() == WorkshopPage::Safety);
@@ -326,7 +332,8 @@ TEST_SUITE("workshop")
         f.control.moment_list = { { "/tmp/library/POCKY/moments/a.s9xmoment", "Gravity mess, 4 Nov 21.13", "Gravity mess",
                                     "mikael", "2026-11-04 21:13:05", "", 14.2, {} } };
         for (auto page : { WorkshopPage::Recipe, WorkshopPage::Functions, WorkshopPage::Memory, WorkshopPage::Rom,
-                           WorkshopPage::Safety, WorkshopPage::Sharing, WorkshopPage::Moments })
+                           WorkshopPage::Safety, WorkshopPage::Sharing, WorkshopPage::Moments,
+                           WorkshopPage::Explored })
         {
             f.workshop.showPage(page);
             f.workshop.refresh();
@@ -581,7 +588,8 @@ TEST_CASE("the Workshop can be made narrow: no page needs more than about 900 px
     f.control.running(3);
     f.workshop.show();
     for (auto page : { WorkshopPage::Recipe, WorkshopPage::Functions, WorkshopPage::Memory, WorkshopPage::Rom,
-                       WorkshopPage::Safety, WorkshopPage::Sharing, WorkshopPage::Moments })
+                       WorkshopPage::Safety, WorkshopPage::Sharing, WorkshopPage::Moments,
+                           WorkshopPage::Explored })
     {
         f.workshop.showPage(page);
         QApplication::processEvents();
@@ -594,7 +602,7 @@ TEST_CASE("the Workshop can be made narrow: no page needs more than about 900 px
         for (QWidget *content : { static_cast<QWidget *>(f.workshop.recipePage()), static_cast<QWidget *>(f.workshop.functionsPage()),
                                   static_cast<QWidget *>(f.workshop.memoryPage()), static_cast<QWidget *>(f.workshop.romPage()),
                                   static_cast<QWidget *>(f.workshop.safetyPage()), static_cast<QWidget *>(f.workshop.sharingPage()),
-                                  static_cast<QWidget *>(f.workshop.momentsPage()) })
+                                  static_cast<QWidget *>(f.workshop.momentsPage()), static_cast<QWidget *>(f.workshop.exploredPage()) })
             if (content->isVisible())
                 CHECK(content->width() >= content->minimumSizeHint().width());
     }
@@ -660,5 +668,140 @@ TEST_CASE("Moments (#47): the kept moments, newest first; play, rename, delete; 
     // While one plays, the sidebar says so.
     f.control.s.moment_playing = true;
     CHECK(sidebar_notes(f.control.status(), 0, false)[size_t(WorkshopPage::Moments)].text == "playing");
+    f.workshop.close();
+}
+
+TEST_CASE("Explored (#46): an exploration's candidates, best first, with their pictures; play, keep, delete; the explorer running")
+{
+    Fixture f;
+    f.control.running(2);
+    f.workshop.showPage(WorkshopPage::Explored);
+    f.workshop.refresh();
+    auto &page = *f.workshop.exploredPage();
+    auto empty = child<QLabel>(page, "explored_empty");
+    CHECK(empty->isVisibleTo(&page));
+    CHECK(empty->text().contains("Explore"));
+    CHECK(!child<QTableWidget>(page, "candidates")->isVisibleTo(&page));
+    f.shot("workshop-explored-empty");
+
+    // An exploration on disk: candidates.json's contents, a strip, a gallery.
+    QTemporaryDir tmp;
+    std::filesystem::path dir = tmp.path().toStdString() + "/The HUD eats Max 05 Nov 21.13";
+    std::filesystem::create_directories(dir);
+    Exploration e;
+    e.name = "The HUD eats Max 05 Nov 21.13";
+    e.moment = "The HUD eats Max";
+    e.made_by = "mikael";
+    e.made_at = "2026-11-05 21:13:00";
+    e.window = 1200;
+    e.variants = 1800;
+    e.alive = 1650;
+    e.visible = 310;
+    e.finished = true;
+    for (uint32_t i = 0; i < 3; i++)
+    {
+        Candidate c;
+        c.rank = i + 1;
+        c.id = 40 + i;
+        c.family = i == 0 ? Family::Kill : Family::Code;
+        c.what = i == 0 ? "rom: turn busy functions off x1, once at frame 121" : "rom: flip branches x1, every 60 frames";
+        c.recipe.name = "Explored " + std::string(family_name(c.family)) + " " + std::to_string(c.id + 1);
+        c.score.score = 1.5 - 0.3 * i;
+        c.score.different = 0.8;
+        c.score.detail = 0.9;
+        c.score.motion = 1.0;
+        c.score.new_code = 300;
+        c.moment_file = std::to_string(c.id + 1) + " " + family_name(c.family) + ".s9xmoment";
+        c.strip_file = std::to_string(c.id + 1) + " " + family_name(c.family) + ".png";
+        c.exact = true;
+        QImage strip(1556, 224, QImage::Format_RGB32);
+        strip.fill(QColor(40 + 60 * int(i), 120, 200));
+        strip.save(QString::fromStdString((dir / c.strip_file).string()));
+        e.candidates.push_back(c);
+    }
+    std::ofstream(dir / "gallery.html") << "<html></html>";
+    f.control.exploration_list = { { dir, e } };
+    page.reload();
+    auto table = child<QTableWidget>(page, "candidates");
+    REQUIRE(table->isVisibleTo(&page));
+    CHECK(!empty->isVisibleTo(&page));
+    REQUIRE(table->rowCount() == 3);
+    CHECK(table->item(0, 0)->text() == "1");
+    CHECK(table->item(0, 1)->text() == "kill");
+    CHECK(table->item(1, 3)->text() == "1.20");
+    CHECK(table->item(0, 3)->toolTip().contains("300 bytes of code"));
+    CHECK(child<QLabel>(page, "exploration_summary")->text().contains("1,800 variants"));
+    CHECK(table->currentRow() == 0); // the best is picked
+    auto strip = child<QLabel>(page, "candidate_strip");
+    CHECK(strip->isVisibleTo(&page));
+    CHECK(!strip->pixmap().isNull());
+    CHECK(child<QLabel>(page, "candidate_details")->text().contains("plays back exactly"));
+    CHECK(child<QPushButton>(page, "open_gallery")->isEnabled());
+    f.shot("workshop-explored");
+
+    table->selectRow(1);
+    child<QPushButton>(page, "play_candidate")->click();
+    CHECK(f.control.calls.back() == "play 42 code.s9xmoment");
+    child<QPushButton>(page, "keep_candidate")->click();
+    CHECK(f.control.calls.back() == "keep explored The HUD eats Max 05 Nov 21.13 42 code.s9xmoment from The HUD eats Max");
+    CHECK(child<QWidget>(page, "explored_message")->isVisibleTo(&page));
+
+    page.confirm = [](const QString &, const QString &) { return false; };
+    child<QPushButton>(page, "delete_exploration")->click();
+    CHECK(f.control.calls.back().rfind("keep explored", 0) == 0); // asked, and no
+    page.confirm = [](const QString &, const QString &) { return true; };
+    child<QPushButton>(page, "delete_exploration")->click();
+    CHECK(f.control.calls.back() == "delete exploration The HUD eats Max 05 Nov 21.13");
+    CHECK(empty->isVisibleTo(&page));
+    CHECK(ui::audit(&page).isEmpty());
+
+    // The explorer running: a stand-in that prints what snes9x-explore prints.
+    auto script = tmp.path() + "/fake-explore.sh";
+    {
+        QFile out(script);
+        REQUIRE(out.open(QIODevice::WriteOnly));
+        out.write("#!/bin/sh\necho \"folder /tmp/x\"\necho \"progress 120 101 14 1.31\"\nsleep 2\necho \"done     120 variants\"\n");
+    }
+    QFile::setPermissions(script, QFile::permissions(script) | QFileDevice::ExeOwner);
+    auto &runner = *f.workshop.exploreRunner();
+    runner.setTool(script);
+    CHECK(runner.start("/tmp/pocky.sfc", "/tmp/m.s9xmoment", "The HUD eats Max", "/tmp/library", "mikael", 60).isEmpty());
+    CHECK(!runner.start("/tmp/pocky.sfc", "/tmp/m.s9xmoment", "again", "/tmp/library", "mikael", 60).isEmpty()); // one at a time
+    QElapsedTimer t;
+    t.start();
+    while (runner.state().tried == 0 && t.elapsed() < 3000)
+        QApplication::processEvents(QEventLoop::AllEvents, 50);
+    CHECK(runner.state().tried == 120);
+    CHECK(runner.state().visible == 14);
+    CHECK(runner.state().folder == "/tmp/x");
+    f.workshop.refresh();
+    auto running = child<QLabel>(page, "explore_running_text");
+    CHECK(running->isVisibleTo(&page));
+    CHECK(running->text().contains("120 tried"));
+    CHECK(child<QPushButton>(page, "explore_stop")->isVisibleTo(&page));
+    CHECK(sidebar_notes(f.control.status(), 0, false)[size_t(WorkshopPage::Explored)].text.isEmpty()); // the Workshop adds it
+    auto sidebar = child<QListWidget>(f.workshop, "workshop_pages");
+    CHECK(sidebar->item(int(WorkshopPage::Explored))->data(Workshop::NoteRole).toString() == "exploring");
+    f.shot("workshop-explored-running");
+    while (runner.state().running && t.elapsed() < 6000)
+        QApplication::processEvents(QEventLoop::AllEvents, 50);
+    CHECK(!runner.state().running);
+    CHECK(runner.state().done == "120 variants");
+    f.workshop.close();
+}
+
+TEST_CASE("Moments: Explore starts the explorer on the picked moment (#45)")
+{
+    Fixture f;
+    f.control.running(2);
+    f.control.moment_list = { { "/tmp/library/POCKY/moments/a.s9xmoment", "The HUD eats Max", "", "mikael",
+                                "2026-11-04 21:13:05", "", 14.2, {} } };
+    f.workshop.showPage(WorkshopPage::Moments);
+    f.workshop.refresh();
+    auto &page = *f.workshop.momentsPage();
+    auto explore = child<QPushButton>(page, "explore_moment");
+    CHECK(explore->isVisibleTo(&page));
+    CHECK(explore->isEnabled());
+    CHECK(explore->toolTip().contains("6,000 tries an hour"));
     f.workshop.close();
 }

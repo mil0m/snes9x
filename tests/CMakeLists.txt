@@ -44,13 +44,16 @@ if(ZLIB_FOUND AND PNG_FOUND)
     target_compile_definitions(snes9x-core PRIVATE ZLIB HAVE_STDINT_H HAVE_LIBPNG ALLOW_CPU_OVERCLOCK)
     target_include_directories(snes9x-core PRIVATE ${PNG_INCLUDE_DIRS} ${ZLIB_INCLUDE_DIRS})
 
-    add_library(snes9x-headless STATIC headless/headless_core.cpp headless/headless_platform.cpp)
+    add_library(snes9x-headless STATIC headless/headless_core.cpp headless/headless_platform.cpp headless/png_out.cpp)
     target_include_directories(snes9x-headless PUBLIC .. ../external headless ${PNG_INCLUDE_DIRS})
     target_compile_definitions(snes9x-headless PUBLIC ZLIB HAVE_STDINT_H HAVE_LIBPNG ALLOW_CPU_OVERCLOCK)
     target_link_libraries(snes9x-headless PUBLIC snes9x-core ${PNG_LINK_LIBRARIES} ${ZLIB_LINK_LIBRARIES})
 
     add_executable(corrupt-smoke headless/corrupt_smoke.cpp)
     target_link_libraries(corrupt-smoke PRIVATE snes9x-headless)
+
+    add_executable(snes9x-explore headless/snes9x_explore.cpp)
+    target_link_libraries(snes9x-explore PRIVATE snes9x-headless)
 
     add_executable(game-dossier headless/game_dossier.cpp)
     target_link_libraries(game-dossier PRIVATE snes9x-headless)
@@ -65,7 +68,7 @@ endif()
 # Qt widget tests for the corruption panel, run offscreen (needs Qt 6).
 find_package(Qt6 QUIET COMPONENTS Widgets HttpServer WebSockets)
 if(Qt6_FOUND)
-    add_executable(corrupt-qt-tests qt/main.cpp qt/rule_editor_test.cpp qt/intensity_slider_test.cpp qt/memory_view_test.cpp qt/memory_viewer_test.cpp qt/pixel_view_test.cpp qt/tile_view_test.cpp qt/quit_signals_test.cpp qt/area_image_test.cpp qt/survivors_panel_test.cpp qt/functions_page_test.cpp qt/function_editor_test.cpp qt/ui_kit_test.cpp qt/remote_server_test.cpp qt/buttons_bar_test.cpp qt/cockpit_test.cpp qt/workshop_test.cpp ../qt/src/ButtonsBar.cpp ../qt/src/Cockpit.cpp ../qt/src/RecipeActions.cpp ../qt/src/Workshop.cpp ../qt/src/WorkshopPages.cpp ../qt/src/RemoteServer.cpp ../qt/src/resources/remote.qrc ../qt/src/UiKit.cpp ../qt/src/resources/corruption_icons.qrc ../qt/src/RuleEditor.cpp ../qt/src/SurvivorsPanel.cpp ../qt/src/FunctionsPage.cpp ../qt/src/FunctionEditor.cpp ../qt/src/IntensitySlider.cpp ../qt/src/MemoryView.cpp ../qt/src/MemoryViewer.cpp ../qt/src/PixelView.cpp ../qt/src/TileView.cpp ../qt/src/QuitSignals.cpp ../qt/src/AreaImage.cpp ${ENGINE_SOURCES})
+    add_executable(corrupt-qt-tests qt/main.cpp qt/rule_editor_test.cpp qt/intensity_slider_test.cpp qt/memory_view_test.cpp qt/memory_viewer_test.cpp qt/pixel_view_test.cpp qt/tile_view_test.cpp qt/quit_signals_test.cpp qt/area_image_test.cpp qt/survivors_panel_test.cpp qt/functions_page_test.cpp qt/function_editor_test.cpp qt/ui_kit_test.cpp qt/remote_server_test.cpp qt/buttons_bar_test.cpp qt/cockpit_test.cpp qt/workshop_test.cpp ../qt/src/ButtonsBar.cpp ../qt/src/Cockpit.cpp ../qt/src/RecipeActions.cpp ../qt/src/Workshop.cpp ../qt/src/WorkshopPages.cpp ../qt/src/ExploreRunner.cpp ../qt/src/RemoteServer.cpp ../qt/src/resources/remote.qrc ../qt/src/UiKit.cpp ../qt/src/resources/corruption_icons.qrc ../qt/src/RuleEditor.cpp ../qt/src/SurvivorsPanel.cpp ../qt/src/FunctionsPage.cpp ../qt/src/FunctionEditor.cpp ../qt/src/IntensitySlider.cpp ../qt/src/MemoryView.cpp ../qt/src/MemoryViewer.cpp ../qt/src/PixelView.cpp ../qt/src/TileView.cpp ../qt/src/QuitSignals.cpp ../qt/src/AreaImage.cpp ${ENGINE_SOURCES})
     set_target_properties(corrupt-qt-tests PROPERTIES AUTOMOC ON AUTORCC ON)
     target_include_directories(corrupt-qt-tests PRIVATE .. ../external ../qt/src)
     target_link_libraries(corrupt-qt-tests PRIVATE Qt6::Widgets Qt6::HttpServer Qt6::WebSockets)

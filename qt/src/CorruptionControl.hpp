@@ -41,6 +41,7 @@ struct PanelStatus
     std::string message;             // last notable event, for the panel: a few words
     std::string message_detail;      // the same in full (on hover), or empty
     std::string rom_name;            // the game's file name without its extension ("Pocky & Rocky (USA)")
+    std::filesystem::path rom_file;  // the game's file, for the explorer (#45)
     bool paused = false;             // the emulation is paused (the app's, not the session's)
 
     // Crash guard.
@@ -160,6 +161,14 @@ class CorruptionControl
     virtual void stopMoment() = 0;
     virtual std::string renameMoment(const std::filesystem::path &path, const std::string &name) = 0;
     virtual std::string deleteMoment(const std::filesystem::path &path) = 0;
+
+    // Explorations (#45, #46): what snes9x-explore found from a kept moment, everyone's, newest
+    // first. Keep as recipe saves a candidate's recipe with its moment's start as the saved
+    // moment, so Corrupt starts it from the same place.
+    virtual std::vector<corrupt::Library::ExplorationEntry> explorations() = 0;
+    virtual corrupt::SaveResult keepExplored(const std::filesystem::path &dir, const corrupt::Candidate &c,
+                                             const std::string &moment) = 0;
+    virtual std::string deleteExploration(const std::filesystem::path &dir) = 0;
 
     // Remote control.
     virtual RemoteState remote() = 0;

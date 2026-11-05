@@ -119,6 +119,13 @@ std::string SessionControl::renameMoment(const std::filesystem::path &path, cons
     return session().renameMoment(path, name);
 }
 std::string SessionControl::deleteMoment(const std::filesystem::path &path) { return session().deleteMoment(path); }
+std::vector<corrupt::Library::ExplorationEntry> SessionControl::explorations() { return session().explorations(); }
+corrupt::SaveResult SessionControl::keepExplored(const std::filesystem::path &dir, const corrupt::Candidate &c,
+                                                 const std::string &moment)
+{
+    return session().keepExplored(dir, c, moment);
+}
+std::string SessionControl::deleteExploration(const std::filesystem::path &dir) { return session().deleteExploration(dir); }
 
 RemoteState SessionControl::remote()
 {

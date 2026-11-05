@@ -92,6 +92,9 @@
 #include "corrupt/memory_watch.h"
 #include "corrupt/memory_map.h"
 #include "corrupt/moment.h"
+#include "corrupt/explore.h"
+#include "corrupt/function_body.h"
+#include "png_out.h"
 
 #include "snes9x.h"
 #include "memmap.h"
@@ -107,6 +110,7 @@
 #include <cmath>
 #include <chrono>
 #include <cstdio>
+#include <filesystem>
 #include <fstream>
 #include <map>
 #include <set>
@@ -2573,6 +2577,266 @@ int run_keep(const Recipe &recipe, int frames, int seeds)
 
 } // namespace
 
+namespace
+{
+
+// --explore [variants=300] [moments=2]: the headless explorer, measured first (#45). For each
+// of `moments` starting points (20 s of a pseudo-player, the second 60 s later), every
+// variant plays the same 20 s with the same buttons, unseen and drawn, and is scored against
+// the same 20 s without corruption. The recipe given is the moment's own (for reroll and
+// nudge). Reports speed, survival and the numbers per family, and writes picture strips for
+// the blind test to CORRUPT_EXPLORE_OUT (default: no strips): per moment, the control,
+// then the 12 best and 12 random survivors shuffled under letters, with key.txt naming which
+// is which.
+
+// A player: a few buttons held for a while, then others, sometimes none.
+struct PseudoPlayer
+{
+    std::mt19937 input;
+    Pads pads{};
+    int hold_for = 0;
+    bool menus = true; // Start and Select too (they pause most games)
+    explicit PseudoPlayer(uint32_t seed) : input(seed) {}
+    Pads next()
+    {
+        static const uint16_t kButtons[] = { 0x8000, 0x4000, 0x2000, 0x1000, 0x0800, 0x0400, 0x0200, 0x0100,
+                                             0x0080, 0x0040, 0x0020, 0x0010 };
+        if (--hold_for <= 0)
+        {
+            pads[0] = 0;
+            if (input() % 4)
+                for (int b = 0, n = 1 + int(input() % 2); b < n; b++)
+                    pads[0] |= kButtons[input() % 12];
+            if (!menus)
+                pads[0] &= uint16_t(~0x3000);
+            hold_for = 5 + int(input() % 40);
+        }
+        return pads;
+    }
+};
+
+struct Explored
+{
+    Variant v;
+    RunScore s;
+    uint32_t frames = 0;
+    std::string ended;
+};
+
+// A survivor whose picture differs this much from the control's (in the window's second
+// half) changed something you can see.
+constexpr double kVisible = 0.02;
+
+int run_explore(const Recipe &recipe, int frames, int variants, int moments)
+{
+    // Where the moments start: frames of a pseudo-player's play from the warmup
+    // (CORRUPT_EXPLORE_AT=3600,7200; default: every `frames` frames). The code map, jump
+    // tables and functions are learned from that play, as a player's would be.
+    std::vector<int> at;
+    if (const char *list = getenv("CORRUPT_EXPLORE_AT"))
+    {
+        std::stringstream ss(list);
+        for (std::string item; std::getline(ss, item, ',');)
+            at.push_back(atoi(item.c_str()));
+    }
+    while (int(at.size()) < moments)
+        at.push_back(frames * int(at.size() + 1));
+    at.resize(size_t(moments));
+    std::sort(at.begin(), at.end());
+    CodeMap map(Memory.CalculatedSize);
+    JumpLog jumps;
+    CallKeeper calls;
+    std::vector<std::vector<uint8_t>> starts;
+    PseudoPlayer lead_in(100);
+    WramAccessCounter wram_reads; // what the ram family aims at
+    {
+        wram_reads.start();
+        RomTracer tracer;
+        if (!tracer.start(map, &jumps, &calls.mine()))
+            return 1;
+        for (int i = 0; i <= at.back(); i++)
+        {
+            if (std::find(at.begin(), at.end(), i) != at.end())
+                starts.push_back(access.save_state());
+            if (i == at.back())
+                break;
+            access.set_pads(lead_in.next());
+            headless::run_frames(1);
+            calls.end_frame();
+        }
+        tracer.stop();
+    }
+    std::span<const uint8_t> clean(rom.clean().data(), rom.clean().size());
+    auto where = SnesCoreAccess::rom_addresses();
+    auto tables = find_jump_tables(jumps, clean, map.flags(), SnesCoreAccess::rom_offsets()).tables;
+    auto functions = calls.functions();
+    auto bodies = function_bodies(clean, map.flags(), functions, where);
+    std::vector<InPlay> busy;
+    for (auto &f : busiest(functions, Engine::kBusiestFunctions))
+        busy.push_back({ f.entry, false });
+    HotMask busy_mask = guard_mask(busy, bodies, nullptr);
+    printf("learned  %zu code bytes, %zu jump tables, %zu functions (%zu busy-code bytes) from %d frames of play\n",
+           map.coverage().code, tables.size(), functions.size(), busy_mask.count(Target::ROM), at.back());
+    std::vector<uint8_t> aim_flags;
+    engine.set_code_flags([&] {
+        aim_flags = map.flags();
+        for (auto &f : aim_flags)
+            f &= codeflag::All;
+        return std::span<const uint8_t>(aim_flags);
+    });
+    engine.set_jump_tables([&] { return tables; });
+    engine.set_functions([&] { return functions; });
+    engine.set_busy_code([&] { return busy_mask; });
+
+    ExploreKnows knows;
+    knows.recipe = recipe;
+    knows.code_map = map.coverage().code > 0;
+    knows.busy_code = busy_mask.count(Target::ROM) > 0;
+    knows.jump_tables = !tables.empty();
+    knows.functions = !functions.empty();
+    knows.wram = busy_wram(wram_reads.read_counts());
+    wram_reads.stop();
+    printf("wram     %zu ranges the game reads most:", knows.wram.size());
+    for (auto &r : knows.wram)
+        printf(" %s-%s", hex(r.first).c_str(), hex(r.last).c_str());
+    printf("\n");
+
+    const char *out_dir = getenv("CORRUPT_EXPLORE_OUT");
+    const uint32_t window = 1200;
+    RomTracer tracer; // what runs as code that never did: the explorer's "new code"
+    tracer.start(map);
+    S9xCorruptFrameHook = &frame_hook;
+    ExploreRig rig{ access, rom, engine, std::span<uint8_t>(map.data(), map.size()) };
+    std::map<std::string, std::array<double, 6>> fam; // n, alive, different, score, crashed, visible
+    double total_ms = 0;
+    int total_runs = 0;
+    for (int m = 0; m < moments; m++)
+    {
+        PseudoPlayer player(uint32_t(200 + m));
+        player.menus = false; // a pause in the window would be the whole moment
+        ExploreStart from;
+        from.state = starts[size_t(m)];
+        for (uint32_t i = 0; i < window; i++)
+            from.pads.push_back(player.next());
+
+        std::vector<uint32_t> strip_frames;
+        for (int k = 0; k < 6; k++)
+            strip_frames.push_back(window * (2 * k + 1) / 12);
+        PlayOptions with_strip;
+        with_strip.keep = strip_frames;
+        auto t0 = std::chrono::steady_clock::now();
+        PlayOptions learn = with_strip;
+        learn.keep_learning = true; // what the game runs anyway isn't new
+        auto control = play_variant(rig, from, nullptr, learn);
+        double control_ms = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0).count();
+        printf("moment %d (at %d) control: %u frames%s%s, %.0f ms (%.0f fps drawn)\n", m + 1, at[size_t(m)], control.frames,
+               control.crashed ? ", ended: " : "", control.ended.c_str(), control_ms, control.frames * 1000.0 / control_ms);
+        if (out_dir)
+        {
+            std::string mdir = std::string(out_dir) + "/moment" + std::to_string(m + 1);
+            std::filesystem::create_directories(mdir);
+            headless::write_png(mdir + "/control.png", headless::strip_of(control.kept));
+            // The scene as a kept moment, for snes9x-explore.
+            Moment kept;
+            kept.name = std::string(Memory.ROMName) + " scene " + std::to_string(m + 1);
+            kept.state = from.state;
+            for (auto &p : from.pads)
+                kept.frames.push_back({ p, {}, {} });
+            std::ofstream(mdir + "/scene.s9xmoment", std::ios::binary) << encode_moment(kept);
+        }
+        if (control.crashed)
+            continue;
+
+        uint64_t base = getenv("CORRUPT_EXPLORE_SEED") ? std::stoull(getenv("CORRUPT_EXPLORE_SEED")) : 0xE7E7;
+        auto vs = make_variants(knows, rom, size_t(variants), base + uint64_t(m), window);
+        std::vector<Explored> results;
+        for (auto &v : vs)
+        {
+            auto t1 = std::chrono::steady_clock::now();
+            auto run = play_variant(rig, from, &v.recipe);
+            total_ms += std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t1).count();
+            total_runs++;
+            Explored e{ v, score_run(run, control), run.frames, run.ended };
+            if (getenv("CORRUPT_EXPLORE_VERBOSE"))
+                printf("    %3u %-6s %s: %llu firings, %zu writes, %u frames%s%s; diff %.3f\n", v.id, family_name(v.family),
+                       v.what.c_str(), (unsigned long long)run.firings, run.writes, run.frames, run.crashed ? ", " : "",
+                       run.ended.c_str(), e.s.different);
+            auto &f = fam[family_name(v.family)];
+            f[0]++;
+            f[1] += e.s.alive;
+            f[2] += e.s.different;
+            f[3] += e.s.score;
+            f[4] += e.s.crashed;
+            f[5] += e.s.alive && e.s.different >= kVisible;
+            results.push_back(std::move(e));
+        }
+        std::vector<size_t> order(results.size());
+        for (size_t i = 0; i < order.size(); i++)
+            order[i] = i;
+        std::stable_sort(order.begin(), order.end(), [&](size_t a, size_t b) { return results[a].s.score > results[b].s.score; });
+        int alive = 0, visible = 0;
+        for (auto &e : results)
+        {
+            alive += e.s.alive;
+            visible += e.s.alive && e.s.different >= kVisible;
+        }
+        printf("moment %d: %zu variants, %d alive, %d of them visibly changed\n", m + 1, results.size(), alive, visible);
+        for (size_t r = 0; r < 12 && r < order.size(); r++)
+        {
+            auto &e = results[order[r]];
+            printf("  #%-2zu %.3f  diff %.2f lively %.2f (motion %.2f detail %.2f) code %4u  %-6s %s\n", r + 1, e.s.score,
+                   e.s.different, e.s.lively, e.s.motion, e.s.detail, e.s.new_code, family_name(e.v.family), e.v.what.c_str());
+        }
+        if (!out_dir)
+            continue;
+        // The blind test: the 12 best and 12 random other survivors, shuffled under letters.
+        std::vector<std::pair<size_t, std::string>> picks; // result, group
+        for (size_t r = 0; r < order.size() && picks.size() < 12; r++)
+            if (results[order[r]].s.alive)
+                picks.push_back({ order[r], "top" });
+        // The others: survivors that visibly changed something (CORRUPT_EXPLORE_ANY=1: any survivor),
+        // so the test asks whether the order means anything among changes you can see.
+        bool any = getenv("CORRUPT_EXPLORE_ANY");
+        std::vector<size_t> rest;
+        for (size_t r = 12; r < order.size(); r++)
+            if (results[order[r]].s.alive && (any || results[order[r]].s.different >= kVisible))
+                rest.push_back(order[r]);
+        std::mt19937 shuffle(uint32_t(7 + m));
+        std::shuffle(rest.begin(), rest.end(), shuffle);
+        for (size_t i = 0; i < rest.size() && i < 12; i++)
+            picks.push_back({ rest[i], "random" });
+        std::shuffle(picks.begin(), picks.end(), shuffle);
+        std::string dir = std::string(out_dir) + "/moment" + std::to_string(m + 1);
+        std::ofstream key(dir + "/key.txt");
+        for (size_t i = 0; i < picks.size(); i++)
+        {
+            auto &e = results[picks[i].first];
+            auto run = play_variant(rig, from, &e.v.recipe, with_strip);
+            auto again = score_run(run, control);
+            std::string label(1, char('A' + i));
+            headless::write_png(dir + "/" + label + ".png", headless::strip_of(run.kept));
+            size_t rank = std::find(order.begin(), order.end(), picks[i].first) - order.begin() + 1;
+            key << label << " " << picks[i].second << " rank " << rank << " score " << e.s.score << " (again "
+                << again.score << ") diff " << e.s.different << " lively " << e.s.lively << " motion " << e.s.motion
+                << " detail " << e.s.detail << " colours " << e.s.colours_ratio << " edges " << e.s.edges_ratio
+                << " enddiff " << e.s.end_different << " id " << e.v.id << " code " << e.s.new_code << " " << family_name(e.v.family) << ": "
+                << e.v.what << "\n";
+        }
+    }
+    tracer.stop();
+    S9xCorruptFrameHook = nullptr;
+    printf("speed    %.0f ms a variant of %u frames (%.0f fps drawn): %.0f variants an hour per process\n",
+           total_runs ? total_ms / total_runs : 0.0, window, total_runs ? total_runs * window * 1000.0 / total_ms : 0.0,
+           total_runs ? 3600e3 / (total_ms / total_runs) : 0.0);
+    printf("%-8s %5s %6s %8s %8s %9s %8s\n", "family", "runs", "alive", "crashed", "visible", "diff avg", "score avg");
+    for (auto &[name, f] : fam)
+        printf("%-8s %5.0f %5.0f%% %7.0f%% %7.0f%% %9.3f %9.4f\n", name.c_str(), f[0], 100 * f[1] / f[0], 100 * f[4] / f[0],
+               100 * f[5] / f[0], f[2] / f[0], f[3] / f[0]);
+    return 0;
+}
+
+} // namespace
+
 int main(int argc, char **argv)
 {
     setvbuf(stdout, nullptr, _IOLBF, 0); // progress shows up even through a pipe or a kill
@@ -2660,6 +2924,8 @@ int main(int argc, char **argv)
         return run_nmi(frames);
     if (argc > 5 && std::string(argv[5]) == "--eyes")
         return run_eyes(*parsed.recipe, frames, argc > 6 ? atoi(argv[6]) : 5);
+    if (argc > 5 && std::string(argv[5]) == "--explore")
+        return run_explore(*parsed.recipe, frames, argc > 6 ? atoi(argv[6]) : 300, argc > 7 ? atoi(argv[7]) : 2);
     if (argc > 5 && std::string(argv[5]) == "--keep")
         return run_keep(*parsed.recipe, frames, argc > 6 ? atoi(argv[6]) : 3);
     if (argc > 5 && std::string(argv[5]) == "--ahead")

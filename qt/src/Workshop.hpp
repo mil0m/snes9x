@@ -18,6 +18,8 @@ class RomPage;
 class SafetyPage;
 class SharingPage;
 class MomentsPage;
+class ExploredPage;
+class ExploreRunner;
 struct FunctionSource;
 struct MemorySource;
 struct SurvivorSource;
@@ -41,6 +43,8 @@ class Workshop : public QWidget
     SafetyPage *safetyPage() const { return safety; }
     SharingPage *sharingPage() const { return sharing; }
     MomentsPage *momentsPage() const { return moments; }
+    ExploredPage *exploredPage() const { return explored; }
+    ExploreRunner *exploreRunner() const { return runner; }
 
     void refresh(); // the current page and the sidebar's notes, from the session (twice a second while shown)
 
@@ -79,4 +83,6 @@ class Workshop : public QWidget
     SafetyPage *safety;
     SharingPage *sharing;
     MomentsPage *moments;
+    ExploredPage *explored;
+    ExploreRunner *runner;
 };

@@ -113,6 +113,38 @@ library. Newest are first.
 - The pencil renames a moment and the bin deletes it.
 - The folder button shows the files: send one to share it. Its file is about 100 KB.
 
+## Exploring a moment
+
+Found a moment you like? On the Moments page, pick it and press **Explore**, then choose how
+long: 10 minutes, an hour, or overnight. The explorer plays that moment again and again in
+the background, unseen and much faster than real time (about 6,000 tries an hour). Each try
+uses a different corruption, and your own button presses, so the only difference is the
+corruption. You can keep playing meanwhile; it runs at low priority.
+
+Each try is scored against the moment played without corruption:
+- **Visible**: does the picture change? Past a tenth of the screen, more doesn't count.
+- **Looks like a game**: about as many edges and colours as the scene. Tile garbage, a black
+  screen or a solid colour score low.
+- **Moving**: still moving at the end, as much as the scene does. A frozen picture scores 0,
+  and so does a crash.
+- **New code**: a bonus when it ran parts of the game's code that never ran before.
+
+Only tries that score well are kept, so a quiet scene may give just a few.
+
+The Workshop's **Explored** page shows what it found, best first, with six pictures across
+each one's run:
+- **Play** plays a candidate's run exactly as the explorer saw it. Press any button to take
+  over.
+- **Keep as Recipe** saves its recipe in the recipe list. It starts from the moment's start,
+  so Corrupt plays it live from the same place. ROM changes the moment already had aren't in
+  it; Play shows those.
+- The arrow button opens the **gallery**: one page with every candidate's pictures and recipe,
+  to look through or send.
+- **Stop Exploring** stops early and keeps what it found so far.
+
+Explorations live in the library (`explored/` in the game's folder), so a friend sharing it
+sees yours.
+
 ## The words
 
 | Word | Means |

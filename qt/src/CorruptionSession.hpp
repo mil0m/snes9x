@@ -64,6 +64,9 @@ class CorruptionSession
     void stopMoment();
     std::string renameMoment(const std::filesystem::path &path, const std::string &name);
     std::string deleteMoment(const std::filesystem::path &path);
+    std::vector<corrupt::Library::ExplorationEntry> explorations(); // #45, this game's, newest first
+    corrupt::SaveResult keepExplored(const std::filesystem::path &dir, const corrupt::Candidate &c, const std::string &moment);
+    std::string deleteExploration(const std::filesystem::path &dir);
 
     void setLibraryRoot(const std::filesystem::path &root);
     std::filesystem::path libraryRoot();
@@ -326,6 +329,7 @@ class CorruptionSession
     std::string message;
     std::string message_detail;
     std::string rom_name;
+    std::filesystem::path rom_file;
 
     uint64_t frames_since_check = 0;
     std::optional<corrupt::BackupClock::time_point> last_backup_time;

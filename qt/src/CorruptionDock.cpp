@@ -15,6 +15,7 @@
 #include "UiKit.hpp"
 #include "Workshop.hpp"
 #include "WorkshopPages.hpp"
+#include "ExploreRunner.hpp"
 #include "corrupt/rule_text.h"
 
 #include <QApplication>
@@ -486,6 +487,37 @@ void CorruptionDock::tour(const QString &dir)
                 .arg(int(CorruptionSession::get().status().moment_playing))
                 .arg(CorruptionSession::get().status().moment_at)
                 .arg(CorruptionSession::get().status().moment_seconds));
+        // Explore that moment (#45): 15 s of the real explorer, in the background.
+        CorruptionSession::get().stopMoment();
+        auto moments = CorruptionSession::get().moments();
+        auto runner = workshop->exploreRunner();
+        QString started = moments.empty() ? QString("no moment to explore")
+                                          : runner->start(CorruptionSession::get().status().rom_file, moments.front().path,
+                                                          qs(moments.front().name), CorruptionSession::get().libraryRoot(),
+                                                          "tour", 0.25);
+        log(QString("explore started: %1").arg(started.isEmpty() ? QString("yes") : started));
+        openWorkshop(WorkshopPage::Explored);
+        workshop->refresh();
+    });
+    steps->push_back([=, this] {
+        workshop->refresh();
+        shot(workshop, "17c-workshop-explored-running");
+    });
+    // Until it's done (at most a minute).
+    auto waited = std::make_shared<int>(0);
+    auto wait = std::make_shared<std::function<void()>>();
+    *wait = [=, this] {
+        workshop->refresh();
+        if (workshop->exploreRunner()->state().running && ++*waited < 40)
+            steps->insert(steps->begin(), *wait);
+    };
+    steps->push_back(*wait);
+    steps->push_back([=, this] {
+        workshop->exploredPage()->reload();
+        workshop->refresh();
+        shot(workshop, "17d-workshop-explored");
+        auto &st = workshop->exploreRunner()->state();
+        log(QString("explore done: %1 %2").arg(st.done, st.error));
         openWorkshop(WorkshopPage::Recipe);
     });
     steps->push_back([=, this] {

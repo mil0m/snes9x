@@ -1,4 +1,7 @@
 #include "WorkshopPages.hpp"
+#include <QPixmap>
+#include <QMenu>
+#include "ExploreRunner.hpp"
 #include "IntensitySlider.hpp"
 #include "RecipeActions.hpp"
 #include "SurvivorsPanel.hpp"
@@ -843,9 +846,9 @@ QString recipe_state(const PanelStatus &status)
     return status.edited ? QObject::tr("Changed since saved") : QObject::tr("Saved");
 }
 
-std::array<SidebarNote, 7> sidebar_notes(const PanelStatus &status, size_t others, bool remote_on)
+std::array<SidebarNote, 8> sidebar_notes(const PanelStatus &status, size_t others, bool remote_on)
 {
-    std::array<SidebarNote, 7> notes;
+    std::array<SidebarNote, 8> notes;
     auto note = [&](WorkshopPage page) -> SidebarNote & { return notes[size_t(page)]; };
     auto count = [](size_t n, const char *one, const char *many) {
         return n == 1 ? QObject::tr(one) : QObject::tr(many).arg(QLocale().toString(qulonglong(n)));
@@ -881,7 +884,8 @@ std::array<SidebarNote, 7> sidebar_notes(const PanelStatus &status, size_t other
 
 // ---------------------------------------------------------------- Moments (#47)
 
-MomentsPage::MomentsPage(CorruptionControl &control, QWidget *parent) : QWidget(parent), control(control)
+MomentsPage::MomentsPage(CorruptionControl &control, ExploreRunner *runner, QWidget *parent)
+    : QWidget(parent), control(control), runner(runner)
 {
     setObjectName("moments_page");
     auto layout = pageLayout(this);
@@ -954,6 +958,19 @@ MomentsPage::MomentsPage(CorruptionControl &control, QWidget *parent) : QWidget(
     folder_button = icon_button("folder-open", tr("Show in Folder"),
                                 tr("Show the moments' folder: send the file to share a moment"), "moments_folder");
     row->addWidget(play_button);
+    if (runner)
+    {
+        // Explore (#45): a menu of how long, from a plain button (the house way).
+        explore_button = new QPushButton(ui::icon("chevron-down"), tr("Explore"), actions_row);
+        explore_button->setObjectName("explore_moment");
+        explore_button->setAutoDefault(false);
+        explore_button->setLayoutDirection(Qt::RightToLeft);
+        explore_button->setToolTip(tr("Play this moment again and again in the background, unseen and much faster than "
+                                      "real time, each time with a different corruption and your own button presses, and "
+                                      "keep the ones that look most changed while still running. About 6,000 tries an "
+                                      "hour; the Explored page shows what it finds."));
+        row->addWidget(explore_button);
+    }
     row->addStretch(1);
     row->addWidget(rename_button);
     row->addWidget(delete_button);
@@ -1007,6 +1024,32 @@ MomentsPage::MomentsPage(CorruptionControl &control, QWidget *parent) : QWidget(
         say(this->control.deleteMoment(m->path));
         reload();
     });
+    if (explore_button)
+        connect(explore_button, &QPushButton::clicked, this, [this, say] {
+            auto m = selected();
+            if (!m)
+                return;
+            QMenu menu(this);
+            struct Choice
+            {
+                QString text;
+                double minutes;
+            };
+            for (auto c : { Choice{ tr("For 10 Minutes (about 1,000 tries)"), 10 },
+                            Choice{ tr("For an Hour (about 6,000 tries)"), 60 },
+                            Choice{ tr("Overnight (8 hours, about 50,000 tries)"), 480 } })
+            {
+                auto action = menu.addAction(c.text);
+                connect(action, &QAction::triggered, this, [this, say, m, c] {
+                    auto error = this->runner->start(last.rom_file, m->path, qs(m->name), this->control.libraryRoot(),
+                                                     qs(this->control.me()), c.minutes);
+                    say(error.toStdString(), tr("Exploring “%1” in the background; the Explored page shows what "
+                                                "it finds.")
+                                                 .arg(qs(m->name)));
+                });
+            }
+            menu.exec(explore_button->mapToGlobal(QPoint(0, explore_button->height())));
+        });
     connect(folder_button, &QPushButton::clicked, this, [this] {
         auto dir = this->control.gameFolder() / "moments";
         QDir().mkpath(qs(dir.string()));
@@ -1027,6 +1070,8 @@ void MomentsPage::showSelected()
 {
     auto m = selected();
     play_button->setEnabled(m.has_value());
+    if (explore_button)
+        explore_button->setEnabled(m.has_value() && !runner->state().running);
     rename_button->setEnabled(m.has_value());
     delete_button->setEnabled(m.has_value());
     if (!m)
@@ -1085,6 +1130,9 @@ void MomentsPage::reload()
 
 void MomentsPage::refresh(const PanelStatus &status)
 {
+    last = status;
+    if (explore_button)
+        explore_button->setEnabled(selected().has_value() && !runner->state().running);
     std::string game = status.game_loaded ? status.game.sha256 : std::string();
     bool editing = renaming;
     // A new Keep, another game, or every few seconds (someone sharing the library kept one).
@@ -1092,6 +1140,351 @@ void MomentsPage::refresh(const PanelStatus &status)
     {
         shown_keeps = status.keeps;
         shown_game = game;
+        reload();
+    }
+}
+
+// ---------------------------------------------------------------- Explored (#46)
+
+namespace
+{
+// "1,234 tried", "12 min" and the like for the running line.
+QString minutesText(double m)
+{
+    if (m >= 120)
+        return QObject::tr("%1 hours").arg(QLocale().toString(m / 60, 'f', 0));
+    if (m >= 60)
+        return QObject::tr("an hour");
+    if (m < 1)
+        return QObject::tr("%1 s").arg(QLocale().toString(m * 60, 'f', 0));
+    return QObject::tr("%1 min").arg(QLocale().toString(m, 'f', 0));
+}
+} // namespace
+
+ExploredPage::ExploredPage(CorruptionControl &control, ExploreRunner &runner, QWidget *parent)
+    : QWidget(parent), control(control), runner(runner)
+{
+    setObjectName("explored_page");
+    auto layout = pageLayout(this);
+    layout->addWidget(ui::heading(tr("Explored"), this));
+    layout->addWidget(help(tr("The explorer plays a kept moment again and again, unseen and much faster than real time, "
+                              "each time with a different corruption, pressing the same buttons you pressed. It keeps the "
+                              "ones that stay running and look most changed while still looking like a game: their "
+                              "pictures, their recipe, and their run as a moment that plays back exactly. Start one with "
+                              "Explore on the Moments page."),
+                           this));
+
+    running_row = new QWidget(this);
+    running_row->setObjectName("explore_running");
+    auto rrow = new QHBoxLayout(running_row);
+    rrow->setContentsMargins(0, 0, 0, 0);
+    running_label = new QLabel(running_row);
+    running_label->setObjectName("explore_running_text");
+    running_label->setWordWrap(true);
+    stop_button = button(tr("Stop Exploring"), running_row, "player-stop");
+    stop_button->setObjectName("explore_stop");
+    stop_button->setToolTip(tr("Stop now: what it found so far stays, with its pictures and recipes."));
+    rrow->addWidget(running_label, 1);
+    rrow->addWidget(stop_button);
+    layout->addWidget(running_row);
+
+    chooser = new QComboBox(this);
+    chooser->setObjectName("explorations");
+    chooser->setAccessibleName(tr("Exploration"));
+    chooser->setToolTip(tr("Each exploration: the moment it started from, and when"));
+    layout->addLayout(ui::row(chooser));
+    summary = new QLabel(this);
+    summary->setObjectName("exploration_summary");
+    summary->setWordWrap(true);
+    ui::setTone(summary, ui::Tone::Secondary);
+    layout->addWidget(summary);
+
+    table = new QTableWidget(0, 4, this);
+    table->setObjectName("candidates");
+    table->setHorizontalHeaderLabels({ tr("#"), tr("Kind"), tr("What changed"), tr("Score") });
+    table->verticalHeader()->setVisible(false);
+    auto header = table->horizontalHeader();
+    header->setSectionResizeMode(0, QHeaderView::Interactive);
+    header->setSectionResizeMode(1, QHeaderView::Interactive);
+    header->setSectionResizeMode(2, QHeaderView::Stretch);
+    header->setSectionResizeMode(3, QHeaderView::Interactive);
+    header->setHighlightSections(false);
+    table->setWordWrap(true);
+    table->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    table->setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    table->setEditTriggers(QAbstractItemView::NoEditTriggers);
+    table->setSelectionMode(QAbstractItemView::SingleSelection);
+    table->setSelectionBehavior(QAbstractItemView::SelectRows);
+    table->setAccessibleName(tr("Candidates"));
+    table->setToolTip(tr("Double-click a candidate to play its run"));
+    layout->addWidget(table);
+    connect(header, &QHeaderView::sectionResized, this, [this](int section) {
+        if (section == 2)
+            QTimer::singleShot(0, this, [this] { fitTable(table); });
+    });
+
+    strip = new QLabel(this);
+    strip->setObjectName("candidate_strip");
+    strip->setAlignment(Qt::AlignLeft | Qt::AlignTop);
+    strip->setMinimumHeight(1);
+    strip->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Fixed);
+    layout->addWidget(strip);
+    details = new QLabel(this);
+    details->setObjectName("candidate_details");
+    details->setWordWrap(true);
+    details->setTextFormat(Qt::PlainText);
+    ui::setTone(details, ui::Tone::Secondary);
+    layout->addWidget(details);
+    empty_label = new QLabel(tr("Nothing explored yet. On the Moments page, pick a moment you like and press Explore: "
+                                "it runs in the background, and what it finds shows up here."),
+                             this);
+    empty_label->setObjectName("explored_empty");
+    empty_label->setWordWrap(true);
+    ui::setTone(empty_label, ui::Tone::Secondary);
+    layout->addWidget(empty_label);
+
+    actions_row = new QWidget(this);
+    auto row = new QHBoxLayout(actions_row);
+    row->setContentsMargins(0, 0, 0, 0);
+    play_button = button(tr("Play"), actions_row, "player-play");
+    play_button->setObjectName("play_candidate");
+    play_button->setToolTip(tr("Turn corruption off and play the candidate's run from its start, exactly as the explorer "
+                               "saw it. Press any button on the pad to take over."));
+    keep_button = button(tr("Keep as Recipe"), actions_row, "device-floppy");
+    keep_button->setObjectName("keep_candidate");
+    keep_button->setToolTip(tr("Save its recipe in the library, starting from the moment's start: open it in the recipe "
+                               "list and press Corrupt to play it live. ROM changes the moment already had aren't in it."));
+    gallery_button = tool("external-link", tr("Open the Gallery"), actions_row);
+    gallery_button->setObjectName("open_gallery");
+    gallery_button->setToolTip(tr("Open the exploration's gallery page in your browser: every candidate's pictures and "
+                                  "recipe, one page to send"));
+    delete_button = tool("trash", tr("Delete the Exploration"), actions_row);
+    delete_button->setObjectName("delete_exploration");
+    folder_button = tool("folder-open", tr("Show in Folder"), actions_row);
+    folder_button->setObjectName("exploration_folder");
+    row->addWidget(play_button);
+    row->addWidget(keep_button);
+    row->addStretch(1);
+    row->addWidget(gallery_button);
+    row->addWidget(delete_button);
+    row->addWidget(folder_button);
+    layout->addWidget(actions_row);
+    message = new ui::StatusLine(this);
+    message->setObjectName("explored_message");
+    message->hide();
+    layout->addWidget(message);
+    layout->addStretch(0);
+
+    confirm = [this](const QString &title, const QString &question) {
+        return QMessageBox::question(this, title, question) == QMessageBox::Yes;
+    };
+    auto say = [this](const std::string &error, const QString &done = {}) {
+        if (error.empty() && done.isEmpty())
+            return message->hide();
+        message->setMessage(error.empty() ? done : qs(error), error.empty() ? ui::Tone::Ok : ui::Tone::Error);
+        message->show();
+    };
+    auto play = [this, say] {
+        auto e = exploration();
+        auto c = selected();
+        if (e && c)
+            say(this->control.playMoment(e->dir / c->moment_file),
+                tr("Playing candidate #%1: press any button to take over").arg(c->rank));
+    };
+    connect(play_button, &QPushButton::clicked, this, play);
+    connect(table, &QTableWidget::cellDoubleClicked, this, play);
+    connect(keep_button, &QPushButton::clicked, this, [this, say] {
+        auto e = exploration();
+        auto c = selected();
+        if (!e || !c)
+            return;
+        auto r = this->control.keepExplored(e->dir, *c, e->exploration.moment);
+        say(r.error, tr("Kept as %1 in the recipe list").arg(qs(r.path.filename().string())));
+    });
+    connect(gallery_button, &QPushButton::clicked, this, [this] {
+        if (auto e = exploration())
+            QDesktopServices::openUrl(QUrl::fromLocalFile(qs((e->dir / "gallery.html").string())));
+    });
+    connect(folder_button, &QPushButton::clicked, this, [this] {
+        if (auto e = exploration())
+            QDesktopServices::openUrl(QUrl::fromLocalFile(qs(e->dir.string())));
+    });
+    connect(delete_button, &QPushButton::clicked, this, [this, say] {
+        auto e = exploration();
+        if (!e || !confirm(tr("Delete this exploration"),
+                           tr("Delete “%1” with its pictures, recipes and moments? It goes for everyone sharing "
+                              "the library; recipes you kept from it stay.")
+                               .arg(qs(e->exploration.name))))
+            return;
+        say(this->control.deleteExploration(e->dir));
+        reload();
+    });
+    connect(stop_button, &QPushButton::clicked, this, [this] { this->runner.stop(); });
+    connect(chooser, &QComboBox::currentIndexChanged, this, [this] {
+        if (!filling)
+            showExploration();
+    });
+    connect(table->selectionModel(), &QItemSelectionModel::selectionChanged, this, &ExploredPage::showSelected);
+    reload();
+}
+
+const Library::ExplorationEntry *ExploredPage::exploration() const
+{
+    int i = chooser->currentIndex();
+    return i >= 0 && size_t(i) < list.size() ? &list[size_t(i)] : nullptr;
+}
+
+const Candidate *ExploredPage::selected() const
+{
+    auto e = exploration();
+    auto rows = table->selectionModel()->selectedRows();
+    if (!e || rows.isEmpty() || size_t(rows.front().row()) >= e->exploration.candidates.size())
+        return nullptr;
+    return &e->exploration.candidates[size_t(rows.front().row())];
+}
+
+void ExploredPage::reload()
+{
+    std::string current = exploration() ? exploration()->dir.string() : std::string();
+    list = control.explorations();
+    filling = true;
+    chooser->clear();
+    int select = list.empty() ? -1 : 0;
+    for (int i = 0; i < int(list.size()); i++)
+    {
+        auto &e = list[size_t(i)].exploration;
+        chooser->addItem(tr("%1 · %2").arg(qs(e.moment), qs(e.made_at.substr(0, 16))));
+        if (list[size_t(i)].dir.string() == current)
+            select = i;
+    }
+    chooser->setCurrentIndex(select);
+    filling = false;
+    bool any = !list.empty();
+    chooser->setVisible(any);
+    summary->setVisible(any);
+    empty_label->setVisible(!any);
+    showExploration();
+}
+
+void ExploredPage::showExploration()
+{
+    auto e = exploration();
+    int keep_row = table->selectionModel()->selectedRows().isEmpty() ? 0 : table->selectionModel()->selectedRows().front().row();
+    filling = true;
+    table->setRowCount(e ? int(e->exploration.candidates.size()) : 0);
+    if (e)
+    {
+        auto &x = e->exploration;
+        QString text = tr("%1 variants of %2 s, %3 kept running, %4 visibly changed something; explored by %5.")
+                           .arg(QLocale().toString(x.variants))
+                           .arg(QLocale().toString(x.window / 60.0, 'f', 0))
+                           .arg(QLocale().toString(x.alive))
+                           .arg(QLocale().toString(x.visible))
+                           .arg(qs(x.made_by));
+        if (!x.finished)
+            text += " " + tr("Still exploring, or stopped early: the best so far.");
+        summary->setText(text);
+        for (int i = 0; i < int(x.candidates.size()); i++)
+        {
+            auto &c = x.candidates[size_t(i)];
+            auto rank = new QTableWidgetItem(QLocale().toString(c.rank));
+            rank->setTextAlignment(Qt::AlignRight | Qt::AlignVCenter);
+            table->setItem(i, 0, rank);
+            table->setItem(i, 1, new QTableWidgetItem(QString::fromLatin1(family_name(c.family))));
+            auto what = new QTableWidgetItem(qs(c.what));
+            what->setToolTip(qs(c.recipe.name));
+            table->setItem(i, 2, what);
+            auto score = new QTableWidgetItem(QLocale().toString(c.score.score, 'f', 2));
+            score->setTextAlignment(Qt::AlignRight | Qt::AlignVCenter);
+            score->setToolTip(tr("Visible change %1%, looks like a game %2%, moving %3%, %4 bytes of code it never ran before")
+                                  .arg(QLocale().toString(std::min(1.0, c.score.different) * 100, 'f', 0))
+                                  .arg(QLocale().toString(c.score.detail * 100, 'f', 0))
+                                  .arg(QLocale().toString(c.score.motion * 100, 'f', 0))
+                                  .arg(QLocale().toString(c.score.new_code)));
+            table->setItem(i, 3, score);
+        }
+    }
+    filling = false;
+    table->resizeColumnToContents(0);
+    table->resizeColumnToContents(1);
+    table->resizeColumnToContents(3);
+    fitTable(table);
+    bool any = e && !e->exploration.candidates.empty();
+    table->setVisible(any);
+    actions_row->setVisible(e != nullptr);
+    if (any)
+        table->selectRow(std::min(keep_row, table->rowCount() - 1));
+    showSelected();
+}
+
+void ExploredPage::showSelected()
+{
+    auto e = exploration();
+    auto c = selected();
+    play_button->setEnabled(c && !c->moment_file.empty());
+    keep_button->setEnabled(c != nullptr);
+    gallery_button->setEnabled(e && std::filesystem::exists(e->dir / "gallery.html"));
+    if (!c)
+    {
+        strip->clear();
+        strip->hide();
+        details->setText(e && e->exploration.candidates.empty() ? tr("Nothing worth keeping yet.") : QString());
+        return;
+    }
+    QPixmap picture(qs((e->dir / c->strip_file).string()));
+    if (picture.isNull())
+        strip->hide();
+    else
+    {
+        int w = std::max(200, width() - 24);
+        auto scaled = picture.scaledToWidth(w, Qt::SmoothTransformation);
+        strip->setPixmap(scaled);
+        strip->setFixedHeight(scaled.height());
+        strip->setAccessibleName(tr("Six pictures across candidate #%1's run").arg(c->rank));
+        strip->show();
+    }
+    QString text = tr("%1: %2.").arg(qs(c->recipe.name), qs(c->what));
+    if (c->exact)
+        text += " " + (*c->exact ? tr("Its run plays back exactly.") : tr("Its run doesn't play back exactly; the recipe may still."));
+    details->setText(text);
+}
+
+void ExploredPage::showRunning()
+{
+    auto &s = runner.state();
+    running_row->setVisible(s.running || !s.error.isEmpty());
+    stop_button->setVisible(s.running);
+    if (s.running)
+    {
+        double ran = (QDateTime::currentMSecsSinceEpoch() - s.started_ms) / 60000.0;
+        running_label->setText(tr("Exploring “%1” (%2 of %3): %4 tried, %5 kept running, %6 visibly changed.")
+                                   .arg(s.moment, minutesText(ran), minutesText(s.minutes))
+                                   .arg(QLocale().toString(s.tried))
+                                   .arg(QLocale().toString(s.alive))
+                                   .arg(QLocale().toString(s.visible)));
+        ui::setTone(running_label, ui::Tone::Normal);
+    }
+    else if (!s.error.isEmpty())
+    {
+        running_label->setText(s.error);
+        ui::setTone(running_label, ui::Tone::Error);
+    }
+}
+
+void ExploredPage::refresh(const PanelStatus &status)
+{
+    std::string game = status.game_loaded ? status.game.sha256 : std::string();
+    showRunning();
+    auto &s = runner.state();
+    empty_label->setText(s.running ? tr("Exploring: the first candidates show up here within a minute or two.")
+                                   : tr("Nothing explored yet. On the Moments page, pick a moment you like and press "
+                                        "Explore: it runs in the background, and what it finds shows up here."));
+    // New candidates while it runs (it writes every 30 s), another game, or every few seconds.
+    bool moved = s.tried != shown_tried && (s.tried / 25 != shown_tried / 25 || !s.running);
+    if (game != shown_game || moved || ++ticks % 20 == 0)
+    {
+        shown_game = game;
+        shown_tried = s.tried;
         reload();
     }
 }

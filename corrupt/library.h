@@ -5,6 +5,7 @@
 #include "jump_tables.h"
 #include "moment.h"
 #include "crash_map.h"
+#include "exploration.h"
 #include "recipe.h"
 #include "recipe_json.h"
 
@@ -128,6 +129,19 @@ class Library
     SaveResult save_moment(const GameId &game, const Moment &moment) const;
     SaveResult rename_moment(const std::filesystem::path &path, const std::string &name) const;
     std::string delete_moment(const std::filesystem::path &path) const;
+
+    // Explorations (#45): explored/<name>/candidates.json in the game's folder, with the best
+    // variants' recipes, moments and strips beside it. Everyone's, newest first.
+    struct ExplorationEntry
+    {
+        std::filesystem::path dir;
+        Exploration exploration;
+    };
+    std::filesystem::path explored_dir(const GameId &game) const;
+    std::vector<ExplorationEntry> list_explorations(const GameId &game, std::vector<std::string> *errors = nullptr) const;
+    // A new folder for an exploration called `name` (a free one: "name 2" if it's taken). Error or empty.
+    SaveResult new_exploration_dir(const GameId &game, const std::string &name) const;
+    std::string delete_exploration(const std::filesystem::path &dir) const;
 
     Regions load_regions(const GameId &game, std::vector<std::string> &errors) const;
     std::string save_regions(const GameId &game, const Regions &regions) const; // error or empty
