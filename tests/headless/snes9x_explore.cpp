@@ -10,8 +10,13 @@
 // it, and the exploration goes in <game folder>/explored/ unless --out says where). --variants
 // (default 300) or --minutes (as many as fit; both: whichever comes first). --keep: how many
 // candidates (24). --seconds: the window, at most the moment's length (20). Ctrl-C stops early
-// and keeps what's there. Prints "progress <tried> <alive> <visible> <best score>" lines.
-// Plan: docs/corruption/2026-11-05-explorer-plan.md.
+// and keeps what's there. Prints "progress <tried> <alive> <visible> <best find>" lines.
+//
+// Before the variants it measures normal play (#82): the moment 37 more times without
+// corruption, most with one button press moved, and keeps only variants that go beyond it
+// (a score over normal play's best, or code signals past it); "normal <done> <of>" lines
+// meanwhile, then "normal best <score> <new functions> <silenced> <new code>".
+// Plans: docs/corruption/2026-11-05-explorer-plan.md, 2026-11-06-normal-play-plan.md.
 #include "headless_core.h"
 #include "png_out.h"
 
@@ -20,6 +25,7 @@
 #include "corrupt/core_access.h"
 #include "corrupt/core_memory.h"
 #include "corrupt/engine.h"
+#include "corrupt/envelope.h"
 #include "corrupt/exploration.h"
 #include "corrupt/explore.h"
 #include "corrupt/function_body.h"
@@ -315,6 +321,67 @@ int main(int argc, char **argv)
            map.coverage().code, tables.size(), functions.size(), knows.wram.size(), window / 60.0,
            (unsigned long long)seed);
 
+    // Every run from here on records the functions it calls per frame, and the code it runs.
+    CallLog calls_log;
+    RomTracer tracer;
+    tracer.start(map, nullptr, &calls_log);
+    auto traced = [&](const ExploreStart &from, const Recipe *r, PlayOptions o, StateTrace &trace) {
+        auto before = o.before_frame;
+        auto after = o.after_frames;
+        o.before_frame = [&, before](uint32_t f) {
+            if (f == 0)
+                calls_log.clear();
+            else
+                calls_log.end_frame();
+            if (before)
+                before(f);
+        };
+        o.after_frames = [&, after] {
+            calls_log.end_frame();
+            if (after)
+                after();
+        };
+        auto run = play_variant(rig, from, r, o);
+        trace = {};
+        for (auto &[entry, n] : calls_log.frames_run())
+            trace.calls[entry] = uint32_t(n);
+        return run;
+    };
+
+    // Normal play (#82): the control again, 16 natural runs (one press shifted, dropped or
+    // added: placebos) whose calls, pictures and code set normal play's range, then 20 more
+    // placebos measured against it like variants: the most they reach is normal play's best.
+    const int kNatural = 16, kBar = 20, kNormal = 1 + kNatural + kBar;
+    Envelope envelope;
+    NormalBest normal;
+    {
+        StateTrace trace;
+        PlayOptions learn;
+        learn.keep_learning = true; // code normal play runs isn't new
+        int done = 0;
+        auto placebo = [&](int i) {
+            ExploreStart p = start;
+            p.pads = perturb(start.pads, seed + 0x5EED + uint64_t(i));
+            return p;
+        };
+        for (int i = 0; i <= kNatural && !stop_asked; i++)
+        {
+            auto run = traced(i == 0 ? start : placebo(i), nullptr, learn, trace);
+            if (!run.crashed) // a placebo that crashes isn't normal play
+                envelope.add(run, trace);
+            printf("normal %d %d\n", ++done, kNormal);
+        }
+        envelope.finish({});
+        for (int i = 0; i < kBar && !stop_asked; i++)
+        {
+            auto run = traced(placebo(100 + i), nullptr, {}, trace);
+            normal.add(score_run(run, control), envelope.measure(run, trace));
+            printf("normal %d %d\n", ++done, kNormal);
+        }
+        normal.runs = uint32_t(done);
+        printf("normal best %.3f %u %u %u\n", normal.score, normal.new_functions, normal.silenced, normal.new_code);
+    }
+
     // Where it goes.
     Exploration e;
     e.game = game;
@@ -323,6 +390,7 @@ int main(int argc, char **argv)
     e.made_by = user;
     e.made_at = local_time("%Y-%m-%d %H:%M:%S");
     e.window = window;
+    e.normal = normal;
     fs::path dir;
     if (!out_dir.empty())
     {
@@ -346,8 +414,6 @@ int main(int argc, char **argv)
     std::signal(SIGINT, on_signal);
     std::signal(SIGTERM, on_signal);
     recorder.set_config({ .keyframe_every = 1u << 30, .keyframes = 1, .lead = 0 });
-    RomTracer tracer; // new code, from here on
-    tracer.start(map);
     auto began = std::chrono::steady_clock::now();
     auto elapsed = [&] { return std::chrono::duration<double>(std::chrono::steady_clock::now() - began).count(); };
     double last_write = 0;
@@ -392,8 +458,14 @@ int main(int argc, char **argv)
                     if (uint8_t v = memory.read(Target::ROM, i); v != clean[i])
                         end.rom.emplace_back(i, v);
             };
-            auto run = play_variant(rig, start, &v.recipe, o);
+            StateTrace trace;
+            auto run = traced(start, &v.recipe, o, trace);
             auto s = score_run(run, control);
+            std::vector<AddressRange> own;
+            for (auto &rule : v.recipe.rules)
+                own.push_back(rule.range);
+            auto g = envelope.measure(run, trace, own);
+            auto verdict = judge(s, g, normal);
             tried++;
             auto &f = e.families[size_t(v.family)];
             f.runs++;
@@ -406,9 +478,9 @@ int main(int argc, char **argv)
                                 !s.alive                    ? Tried::Stopped
                                 : s.different >= kVisible   ? Tried::Visible
                                                             : Tried::Unchanged,
-                                float(s.score) });
-            bool worth = s.alive && s.score >= kMinScore && kept_moment &&
-                         (e.candidates.size() < keep || s.score > e.candidates.back().score.score);
+                                float(s.score), float(verdict.find) });
+            bool worth = verdict.kept && kept_moment &&
+                         (e.candidates.size() < keep || verdict.find > e.candidates.back().verdict.find);
             if (worth)
             {
                 Candidate c;
@@ -417,6 +489,8 @@ int main(int argc, char **argv)
                 c.what = v.what;
                 c.recipe = v.recipe;
                 c.score = s;
+                c.measured = g;
+                c.verdict = verdict;
                 std::string stem = std::to_string(v.id + 1) + " " + family_name(v.family);
                 c.moment_file = stem + ".s9xmoment";
                 c.strip_file = stem + ".png";
@@ -431,8 +505,8 @@ int main(int argc, char **argv)
                 write_file(dir / c.moment_file, encode_moment(m));
                 write_file(dir / (stem + ".json"), write_recipe(v.recipe));
                 headless::write_png((dir / c.strip_file).string(), headless::strip_of(run.kept));
-                auto at = std::upper_bound(e.candidates.begin(), e.candidates.end(), s.score,
-                                           [](double v, const Candidate &x) { return v > x.score.score; });
+                auto at = std::upper_bound(e.candidates.begin(), e.candidates.end(), verdict.find,
+                                           [](double v, const Candidate &x) { return v > x.verdict.find; });
                 ends[c.id] = std::move(end);
                 e.candidates.insert(at, std::move(c));
                 if (e.candidates.size() > keep)
@@ -448,7 +522,7 @@ int main(int argc, char **argv)
             }
             if (tried % 10 == 0 || worth)
                 printf("progress %u %u %u %.3f\n", tried, e.alive, e.visible,
-                       e.candidates.empty() ? 0.0 : e.candidates.front().score.score);
+                       e.candidates.empty() ? 0.0 : e.candidates.front().verdict.find);
             if (elapsed() - last_write >= 30)
                 save(false);
         }

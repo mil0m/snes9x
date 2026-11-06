@@ -55,7 +55,7 @@ rm -f "$out/done"
 SNES9X_UI_TOUR="$out" XDG_CONFIG_HOME="$scratch/config" QT_QPA_PLATFORM="${TOUR_PLATFORM:-offscreen}" \
     QT_SCALE_FACTOR="$scale" "$app" $dark "$copy" > "$scratch/log.txt" 2>&1 &
 pid=$!
-for _ in $(seq 360); do # 180 s: the tour waits 1.5 s a step, and the explorer runs 15 s
+for _ in $(seq 420); do # 210 s: the tour waits 1.5 s a step, and the explorer measures normal play (~25 s), then runs 15 s
     [ -f "$out/done" ] && break
     kill -0 $pid 2>/dev/null || break
     sleep 0.5

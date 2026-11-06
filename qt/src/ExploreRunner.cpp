@@ -119,6 +119,17 @@ void ExploreRunner::readLines()
                 st.best = p[4].toDouble();
             }
         }
+        else if (line.startsWith("normal "))
+        {
+            auto p = line.split(' ');
+            if (p.size() >= 3 && p[1] != "best")
+            {
+                st.normal_done = p[1].toUInt();
+                st.normal_of = p[2].toUInt();
+            }
+            else
+                st.normal_done = st.normal_of;
+        }
         else if (line.startsWith("folder "))
             st.folder = line.mid(7).trimmed();
         else if (line.startsWith("done "))

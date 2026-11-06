@@ -1169,10 +1169,12 @@ ExploredPage::ExploredPage(CorruptionControl &control, ExploreRunner &runner, QW
     auto layout = pageLayout(this);
     layout->addWidget(ui::heading(tr("Explored"), this));
     layout->addWidget(help(tr("The explorer plays a kept moment again and again, unseen and much faster than real time, "
-                              "each time with a different corruption, pressing the same buttons you pressed. It keeps the "
-                              "ones that stay running and look most changed while still looking like a game: their "
-                              "pictures, their recipe, and their run as a moment that plays back exactly. Start one with "
-                              "Explore on the Moments page."),
+                              "each time with a different corruption, pressing the same buttons you pressed. First it plays "
+                              "the moment a few dozen times without corruption, most with one button press moved, to see how "
+                              "far normal play goes. It keeps the ones that stay running and go beyond that: changed more "
+                              "than normal play ever is while still looking like a game, or running the game's code in "
+                              "ways normal play never does. You get their pictures, their recipe, and their run as a moment "
+                              "that plays back exactly. Start one with Explore on the Moments page."),
                            this));
 
     running_row = new QWidget(this);
@@ -1390,7 +1392,10 @@ void ExploredPage::showExploration()
                            .arg(qs(x.made_by));
         if (!x.finished)
             text += " " + tr("Still exploring, or stopped early: the best so far.");
+        if (x.normal.runs)
+            text += "\n" + qs(normal_text(x.normal));
         summary->setText(text);
+        table->setHorizontalHeaderItem(3, new QTableWidgetItem(x.normal.runs ? tr("Find") : tr("Score")));
         for (int i = 0; i < int(x.candidates.size()); i++)
         {
             auto &c = x.candidates[size_t(i)];
@@ -1401,13 +1406,20 @@ void ExploredPage::showExploration()
             auto what = new QTableWidgetItem(qs(c.what));
             what->setToolTip(qs(c.recipe.name));
             table->setItem(i, 2, what);
-            auto score = new QTableWidgetItem(QLocale().toString(c.score.score, 'f', 2));
+            bool normal = x.normal.runs > 0;
+            auto score = new QTableWidgetItem(QLocale().toString(normal ? c.verdict.find : c.score.score, 'f', 2));
             score->setTextAlignment(Qt::AlignRight | Qt::AlignVCenter);
-            score->setToolTip(tr("Visible change %1%, looks like a game %2%, moving %3%, %4 bytes of code it never ran before")
-                                  .arg(QLocale().toString(std::min(1.0, c.score.different) * 100, 'f', 0))
-                                  .arg(QLocale().toString(c.score.detail * 100, 'f', 0))
-                                  .arg(QLocale().toString(c.score.motion * 100, 'f', 0))
-                                  .arg(QLocale().toString(c.score.new_code)));
+            QString parts = tr("Score %1: visible change %2%, looks like a game %3%, moving %4%, %5 bytes of code it never ran before")
+                                .arg(QLocale().toString(c.score.score, 'f', 2))
+                                .arg(QLocale().toString(std::min(1.0, c.score.different) * 100, 'f', 0))
+                                .arg(QLocale().toString(c.score.detail * 100, 'f', 0))
+                                .arg(QLocale().toString(c.score.motion * 100, 'f', 0))
+                                .arg(QLocale().toString(c.score.new_code));
+            if (normal)
+                parts = tr("How far beyond normal play: the score over normal play's best, plus 1 for each way it acts "
+                           "different.") +
+                        "\n" + qs(why_kept(c, x.normal)) + "\n" + parts;
+            score->setToolTip(parts);
             table->setItem(i, 3, score);
         }
     }
@@ -1455,6 +1467,8 @@ void ExploredPage::showSelected()
         strip->show();
     }
     QString text = tr("%1: %2.").arg(qs(c->recipe.name), qs(c->what));
+    if (e->exploration.normal.runs)
+        text += " " + qs(why_kept(*c, e->exploration.normal));
     if (c->exact)
         text += " " + (*c->exact ? tr("Its run plays back exactly.") : tr("Its run doesn't play back exactly; the recipe may still."));
     details->setText(text);
@@ -1468,11 +1482,18 @@ void ExploredPage::showRunning()
     if (s.running)
     {
         double ran = (QDateTime::currentMSecsSinceEpoch() - s.started_ms) / 60000.0;
-        running_label->setText(tr("Exploring “%1” (%2 of %3): %4 tried, %5 kept running, %6 visibly changed.")
-                                   .arg(s.moment, minutesText(ran), minutesText(s.minutes))
-                                   .arg(QLocale().toString(s.tried))
-                                   .arg(QLocale().toString(s.alive))
-                                   .arg(QLocale().toString(s.visible)));
+        if (s.normal_of && s.normal_done < s.normal_of)
+            running_label->setText(tr("Exploring “%1”: first playing it without corruption to see how far normal play "
+                                      "goes (%2 of %3).")
+                                       .arg(s.moment)
+                                       .arg(s.normal_done)
+                                       .arg(s.normal_of));
+        else
+            running_label->setText(tr("Exploring “%1” (%2 of %3): %4 tried, %5 kept running, %6 visibly changed.")
+                                       .arg(s.moment, minutesText(ran), minutesText(s.minutes))
+                                       .arg(QLocale().toString(s.tried))
+                                       .arg(QLocale().toString(s.alive))
+                                       .arg(QLocale().toString(s.visible)));
         ui::setTone(running_label, ui::Tone::Normal);
     }
     else if (!s.error.isEmpty())

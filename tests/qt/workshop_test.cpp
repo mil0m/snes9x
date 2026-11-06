@@ -809,6 +809,98 @@ TEST_CASE("Explored (#46): an exploration's candidates, best first, with their p
     f.workshop.close();
 }
 
+TEST_CASE("Explored (#82): measured against normal play, each candidate says why it was kept; normal play first")
+{
+    Fixture f;
+    f.control.running(2);
+    f.workshop.showPage(WorkshopPage::Explored);
+    f.workshop.refresh();
+    auto &page = *f.workshop.exploredPage();
+    QTemporaryDir tmp;
+    std::filesystem::path dir = tmp.path().toStdString() + "/Temple 06 Nov 14.02";
+    std::filesystem::create_directories(dir);
+    Exploration e;
+    e.name = "Temple 06 Nov 14.02";
+    e.moment = "Temple";
+    e.made_by = "mikael";
+    e.window = 1200;
+    e.variants = 600;
+    e.alive = 540;
+    e.visible = 200;
+    e.finished = true;
+    e.normal = { 37, 0.62, 1, 0, 12 };
+    Candidate a, b;
+    a.rank = 1, b.rank = 2;
+    a.id = 3, b.id = 9;
+    a.family = Family::Swap, b.family = Family::Ram;
+    a.what = "rom: swap pointers x1, once at frame 200";
+    b.what = "wram $1200-$12FF: add -3..3 x2, every 10 frames";
+    a.recipe.name = "Explored swap 4", b.recipe.name = "Explored ram 10";
+    a.score.score = 0.2, a.score.different = 0.3, a.score.new_code = 500;
+    a.measured.new_functions = 4;
+    a.measured.silenced = 2;
+    a.verdict = { 0.2 / 0.62, uint8_t(acts::NewFunctions | acts::Silenced | acts::NewCode), 3.32, true };
+    b.score.score = 1.24, b.score.different = 0.4;
+    b.verdict = { 2.0, 0, 2.0, true };
+    e.candidates = { a, b };
+    for (uint32_t i = 0; i < 30; i++)
+        e.tried.push_back({ i % 2 ? Family::Swap : Family::Ram, i % 4 ? Tried::Visible : Tried::Stopped,
+                            float(0.05 * i), i == 3 ? 3.32f : i == 9 ? 2.0f : float(0.03 * i) });
+    f.control.exploration_list = { { dir, e } };
+    page.reload();
+    auto table = child<QTableWidget>(page, "candidates");
+    REQUIRE(table->rowCount() == 2);
+    CHECK(table->horizontalHeaderItem(3)->text() == "Find");
+    CHECK(table->item(0, 3)->text() == "3.32");
+    CHECK(table->item(0, 3)->toolTip().contains("4 functions normal play never calls"));
+    CHECK(table->item(0, 3)->toolTip().contains("Score 0.20"));
+    CHECK(child<QLabel>(page, "exploration_summary")->text().contains("Normal play: 37 runs"));
+    CHECK(child<QLabel>(page, "candidate_details")->text().contains("Acts different"));
+    table->selectRow(1);
+    CHECK(child<QLabel>(page, "candidate_details")->text().contains("Looks different beyond normal play: score 1.24"));
+    auto charts = static_cast<ExploreCharts *>(page.findChild<QWidget *>("explore_charts"));
+    REQUIRE(charts);
+    CHECK(charts->stats().by_find);
+    CHECK(charts->stats().keep_line == doctest::Approx(0.62));
+    CHECK(charts->stats().finds.size() == 2);
+    if (auto shots = qgetenv("CORRUPT_SHOTS_DIR"); !shots.isEmpty())
+        charts->grab().save(QString::fromLocal8Bit(shots) + "/explore-charts-normal.png");
+    f.shot("workshop-explored-normal");
+    CHECK(ui::audit(&page).isEmpty());
+
+    // While it measures normal play, the running line says so.
+    auto script = tmp.path() + "/fake-explore.sh";
+    {
+        QFile out(script);
+        REQUIRE(out.open(QIODevice::WriteOnly));
+        out.write("#!/bin/sh\necho \"normal 12 37\"\nsleep 2\necho \"normal best 0.620 1 0 12\"\necho \"folder /tmp/x\"\n"
+                  "echo \"progress 10 9 3 1.50\"\nsleep 2\necho \"done     10 variants\"\n");
+    }
+    QFile::setPermissions(script, QFile::permissions(script) | QFileDevice::ExeOwner);
+    auto &runner = *f.workshop.exploreRunner();
+    runner.setTool(script);
+    REQUIRE(runner.start("/tmp/pocky.sfc", "/tmp/m.s9xmoment", "Temple", "/tmp/library", "mikael", 60).isEmpty());
+    QElapsedTimer t;
+    t.start();
+    while (runner.state().normal_done == 0 && t.elapsed() < 3000)
+        QApplication::processEvents(QEventLoop::AllEvents, 50);
+    CHECK(runner.state().normal_done == 12);
+    CHECK(runner.state().normal_of == 37);
+    f.workshop.refresh();
+    auto running = child<QLabel>(page, "explore_running_text");
+    CHECK(running->text().contains("without corruption"));
+    CHECK(running->text().contains("12 of 37"));
+    while (runner.state().tried == 0 && t.elapsed() < 6000)
+        QApplication::processEvents(QEventLoop::AllEvents, 50);
+    f.workshop.refresh();
+    CHECK(runner.state().normal_done == 37);
+    CHECK(running->text().contains("10 tried"));
+    while (runner.state().running && t.elapsed() < 9000)
+        QApplication::processEvents(QEventLoop::AllEvents, 50);
+    CHECK(runner.state().done == "10 variants");
+    f.workshop.close();
+}
+
 TEST_CASE("Moments: Explore starts the explorer on the picked moment (#45)")
 {
     Fixture f;

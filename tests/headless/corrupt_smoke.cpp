@@ -94,6 +94,7 @@
 #include "corrupt/moment.h"
 #include "corrupt/explore.h"
 #include "corrupt/envelope.h"
+#include "corrupt/exploration.h"
 #include "corrupt/function_body.h"
 #include "png_out.h"
 
@@ -2959,6 +2960,8 @@ int run_placebo(const Recipe &recipe, int frames, int variants, int moments)
     std::array<PassCount, kSignals> all{};
     std::map<std::string, std::array<PassCount, kSignals>> by_family;
     PassCount keep_line, strong; // today's score at its keep line (0.3) and at 1
+    PassCount beyond, beyond_looks, beyond_acts; // #82's rule: beyond normal play, by the picture, by the code
+    std::map<std::string, PassCount> beyond_by_family;
     for (int m = 0; m < moments; m++)
     {
         auto t0 = std::chrono::steady_clock::now();
@@ -3025,8 +3028,15 @@ int run_placebo(const Recipe &recipe, int frames, int variants, int moments)
             if (r.group == 1 && r.alive)
                 for (int k = 0; k < kSignals; k++)
                     bar[size_t(k)] = std::max(bar[size_t(k)], signal_of(r, k));
+        // #82: normal play's best from the same bar-setting placebos, and the verdict.
+        NormalBest normal;
+        normal.runs = uint32_t(kNatural + kBar);
+        for (auto &r : rows)
+            if (r.group == 1)
+                normal.add(r.s, r.g);
+        auto verdict = [&](const PlaceboRow &r) { return judge(r.s, r.g, normal); };
         std::array<PassCount, kSignals> here{};
-        PassCount here_keep;
+        PassCount here_keep, here_beyond;
         for (auto &r : rows)
         {
             if (!r.alive || (r.group != 2 && r.group != 3))
@@ -3050,12 +3060,25 @@ int run_placebo(const Recipe &recipe, int frames, int variants, int moments)
                 (is_placebo ? c->placebos : c->variants)++;
                 (is_placebo ? c->placebos_past : c->variants_past) += past;
             }
+            auto v = verdict(r);
+            bool by_looks = v.kept && r.s.score >= kMinScore && r.s.score > normal.score;
+            for (auto [c, past] : { std::pair{ &here_beyond, v.kept }, std::pair{ &beyond, v.kept },
+                                    std::pair{ &beyond_looks, by_looks }, std::pair{ &beyond_acts, v.kept && !by_looks },
+                                    std::pair{ is_placebo ? nullptr : &beyond_by_family[family_name(r.family)], v.kept } })
+            {
+                if (!c)
+                    continue;
+                (is_placebo ? c->placebos : c->variants)++;
+                (is_placebo ? c->placebos_past : c->variants_past) += past;
+            }
         }
         int alive_v = here[0].variants;
         printf("moment %d (at %d): %zu runs in %.0f s; %d of %d held-out placebos and %d of %d variants alive\n", m + 1,
                setup.at[size_t(m)], rows.size() + 1, secs, here[0].placebos, kHeldOut, alive_v, variants);
         printf("  today's keep line (score 0.3+): %d of %d placebos, %d of %d variants\n", here_keep.placebos_past,
                here_keep.placebos, here_keep.variants_past, here_keep.variants);
+        printf("  beyond normal play (#82, keep line %.3f): %d of %d placebos, %d of %d variants\n", normal.keep_line(),
+               here_beyond.placebos_past, here_beyond.placebos, here_beyond.variants_past, here_beyond.variants);
         printf("  %-14s %10s %18s %18s\n", "signal", "bar", "placebos past it", "variants past it");
         for (int k = 0; k < kSignals; k++)
             printf("  %-14s %10.4f %10d of %3d %10d of %3d\n", kSignalNames[k], bar[size_t(k)], here[size_t(k)].placebos_past,
@@ -3097,12 +3120,26 @@ int run_placebo(const Recipe &recipe, int frames, int variants, int moments)
         };
         std::shuffle(held.begin(), held.end(), shuffle);
         take(held, "placebo", 6);
+        // Today's top 6 by score against #82's top 6 by find (kept ones only); a run in both is "both".
         auto by_score = alive;
         std::stable_sort(by_score.begin(), by_score.end(), [&](size_t a, size_t b) { return rows[a].s.score > rows[b].s.score; });
-        take(by_score, "top-score", 6);
-        auto by_acts = alive;
-        std::stable_sort(by_acts.begin(), by_acts.end(), [&](size_t a, size_t b) { return behaviour(rows[a]) > behaviour(rows[b]); });
-        take(by_acts, "top-behaviour", 6);
+        std::vector<size_t> by_find;
+        for (auto i : alive)
+            if (verdict(rows[i]).kept)
+                by_find.push_back(i);
+        std::stable_sort(by_find.begin(), by_find.end(),
+                         [&](size_t a, size_t b) { return verdict(rows[a]).find > verdict(rows[b]).find; });
+        std::vector<size_t> top_score(by_score.begin(), by_score.begin() + long(std::min<size_t>(6, by_score.size())));
+        std::vector<size_t> top_find(by_find.begin(), by_find.begin() + long(std::min<size_t>(6, by_find.size())));
+        std::vector<size_t> both, only_score, only_find;
+        for (auto i : top_score)
+            (std::count(top_find.begin(), top_find.end(), i) ? both : only_score).push_back(i);
+        for (auto i : top_find)
+            if (!std::count(top_score.begin(), top_score.end(), i))
+                only_find.push_back(i);
+        take(both, "both", 6);
+        take(only_score, "top-score", 6);
+        take(only_find, "top-find", 6);
         auto random = alive;
         std::shuffle(random.begin(), random.end(), shuffle);
         take(random, "random", 6);
@@ -3115,7 +3152,7 @@ int run_placebo(const Recipe &recipe, int frames, int variants, int moments)
         key << "bars:";
         for (int k = 0; k < kSignals; k++)
             key << " " << kSignalNames[k] << "=" << bar[size_t(k)];
-        key << "\n";
+        key << " keep line=" << normal.keep_line() << "\n";
         for (size_t i = 0; i < picks.size(); i++)
         {
             auto &r = rows[picks[i].first];
@@ -3125,7 +3162,8 @@ int run_placebo(const Recipe &recipe, int frames, int variants, int moments)
             auto run = play(p, r.group == 3 ? &r.recipe : nullptr, false, trace, strip_frames);
             std::string label(1, char('A' + i));
             headless::write_png(dir + "/" + label + ".png", headless::grid_of(run.kept, 6));
-            key << label << " " << picks[i].second << " behaviour " << behaviour(r);
+            key << label << " " << picks[i].second << " behaviour " << behaviour(r) << " | find " << verdict(r).find
+                << " | kept " << verdict(r).kept;
             for (int k = 0; k < kSignals; k++)
                 key << " | " << kSignalNames[k] << " " << signal_of(r, k);
             key << " | " << (r.group == 3 ? family_name(r.family) : "placebo") << ": " << r.what << "\n";
@@ -3142,6 +3180,14 @@ int run_placebo(const Recipe &recipe, int frames, int variants, int moments)
     printf("  score 1+:                       placebos %.0f%% (%d of %d), variants %.0f%% (%d of %d)\n",
            pct(strong.placebos_past, strong.placebos), strong.placebos_past, strong.placebos,
            pct(strong.variants_past, strong.variants), strong.variants_past, strong.variants);
+    for (auto [label, c] : { std::pair{ "beyond normal play (#82): ", &beyond }, std::pair{ "  of which by the picture:  ", &beyond_looks },
+                             std::pair{ "  of which by code only:    ", &beyond_acts } })
+        printf("  %s     placebos %.1f%% (%d of %d), variants %.1f%% (%d of %d)\n", label, pct(c->placebos_past, c->placebos),
+               c->placebos_past, c->placebos, pct(c->variants_past, c->variants), c->variants_past, c->variants);
+    printf("  beyond normal play by family:");
+    for (auto &[name, c] : beyond_by_family)
+        printf(" %s %.1f%%", name.c_str(), pct(c.variants_past, c.variants));
+    printf("\n");
     printf("  %-14s %16s %16s\n", "signal", "placebos past", "variants past");
     for (int k = 0; k < kSignals; k++)
         printf("  %-14s %15.1f%% %15.1f%%\n", kSignalNames[k], pct(all[size_t(k)].placebos_past, all[size_t(k)].placebos),

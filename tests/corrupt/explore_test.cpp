@@ -628,4 +628,168 @@ TEST_SUITE("the headless explorer (#45)")
         CHECK(older.find("What each kind did") != std::string::npos);
         CHECK(older.find("explored before the explorer kept every try") != std::string::npos);
     }
+    TEST_CASE("normal play's best (#82): the most any bar-setting placebo reached, alive ones only")
+    {
+        NormalBest best;
+        RunScore a, b, dead;
+        Signals ga, gb, gdead;
+        a.alive = b.alive = true;
+        a.score = 0.4, a.new_code = 10, ga.new_functions = 1;
+        b.score = 0.9, b.new_code = 3, gb.silenced = 2;
+        dead.score = 5, dead.new_code = 900, gdead.new_functions = 50; // a placebo that crashed sets nothing
+        best.add(a, ga);
+        best.add(b, gb);
+        best.add(dead, gdead);
+        CHECK(best.score == doctest::Approx(0.9));
+        CHECK(best.new_code == 10);
+        CHECK(best.new_functions == 1);
+        CHECK(best.silenced == 2);
+        CHECK(best.keep_line() == doctest::Approx(0.9));
+        NormalBest quiet; // a scene where buttons change nothing: the old floor
+        quiet.runs = 36;
+        CHECK(quiet.keep_line() == doctest::Approx(kMinScore));
+    }
+
+    TEST_CASE("the verdict (#82): kept when it looks different beyond normal play, or acts different and shows")
+    {
+        NormalBest best;
+        best.runs = 36;
+        best.score = 0.6;
+        best.new_functions = 0;
+        best.silenced = 1;
+        best.new_code = 40;
+        RunScore s;
+        s.alive = true;
+        Signals g;
+
+        s.score = 0.5, s.different = 0.3; // as different as normal play gets: nothing
+        auto v = judge(s, g, best);
+        CHECK(!v.kept);
+        CHECK(v.acts == 0);
+        CHECK(v.find < 1);
+
+        s.score = 1.2; // twice normal play's best
+        v = judge(s, g, best);
+        CHECK(v.kept);
+        CHECK(v.looks == doctest::Approx(2.0));
+        CHECK(v.find == doctest::Approx(2.0));
+
+        s.score = 0.1, s.different = 0.05; // a little visible, and new functions
+        g.new_functions = 3;
+        v = judge(s, g, best);
+        CHECK(v.kept);
+        CHECK(v.acts == acts::NewFunctions);
+        CHECK(v.find == doctest::Approx(1 + 0.1 / 0.6));
+
+        g.silenced = 2; // past the bar of 1
+        s.new_code = 41;
+        v = judge(s, g, best);
+        CHECK(v.acts == (acts::NewFunctions | acts::Silenced | acts::NewCode));
+        CHECK(v.find == doctest::Approx(3 + 0.1 / 0.6));
+        g.silenced = 1; // at the bar: not past it
+        s.new_code = 40;
+        CHECK(judge(s, g, best).acts == acts::NewFunctions);
+
+        s.different = 0.01; // acts different, but nothing shows: not kept
+        v = judge(s, g, best);
+        CHECK(!v.kept);
+        CHECK(v.acts == 0);
+
+        s.alive = false; // stopped: never kept
+        s.score = 0, s.different = 0.9;
+        CHECK(!judge(s, g, best).kept);
+
+        // A scene without play: the bars are 0, the score still needs the old floor.
+        NormalBest none;
+        none.runs = 36;
+        RunScore t;
+        t.alive = true;
+        t.score = 0.2, t.different = 0.02;
+        CHECK(!judge(t, {}, none).kept);
+        t.score = 0.3;
+        CHECK(judge(t, {}, none).kept);
+        CHECK(judge(t, {}, none).looks == doctest::Approx(1.0));
+
+        // An older exploration (no normal play): the old rule, the score against the floor.
+        NormalBest old;
+        t.score = 0.45;
+        v = judge(t, g, old);
+        CHECK(v.kept);
+        CHECK(v.acts == 0);
+        CHECK(v.find == doctest::Approx(1.5));
+    }
+
+    TEST_CASE("an exploration keeps normal play, each candidate's verdict and signals, and each try's find (#82)")
+    {
+        Exploration e;
+        e.name = "Temple";
+        e.normal.runs = 37;
+        e.normal.score = 0.62;
+        e.normal.new_functions = 1;
+        e.normal.silenced = 0;
+        e.normal.new_code = 12;
+        Candidate c;
+        c.family = Family::Swap;
+        c.recipe.name = "Explored swap 4";
+        c.score.score = 0.2;
+        c.score.alive = true;
+        c.measured.new_functions = 3;
+        c.measured.silenced = 2;
+        c.measured.apart = 0.25;
+        c.measured.new_colours = 0.01;
+        c.verdict = { 0.2 / 0.62, uint8_t(acts::NewFunctions | acts::Silenced), 2.3, true };
+        e.candidates = { c };
+        e.tried = { { Family::Swap, Tried::Visible, 0.2f, 2.3f }, { Family::Ram, Tried::Visible, 0.5f, 0.8f } };
+        std::string error;
+        auto back = decode_exploration(encode_exploration(e), error);
+        REQUIRE_MESSAGE(back, error);
+        CHECK(back->normal.runs == 37);
+        CHECK(back->normal.score == doctest::Approx(0.62));
+        CHECK(back->normal.new_functions == 1);
+        CHECK(back->normal.new_code == 12);
+        REQUIRE(back->candidates.size() == 1);
+        auto &b = back->candidates[0];
+        CHECK(b.verdict.kept);
+        CHECK(b.verdict.acts == (acts::NewFunctions | acts::Silenced));
+        CHECK(b.verdict.find == doctest::Approx(2.3));
+        CHECK(b.verdict.looks == doctest::Approx(0.2 / 0.62));
+        CHECK(b.measured.new_functions == 3);
+        CHECK(b.measured.silenced == 2);
+        CHECK(b.measured.apart == doctest::Approx(0.25));
+        REQUIRE(back->tried.size() == 2);
+        CHECK(back->tried[0].find == doctest::Approx(2.3f));
+        CHECK(back->tried[1].find == doctest::Approx(0.8f));
+        CHECK(acts_text(b.verdict.acts, b.measured, b.score).find("3 functions normal play never calls") !=
+              std::string::npos);
+
+        // The charts: the keep line at normal play's best, the finds by their strength.
+        auto st = stats_of(e);
+        CHECK(st.keep_line == doctest::Approx(0.62));
+        CHECK(st.by_find);
+        bool line_on_an_edge = false;
+        for (auto &bin : st.bins)
+        {
+            CHECK(bin.kept_side == (bin.lo >= 0.62));
+            line_on_an_edge |= bin.lo == doctest::Approx(0.62);
+        }
+        CHECK(line_on_an_edge);
+        REQUIRE(st.finds.size() == 1); // 0.8 isn't a find
+        CHECK(st.finds[0].at == 0);
+        CHECK(st.finds[0].value == doctest::Approx(2.3f));
+        CHECK(st.best.back().second == doctest::Approx(2.3f));
+
+        auto html = gallery_html(e, [](const std::string &) { return std::nullopt; });
+        CHECK(html.find("Normal play") != std::string::npos);
+        CHECK(html.find("Acts different") != std::string::npos);
+        CHECK(html.find("keep line 0.62") != std::string::npos);
+
+        // An older file: no normal play, the old keep line, the finds by score.
+        Exploration old;
+        old.tried = { { Family::Ram, Tried::Visible, 0.5f } };
+        auto os = stats_of(decode_exploration(encode_exploration(old), error).value());
+        CHECK(!os.by_find);
+        CHECK(os.keep_line == doctest::Approx(kMinScore));
+        REQUIRE(os.finds.size() == 1);
+        CHECK(os.finds[0].value == doctest::Approx(0.5f));
+    }
 }

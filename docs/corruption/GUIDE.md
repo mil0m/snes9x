@@ -121,7 +121,12 @@ the background, unseen and much faster than real time (about 4,000 tries an hour
 uses a different corruption, and your own button presses, so the only difference is the
 corruption. You can keep playing meanwhile; it runs at low priority.
 
-Each try is scored against the moment played without corruption:
+First it plays the moment about 40 times **without** corruption, most with one button press
+moved a few frames, dropped or added. That's **normal play**: a game is chaotic, and a press a
+frame later can send it down quite another path. Whatever normal play does on its own isn't a
+find. This takes about half a minute; the running line says so.
+
+Then each try is scored against the moment played without corruption:
 - **Visible**: does the picture change? Past a tenth of the screen, more doesn't count.
 - **Looks like a game**: about as many edges and colours as the scene. Tile garbage, a black
   screen or a solid colour score low.
@@ -129,10 +134,18 @@ Each try is scored against the moment played without corruption:
   and so does a crash.
 - **New code**: a bonus when it ran parts of the game's code that never ran before.
 
-Only tries that score well are kept, so a quiet scene may give just a few.
+A try is kept when it goes **beyond normal play**, in one of two ways:
+- **Looks different**: it scores more than any normal-play run did (and at least 0.3).
+- **Acts different**: something visibly changed, and the game's code ran in a way normal play
+  never does: functions normal play never calls, functions it always calls going quiet, or
+  more code never run before than normal play ran.
+
+Candidates are ranked by their **find** number: the score over normal play's best, plus 1
+for each way it acts different. 1 or more is kept. A quiet scene may give just a few.
 
 The Workshop's **Explored** page shows what it found, best first, with six pictures across
-each one's run:
+each one's run and why it was kept (*Acts different: 3 functions normal play never calls*).
+The summary says how far normal play went:
 - **Play** plays a candidate's run exactly as the explorer saw it. Press any button to take
   over.
 - **Keep as Recipe** saves its recipe in the recipe list. It starts from the moment's start,
@@ -147,10 +160,10 @@ over a bar or a dot for its numbers.
 - **What each kind did**: for each kind of change (code, kill, swap...), how often it stopped
   the game, ran without showing anything, or visibly changed something. It tells you what
   works on this game.
-- **How the scores spread**: the scores of the tries that visibly changed something, with the
-  line a try has to clear to be kept.
-- **When the good finds turned up**: each strong try, by when it was tried, and the best so
-  far. Dots that keep rising to the right mean a longer exploration would likely find more; a
+- **How the scores spread**: the scores of the tries that visibly changed something, with
+  normal play's best as the line. Tries that act different can be kept from below it.
+- **When the good finds turned up**: each find by its find number, by when it was tried, and
+  the best so far. Dots that keep rising to the right mean a longer exploration would likely find more; a
   flat line means this moment is played out.
 
 Explorations live in the library (`explored/` in the game's folder), so a friend sharing it

@@ -4,6 +4,7 @@
 #include "recipe_json.h"
 
 #include <algorithm>
+#include <bit>
 #include <cmath>
 #include <cstdio>
 #include <limits>
@@ -84,6 +85,17 @@ std::string num(double v, const char *fmt = "%.2f")
     return buf;
 }
 
+// 0.62, 1.05, 0.3: two decimals at most, no trailing zeros.
+std::string short_num(double v)
+{
+    std::string s = num(v, "%.2f");
+    while (!s.empty() && s.back() == '0')
+        s.pop_back();
+    if (!s.empty() && s.back() == '.')
+        s.pop_back();
+    return s;
+}
+
 
 // The three charts (#80), as inline SVG drawn from the theme's tokens.
 std::string charts_html(const Exploration &e, const ExploreStats &st)
@@ -145,8 +157,11 @@ std::string charts_html(const Exploration &e, const ExploreStats &st)
         for (auto &b : st.bins)
             most = std::max(most, b.count);
         double slot = double(x1 - x0) / st.bins.size();
-        h += "<figure class=\"chart\"><figcaption><b>How the scores spread</b> <span>tries that visibly changed "
-             "something; from the line up they can be kept</span></figcaption>\n";
+        h += std::string("<figure class=\"chart\"><figcaption><b>How the scores spread</b> <span>tries that visibly "
+                         "changed something; ") +
+             (st.by_find ? "the line is normal play's best: past it, they look different beyond normal play"
+                         : "from the line up they can be kept") +
+             "</span></figcaption>\n";
         h += "<svg viewBox=\"0 0 " + std::to_string(W) + " " + std::to_string(H) + "\" role=\"img\" aria-label=\"How the "
              "scores spread\">\n";
         for (double f : { 0.0, 0.5, 1.0 })
@@ -162,7 +177,7 @@ std::string charts_html(const Exploration &e, const ExploreStats &st)
             auto &b = st.bins[i];
             double bh = (bottom - top) * double(b.count) / most;
             double x = x0 + i * slot + 3;
-            std::string range = std::isinf(b.hi) ? num(b.lo, "%g") + " and up" : num(b.lo, "%g") + "-" + num(b.hi, "%g");
+            std::string range = std::isinf(b.hi) ? short_num(b.lo) + " and up" : short_num(b.lo) + "-" + short_num(b.hi);
             h += "<g><title>" + range + ": " + std::to_string(b.count) + (b.count == 1 ? " try" : " tries") + "</title>";
             if (b.count)
                 h += "<rect class=\"" + std::string(b.kept_side ? "visible" : "below") + "\" x=\"" + num(x, "%.1f") +
@@ -171,13 +186,13 @@ std::string charts_html(const Exploration &e, const ExploreStats &st)
             h += "<rect class=\"hit\" x=\"" + num(x, "%.1f") + "\" y=\"" + std::to_string(top) + "\" width=\"" +
                  num(slot - 6, "%.1f") + "\" height=\"" + std::to_string(bottom - top) + "\"/>";
             h += "<text class=\"tick\" x=\"" + num(x + (slot - 6) / 2, "%.1f") + "\" y=\"" + std::to_string(bottom + 16) +
-                 "\" text-anchor=\"middle\">" + (std::isinf(b.hi) ? num(b.lo, "%g") + "+" : num(b.lo, "%g")) + "</text></g>\n";
+                 "\" text-anchor=\"middle\">" + (std::isinf(b.hi) ? short_num(b.lo) + "+" : short_num(b.lo)) + "</text></g>\n";
             if (i > 0 && b.kept_side && !st.bins[i - 1].kept_side)
             {
                 double lx = x0 + i * slot;
                 h += "<line class=\"keep\" x1=\"" + num(lx, "%.1f") + "\" x2=\"" + num(lx, "%.1f") + "\" y1=\"" +
                      std::to_string(top) + "\" y2=\"" + std::to_string(bottom) + "\"/><text class=\"tick\" x=\"" +
-                     num(lx + 4, "%.1f") + "\" y=\"" + std::to_string(top + 10) + "\">keep line " + num(kMinScore, "%g") +
+                     num(lx + 4, "%.1f") + "\" y=\"" + std::to_string(top + 10) + "\">keep line " + short_num(st.keep_line) +
                      "</text>\n";
             }
         }
@@ -191,14 +206,18 @@ std::string charts_html(const Exploration &e, const ExploreStats &st)
         int W = 640, H = 220, x0 = 44, x1 = 628, top = 12, bottom = 176;
         double ymax = 3;
         for (auto &f : st.finds)
-            ymax = std::max(ymax, f.score * 1.08);
+            ymax = std::max(ymax, f.value * 1.08);
         if (!st.best.empty())
             ymax = std::max(ymax, st.best.back().second * 1.08);
         double n = std::max<uint32_t>(1, st.tried);
         auto X = [&](double at) { return x0 + (x1 - x0) * at / n; };
         auto Y = [&](double v) { return bottom - (bottom - top) * v / ymax; };
-        h += "<figure class=\"chart wide\"><figcaption><b>When the good finds turned up</b> <span>each try that scored "
-             "0.3 or more, by when it was tried; the line is the best so far</span></figcaption>\n";
+        double line = st.by_find ? 1.0 : kMinScore;
+        h += std::string("<figure class=\"chart wide\"><figcaption><b>When the good finds turned up</b> <span>") +
+             (st.by_find ? "each find by its strength (1: as different as normal play gets; +1 for each way it acts "
+                           "different), by when it was tried; the line is the best so far"
+                         : "each try that scored 0.3 or more, by when it was tried; the line is the best so far") +
+             "</span></figcaption>\n";
         h += "<div class=\"legend\"><span><i class=\"dot kept\"></i>Kept</span><span><i class=\"dot\"></i>Good, not in "
              "the best 24</span><span><i class=\"step\"></i>Best so far</span></div>\n";
         h += "<svg viewBox=\"0 0 " + std::to_string(W) + " " + std::to_string(H) + "\" role=\"img\" aria-label=\"When "
@@ -211,7 +230,7 @@ std::string charts_html(const Exploration &e, const ExploreStats &st)
                  "\" y=\"" + num(y + 4, "%.1f") + "\" text-anchor=\"end\">" + std::to_string(v) + "</text>";
         }
         h += "<line class=\"keep\" x1=\"" + std::to_string(x0) + "\" x2=\"" + std::to_string(x1) + "\" y1=\"" +
-             num(Y(kMinScore), "%.1f") + "\" y2=\"" + num(Y(kMinScore), "%.1f") + "\"/>\n";
+             num(Y(line), "%.1f") + "\" y2=\"" + num(Y(line), "%.1f") + "\"/>\n";
         if (!st.best.empty())
         {
             std::string d = "M" + num(X(st.best[0].first), "%.1f") + "," + num(Y(st.best[0].second), "%.1f");
@@ -223,11 +242,11 @@ std::string charts_html(const Exploration &e, const ExploreStats &st)
         for (auto &f : st.finds)
         {
             char title[120];
-            snprintf(title, sizeof title, "#%u (%s): score %.2f%s", f.at + 1, family_name(e.tried[f.at].family), f.score,
-                     f.kept ? ", kept" : "");
+            snprintf(title, sizeof title, "#%u (%s): %s %.2f%s", f.at + 1, family_name(e.tried[f.at].family),
+                     st.by_find ? "find" : "score", f.value, f.kept ? ", kept" : "");
             h += "<g><title>" + escape(title) + "</title><circle class=\"hit\" cx=\"" + num(X(f.at), "%.1f") + "\" cy=\"" +
-                 num(Y(f.score), "%.1f") + "\" r=\"9\"/><circle class=\"" + std::string(f.kept ? "find kept" : "find") +
-                 "\" cx=\"" + num(X(f.at), "%.1f") + "\" cy=\"" + num(Y(f.score), "%.1f") + "\" r=\"4.5\"/></g>\n";
+                 num(Y(f.value), "%.1f") + "\" r=\"9\"/><circle class=\"" + std::string(f.kept ? "find kept" : "find") +
+                 "\" cx=\"" + num(X(f.at), "%.1f") + "\" cy=\"" + num(Y(f.value), "%.1f") + "\" r=\"4.5\"/></g>\n";
         }
         for (double f : { 0.0, 0.5, 1.0 })
             h += "<text class=\"tick\" x=\"" + num(X(f * n), "%.1f") + "\" y=\"" + std::to_string(bottom + 16) +
@@ -242,6 +261,80 @@ std::string charts_html(const Exploration &e, const ExploreStats &st)
 
 } // namespace
 
+void NormalBest::add(const RunScore &s, const Signals &g)
+{
+    if (!s.alive)
+        return;
+    score = std::max(score, s.score);
+    new_functions = std::max(new_functions, g.new_functions);
+    silenced = std::max(silenced, g.silenced);
+    new_code = std::max(new_code, s.new_code);
+}
+
+Verdict judge(const RunScore &s, const Signals &g, const NormalBest &best)
+{
+    Verdict v;
+    double line = best.keep_line();
+    v.looks = s.alive ? s.score / line : 0;
+    bool looks_past = s.alive && s.score >= kMinScore && (best.runs == 0 || s.score > best.score);
+    if (best.runs > 0 && s.alive && s.different >= kVisible)
+    {
+        if (g.new_functions > best.new_functions)
+            v.acts |= acts::NewFunctions;
+        if (g.silenced > best.silenced)
+            v.acts |= acts::Silenced;
+        if (s.new_code > best.new_code)
+            v.acts |= acts::NewCode;
+    }
+    v.kept = looks_past || v.acts != 0;
+    v.find = v.looks + std::popcount(v.acts);
+    if (!v.kept) // 1 or more means kept
+        v.find = std::min(v.find, 0.999);
+    return v;
+}
+
+std::string acts_text(uint8_t a, const Signals &g, const RunScore &s)
+{
+    std::vector<std::string> parts;
+    auto count = [](uint32_t n, const char *one, const char *many) {
+        return n == 1 ? std::string(one) : std::to_string(n) + many;
+    };
+    if (a & acts::NewFunctions)
+        parts.push_back(count(g.new_functions, "a function normal play never calls",
+                              " functions normal play never calls"));
+    if (a & acts::Silenced)
+        parts.push_back(count(g.silenced, "a function normal play always calls went quiet",
+                              " functions normal play always calls went quiet"));
+    if (a & acts::NewCode)
+        parts.push_back(std::to_string(s.new_code) + " bytes of code normal play never ran");
+    std::string out;
+    for (size_t i = 0; i < parts.size(); i++)
+        out += (i ? "; " : "") + parts[i];
+    return out;
+}
+
+std::string normal_text(const NormalBest &n)
+{
+    char buf[320];
+    snprintf(buf, sizeof buf,
+             "Normal play: %u runs without corruption, most with one button press moved. Their best score was %s, so a "
+             "find has to score more than %s, or act in a way normal play doesn't (the most normal play reached: new "
+             "functions %u, gone quiet %u, new code %u bytes).",
+             n.runs, short_num(n.score).c_str(), short_num(n.keep_line()).c_str(), n.new_functions, n.silenced, n.new_code);
+    return buf;
+}
+
+std::string why_kept(const Candidate &c, const NormalBest &n)
+{
+    std::string out;
+    if (c.score.score >= kMinScore && c.score.score > n.score)
+        out = "Looks different beyond normal play: score " + short_num(c.score.score) + ", normal play's best " +
+              short_num(n.score) + ".";
+    if (c.verdict.acts)
+        out += (out.empty() ? "" : " ") + std::string("Acts different: ") + acts_text(c.verdict.acts, c.measured, c.score) + ".";
+    return out;
+}
+
 ExploreStats stats_of(const Exploration &e)
 {
     ExploreStats st;
@@ -254,13 +347,28 @@ ExploreStats stats_of(const Exploration &e)
         kept_ids.push_back(c.id);
     for (auto &c : e.candidates)
         kinds[size_t(c.family)].kept++;
+    st.by_find = e.normal.runs > 0;
+    st.keep_line = e.normal.keep_line();
     if (st.detailed)
     {
-        static const double edges[] = { 0, 0.05, 0.1, 0.2, 0.3, 0.5, 1, 1.5, 2, 3 };
-        for (size_t i = 0; i < std::size(edges); i++)
+        // The keep line is an edge: a bin is wholly on one side of it.
+        std::vector<double> edges = { 0, 0.05, 0.1, 0.2, 0.3, 0.5, 1, 1.5, 2, 3 };
+        auto near = std::find_if(edges.begin(), edges.end(), [&](double x) { return std::abs(x - st.keep_line) < 1e-9; });
+        if (near == edges.end())
         {
-            double hi = i + 1 < std::size(edges) ? edges[i + 1] : std::numeric_limits<double>::infinity();
-            st.bins.push_back({ edges[i], hi, 0, edges[i] >= kMinScore });
+            edges.insert(std::upper_bound(edges.begin(), edges.end(), st.keep_line), st.keep_line);
+            // Drop an edge too close to it to read.
+            for (size_t i = 1; i < edges.size(); i++)
+                if (edges[i] != st.keep_line && std::abs(edges[i] - st.keep_line) < 0.1 && edges[i] > 0)
+                {
+                    edges.erase(edges.begin() + long(i));
+                    break;
+                }
+        }
+        for (size_t i = 0; i < edges.size(); i++)
+        {
+            double hi = i + 1 < edges.size() ? edges[i + 1] : std::numeric_limits<double>::infinity();
+            st.bins.push_back({ edges[i], hi, 0, edges[i] >= st.keep_line - 1e-9 });
         }
         double best = -1;
         for (uint32_t i = 0; i < e.tried.size(); i++)
@@ -283,12 +391,14 @@ ExploreStats stats_of(const Exploration &e)
                         bin.count++;
                         break;
                     }
-            if (t.outcome != Tried::Stopped && t.score >= kMinScore)
-                st.finds.push_back({ i, t.score, std::find(kept_ids.begin(), kept_ids.end(), i) != kept_ids.end() });
-            if (t.outcome == Tried::Visible && t.score > best)
+            double value = st.by_find ? t.find : t.score;
+            bool find = t.outcome != Tried::Stopped && (st.by_find ? t.find >= 1 : t.score >= kMinScore);
+            if (find)
+                st.finds.push_back({ i, value, std::find(kept_ids.begin(), kept_ids.end(), i) != kept_ids.end() });
+            if (t.outcome == Tried::Visible && value > best)
             {
-                best = t.score;
-                st.best.push_back({ i, t.score });
+                best = value;
+                st.best.push_back({ i, value });
             }
         }
         st.tried = uint32_t(e.tried.size());
@@ -332,6 +442,12 @@ std::string encode_exploration(const Exploration &e)
     j["visible"] = e.visible;
     j["seconds"] = e.seconds;
     j["finished"] = e.finished;
+    if (e.normal.runs)
+        j["normal"] = { { "runs", e.normal.runs },
+                        { "score", e.normal.score },
+                        { "new_functions", e.normal.new_functions },
+                        { "silenced", e.normal.silenced },
+                        { "new_code", e.normal.new_code } };
     auto &fam = j["families"] = nlohmann::ordered_json::object();
     for (size_t i = 0; i < kFamilies; i++)
         if (e.families[i].runs)
@@ -352,6 +468,23 @@ std::string encode_exploration(const Exploration &e)
         o["motion"] = c.score.motion;
         o["detail"] = c.score.detail;
         o["new_code"] = c.score.new_code;
+        if (e.normal.runs)
+        {
+            o["find"] = c.verdict.find;
+            o["looks"] = c.verdict.looks;
+            auto a = nlohmann::ordered_json::array();
+            if (c.verdict.acts & acts::NewFunctions)
+                a.push_back("new functions");
+            if (c.verdict.acts & acts::Silenced)
+                a.push_back("silenced");
+            if (c.verdict.acts & acts::NewCode)
+                a.push_back("new code");
+            o["acts"] = a;
+            o["new_functions"] = c.measured.new_functions;
+            o["silenced"] = c.measured.silenced;
+            o["apart"] = c.measured.apart;
+            o["new_colours"] = c.measured.new_colours;
+        }
         o["moment"] = c.moment_file;
         o["strip"] = c.strip_file;
         if (c.exact)
@@ -359,10 +492,13 @@ std::string encode_exploration(const Exploration &e)
         o["recipe"] = nlohmann::ordered_json::parse(write_recipe(c.recipe));
         cs.push_back(std::move(o));
     }
-    // Every try (#80): [family, outcome, score x 1000], one line, in the order tried.
+    // Every try (#80): [family, outcome, score x 1000, find x 1000 (#82)], one line, in the order tried.
     auto tried = nlohmann::ordered_json::array();
     for (auto &t : e.tried)
-        tried.push_back({ int(t.family), int(t.outcome), int(std::lround(t.score * 1000)) });
+        if (e.normal.runs)
+            tried.push_back({ int(t.family), int(t.outcome), int(std::lround(t.score * 1000)), int(std::lround(t.find * 1000)) });
+        else
+            tried.push_back({ int(t.family), int(t.outcome), int(std::lround(t.score * 1000)) });
     std::string text = j.dump(2);
     if (!e.tried.empty())
     {
@@ -413,6 +549,8 @@ std::optional<Exploration> decode_exploration(const std::string &json, std::stri
     e.visible = u32(j, "visible");
     e.seconds = dbl(j, "seconds");
     e.finished = j.value("finished", false);
+    if (auto n = j.find("normal"); n != j.end() && n->is_object())
+        e.normal = { u32(*n, "runs"), dbl(*n, "score"), u32(*n, "new_functions"), u32(*n, "silenced"), u32(*n, "new_code") };
     if (auto f = j.find("families"); f != j.end() && f->is_object())
         for (auto &[name, v] : f->items())
             if (auto fam = parse_family(name); fam && v.is_object())
@@ -442,6 +580,22 @@ std::optional<Exploration> decode_exploration(const std::string &json, std::stri
             c.score.detail = dbl(o, "detail");
             c.score.new_code = u32(o, "new_code");
             c.score.alive = true;
+            c.verdict.find = dbl(o, "find");
+            c.verdict.looks = dbl(o, "looks");
+            if (auto a = o.find("acts"); a != o.end() && a->is_array())
+                for (auto &x : *a)
+                {
+                    std::string name = x.is_string() ? x.get<std::string>() : std::string();
+                    c.verdict.acts |= name == "new functions" ? acts::NewFunctions
+                                      : name == "silenced"    ? acts::Silenced
+                                      : name == "new code"    ? acts::NewCode
+                                                              : 0;
+                }
+            c.verdict.kept = true;
+            c.measured.new_functions = u32(o, "new_functions");
+            c.measured.silenced = u32(o, "silenced");
+            c.measured.apart = dbl(o, "apart");
+            c.measured.new_colours = dbl(o, "new_colours");
             c.moment_file = str(o, "moment");
             c.strip_file = str(o, "strip");
             if (auto x = o.find("exact"); x != o.end() && x->is_boolean())
@@ -451,13 +605,18 @@ std::optional<Exploration> decode_exploration(const std::string &json, std::stri
     if (auto ts = j.find("tried"); ts != j.end() && ts->is_array())
         for (auto &t : *ts)
         {
-            if (!t.is_array() || t.size() != 3 || !t[0].is_number_integer() || !t[1].is_number_integer() ||
-                !t[2].is_number_integer())
+            if (!t.is_array() || t.size() < 3 || t.size() > 4)
+                continue;
+            bool numbers = true;
+            for (auto &x : t)
+                numbers &= x.is_number_integer();
+            if (!numbers)
                 continue;
             int f = t[0].get<int>(), o = t[1].get<int>();
             if (f < 0 || f >= int(kFamilies) || o < 0 || o > 2)
                 continue;
-            e.tried.push_back({ Family(f), Tried::Outcome(o), float(t[2].get<int>() / 1000.0) });
+            e.tried.push_back({ Family(f), Tried::Outcome(o), float(t[2].get<int>() / 1000.0),
+                                t.size() == 4 ? float(t[3].get<int>() / 1000.0) : 0.0f });
         }
     return e;
 }
@@ -535,6 +694,7 @@ summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .dot.kept { background: var(--c-visible); }
 .step { width: 16px; height: 2px; background: var(--ink); opacity: .7; display: inline-block; }
 .note { color: var(--muted); font-size: 13px; margin: 6px 0 0; }
+.why { margin: 6px 0 0; font-size: 14px; }
 pre { overflow-x: auto; background: var(--chip); padding: 10px; border-radius: 6px; font: 12px/1.5 var(--mono); }
 </style></head><body><main>
 )";
@@ -544,6 +704,8 @@ pre { overflow-x: auto; background: var(--chip); padding: 10px; border-radius: 6
     snprintf(line, sizeof line, "%u variants of %.0f s each, %u kept running, %u visibly changed something. Explored %s by %s, %.0f min.",
              e.variants, e.window / 60.0, e.alive, e.visible, e.made_at.c_str(), e.made_by.c_str(), e.seconds / 60);
     h += "<p class=\"sub\">" + escape(line) + (e.finished ? "" : " Still exploring: the best so far.") + "</p>\n";
+    if (e.normal.runs)
+        h += "<p class=\"sub\">" + escape(normal_text(e.normal)) + "</p>\n";
     auto st = stats_of(e);
     h += charts_html(e, st);
     // The first chart as a table, for reading the numbers.
@@ -558,9 +720,12 @@ pre { overflow-x: auto; background: var(--chip); padding: 10px; border-radius: 6
     {
         h += "<div class=\"card\"><div class=\"top\"><span class=\"rank\">#" + std::to_string(c.rank) +
              "</span><span class=\"chip\">" + family_name(c.family) + "</span><span class=\"what\">" + escape(c.what) +
-             "</span><span class=\"nums\">score " + num(c.score.score) + " · different " + pct(c.score.different) +
+             "</span><span class=\"nums\">" + (e.normal.runs ? "find " + num(c.verdict.find) + " · " : std::string()) +
+             "score " + num(c.score.score) + " · different " + pct(c.score.different) +
              " · lively " + pct(c.score.lively) + " · new code " + std::to_string(c.score.new_code) + " B" +
              (c.exact ? (*c.exact ? " · plays back exactly" : " · its moment drifts") : "") + "</span></div>\n";
+        if (e.normal.runs)
+            h += "<p class=\"why\">" + escape(why_kept(c, e.normal)) + "</p>\n";
         if (!c.strip_file.empty())
             if (auto png = read(c.strip_file))
                 h += "<img class=\"strip\" alt=\"Six pictures across the run of " + escape(c.recipe.name) +

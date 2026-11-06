@@ -879,3 +879,10 @@ Removed on 2026-11-01: it didn't pay off (see FEATURES.md, *Tried and removed*).
    - [ ] Hovering a bar or a dot shows its numbers. The gallery has the same charts, in light and dark.
 10. On a quiet moment (nothing moving), explore for 10 minutes.
    - [ ] Few or no candidates, rather than many that look like the moment.
+11. Normal play (#82): start an exploration and open **Explored** right away.
+   - [ ] For about half a minute the line says it's first playing the moment without corruption (12 of 37...), then counts tries as before.
+   - [ ] The summary has a *Normal play: 37 runs...* line with normal play's best score.
+   - [ ] The last column is **Find**; hovering one says why it was kept and its score. The text under the pictures says *Looks different beyond normal play* and/or *Acts different: ...*.
+   - [ ] **How the scores spread** draws the keep line at normal play's best; **When the good finds turned up** plots find numbers with the line at 1.
+   - [ ] Play a few *Acts different* candidates: does the game behave oddly (a mode it doesn't enter, enemies or physics wrong), not only look different?
+   - [ ] An exploration from before still shows its score column and the 0.3 line.

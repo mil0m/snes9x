@@ -183,7 +183,9 @@ void ExploreCharts::draw(QPainter *p) const
 
     // 2. How the scores spread.
     y += kGap;
-    title(y, tr("How the scores spread"), tr("tries that visibly changed something; from the line up they can be kept"));
+    title(y, tr("How the scores spread"),
+          st.by_find ? tr("tries that visibly changed something; the line is normal play's best")
+                     : tr("tries that visibly changed something; from the line up they can be kept"));
     y += kTitle;
     if (p)
     {
@@ -204,7 +206,8 @@ void ExploreCharts::draw(QPainter *p) const
         {
             auto &b = st.bins[i];
             QRectF col(a.left() + i * slot + 3, a.top(), slot - 6, a.height());
-            QString range = std::isinf(b.hi) ? tr("%1 and up").arg(b.lo) : tr("%1 to %2").arg(b.lo).arg(b.hi);
+            auto two = [](double v) { return QLocale().toString(std::round(v * 100) / 100, 'g', QLocale::FloatingPointShortest); };
+            QString range = std::isinf(b.hi) ? tr("%1 and up").arg(two(b.lo)) : tr("%1 to %2").arg(two(b.lo), two(b.hi));
             tips.push_back({ col, tr("Score %1: %2").arg(range, count(b.count, "1 try", "%1 tries")) });
             if (!p)
                 continue;
@@ -218,13 +221,13 @@ void ExploreCharts::draw(QPainter *p) const
             }
             p->setPen(quiet);
             p->drawText(QRectF(col.left() - 6, a.bottom() + 2, col.width() + 12, fm.height()), Qt::AlignHCenter,
-                        std::isinf(b.hi) ? QString("%1+").arg(b.lo) : QString::number(b.lo));
+                        std::isinf(b.hi) ? QString("%1+").arg(two(b.lo)) : two(b.lo));
             if (i > 0 && b.kept_side && !st.bins[i - 1].kept_side)
             {
                 double lx = a.left() + i * slot;
                 p->setPen(QPen(quiet, 1.5, Qt::DashLine));
                 p->drawLine(QPointF(lx, a.top()), QPointF(lx, a.bottom()));
-                p->drawText(QPointF(lx + 4, a.top() + fm.ascent()), tr("keep line %1").arg(kMinScore));
+                p->drawText(QPointF(lx + 4, a.top() + fm.ascent()), tr("keep line %1").arg(two(st.keep_line)));
             }
         }
         y += kPlot + 30;
@@ -232,7 +235,10 @@ void ExploreCharts::draw(QPainter *p) const
 
     // 3. When the good finds turned up.
     y += kGap;
-    title(y, tr("When the good finds turned up"), tr("each try that scored %1 or more; the line is the best so far").arg(kMinScore));
+    title(y, tr("When the good finds turned up"),
+          st.by_find ? tr("each find by its strength (1: as different as normal play gets; +1 for each way it acts "
+                          "different); the line is the best so far")
+                     : tr("each try that scored %1 or more; the line is the best so far").arg(kMinScore));
     y += kTitle;
     legend(y, { { visible, tr("Kept") }, { mix(visible, pal.color(QPalette::Window), 0.55), tr("Good, not in the best 24") } });
     y += kLegend;
@@ -240,7 +246,7 @@ void ExploreCharts::draw(QPainter *p) const
         QRectF a = plot_area(y);
         double ymax = 3;
         for (auto &f : st.finds)
-            ymax = std::max(ymax, f.score * 1.08);
+            ymax = std::max(ymax, f.value * 1.08);
         double n = std::max<uint32_t>(1, st.tried);
         auto X = [&](double at) { return a.left() + a.width() * at / n; };
         auto Y = [&](double v) { return a.bottom() - a.height() * v / ymax; };
@@ -249,7 +255,8 @@ void ExploreCharts::draw(QPainter *p) const
         if (p)
         {
             p->setPen(QPen(quiet, 1.5, Qt::DashLine));
-            p->drawLine(QPointF(a.left(), Y(kMinScore)), QPointF(a.right(), Y(kMinScore)));
+            double line = st.by_find ? 1.0 : kMinScore;
+            p->drawLine(QPointF(a.left(), Y(line)), QPointF(a.right(), Y(line)));
             if (!st.best.empty())
             {
                 QPainterPath best;
@@ -273,13 +280,13 @@ void ExploreCharts::draw(QPainter *p) const
         }
         for (auto &f : st.finds)
         {
-            QPointF c(X(f.at), Y(f.score));
+            QPointF c(X(f.at), Y(f.value));
             QString fam = f.at < families.size() ? QString::fromLatin1(family_name(families[f.at])) : QString();
             tips.push_back({ QRectF(c.x() - 6, c.y() - 6, 12, 12),
-                             tr("Try %1 (%2): score %3%4")
+                             (st.by_find ? tr("Try %1 (%2): find %3%4") : tr("Try %1 (%2): score %3%4"))
                                  .arg(f.at + 1)
                                  .arg(fam)
-                                 .arg(QLocale().toString(f.score, 'f', 2))
+                                 .arg(QLocale().toString(f.value, 'f', 2))
                                  .arg(f.kept ? tr(", kept") : QString()) });
             if (!p)
                 continue;
