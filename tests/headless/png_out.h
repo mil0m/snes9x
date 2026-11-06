@@ -14,4 +14,7 @@ bool write_png(const std::string &path, const corrupt::Picture &p);
 // Pictures side by side, 4 pixels apart, on white.
 corrupt::Picture strip_of(const std::vector<corrupt::Picture> &ps);
 
+// Pictures in rows of `per_row`, 4 pixels apart, on white.
+corrupt::Picture grid_of(const std::vector<corrupt::Picture> &ps, size_t per_row);
+
 } // namespace headless

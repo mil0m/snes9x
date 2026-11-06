@@ -93,6 +93,7 @@
 #include "corrupt/memory_map.h"
 #include "corrupt/moment.h"
 #include "corrupt/explore.h"
+#include "corrupt/envelope.h"
 #include "corrupt/function_body.h"
 #include "png_out.h"
 
@@ -2627,80 +2628,101 @@ struct Explored
 // half) changed something you can see.
 constexpr double kVisible = 0.02;
 
-int run_explore(const Recipe &recipe, int frames, int variants, int moments)
+// What the explorer modes learn first: where the moments start (frames of a pseudo-player's
+// play from the warmup: CORRUPT_EXPLORE_AT=3600,7200; default every `frames` frames), and the
+// code map, jump tables, functions and most-read WRAM from that play, as a player's would be.
+// The engine's knowledge points into it: keep it alive (and in place) while the engine runs.
+struct ExploreSetup
 {
-    // Where the moments start: frames of a pseudo-player's play from the warmup
-    // (CORRUPT_EXPLORE_AT=3600,7200; default: every `frames` frames). The code map, jump
-    // tables and functions are learned from that play, as a player's would be.
     std::vector<int> at;
-    if (const char *list = getenv("CORRUPT_EXPLORE_AT"))
-    {
-        std::stringstream ss(list);
-        for (std::string item; std::getline(ss, item, ',');)
-            at.push_back(atoi(item.c_str()));
-    }
-    while (int(at.size()) < moments)
-        at.push_back(frames * int(at.size() + 1));
-    at.resize(size_t(moments));
-    std::sort(at.begin(), at.end());
-    CodeMap map(Memory.CalculatedSize);
+    std::vector<std::vector<uint8_t>> starts;
+    CodeMap map{ Memory.CalculatedSize };
     JumpLog jumps;
     CallKeeper calls;
-    std::vector<std::vector<uint8_t>> starts;
-    PseudoPlayer lead_in(100);
-    WramAccessCounter wram_reads; // what the ram family aims at
-    {
-        wram_reads.start();
-        RomTracer tracer;
-        if (!tracer.start(map, &jumps, &calls.mine()))
-            return 1;
-        for (int i = 0; i <= at.back(); i++)
-        {
-            if (std::find(at.begin(), at.end(), i) != at.end())
-                starts.push_back(access.save_state());
-            if (i == at.back())
-                break;
-            access.set_pads(lead_in.next());
-            headless::run_frames(1);
-            calls.end_frame();
-        }
-        tracer.stop();
-    }
-    std::span<const uint8_t> clean(rom.clean().data(), rom.clean().size());
-    auto where = SnesCoreAccess::rom_addresses();
-    auto tables = find_jump_tables(jumps, clean, map.flags(), SnesCoreAccess::rom_offsets()).tables;
-    auto functions = calls.functions();
-    auto bodies = function_bodies(clean, map.flags(), functions, where);
-    std::vector<InPlay> busy;
-    for (auto &f : busiest(functions, Engine::kBusiestFunctions))
-        busy.push_back({ f.entry, false });
-    HotMask busy_mask = guard_mask(busy, bodies, nullptr);
-    printf("learned  %zu code bytes, %zu jump tables, %zu functions (%zu busy-code bytes) from %d frames of play\n",
-           map.coverage().code, tables.size(), functions.size(), busy_mask.count(Target::ROM), at.back());
+    std::vector<JumpTable> tables;
+    std::vector<Function> functions;
+    HotMask busy_mask;
     std::vector<uint8_t> aim_flags;
-    engine.set_code_flags([&] {
-        aim_flags = map.flags();
-        for (auto &f : aim_flags)
-            f &= codeflag::All;
-        return std::span<const uint8_t>(aim_flags);
-    });
-    engine.set_jump_tables([&] { return tables; });
-    engine.set_functions([&] { return functions; });
-    engine.set_busy_code([&] { return busy_mask; });
-
+    std::vector<uint32_t> reads; // WRAM reads per byte during the play
     ExploreKnows knows;
-    knows.recipe = recipe;
-    knows.code_map = map.coverage().code > 0;
-    knows.busy_code = busy_mask.count(Target::ROM) > 0;
-    knows.jump_tables = !tables.empty();
-    knows.functions = !functions.empty();
-    knows.wram = busy_wram(wram_reads.read_counts());
-    wram_reads.stop();
-    printf("wram     %zu ranges the game reads most:", knows.wram.size());
-    for (auto &r : knows.wram)
-        printf(" %s-%s", hex(r.first).c_str(), hex(r.last).c_str());
-    printf("\n");
 
+    bool learn(const Recipe &recipe, int frames, int moments)
+    {
+        if (const char *list = getenv("CORRUPT_EXPLORE_AT"))
+        {
+            std::stringstream ss(list);
+            for (std::string item; std::getline(ss, item, ',');)
+                at.push_back(atoi(item.c_str()));
+        }
+        while (int(at.size()) < moments)
+            at.push_back(frames * int(at.size() + 1));
+        at.resize(size_t(moments));
+        std::sort(at.begin(), at.end());
+        PseudoPlayer lead_in(100);
+        WramAccessCounter wram_reads; // what the ram family aims at
+        {
+            wram_reads.start();
+            RomTracer tracer;
+            if (!tracer.start(map, &jumps, &calls.mine()))
+                return false;
+            for (int i = 0; i <= at.back(); i++)
+            {
+                if (std::find(at.begin(), at.end(), i) != at.end())
+                    starts.push_back(access.save_state());
+                if (i == at.back())
+                    break;
+                access.set_pads(lead_in.next());
+                headless::run_frames(1);
+                calls.end_frame();
+            }
+            tracer.stop();
+        }
+        std::span<const uint8_t> clean(rom.clean().data(), rom.clean().size());
+        auto where = SnesCoreAccess::rom_addresses();
+        tables = find_jump_tables(jumps, clean, map.flags(), SnesCoreAccess::rom_offsets()).tables;
+        functions = calls.functions();
+        auto bodies = function_bodies(clean, map.flags(), functions, where);
+        std::vector<InPlay> busy;
+        for (auto &f : busiest(functions, Engine::kBusiestFunctions))
+            busy.push_back({ f.entry, false });
+        busy_mask = guard_mask(busy, bodies, nullptr);
+        printf("learned  %zu code bytes, %zu jump tables, %zu functions (%zu busy-code bytes) from %d frames of play\n",
+               map.coverage().code, tables.size(), functions.size(), busy_mask.count(Target::ROM), at.back());
+        engine.set_code_flags([&] {
+            aim_flags = map.flags();
+            for (auto &f : aim_flags)
+                f &= codeflag::All;
+            return std::span<const uint8_t>(aim_flags);
+        });
+        engine.set_jump_tables([&] { return tables; });
+        engine.set_functions([&] { return functions; });
+        engine.set_busy_code([&] { return busy_mask; });
+
+        knows.recipe = recipe;
+        knows.code_map = map.coverage().code > 0;
+        knows.busy_code = busy_mask.count(Target::ROM) > 0;
+        knows.jump_tables = !tables.empty();
+        knows.functions = !functions.empty();
+        reads = wram_reads.read_counts();
+        knows.wram = busy_wram(reads);
+        wram_reads.stop();
+        printf("wram     %zu ranges the game reads most:", knows.wram.size());
+        for (auto &r : knows.wram)
+            printf(" %s-%s", hex(r.first).c_str(), hex(r.last).c_str());
+        printf("\n");
+        return true;
+    }
+};
+
+int run_explore(const Recipe &recipe, int frames, int variants, int moments)
+{
+    ExploreSetup setup;
+    if (!setup.learn(recipe, frames, moments))
+        return 1;
+    auto &at = setup.at;
+    auto &starts = setup.starts;
+    auto &map = setup.map;
+    auto &knows = setup.knows;
     const char *out_dir = getenv("CORRUPT_EXPLORE_OUT");
     const uint32_t window = 1200;
     RomTracer tracer; // what runs as code that never did: the explorer's "new code"
@@ -2835,6 +2857,309 @@ int run_explore(const Recipe &recipe, int frames, int variants, int moments)
     return 0;
 }
 
+// --placebo [variants=300] [moments=2]: does the explorer's score see corruption, or just
+// another path (#81)? Per scene: 16 natural runs (placebos: the same buttons with one press
+// shifted, dropped or added; no corruption) give normal play's range; 20 more placebos set
+// each signal's bar (their most); then 30 held-out placebos and the variants are measured
+// against it. A signal is worth something when held-out placebos rarely pass its bar and
+// corruptions do. With CORRUPT_EXPLORE_OUT, 24 strips of 12 frames per scene for raters:
+// 6 placebos, 6 top by today's score, 6 top by behaviour, 6 random survivors, with key.txt.
+// Plan: docs/corruption/2026-11-06-placebo-plan.md.
+
+struct PlaceboRow
+{
+    int group = 0; // 0 natural, 1 bar-setting placebo, 2 held-out placebo, 3 variant
+    Family family = Family::Ram;
+    std::string what;
+    std::vector<Pads> pads; // the placebos'
+    Recipe recipe;          // the variants'
+    RunScore s;
+    Signals g;
+    bool alive = false;
+};
+
+constexpr int kSignals = 10;
+const char *kSignalNames[kSignals] = { "score", "different", "apart", "new colours", "steady broken",
+                                       "out of range", "new functions", "silenced", "sprite jumps", "new code" };
+constexpr int kFirstBehaviour = 4; // from "steady broken" on: acts different
+
+double signal_of(const PlaceboRow &r, int k)
+{
+    switch (k)
+    {
+    case 0: return r.s.score;
+    case 1: return r.s.different;
+    case 2: return r.g.apart;
+    case 3: return r.g.new_colours;
+    case 4: return r.g.steady_broken;
+    case 5: return r.g.out_of_range;
+    case 6: return r.g.new_functions;
+    case 7: return r.g.silenced;
+    case 8: return r.g.sprite_jumps;
+    case 9: return r.s.new_code;
+    }
+    return 0;
+}
+
+struct PassCount
+{
+    int placebos = 0, placebos_past = 0, variants = 0, variants_past = 0;
+};
+
+int run_placebo(const Recipe &recipe, int frames, int variants, int moments)
+{
+    ExploreSetup setup;
+    if (!setup.learn(recipe, frames, moments))
+        return 1;
+    auto &map = setup.map;
+    const char *out_dir = getenv("CORRUPT_EXPLORE_OUT");
+    const uint32_t window = 1200;
+    const int kNatural = 16, kBar = 20, kHeldOut = 30;
+    CallLog calls_log;
+    RomTracer tracer; // new code, and the calls each run makes
+    tracer.start(map, nullptr, &calls_log);
+    S9xCorruptFrameHook = &frame_hook;
+    ExploreRig rig{ access, rom, engine, std::span<uint8_t>(map.data(), map.size()) };
+
+    // Plays one run and records its trace.
+    auto play = [&](const ExploreStart &from, const Recipe *r, bool learn, StateTrace &trace,
+                    std::vector<uint32_t> keep = {}) {
+        trace = {};
+        PlayOptions o;
+        o.keep = std::move(keep);
+        o.keep_learning = learn;
+        auto after = [&](uint32_t f) { // after frame f - 1
+            if (f > 0)
+                calls_log.end_frame();
+            if (f % kSampleEvery == 0)
+                trace.wram.emplace_back(Memory.RAM, Memory.RAM + 0x20000);
+            if (f > 0)
+            {
+                std::vector<uint8_t> o(kOamSize);
+                for (size_t i = 0; i < kOamSize; i++)
+                    o[i] = memory.read(Target::OAM, uint32_t(i));
+                trace.oam.push_back(std::move(o));
+            }
+        };
+        o.before_frame = [&](uint32_t f) {
+            if (f == 0)
+                calls_log.clear();
+            after(f);
+        };
+        o.after_frames = [&] { after(uint32_t(from.pads.size())); };
+        auto run = play_variant(rig, from, r, o);
+        for (auto &[entry, n] : calls_log.frames_run())
+            trace.calls[entry] = uint32_t(n);
+        return run;
+    };
+    std::vector<uint32_t> strip_frames;
+    for (int k = 0; k < 12; k++)
+        strip_frames.push_back(window * (2 * k + 1) / 24);
+
+    std::array<PassCount, kSignals> all{};
+    std::map<std::string, std::array<PassCount, kSignals>> by_family;
+    PassCount keep_line, strong; // today's score at its keep line (0.3) and at 1
+    for (int m = 0; m < moments; m++)
+    {
+        auto t0 = std::chrono::steady_clock::now();
+        PseudoPlayer player(uint32_t(200 + m));
+        player.menus = false;
+        ExploreStart from;
+        from.state = setup.starts[size_t(m)];
+        for (uint32_t i = 0; i < window; i++)
+            from.pads.push_back(player.next());
+        StateTrace trace;
+        auto control = play(from, nullptr, true, trace, strip_frames);
+        if (control.crashed)
+        {
+            printf("moment %d (at %d): the control crashed (%s)\n", m + 1, setup.at[size_t(m)], control.ended.c_str());
+            continue;
+        }
+        Envelope env;
+        env.add(control, trace);
+        std::vector<PlaceboRow> rows;
+        auto placebo = [&](int group, uint64_t seed) {
+            PlaceboRow row;
+            row.group = group;
+            ExploreStart p = from;
+            p.pads = perturb(from.pads, seed, &row.what);
+            row.pads = p.pads;
+            auto run = play(p, nullptr, group == 0, trace);
+            row.s = score_run(run, control);
+            row.alive = row.s.alive;
+            if (group == 0)
+                env.add(run, trace);
+            else
+                row.g = env.measure(run, trace);
+            rows.push_back(std::move(row));
+        };
+        for (int i = 0; i < kNatural - 1; i++) // the control is the 16th
+            placebo(0, 1000 + uint64_t(m) * 1000 + uint64_t(i));
+        env.finish(setup.reads);
+        for (int i = 0; i < kBar; i++)
+            placebo(1, 2000 + uint64_t(m) * 1000 + uint64_t(i));
+        for (int i = 0; i < kHeldOut; i++)
+            placebo(2, 3000 + uint64_t(m) * 1000 + uint64_t(i));
+        uint64_t base = getenv("CORRUPT_EXPLORE_SEED") ? std::stoull(getenv("CORRUPT_EXPLORE_SEED")) : 0xE7E7;
+        for (auto &v : make_variants(setup.knows, rom, size_t(variants), base + uint64_t(m), window))
+        {
+            PlaceboRow row;
+            row.group = 3;
+            row.family = v.family;
+            row.what = v.what;
+            row.recipe = v.recipe;
+            auto run = play(from, &v.recipe, false, trace);
+            row.s = score_run(run, control);
+            row.alive = row.s.alive;
+            std::vector<AddressRange> own;
+            for (auto &rule : v.recipe.rules)
+                own.push_back(rule.range);
+            row.g = env.measure(run, trace, own);
+            rows.push_back(std::move(row));
+        }
+        double secs = std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count();
+
+        // Each signal's bar: the most any bar-setting placebo reached.
+        std::array<double, kSignals> bar{};
+        for (auto &r : rows)
+            if (r.group == 1 && r.alive)
+                for (int k = 0; k < kSignals; k++)
+                    bar[size_t(k)] = std::max(bar[size_t(k)], signal_of(r, k));
+        std::array<PassCount, kSignals> here{};
+        PassCount here_keep;
+        for (auto &r : rows)
+        {
+            if (!r.alive || (r.group != 2 && r.group != 3))
+                continue;
+            bool is_placebo = r.group == 2;
+            for (int k = 0; k < kSignals; k++)
+            {
+                bool past = signal_of(r, k) > bar[size_t(k)];
+                for (auto *c : { &here[size_t(k)], &all[size_t(k)],
+                                 is_placebo ? nullptr : &by_family[family_name(r.family)][size_t(k)] })
+                {
+                    if (!c)
+                        continue;
+                    (is_placebo ? c->placebos : c->variants)++;
+                    (is_placebo ? c->placebos_past : c->variants_past) += past;
+                }
+            }
+            for (auto [c, line] : { std::pair{ &here_keep, 0.3 }, std::pair{ &keep_line, 0.3 }, std::pair{ &strong, 1.0 } })
+            {
+                bool past = r.s.score >= line;
+                (is_placebo ? c->placebos : c->variants)++;
+                (is_placebo ? c->placebos_past : c->variants_past) += past;
+            }
+        }
+        int alive_v = here[0].variants;
+        printf("moment %d (at %d): %zu runs in %.0f s; %d of %d held-out placebos and %d of %d variants alive\n", m + 1,
+               setup.at[size_t(m)], rows.size() + 1, secs, here[0].placebos, kHeldOut, alive_v, variants);
+        printf("  today's keep line (score 0.3+): %d of %d placebos, %d of %d variants\n", here_keep.placebos_past,
+               here_keep.placebos, here_keep.variants_past, here_keep.variants);
+        printf("  %-14s %10s %18s %18s\n", "signal", "bar", "placebos past it", "variants past it");
+        for (int k = 0; k < kSignals; k++)
+            printf("  %-14s %10.4f %10d of %3d %10d of %3d\n", kSignalNames[k], bar[size_t(k)], here[size_t(k)].placebos_past,
+                   here[size_t(k)].placebos, here[size_t(k)].variants_past, here[size_t(k)].variants);
+
+        if (!out_dir)
+            continue;
+        // The strips for the raters.
+        auto behaviour = [&](const PlaceboRow &r) {
+            int past = 0;
+            double margin = 0;
+            for (int k = kFirstBehaviour; k < kSignals; k++)
+            {
+                double v = signal_of(r, k), b = bar[size_t(k)];
+                past += v > b;
+                margin += v > b ? std::log2((v + 1e-3) / (b + 1e-3)) : 0;
+            }
+            return past * 1000.0 + margin;
+        };
+        std::vector<size_t> held, alive;
+        for (size_t i = 0; i < rows.size(); i++)
+        {
+            if (rows[i].group == 2 && rows[i].alive)
+                held.push_back(i);
+            if (rows[i].group == 3 && rows[i].alive)
+                alive.push_back(i);
+        }
+        std::mt19937 shuffle(uint32_t(11 + m));
+        std::set<size_t> taken;
+        std::vector<std::pair<size_t, std::string>> picks;
+        auto take = [&](std::vector<size_t> from_list, const std::string &group, size_t n) {
+            size_t got = 0;
+            for (auto i : from_list)
+                if (got < n && taken.insert(i).second)
+                {
+                    picks.push_back({ i, group });
+                    got++;
+                }
+        };
+        std::shuffle(held.begin(), held.end(), shuffle);
+        take(held, "placebo", 6);
+        auto by_score = alive;
+        std::stable_sort(by_score.begin(), by_score.end(), [&](size_t a, size_t b) { return rows[a].s.score > rows[b].s.score; });
+        take(by_score, "top-score", 6);
+        auto by_acts = alive;
+        std::stable_sort(by_acts.begin(), by_acts.end(), [&](size_t a, size_t b) { return behaviour(rows[a]) > behaviour(rows[b]); });
+        take(by_acts, "top-behaviour", 6);
+        auto random = alive;
+        std::shuffle(random.begin(), random.end(), shuffle);
+        take(random, "random", 6);
+        std::shuffle(picks.begin(), picks.end(), shuffle);
+
+        std::string dir = std::string(out_dir) + "/moment" + std::to_string(m + 1);
+        std::filesystem::create_directories(dir);
+        headless::write_png(dir + "/control.png", headless::grid_of(control.kept, 6));
+        std::ofstream key(dir + "/key.txt");
+        key << "bars:";
+        for (int k = 0; k < kSignals; k++)
+            key << " " << kSignalNames[k] << "=" << bar[size_t(k)];
+        key << "\n";
+        for (size_t i = 0; i < picks.size(); i++)
+        {
+            auto &r = rows[picks[i].first];
+            ExploreStart p = from;
+            if (r.group == 2)
+                p.pads = r.pads;
+            auto run = play(p, r.group == 3 ? &r.recipe : nullptr, false, trace, strip_frames);
+            std::string label(1, char('A' + i));
+            headless::write_png(dir + "/" + label + ".png", headless::grid_of(run.kept, 6));
+            key << label << " " << picks[i].second << " behaviour " << behaviour(r);
+            for (int k = 0; k < kSignals; k++)
+                key << " | " << kSignalNames[k] << " " << signal_of(r, k);
+            key << " | " << (r.group == 3 ? family_name(r.family) : "placebo") << ": " << r.what << "\n";
+        }
+    }
+    tracer.stop();
+    S9xCorruptFrameHook = nullptr;
+
+    auto pct = [](int a, int b) { return b ? 100.0 * a / b : 0.0; };
+    printf("all scenes\n");
+    printf("  today's keep line (score 0.3+): placebos %.0f%% (%d of %d), variants %.0f%% (%d of %d)\n",
+           pct(keep_line.placebos_past, keep_line.placebos), keep_line.placebos_past, keep_line.placebos,
+           pct(keep_line.variants_past, keep_line.variants), keep_line.variants_past, keep_line.variants);
+    printf("  score 1+:                       placebos %.0f%% (%d of %d), variants %.0f%% (%d of %d)\n",
+           pct(strong.placebos_past, strong.placebos), strong.placebos_past, strong.placebos,
+           pct(strong.variants_past, strong.variants), strong.variants_past, strong.variants);
+    printf("  %-14s %16s %16s\n", "signal", "placebos past", "variants past");
+    for (int k = 0; k < kSignals; k++)
+        printf("  %-14s %15.1f%% %15.1f%%\n", kSignalNames[k], pct(all[size_t(k)].placebos_past, all[size_t(k)].placebos),
+               pct(all[size_t(k)].variants_past, all[size_t(k)].variants));
+    printf("  variants past the bar, by family:\n  %-8s", "family");
+    for (int k = 0; k < kSignals; k++)
+        printf(" %8.8s", kSignalNames[k]);
+    printf("\n");
+    for (auto &[name, c] : by_family)
+    {
+        printf("  %-8s", name.c_str());
+        for (int k = 0; k < kSignals; k++)
+            printf(" %7.0f%%", pct(c[size_t(k)].variants_past, c[size_t(k)].variants));
+        printf("\n");
+    }
+    return 0;
+}
+
 } // namespace
 
 int main(int argc, char **argv)
@@ -2926,6 +3251,8 @@ int main(int argc, char **argv)
         return run_eyes(*parsed.recipe, frames, argc > 6 ? atoi(argv[6]) : 5);
     if (argc > 5 && std::string(argv[5]) == "--explore")
         return run_explore(*parsed.recipe, frames, argc > 6 ? atoi(argv[6]) : 300, argc > 7 ? atoi(argv[7]) : 2);
+    if (argc > 5 && std::string(argv[5]) == "--placebo")
+        return run_placebo(*parsed.recipe, frames, argc > 6 ? atoi(argv[6]) : 300, argc > 7 ? atoi(argv[7]) : 2);
     if (argc > 5 && std::string(argv[5]) == "--keep")
         return run_keep(*parsed.recipe, frames, argc > 6 ? atoi(argv[6]) : 3);
     if (argc > 5 && std::string(argv[5]) == "--ahead")

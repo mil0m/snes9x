@@ -60,4 +60,32 @@ Picture strip_of(const std::vector<Picture> &ps)
     return out;
 }
 
+Picture grid_of(const std::vector<Picture> &ps, size_t per_row)
+{
+    std::vector<Picture> rows;
+    for (size_t i = 0; i < ps.size(); i += per_row)
+        rows.push_back(strip_of(std::vector<Picture>(ps.begin() + i, ps.begin() + std::min(ps.size(), i + per_row))));
+    Picture out;
+    if (rows.empty())
+        return out;
+    int gap = 4, w = 0, h = 0;
+    for (auto &r : rows)
+    {
+        w = std::max<int>(w, r.w);
+        h += r.h + gap;
+    }
+    out.w = uint16_t(w);
+    out.h = uint16_t(h - gap);
+    out.rgb.assign(size_t(out.w) * out.h * 3, 255);
+    int y0 = 0;
+    for (auto &r : rows)
+    {
+        for (int y = 0; y < r.h; y++)
+            std::copy(r.rgb.begin() + size_t(y) * r.w * 3, r.rgb.begin() + size_t(y + 1) * r.w * 3,
+                      out.rgb.begin() + size_t(y0 + y) * out.w * 3);
+        y0 += r.h + gap;
+    }
+    return out;
+}
+
 } // namespace headless
