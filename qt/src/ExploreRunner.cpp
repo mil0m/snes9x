@@ -130,6 +130,15 @@ void ExploreRunner::readLines()
             else
                 st.normal_done = st.normal_of;
         }
+        else if (line.startsWith("placebo "))
+        {
+            auto p = line.split(' ');
+            if (p.size() >= 3)
+            {
+                st.placebos = p[1].toUInt();
+                st.placebos_kept = p[2].toUInt();
+            }
+        }
         else if (line.startsWith("folder "))
             st.folder = line.mid(7).trimmed();
         else if (line.startsWith("done "))

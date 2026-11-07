@@ -55,6 +55,7 @@ tests/remote/remote_e2e.sh <out dir> <rom>   # the remote page in a headless bro
 build/tests/game-dossier <rom> <library game folder> --out f.md   # what the tracer knows, as Markdown (#42)
 build/qt/snes9x-explore <rom> <moment.s9xmoment> --out <dir> --variants N   # the headless explorer (#45)
 build/tests/explore-ratings <library or game folder>   # what people's 👍/👎 say about the explorer's measures (#83)
+tools/explore_moments.sh <library> <rom> [minutes]   # explore every kept moment of that ROM overnight (#85)
 tools/privacy_check.sh [--staged]            # nothing private in tracked files
 ```
 

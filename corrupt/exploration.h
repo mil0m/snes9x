@@ -30,10 +30,14 @@ constexpr double kMinScore = 0.3;
 // shifted, dropped or added, no corruption) reached. A variant has to go beyond it.
 struct NormalBest
 {
-    uint32_t runs = 0; // the runs without corruption normal play was measured from; 0: an older exploration
+    uint32_t runs = 0; // the runs without corruption normal play was measured from first; 0: an older exploration
     double score = 0;
     uint32_t new_functions = 0, silenced = 0, new_code = 0;
-    void add(const RunScore &s, const Signals &g); // one bar-setting placebo; one that stopped sets nothing
+    // #84: placebos played between the variants, each judged against the bars so far before it
+    // joined them; how many of them would have been kept.
+    uint32_t later = 0, later_kept = 0;
+    // One bar-setting placebo; one that stopped sets nothing. True when a bar rose.
+    bool add(const RunScore &s, const Signals &g);
     double keep_line() const { return std::max(kMinScore, score); }
 };
 

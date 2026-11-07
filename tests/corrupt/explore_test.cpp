@@ -650,6 +650,44 @@ TEST_SUITE("the headless explorer (#45)")
         CHECK(quiet.keep_line() == doctest::Approx(kMinScore));
     }
 
+    TEST_CASE("placebos between the variants (#84): a bar that rises says so; the file and the words keep them")
+    {
+        NormalBest best;
+        best.runs = 37;
+        RunScore a, dead;
+        Signals g;
+        a.alive = true;
+        a.score = 0.5;
+        CHECK(best.add(a, g));  // from nothing: rose
+        CHECK(!best.add(a, g)); // the same again: nothing rose
+        g.new_functions = 3;
+        CHECK(best.add(a, g)); // one bar is enough
+        dead.score = 9;
+        CHECK(!best.add(dead, g)); // one that stopped sets nothing
+        best.later = 40;
+        best.later_kept = 1;
+
+        Exploration e;
+        e.normal = best;
+        std::string error;
+        auto back = decode_exploration(encode_exploration(e), error);
+        REQUIRE_MESSAGE(back, error);
+        CHECK(back->normal.later == 40);
+        CHECK(back->normal.later_kept == 1);
+        auto text = normal_text(best);
+        CHECK(text.find("Normal play: 77 runs") == 0);
+        CHECK(text.find("40 of them were played between the corruptions") != std::string::npos);
+        CHECK(text.find("1 would have been kept (2.5%)") != std::string::npos);
+        best.later_kept = 0;
+        CHECK(normal_text(best).find("first: none would have been kept,") != std::string::npos);
+        best.later = 0;
+        CHECK(normal_text(best).find("between the corruptions") == std::string::npos);
+        // An older file (no later runs) reads as none.
+        auto old = decode_exploration(R"({"version": 1, "normal": {"runs": 37, "score": 0.5}})", error);
+        REQUIRE(old);
+        CHECK(old->normal.later == 0);
+    }
+
     TEST_CASE("the verdict (#82): kept when it looks different beyond normal play, or acts different and shows")
     {
         NormalBest best;

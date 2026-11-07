@@ -21,6 +21,7 @@ class ExploreRunner : public QObject
         QString folder;          // where it writes, once it says
         unsigned tried = 0, alive = 0, visible = 0;
         unsigned normal_done = 0, normal_of = 0; // measuring normal play first (#82): runs done of how many
+        unsigned placebos = 0, placebos_kept = 0; // runs without corruption between the tries (#84), and how many passed
         double best = 0;
         double minutes = 0;      // how long it was asked to run
         qint64 started_ms = 0;   // when (QDateTime ms)

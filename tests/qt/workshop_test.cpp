@@ -874,7 +874,7 @@ TEST_CASE("Explored (#82): measured against normal play, each candidate says why
         QFile out(script);
         REQUIRE(out.open(QIODevice::WriteOnly));
         out.write("#!/bin/sh\necho \"normal 12 37\"\nsleep 2\necho \"normal best 0.620 1 0 12\"\necho \"folder /tmp/x\"\n"
-                  "echo \"progress 10 9 3 1.50\"\nsleep 2\necho \"done     10 variants\"\n");
+                  "echo \"progress 10 9 3 1.50\"\necho \"placebo 40 1 kept\"\nsleep 2\necho \"done     10 variants\"\n");
     }
     QFile::setPermissions(script, QFile::permissions(script) | QFileDevice::ExeOwner);
     auto &runner = *f.workshop.exploreRunner();
@@ -895,6 +895,9 @@ TEST_CASE("Explored (#82): measured against normal play, each candidate says why
     f.workshop.refresh();
     CHECK(runner.state().normal_done == 37);
     CHECK(running->text().contains("10 tried"));
+    CHECK(runner.state().placebos == 40); // #84
+    CHECK(running->text().contains("1 of 40 runs without corruption would have been kept"));
+    CHECK(runner.state().done.isEmpty()); // not taken for an error
     while (runner.state().running && t.elapsed() < 9000)
         QApplication::processEvents(QEventLoop::AllEvents, 50);
     CHECK(runner.state().done == "10 variants");

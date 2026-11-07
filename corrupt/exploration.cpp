@@ -261,14 +261,16 @@ std::string charts_html(const Exploration &e, const ExploreStats &st)
 
 } // namespace
 
-void NormalBest::add(const RunScore &s, const Signals &g)
+bool NormalBest::add(const RunScore &s, const Signals &g)
 {
     if (!s.alive)
-        return;
+        return false;
+    bool rose = s.score > score || g.new_functions > new_functions || g.silenced > silenced || s.new_code > new_code;
     score = std::max(score, s.score);
     new_functions = std::max(new_functions, g.new_functions);
     silenced = std::max(silenced, g.silenced);
     new_code = std::max(new_code, s.new_code);
+    return rose;
 }
 
 Verdict judge(const RunScore &s, const Signals &g, const NormalBest &best)
@@ -320,8 +322,21 @@ std::string normal_text(const NormalBest &n)
              "Normal play: %u runs without corruption, most with one button press moved. Their best score was %s, so a "
              "find has to score more than %s, or act in a way normal play doesn't (the most normal play reached: new "
              "functions %u, gone quiet %u, new code %u bytes).",
-             n.runs, short_num(n.score).c_str(), short_num(n.keep_line()).c_str(), n.new_functions, n.silenced, n.new_code);
-    return buf;
+             n.runs + n.later, short_num(n.score).c_str(), short_num(n.keep_line()).c_str(), n.new_functions, n.silenced,
+             n.new_code);
+    std::string out = buf;
+    if (n.later)
+    {
+        std::string kept = n.later_kept ? std::to_string(n.later_kept) + " would have been kept (" +
+                                              short_num(100.0 * n.later_kept / n.later) + "%)"
+                                        : std::string("none would have been kept");
+        snprintf(buf, sizeof buf,
+                 " %u of them were played between the corruptions, each checked against normal play so far first: "
+                 "%s, about how often a find here is just normal play.",
+                 n.later, kept.c_str());
+        out += buf;
+    }
+    return out;
 }
 
 std::string why_kept(const Candidate &c, const NormalBest &n)
@@ -447,7 +462,9 @@ std::string encode_exploration(const Exploration &e)
                         { "score", e.normal.score },
                         { "new_functions", e.normal.new_functions },
                         { "silenced", e.normal.silenced },
-                        { "new_code", e.normal.new_code } };
+                        { "new_code", e.normal.new_code },
+                        { "later", e.normal.later },
+                        { "later_kept", e.normal.later_kept } };
     auto &fam = j["families"] = nlohmann::ordered_json::object();
     for (size_t i = 0; i < kFamilies; i++)
         if (e.families[i].runs)
@@ -550,7 +567,8 @@ std::optional<Exploration> decode_exploration(const std::string &json, std::stri
     e.seconds = dbl(j, "seconds");
     e.finished = j.value("finished", false);
     if (auto n = j.find("normal"); n != j.end() && n->is_object())
-        e.normal = { u32(*n, "runs"), dbl(*n, "score"), u32(*n, "new_functions"), u32(*n, "silenced"), u32(*n, "new_code") };
+        e.normal = { u32(*n, "runs"),     dbl(*n, "score"),  u32(*n, "new_functions"), u32(*n, "silenced"),
+                     u32(*n, "new_code"), u32(*n, "later"), u32(*n, "later_kept") };
     if (auto f = j.find("families"); f != j.end() && f->is_object())
         for (auto &[name, v] : f->items())
             if (auto fam = parse_family(name); fam && v.is_object())

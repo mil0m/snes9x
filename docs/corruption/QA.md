@@ -892,3 +892,10 @@ Removed on 2026-11-01: it didn't pay off (see FEATURES.md, *Tried and removed*).
    - [ ] `ratings.<you>.json` is in the exploration's folder; with Erik's file beside it (or a copy renamed `ratings.erbl.json`), hovering the column lists both, yours first.
    - [ ] Rate while it's still exploring: the rating stays when the list updates.
    - [ ] `build/tests/explore-ratings "<library>"` counts your ratings and prints how well each measure picks the good ones.
+13. Normal play along the way (#84): explore for 10 minutes and watch the running line.
+   - [ ] After the first tries it adds *Normal play, checked along the way: 0 of 20 runs without corruption would have been kept*, the count rising by one every 20 tries.
+   - [ ] When it's done, the summary's normal play line counts those runs too and says how many would have been kept.
+   - [ ] The candidates' find numbers and the charts agree with the final normal play (no find under 1 in the list).
+14. Real moments (#85): keep 3-5 moments of real play with F8 (20 s+ in an action scene: Pocky, Zelda, Goof Troop out of the pause menu), then run `tools/explore_moments.sh "<library>" <rom> 30` overnight.
+   - [ ] It explores each moment of that ROM (three at a time) and skips moments of other games.
+   - [ ] Each shows up on the Explored page; rate the candidates after playing them, then run `build/tests/explore-ratings "<library>"`.

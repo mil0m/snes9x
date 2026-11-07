@@ -1581,11 +1581,19 @@ void ExploredPage::showRunning()
                                        .arg(s.normal_done)
                                        .arg(s.normal_of));
         else
-            running_label->setText(tr("Exploring “%1” (%2 of %3): %4 tried, %5 kept running, %6 visibly changed.")
-                                       .arg(s.moment, minutesText(ran), minutesText(s.minutes))
-                                       .arg(QLocale().toString(s.tried))
-                                       .arg(QLocale().toString(s.alive))
-                                       .arg(QLocale().toString(s.visible)));
+        {
+            QString text = tr("Exploring “%1” (%2 of %3): %4 tried, %5 kept running, %6 visibly changed.")
+                               .arg(s.moment, minutesText(ran), minutesText(s.minutes))
+                               .arg(QLocale().toString(s.tried))
+                               .arg(QLocale().toString(s.alive))
+                               .arg(QLocale().toString(s.visible));
+            if (s.placebos)
+                text += " " + tr("Normal play, checked along the way: %1 of %2 runs without corruption would have "
+                                 "been kept.")
+                                  .arg(QLocale().toString(s.placebos_kept))
+                                  .arg(QLocale().toString(s.placebos));
+            running_label->setText(text);
+        }
         ui::setTone(running_label, ui::Tone::Normal);
     }
     else if (!s.error.isEmpty())

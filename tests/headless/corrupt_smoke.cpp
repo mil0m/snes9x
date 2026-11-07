@@ -2915,7 +2915,9 @@ int run_placebo(const Recipe &recipe, int frames, int variants, int moments)
     auto &map = setup.map;
     const char *out_dir = getenv("CORRUPT_EXPLORE_OUT");
     const uint32_t window = 1200;
-    const int kNatural = 16, kBar = 20, kHeldOut = 30;
+    // CORRUPT_PLACEBO_BAR: how many placebos set the bars (#84 measures 120 against 20).
+    const int kNatural = 16, kHeldOut = 30;
+    const int kBar = getenv("CORRUPT_PLACEBO_BAR") ? std::max(1, atoi(getenv("CORRUPT_PLACEBO_BAR"))) : 20;
     CallLog calls_log;
     RomTracer tracer; // new code, and the calls each run makes
     tracer.start(map, nullptr, &calls_log);
@@ -3071,6 +3073,84 @@ int run_placebo(const Recipe &recipe, int frames, int variants, int moments)
                 (is_placebo ? c->placebos : c->variants)++;
                 (is_placebo ? c->placebos_past : c->variants_past) += past;
             }
+        }
+        // #84: the bar from many different sets of n bar-setting placebos: how far does the share
+        // of variants (and held-out placebos) kept swing? Then a percentile bar (the 95th) from
+        // all of them, the robust alternative.
+        if (kBar >= 40)
+        {
+            std::vector<size_t> pool, held_rows, variant_rows;
+            for (size_t i = 0; i < rows.size(); i++)
+            {
+                if (rows[i].group == 1)
+                    pool.push_back(i);
+                if (rows[i].group == 2 && rows[i].alive)
+                    held_rows.push_back(i);
+                if (rows[i].group == 3 && rows[i].alive)
+                    variant_rows.push_back(i);
+            }
+            auto shares = [&](const NormalBest &n) {
+                int v = 0, p = 0;
+                for (auto i : variant_rows)
+                    v += judge(rows[i].s, rows[i].g, n).kept;
+                for (auto i : held_rows)
+                    p += judge(rows[i].s, rows[i].g, n).kept;
+                return std::pair{ variant_rows.empty() ? 0.0 : 100.0 * v / double(variant_rows.size()),
+                                  held_rows.empty() ? 0.0 : 100.0 * p / double(held_rows.size()) };
+            };
+            std::mt19937 draw(uint32_t(77 + m));
+            printf("  bar from n placebos (#84), 200 draws each: variants kept (10th-90th percentile, min-max), "
+                   "held-out placebos kept (mean), bars' range\n");
+            for (int n : { 10, 20, 40, 60, kBar })
+            {
+                if (n > int(pool.size()))
+                    continue;
+                int draws = n == int(pool.size()) ? 1 : 200;
+                std::vector<double> v_share;
+                double p_sum = 0;
+                double s_lo = 1e9, s_hi = 0;
+                uint32_t f_lo = UINT32_MAX, f_hi = 0, c_lo = UINT32_MAX, c_hi = 0;
+                for (int d = 0; d < draws; d++)
+                {
+                    auto pick = pool;
+                    std::shuffle(pick.begin(), pick.end(), draw);
+                    NormalBest nb;
+                    nb.runs = uint32_t(kNatural + n);
+                    for (int k = 0; k < n; k++)
+                        nb.add(rows[pick[size_t(k)]].s, rows[pick[size_t(k)]].g);
+                    auto [vs, ps] = shares(nb);
+                    v_share.push_back(vs);
+                    p_sum += ps;
+                    s_lo = std::min(s_lo, nb.score), s_hi = std::max(s_hi, nb.score);
+                    f_lo = std::min(f_lo, nb.new_functions), f_hi = std::max(f_hi, nb.new_functions);
+                    c_lo = std::min(c_lo, nb.new_code), c_hi = std::max(c_hi, nb.new_code);
+                }
+                std::sort(v_share.begin(), v_share.end());
+                auto at = [&](double q) { return v_share[size_t(q * double(v_share.size() - 1) + 0.5)]; };
+                printf("    n=%-4d variants %5.1f%%-%5.1f%% (%5.1f%%-%5.1f%%), placebos %4.1f%%; score bar %.2f-%.2f, "
+                       "new functions %u-%u, new code %u-%u\n",
+                       n, at(0.1), at(0.9), v_share.front(), v_share.back(), p_sum / draws, s_lo, s_hi, f_lo, f_hi, c_lo,
+                       c_hi);
+            }
+            // The 95th percentile of each bar over all of them.
+            auto pct95 = [&](auto get) {
+                std::vector<double> v;
+                for (auto i : pool)
+                    if (rows[i].alive)
+                        v.push_back(get(rows[i]));
+                if (v.empty())
+                    return 0.0;
+                std::sort(v.begin(), v.end());
+                return v[size_t(0.95 * double(v.size() - 1) + 0.5)];
+            };
+            NormalBest robust;
+            robust.runs = uint32_t(kNatural + kBar);
+            robust.score = pct95([](const PlaceboRow &r) { return r.s.score; });
+            robust.new_functions = uint32_t(pct95([](const PlaceboRow &r) { return double(r.g.new_functions); }));
+            robust.silenced = uint32_t(pct95([](const PlaceboRow &r) { return double(r.g.silenced); }));
+            robust.new_code = uint32_t(pct95([](const PlaceboRow &r) { return double(r.s.new_code); }));
+            auto [rv, rp] = shares(robust);
+            printf("    95th percentile of all %d: variants %.1f%%, placebos %.1f%%\n", kBar, rv, rp);
         }
         int alive_v = here[0].variants;
         printf("moment %d (at %d): %zu runs in %.0f s; %d of %d held-out placebos and %d of %d variants alive\n", m + 1,

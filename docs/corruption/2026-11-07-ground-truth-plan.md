@@ -79,3 +79,44 @@ There are no ratings yet, so there's nothing to tune against: tried on a copy of
 Link's house run with made-up ratings, the report reads them, the agreement and the AUCs come
 out, and a rating whose candidate left the top counts for find and score only. The numbers
 come once people have pressed Play and rated (#85).
+
+**#84, the measurement** (`CORRUPT_PLACEBO_BAR=120 corrupt-smoke --placebo 300`, seed 84084,
+the three real-play scenes): 120 bar-setting placebos per scene, bars drawn from 200 random
+sets of each size. Held-out placebos kept (mean over the draws):
+
+| bar from | Pocky's temple | Zelda's field | Link's house |
+|---|---|---|---|
+| 10 placebos | 11.9% | 11.1% | 6.3% |
+| 20 (#82) | 7.1% | 9.0% | 4.0% |
+| 40 | 5.4% | 7.5% | 1.8% |
+| 60 | 4.8% | 6.9% | 0.9% |
+| all 120 | 3.3% | 3.3% | 0% |
+| the 95th percentile of 120 | 6.7% | 10% | 6.7% |
+
+- With 20, a held-out placebo passes 4-9% of the time on this seed, not #82's 1%: that
+  number was a lucky draw, and the same noise.
+- In Link's house, sets of 20 put the bars anywhere from 0 to 60 new functions and 0 to 3,201
+  bytes of new code (one placebo in a few dozen walks out of the house); from 60 on they
+  hold at 59-60.
+- Corruptions kept hardly move: 9.5%, 8.2% and 7.5% with 120 placebos, the same as most sets
+  of 20 (the worst sets of 20 kept up to 16% and 13%). Real finds are far past normal play;
+  what more placebos remove is normal play passing.
+- The robust bar is worse: a percentile lets the rare normal path through (7-10% of placebos).
+
+So: more placebos, as planned. **The explorer** (6 minutes on each scene, one placebo in 20
+tries after the first 20):
+- 25-29 placebos along the way per scene; 1, 1 and 0 of them would have been kept. In
+  Zelda's field and Link's house it was a placebo that left the scene (the 4th and the 6th),
+  which then raised the bars; the candidates were judged again.
+- Candidates' moments play back exactly: 24 of 24 in Pocky's temple and Zelda's field, 21 of 24
+  in Link's house. The same three fail with the seed replayed and no placebos at all
+  (`SNES9X_EXPLORE_PLACEBO_EVERY=0`): corruptions whose runs a moment doesn't capture, not
+  #84. With #82's seed: 24 of 24.
+- Costs 5% of the tries. Over an hour, about 200 placebos: the bars come from 220 runs, and
+  each scene says how often its normal play passed.
+
+**#85.** `tools/explore_moments.sh` tried on a copy of a library with the scene moments: it
+explores the ROM's own game folder (`snes9x-explore <rom> --game-folder` names it; a first
+version took every folder and played a Pocky moment on Zelda, since the pseudo-player's
+moments carry no fingerprint, unlike F8's), three at a time, and says when there are none.
+What it's for is still missing: moments kept with F8 in real play. Waiting for Mikael or Erik.

@@ -121,10 +121,22 @@ the background, unseen and much faster than real time (about 4,000 tries an hour
 uses a different corruption, and your own button presses, so the only difference is the
 corruption. You can keep playing meanwhile; it runs at low priority.
 
+**Which moments to explore.** The explorer plays your button presses back, so pick a moment
+where they matter: 20 seconds or more of real play in an action scene (walking, fighting,
+jumping, an enemy coming at you). A menu, a dialogue, a cut-scene or a paused game work
+too, but there nothing you do changes anything, so it finds only what breaks the picture.
+To explore many moments at once overnight: `tools/explore_moments.sh <library> <rom>
+[minutes each]` (three at a time).
+
 First it plays the moment about 40 times **without** corruption, most with one button press
 moved a few frames, dropped or added. That's **normal play**: a game is chaotic, and a press a
 frame later can send it down quite another path. Whatever normal play does on its own isn't a
-find. This takes about half a minute; the running line says so.
+find. This takes about half a minute; the running line says so. It keeps checking along the
+way: one try in 20 is normal play again, first judged like a corruption, then added to what
+normal play reaches. The running line and the summary say how many of those would have been
+kept (*1 of 180 runs without corruption would have been kept*): about how often a find in
+this scene is just normal play. When normal play turns out to reach further, finds that no
+longer go beyond it leave the list.
 
 Then each try is scored against the moment played without corruption:
 - **Visible**: does the picture change? Past a tenth of the screen, more doesn't count.

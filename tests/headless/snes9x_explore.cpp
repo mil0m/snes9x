@@ -153,8 +153,8 @@ int main(int argc, char **argv)
     {
         fprintf(stderr,
                 "usage: %s <rom> <moment.s9xmoment> [--library DIR] [--user NAME] [--out DIR] [--variants N] "
-                "[--minutes M] [--keep K] [--seconds S] [--seed N]\n",
-                argv[0]);
+                "[--minutes M] [--keep K] [--seconds S] [--seed N]\n       %s <rom> --game-folder\n",
+                argv[0], argv[0]);
         return 2;
     }
     std::string library_root, out_dir, user = user_name();
@@ -190,7 +190,8 @@ int main(int argc, char **argv)
     }
     if (variants < 0 && minutes <= 0)
         variants = 300;
-    if (library_root.empty() && out_dir.empty())
+    bool game_folder = std::string(argv[2]) == "--game-folder";
+    if (library_root.empty() && out_dir.empty() && !game_folder)
     {
         fprintf(stderr, "say where it goes: --library DIR or --out DIR\n");
         return 2;
@@ -206,6 +207,11 @@ int main(int argc, char **argv)
     rom.game_loaded(SnesCoreAccess::locked_rom());
     engine.set_locked(rom.locked_mask());
     GameId game = current_game();
+    if (game_folder) // the ROM's folder in a library (tools/explore_moments.sh)
+    {
+        printf("%s\n", game_folder_name(game.title, game.sha256).c_str());
+        return 0;
+    }
 
     auto bytes = read_file(argv[2]);
     std::string error;
@@ -352,18 +358,22 @@ int main(int argc, char **argv)
     // added: placebos) whose calls, pictures and code set normal play's range, then 20 more
     // placebos measured against it like variants: the most they reach is normal play's best.
     const int kNatural = 16, kBar = 20, kNormal = 1 + kNatural + kBar;
+    // #84: after those, one more placebo every kPlaceboEvery tries keeps steadying the bars.
+    // SNES9X_EXPLORE_PLACEBO_EVERY overrides it, 0 for none (for measuring).
+    const uint32_t kPlaceboEvery =
+        getenv("SNES9X_EXPLORE_PLACEBO_EVERY") ? uint32_t(atoi(getenv("SNES9X_EXPLORE_PLACEBO_EVERY"))) : 20;
     Envelope envelope;
     NormalBest normal;
+    auto placebo = [&](int i) {
+        ExploreStart p = start;
+        p.pads = perturb(start.pads, seed + 0x5EED + uint64_t(i));
+        return p;
+    };
     {
         StateTrace trace;
         PlayOptions learn;
         learn.keep_learning = true; // code normal play runs isn't new
         int done = 0;
-        auto placebo = [&](int i) {
-            ExploreStart p = start;
-            p.pads = perturb(start.pads, seed + 0x5EED + uint64_t(i));
-            return p;
-        };
         for (int i = 0; i <= kNatural && !stop_asked; i++)
         {
             auto run = traced(i == 0 ? start : placebo(i), nullptr, learn, trace);
@@ -417,9 +427,13 @@ int main(int argc, char **argv)
     auto began = std::chrono::steady_clock::now();
     auto elapsed = [&] { return std::chrono::duration<double>(std::chrono::steady_clock::now() - began).count(); };
     double last_write = 0;
+    // Each try's score and signals, to judge them all again when the bars rise (#84).
+    std::vector<std::pair<RunScore, Signals>> measured;
     auto save = [&](bool final) {
         e.seconds = elapsed();
         e.finished = final && !stop_asked;
+        for (size_t i = 0; i < e.tried.size() && i < measured.size(); i++) // against the bars as they are now
+            e.tried[i].find = float(judge(measured[i].first, measured[i].second, normal).find);
         for (size_t i = 0; i < e.candidates.size(); i++)
             e.candidates[i].rank = uint32_t(i + 1);
         write_file(dir / "candidates.json", encode_exploration(e));
@@ -430,6 +444,37 @@ int main(int argc, char **argv)
     save(false);
 
     std::map<uint32_t, EndState> ends; // each candidate's run as it ended, for the check
+    auto drop = [&](const Candidate &gone) {
+        std::error_code ec;
+        fs::remove(dir / gone.moment_file, ec);
+        fs::remove(dir / gone.strip_file, ec);
+        fs::remove(dir / (fs::path(gone.moment_file).stem().string() + ".json"), ec);
+        ends.erase(gone.id);
+    };
+    // A placebo between the variants: judged against the bars so far, then one of them. When a
+    // bar rises, every candidate is judged again and those no longer past it leave.
+    auto later_placebo = [&] {
+        StateTrace trace;
+        auto run = traced(placebo(1000 + int(normal.later)), nullptr, {}, trace);
+        auto s = score_run(run, control);
+        auto g = envelope.measure(run, trace);
+        bool kept = judge(s, g, normal).kept;
+        normal.later++;
+        normal.later_kept += kept;
+        if (normal.add(s, g))
+        {
+            for (auto &c : e.candidates)
+                c.verdict = judge(c.score, c.measured, normal);
+            for (auto &c : e.candidates)
+                if (!c.verdict.kept)
+                    drop(c);
+            std::erase_if(e.candidates, [](const Candidate &c) { return !c.verdict.kept; });
+            std::stable_sort(e.candidates.begin(), e.candidates.end(),
+                             [](const Candidate &a, const Candidate &b) { return a.verdict.find > b.verdict.find; });
+        }
+        e.normal = normal;
+        printf("placebo %u %u%s\n", normal.later, normal.later_kept, kept ? " kept" : "");
+    };
     const uint32_t batch = 50;
     uint32_t tried = 0;
     auto enough = [&] {
@@ -466,6 +511,7 @@ int main(int argc, char **argv)
                 own.push_back(rule.range);
             auto g = envelope.measure(run, trace, own);
             auto verdict = judge(s, g, normal);
+            measured.push_back({ s, g });
             tried++;
             auto &f = e.families[size_t(v.family)];
             f.runs++;
@@ -511,15 +557,12 @@ int main(int argc, char **argv)
                 e.candidates.insert(at, std::move(c));
                 if (e.candidates.size() > keep)
                 {
-                    auto &gone = e.candidates.back();
-                    std::error_code ec;
-                    fs::remove(dir / gone.moment_file, ec);
-                    fs::remove(dir / gone.strip_file, ec);
-                    fs::remove(dir / (fs::path(gone.moment_file).stem().string() + ".json"), ec);
-                    ends.erase(gone.id);
+                    drop(e.candidates.back());
                     e.candidates.pop_back();
                 }
             }
+            if (kPlaceboEvery && tried % kPlaceboEvery == 0)
+                later_placebo();
             if (tried % 10 == 0 || worth)
                 printf("progress %u %u %u %.3f\n", tried, e.alive, e.visible,
                        e.candidates.empty() ? 0.0 : e.candidates.front().verdict.find);
