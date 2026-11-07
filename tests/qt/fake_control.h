@@ -207,6 +207,20 @@ struct FakeControl : CorruptionControl
         return {};
     }
 
+    // #83: ratings kept in the list, as the library would list them.
+    std::string rater_name = "mikael";
+    std::string rateExplored(const std::filesystem::path &dir, const corrupt::Candidate &c,
+                             std::optional<bool> good) override
+    {
+        call("rate " + dir.filename().string() + " " + std::to_string(c.id) + " " +
+             (good ? (*good ? "good" : "not") : "none"));
+        for (auto &e : exploration_list)
+            if (e.dir == dir)
+                corrupt::set_rating(e.ratings[rater_name], c, good, "t");
+        return {};
+    }
+    std::string rater() override { return rater_name; }
+
     RemoteState remote() override { return remote_state; }
     std::string setRemote(bool on) override
     {

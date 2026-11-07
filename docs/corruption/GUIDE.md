@@ -154,6 +154,14 @@ The summary says how far normal play went:
 - The arrow button opens the **gallery**: one page with every candidate's pictures and recipe,
   to look through or send.
 - **Stop Exploring** stops early and keeps what it found so far.
+- **Is it a find?** After playing a candidate, press **Good Find** or **Not a Find**. A good
+  find breaks the game or makes it act wrong in an interesting way; just another path
+  through normal play (the character somewhere else, other enemies), garbage or something
+  dull is not a find. Press it again to take your rating back. The **Rated** column shows
+  yours; hover it to see everyone's. Ratings stay with the exploration, one file per person,
+  so a friend sharing the library adds theirs. They're the ground truth for how well the
+  explorer judges: `explore-ratings <library folder>` (built with the tests) says which of its
+  measures pick what people liked.
 
 Under the candidates, **What it did** shows three charts (the gallery has them too). Hover
 over a bar or a dot for its numbers.

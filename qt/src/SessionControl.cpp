@@ -126,6 +126,12 @@ corrupt::SaveResult SessionControl::keepExplored(const std::filesystem::path &di
     return session().keepExplored(dir, c, moment);
 }
 std::string SessionControl::deleteExploration(const std::filesystem::path &dir) { return session().deleteExploration(dir); }
+std::string SessionControl::rateExplored(const std::filesystem::path &dir, const corrupt::Candidate &c,
+                                         std::optional<bool> good)
+{
+    return session().rateExplored(dir, c, good);
+}
+std::string SessionControl::rater() { return session().rater(); }
 
 RemoteState SessionControl::remote()
 {

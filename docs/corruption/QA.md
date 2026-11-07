@@ -886,3 +886,9 @@ Removed on 2026-11-01: it didn't pay off (see FEATURES.md, *Tried and removed*).
    - [ ] **How the scores spread** draws the keep line at normal play's best; **When the good finds turned up** plots find numbers with the line at 1.
    - [ ] Play a few *Acts different* candidates: does the game behave oddly (a mode it doesn't enter, enemies or physics wrong), not only look different?
    - [ ] An exploration from before still shows its score column and the 0.3 line.
+12. Ratings (#83): pick a candidate, press **Play** and watch it, then answer **Is it a find?**
+   - [ ] **Good Find** turns into *Rated Good Find* with a check; the **Rated** column shows a thumb up; the text under the pictures ends *You: good find.*
+   - [ ] **Not a Find** switches it; pressing the chosen one again takes the rating back (the column empties).
+   - [ ] `ratings.<you>.json` is in the exploration's folder; with Erik's file beside it (or a copy renamed `ratings.erbl.json`), hovering the column lists both, yours first.
+   - [ ] Rate while it's still exploring: the rating stays when the list updates.
+   - [ ] `build/tests/explore-ratings "<library>"` counts your ratings and prints how well each measure picks the good ones.

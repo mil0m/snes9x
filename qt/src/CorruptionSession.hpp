@@ -67,6 +67,8 @@ class CorruptionSession
     std::vector<corrupt::Library::ExplorationEntry> explorations(); // #45, this game's, newest first
     corrupt::SaveResult keepExplored(const std::filesystem::path &dir, const corrupt::Candidate &c, const std::string &moment);
     std::string deleteExploration(const std::filesystem::path &dir);
+    std::string rateExplored(const std::filesystem::path &dir, const corrupt::Candidate &c, std::optional<bool> good); // #83
+    std::string rater();
 
     void setLibraryRoot(const std::filesystem::path &root);
     std::filesystem::path libraryRoot();

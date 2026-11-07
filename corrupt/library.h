@@ -6,6 +6,7 @@
 #include "moment.h"
 #include "crash_map.h"
 #include "exploration.h"
+#include "ratings.h"
 #include "recipe.h"
 #include "recipe_json.h"
 
@@ -136,9 +137,18 @@ class Library
     {
         std::filesystem::path dir;
         Exploration exploration;
+        PeoplesRatings ratings; // everyone's 👍/👎 (#83)
     };
     std::filesystem::path explored_dir(const GameId &game) const;
     std::vector<ExplorationEntry> list_explorations(const GameId &game, std::vector<std::string> *errors = nullptr) const;
+    // The same for any explored/ folder (explore-ratings reads a library's without a game).
+    static std::vector<ExplorationEntry> explorations_in(const std::filesystem::path &explored,
+                                                         std::vector<std::string> *errors = nullptr);
+    // People's ratings of an exploration's candidates (#83): ratings.<user>.json in its folder,
+    // one per person, everyone's loaded, only the user's written.
+    static std::filesystem::path ratings_path(const std::filesystem::path &dir, const std::string &user);
+    static PeoplesRatings load_ratings(const std::filesystem::path &dir, std::vector<std::string> *errors = nullptr);
+    static std::string save_ratings(const std::filesystem::path &dir, const std::string &user, const Ratings &r);
     // A new folder for an exploration called `name` (a free one: "name 2" if it's taken). Error or empty.
     SaveResult new_exploration_dir(const GameId &game, const std::string &name) const;
     std::string delete_exploration(const std::filesystem::path &dir) const;

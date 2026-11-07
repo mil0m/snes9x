@@ -482,9 +482,14 @@ fs::path Library::explored_dir(const GameId &game) const
 
 std::vector<Library::ExplorationEntry> Library::list_explorations(const GameId &game, std::vector<std::string> *errors) const
 {
+    return explorations_in(explored_dir(game), errors);
+}
+
+std::vector<Library::ExplorationEntry> Library::explorations_in(const fs::path &explored, std::vector<std::string> *errors)
+{
     std::vector<ExplorationEntry> out;
     std::error_code ec;
-    for (auto &entry : fs::directory_iterator(explored_dir(game), ec))
+    for (auto &entry : fs::directory_iterator(explored, ec))
     {
         if (!entry.is_directory() || is_sync_leftover(entry.path().filename().string()))
             continue;
@@ -493,7 +498,7 @@ std::vector<Library::ExplorationEntry> Library::list_explorations(const GameId &
             continue; // just begun: nothing written yet
         std::string error;
         if (auto e = decode_exploration(*text, error))
-            out.push_back({ entry.path(), std::move(*e) });
+            out.push_back({ entry.path(), std::move(*e), load_ratings(entry.path(), errors) });
         else if (errors)
             errors->push_back(entry.path().filename().string() + ": " + error);
     }
@@ -533,6 +538,36 @@ SaveResult Library::new_exploration_dir(const GameId &game, const std::string &n
     }
     result.error = "No free folder name for " + base;
     return result;
+}
+
+fs::path Library::ratings_path(const fs::path &dir, const std::string &user)
+{
+    return dir / ("ratings." + recipe_file_stem(user) + ".json");
+}
+
+PeoplesRatings Library::load_ratings(const fs::path &dir, std::vector<std::string> *errors)
+{
+    PeoplesRatings out;
+    std::error_code ec;
+    for (auto &entry : fs::directory_iterator(dir, ec))
+    {
+        std::string name = entry.path().filename().string();
+        if (name.rfind("ratings.", 0) != 0 || entry.path().extension() != ".json" || is_sync_leftover(name))
+            continue;
+        std::string who = name.substr(8, name.size() - 8 - 5);
+        auto text = read_file(entry.path());
+        std::string error;
+        if (auto r = text ? decode_ratings(*text, error) : std::nullopt)
+            out[who] = std::move(*r);
+        else if (errors)
+            errors->push_back(name + ": " + (text ? error : std::string("can't be read")));
+    }
+    return out;
+}
+
+std::string Library::save_ratings(const fs::path &dir, const std::string &user, const Ratings &r)
+{
+    return write_file_atomic(ratings_path(dir, user), encode_ratings(r));
 }
 
 std::string Library::delete_exploration(const fs::path &dir) const

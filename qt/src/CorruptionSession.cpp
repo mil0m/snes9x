@@ -2085,6 +2085,23 @@ std::string CorruptionSession::deleteExploration(const fs::path &dir)
     return Library(library_root).delete_exploration(dir);
 }
 
+std::string CorruptionSession::rateExplored(const fs::path &dir, const Candidate &c, std::optional<bool> good)
+{
+    std::lock_guard lock(mutex);
+    if (library_root.empty())
+        return "choose a library folder first";
+    std::vector<std::string> errors;
+    auto all = Library::load_ratings(dir, &errors);
+    auto &mine = all[recipe_file_stem(user_name())];
+    set_rating(mine, c, good, local_time("%Y-%m-%d %H:%M:%S"));
+    return Library::save_ratings(dir, user_name(), mine);
+}
+
+std::string CorruptionSession::rater()
+{
+    return recipe_file_stem(user_name());
+}
+
 std::string CorruptionSession::keepChange(const Change &c)
 {
     std::lock_guard lock(mutex);

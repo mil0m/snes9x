@@ -54,6 +54,7 @@ TOUR_LIBRARY=<dir> tests/qt/ui_tour.sh ...  # the same with a copy of a real lib
 tests/remote/remote_e2e.sh <out dir> <rom>   # the remote page in a headless browser
 build/tests/game-dossier <rom> <library game folder> --out f.md   # what the tracer knows, as Markdown (#42)
 build/qt/snes9x-explore <rom> <moment.s9xmoment> --out <dir> --variants N   # the headless explorer (#45)
+build/tests/explore-ratings <library or game folder>   # what people's 👍/👎 say about the explorer's measures (#83)
 tools/privacy_check.sh [--staged]            # nothing private in tracked files
 ```
 

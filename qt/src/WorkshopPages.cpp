@@ -1174,7 +1174,9 @@ ExploredPage::ExploredPage(CorruptionControl &control, ExploreRunner &runner, QW
                               "far normal play goes. It keeps the ones that stay running and go beyond that: changed more "
                               "than normal play ever is while still looking like a game, or running the game's code in "
                               "ways normal play never does. You get their pictures, their recipe, and their run as a moment "
-                              "that plays back exactly. Start one with Explore on the Moments page."),
+                              "that plays back exactly. Start one with Explore on the Moments page. After playing a "
+                              "candidate, say whether it's a find: everyone's ratings stay with the exploration and "
+                              "show how well the explorer judges."),
                            this));
 
     running_row = new QWidget(this);
@@ -1202,15 +1204,16 @@ ExploredPage::ExploredPage(CorruptionControl &control, ExploreRunner &runner, QW
     ui::setTone(summary, ui::Tone::Secondary);
     layout->addWidget(summary);
 
-    table = new QTableWidget(0, 4, this);
+    table = new QTableWidget(0, 5, this);
     table->setObjectName("candidates");
-    table->setHorizontalHeaderLabels({ tr("#"), tr("Kind"), tr("What changed"), tr("Score") });
+    table->setHorizontalHeaderLabels({ tr("#"), tr("Kind"), tr("What changed"), tr("Score"), tr("Rated") });
     table->verticalHeader()->setVisible(false);
     auto header = table->horizontalHeader();
     header->setSectionResizeMode(0, QHeaderView::Interactive);
     header->setSectionResizeMode(1, QHeaderView::Interactive);
     header->setSectionResizeMode(2, QHeaderView::Stretch);
     header->setSectionResizeMode(3, QHeaderView::Interactive);
+    header->setSectionResizeMode(4, QHeaderView::Interactive);
     header->setHighlightSections(false);
     table->setWordWrap(true);
     table->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
@@ -1272,6 +1275,23 @@ ExploredPage::ExploredPage(CorruptionControl &control, ExploreRunner &runner, QW
     row->addWidget(delete_button);
     row->addWidget(folder_button);
     layout->addWidget(actions_row);
+    // People's ratings (#83): the ground truth the explorer's measures are tuned against.
+    rate_row = new QWidget(this);
+    rate_row->setObjectName("rate_row");
+    auto rrow2 = new QHBoxLayout(rate_row);
+    rrow2->setContentsMargins(0, 0, 0, 0);
+    auto rate_label = new QLabel(tr("Is it a find?"), rate_row);
+    rate_label->setToolTip(tr("Is the game itself broken or acting wrong, in an interesting way? Just another path "
+                              "through normal play (the character somewhere else, other enemies) is not a find."));
+    good_button = button(tr("Good Find"), rate_row, "thumb-up");
+    good_button->setObjectName("rate_good");
+    not_button = button(tr("Not a Find"), rate_row, "thumb-down");
+    not_button->setObjectName("rate_not");
+    rrow2->addWidget(rate_label);
+    rrow2->addWidget(good_button);
+    rrow2->addWidget(not_button);
+    rrow2->addStretch(1);
+    layout->addWidget(rate_row);
     message = new ui::StatusLine(this);
     message->setObjectName("explored_message");
     message->hide();
@@ -1328,6 +1348,8 @@ ExploredPage::ExploredPage(CorruptionControl &control, ExploreRunner &runner, QW
         say(this->control.deleteExploration(e->dir));
         reload();
     });
+    connect(good_button, &QPushButton::clicked, this, [this] { rate(true); });
+    connect(not_button, &QPushButton::clicked, this, [this] { rate(false); });
     connect(stop_button, &QPushButton::clicked, this, [this] { this->runner.stop(); });
     connect(chooser, &QComboBox::currentIndexChanged, this, [this] {
         if (!filling)
@@ -1421,12 +1443,14 @@ void ExploredPage::showExploration()
                         "\n" + qs(why_kept(c, x.normal)) + "\n" + parts;
             score->setToolTip(parts);
             table->setItem(i, 3, score);
+            showRating(i);
         }
     }
     filling = false;
     table->resizeColumnToContents(0);
     table->resizeColumnToContents(1);
     table->resizeColumnToContents(3);
+    table->resizeColumnToContents(4);
     fitTable(table);
     bool any = e && !e->exploration.candidates.empty();
     if (e)
@@ -1435,6 +1459,7 @@ void ExploredPage::showExploration()
     charts->setVisible(e != nullptr);
     table->setVisible(any);
     actions_row->setVisible(e != nullptr);
+    rate_row->setVisible(any);
     if (any)
         table->selectRow(std::min(keep_row, table->rowCount() - 1));
     showSelected();
@@ -1446,6 +1471,20 @@ void ExploredPage::showSelected()
     auto c = selected();
     play_button->setEnabled(c && !c->moment_file.empty());
     keep_button->setEnabled(c != nullptr);
+    // The rating buttons: the one you chose says so (text and icon), and takes it back.
+    auto mine = c ? myRating(*c) : nullptr;
+    good_button->setEnabled(c != nullptr);
+    not_button->setEnabled(c != nullptr);
+    bool good = mine && mine->good, bad = mine && !mine->good;
+    good_button->setText(good ? tr("Rated Good Find") : tr("Good Find"));
+    good_button->setIcon(ui::icon(good ? "circle-check" : "thumb-up"));
+    good_button->setToolTip(good ? tr("You said it's a good find. Press again to take that back.")
+                                 : tr("The game itself breaks or acts wrong, in an interesting way: worth keeping."));
+    not_button->setText(bad ? tr("Rated Not a Find") : tr("Not a Find"));
+    not_button->setIcon(ui::icon(bad ? "circle-check" : "thumb-down"));
+    not_button->setToolTip(bad ? tr("You said it isn't a find. Press again to take that back.")
+                               : tr("Nothing broke in an interesting way: just another path through normal play, "
+                                    "garbage, or dull."));
     gallery_button->setEnabled(e && std::filesystem::exists(e->dir / "gallery.html"));
     if (!c)
     {
@@ -1471,7 +1510,60 @@ void ExploredPage::showSelected()
         text += " " + qs(why_kept(*c, e->exploration.normal));
     if (c->exact)
         text += " " + (*c->exact ? tr("Its run plays back exactly.") : tr("Its run doesn't play back exactly; the recipe may still."));
+    if (auto said = ratings_text(e->ratings, c->id, control.rater()); !said.empty())
+        text += " " + qs(said);
     details->setText(text);
+}
+
+const Rating *ExploredPage::myRating(const Candidate &c) const
+{
+    auto e = exploration();
+    if (!e)
+        return nullptr;
+    auto it = e->ratings.find(control.rater());
+    return it == e->ratings.end() ? nullptr : rating_of(it->second, c.id);
+}
+
+void ExploredPage::showRating(int row)
+{
+    auto e = exploration();
+    if (!e || row < 0 || size_t(row) >= e->exploration.candidates.size())
+        return;
+    auto &c = e->exploration.candidates[size_t(row)];
+    auto mine = myRating(c);
+    auto item = new QTableWidgetItem();
+    item->setTextAlignment(Qt::AlignCenter);
+    if (mine)
+    {
+        item->setIcon(ui::icon(mine->good ? "thumb-up" : "thumb-down"));
+        item->setData(Qt::AccessibleTextRole, mine->good ? tr("Good find") : tr("Not a find"));
+    }
+    auto said = ratings_text(e->ratings, c.id, control.rater());
+    item->setToolTip(said.empty() ? tr("Not rated yet: play it, then say whether it's a find") : qs(said));
+    table->setItem(row, 4, item);
+}
+
+void ExploredPage::rate(bool good)
+{
+    auto e = exploration();
+    auto c = selected();
+    if (!e || !c)
+        return;
+    auto mine = myRating(*c);
+    std::optional<bool> to = mine && mine->good == good ? std::nullopt : std::optional<bool>(good);
+    auto error = control.rateExplored(e->dir, *c, to);
+    if (!error.empty())
+    {
+        message->setMessage(qs(error), ui::Tone::Error);
+        message->show();
+        return;
+    }
+    // The page's copy follows, without reading everything again.
+    auto &entry = list[size_t(chooser->currentIndex())];
+    set_rating(entry.ratings[control.rater()], *c, to, "");
+    int row = table->selectionModel()->selectedRows().front().row();
+    showRating(row);
+    showSelected();
 }
 
 void ExploredPage::showRunning()

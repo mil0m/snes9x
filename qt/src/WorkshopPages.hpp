@@ -188,6 +188,9 @@ class ExploredPage : public QWidget
     void showExploration();
     void showSelected();
     void showRunning();
+    void rate(bool good);                           // #83: rates the selected candidate, or takes it back
+    void showRating(int row);                       // the Rated cell of a row
+    const corrupt::Rating *myRating(const corrupt::Candidate &c) const;
 
     CorruptionControl &control;
     ExploreRunner &runner;
@@ -203,6 +206,8 @@ class ExploredPage : public QWidget
     QLabel *details;
     QWidget *actions_row;
     QPushButton *play_button, *keep_button, *gallery_button, *delete_button, *folder_button;
+    QWidget *rate_row;
+    QPushButton *good_button, *not_button; // #83
     ui::StatusLine *message;
     QWidget *charts_heading;
     ExploreCharts *charts; // #80

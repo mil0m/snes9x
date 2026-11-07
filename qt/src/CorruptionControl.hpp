@@ -169,6 +169,11 @@ class CorruptionControl
     virtual corrupt::SaveResult keepExplored(const std::filesystem::path &dir, const corrupt::Candidate &c,
                                              const std::string &moment) = 0;
     virtual std::string deleteExploration(const std::filesystem::path &dir) = 0;
+    // People's ratings (#83): rates a candidate as this person, or takes the rating back
+    // (good empty). Error or empty. `rater()`: this person's name as their ratings file has it.
+    virtual std::string rateExplored(const std::filesystem::path &dir, const corrupt::Candidate &c,
+                                     std::optional<bool> good) = 0;
+    virtual std::string rater() = 0;
 
     // Remote control.
     virtual RemoteState remote() = 0;

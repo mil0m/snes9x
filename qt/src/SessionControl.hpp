@@ -66,6 +66,9 @@ class SessionControl : public CorruptionControl
     corrupt::SaveResult keepExplored(const std::filesystem::path &dir, const corrupt::Candidate &c,
                                      const std::string &moment) override;
     std::string deleteExploration(const std::filesystem::path &dir) override;
+    std::string rateExplored(const std::filesystem::path &dir, const corrupt::Candidate &c,
+                             std::optional<bool> good) override;
+    std::string rater() override;
 
     RemoteState remote() override;
     std::string setRemote(bool on) override;

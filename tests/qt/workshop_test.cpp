@@ -901,6 +901,79 @@ TEST_CASE("Explored (#82): measured against normal play, each candidate says why
     f.workshop.close();
 }
 
+TEST_CASE("Explored (#83): Good Find / Not a Find rate the selected candidate, and pressing again takes it back")
+{
+    Fixture f;
+    f.control.running(2);
+    f.workshop.showPage(WorkshopPage::Explored);
+    f.workshop.refresh();
+    auto &page = *f.workshop.exploredPage();
+    std::filesystem::path dir = "/tmp/library/POCKY/explored/Temple 07 Nov 10.00";
+    Exploration e;
+    e.name = "Temple 07 Nov 10.00";
+    e.moment = "Temple";
+    e.made_by = "mikael";
+    e.window = 1200;
+    e.variants = 600;
+    e.finished = true;
+    e.normal = { 37, 0.62, 1, 0, 12 };
+    Candidate a, b;
+    a.rank = 1, b.rank = 2;
+    a.id = 3, b.id = 9;
+    a.family = Family::Swap, b.family = Family::Ram;
+    a.what = "rom: swap pointers x1, once at frame 200";
+    b.what = "wram $1200-$12FF: add -3..3 x2, every 10 frames";
+    a.recipe.name = "Explored swap 4", b.recipe.name = "Explored ram 10";
+    a.score.score = 1.5, b.score.score = 1.24;
+    a.verdict = { 2.4, 0, 2.4, true };
+    b.verdict = { 2.0, 0, 2.0, true };
+    e.candidates = { a, b };
+    Library::ExplorationEntry entry{ dir, e, {} };
+    set_rating(entry.ratings["erbl"], b, false, "t"); // Erik already said no to #2
+    f.control.exploration_list = { entry };
+    page.reload();
+    auto table = child<QTableWidget>(page, "candidates");
+    REQUIRE(table->rowCount() == 2);
+    CHECK(table->horizontalHeaderItem(4)->text() == "Rated");
+    auto good = child<QPushButton>(page, "rate_good");
+    auto bad = child<QPushButton>(page, "rate_not");
+    CHECK(good->isVisible());
+    CHECK(good->text() == "Good Find");
+    CHECK(table->item(0, 4)->icon().isNull());
+    CHECK(table->item(0, 4)->toolTip().contains("Not rated yet"));
+
+    good->click();
+    CHECK(f.control.calls.back() == "rate Temple 07 Nov 10.00 3 good");
+    CHECK(good->text() == "Rated Good Find");
+    CHECK(bad->text() == "Not a Find");
+    CHECK(!table->item(0, 4)->icon().isNull());
+    CHECK(table->item(0, 4)->toolTip() == "You: good find.");
+    CHECK(child<QLabel>(page, "candidate_details")->text().contains("0.62. You: good find."));
+    bad->click(); // changed its mind
+    CHECK(f.control.calls.back() == "rate Temple 07 Nov 10.00 3 not");
+    CHECK(good->text() == "Good Find");
+    CHECK(bad->text() == "Rated Not a Find");
+    bad->click(); // and took it back
+    CHECK(f.control.calls.back() == "rate Temple 07 Nov 10.00 3 none");
+    CHECK(bad->text() == "Not a Find");
+    CHECK(table->item(0, 4)->icon().isNull());
+
+    // Someone else's rating shows in the tooltip and the details; yours goes first.
+    table->selectRow(1);
+    CHECK(table->item(1, 4)->toolTip() == "erbl: not a find.");
+    CHECK(good->text() == "Good Find");
+    good->click();
+    CHECK(table->item(1, 4)->toolTip() == "You: good find. erbl: not a find.");
+    CHECK(child<QLabel>(page, "candidate_details")->text().contains("You: good find. erbl: not a find."));
+    // Reading the library again keeps it (the fake keeps ratings as the library would).
+    page.reload();
+    table->selectRow(1);
+    CHECK(good->text() == "Rated Good Find");
+    f.shot("workshop-explored-rated");
+    CHECK(ui::audit(&page).isEmpty());
+    f.workshop.close();
+}
+
 TEST_CASE("Moments: Explore starts the explorer on the picked moment (#45)")
 {
     Fixture f;

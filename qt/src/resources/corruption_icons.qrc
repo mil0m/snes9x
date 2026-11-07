@@ -29,6 +29,8 @@
     <file alias="player-stop.svg">corruption-icons/player-stop.svg</file>
     <file alias="player-play.svg">corruption-icons/player-play.svg</file>
     <file alias="star.svg">corruption-icons/star.svg</file>
+    <file alias="thumb-up.svg">corruption-icons/thumb-up.svg</file>
+    <file alias="thumb-down.svg">corruption-icons/thumb-down.svg</file>
     <file alias="compass.svg">corruption-icons/compass.svg</file>
     <file alias="external-link.svg">corruption-icons/external-link.svg</file>
     <file alias="plus.svg">corruption-icons/plus.svg</file>
