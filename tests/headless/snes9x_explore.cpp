@@ -19,6 +19,7 @@
 // Plans: docs/corruption/2026-11-05-explorer-plan.md, 2026-11-06-normal-play-plan.md.
 #include "headless_core.h"
 #include "png_out.h"
+#include "state_diag.h"
 
 #include "corrupt/calls.h"
 #include "corrupt/code_map.h"
@@ -50,6 +51,7 @@
 #include <fstream>
 #include <map>
 #include <random>
+#include <set>
 #include <sstream>
 
 using namespace corrupt;
@@ -477,6 +479,29 @@ int main(int argc, char **argv)
     };
     const uint32_t batch = 50;
     uint32_t tried = 0;
+    // Finding why a candidate's moment drifts (#86). SNES9X_EXPLORE_ONLY=567,399 plays only those
+    // tries (the numbers in the candidates' file names) and keeps them whatever their verdict.
+    // SNES9X_EXPLORE_DIAG=1 checks every candidate's moment not drawn as well; with
+    // SNES9X_EXPLORE_ONLY it also remembers each frame of the runs and, when a moment doesn't
+    // play back exactly, says the first frame it drifts and which of the core's state differs.
+    std::set<uint32_t> only;
+    if (const char *v = getenv("SNES9X_EXPLORE_ONLY"))
+        for (std::stringstream ss(v); ss.good();)
+        {
+            std::string n;
+            std::getline(ss, n, ',');
+            if (!n.empty())
+                only.insert(uint32_t(std::stoul(n)) - 1);
+        }
+    const bool diag = getenv("SNES9X_EXPLORE_DIAG") != nullptr;
+    struct Live
+    {
+        std::map<uint64_t, uint64_t> hash;                                        // each frame's start
+        std::map<uint64_t, std::map<std::string, std::vector<uint8_t>>> globals; // at each keyframe
+        std::map<uint64_t, std::vector<uint8_t>> state; // each frame's start (with SNES9X_EXPLORE_ONLY: 800 KB each)
+    };
+    std::map<uint32_t, Live> lives; // the candidates'
+
     auto enough = [&] {
         return stop_asked || (variants >= 0 && long(tried) >= variants) || (minutes > 0 && elapsed() >= minutes * 60);
     };
@@ -488,13 +513,28 @@ int main(int argc, char **argv)
             if (enough())
                 break;
             v.id = tried;
+            if (!only.empty() && !only.count(v.id))
+            {
+                tried++;
+                continue;
+            }
             v.recipe.name = std::string("Explored ") + family_name(v.family) + " " + std::to_string(v.id + 1);
             recorder.reset();
             std::optional<Moment> kept_moment;
             EndState end;
             PlayOptions o;
             o.keep = strip_frames;
-            o.before_frame = [&](uint32_t) { recorder.before_frame(core_access, memory, clean, core_access.timeline()); };
+            Live live;
+            o.before_frame = [&](uint32_t) {
+                recorder.before_frame(core_access, memory, clean, core_access.timeline());
+                if (!diag || only.empty())
+                    return;
+                uint64_t at = recorder.frames_begun() - 1;
+                live.hash[at] = headless::state_hash(memory);
+                if (at % recorder.config().keyframe_every == 0)
+                    live.globals[at] = headless::core_globals();
+                live.state[at] = core_access.save_state();
+            };
             o.after_frames = [&] {
                 kept_moment = recorder.take();
                 end.state = core_access.save_state();
@@ -525,7 +565,7 @@ int main(int argc, char **argv)
                                 : s.different >= kVisible   ? Tried::Visible
                                                             : Tried::Unchanged,
                                 float(s.score), float(verdict.find) });
-            bool worth = verdict.kept && kept_moment &&
+            bool worth = (verdict.kept || !only.empty()) && kept_moment &&
                          (e.candidates.size() < keep || verdict.find > e.candidates.back().verdict.find);
             if (worth)
             {
@@ -554,6 +594,8 @@ int main(int argc, char **argv)
                 auto at = std::upper_bound(e.candidates.begin(), e.candidates.end(), verdict.find,
                                            [](double v, const Candidate &x) { return v > x.verdict.find; });
                 ends[c.id] = std::move(end);
+                if (diag && !only.empty())
+                    lives[c.id] = std::move(live);
                 e.candidates.insert(at, std::move(c));
                 if (e.candidates.size() > keep)
                 {
@@ -571,8 +613,50 @@ int main(int argc, char **argv)
         }
     }
     tracer.stop();
+    // Where a moment that doesn't play back exactly starts to drift from its run (#86).
+    auto diagnose = [&](const Moment &m, Live &live) {
+        core_access.begin_unseen();
+        player.start(m, core_access, memory, clean);
+        for (size_t f = 0;; f++)
+        {
+            if (!player.before_frame(core_access, memory))
+            {
+                printf("diag     every frame's start matches the run; only the end differs\n");
+                break;
+            }
+            uint64_t at = m.from + f;
+            if (f == 0)
+            {
+                if (auto g = live.globals.find(at); g != live.globals.end())
+                {
+                    printf("diag     globals at the keyframe (frame %llu), run/playback:\n", (unsigned long long)at);
+                    headless::print_globals_diff(g->second, headless::core_globals());
+                }
+                else
+                    printf("diag     no globals kept at the keyframe (frame %llu)\n", (unsigned long long)at);
+            }
+            auto h = live.hash.find(at);
+            if (h == live.hash.end() || h->second != headless::state_hash(memory))
+            {
+                printf("diag     drifts at frame %zu of %zu (run frame %llu): %s; %zu writes before, %zu during\n", f,
+                       m.frames.size(), (unsigned long long)at, h == live.hash.end() ? "no hash" : "memory differs",
+                       m.frames[f].before.size(), m.frames[f].during.size());
+                if (f > 0)
+                    printf("diag     the frame before: %zu before, %zu during, pads %04X\n", m.frames[f - 1].before.size(),
+                           m.frames[f - 1].during.size(), m.frames[f - 1].pads[0]);
+                if (auto st = live.state.find(at); st != live.state.end())
+                    headless::print_state_diff(st->second, core_access.save_state());
+                break;
+            }
+            core_access.run_unseen_frame(true);
+        }
+        player.stop();
+        core_access.end_unseen();
+    };
     // Every candidate's moment plays back to exactly its run (#47's check).
     size_t exact = 0;
+    double check_ms = 0, plain_ms = 0;
+    size_t drawn_checks = 0;
     for (auto &c : e.candidates)
     {
         auto file = read_file(dir / c.moment_file);
@@ -586,13 +670,31 @@ int main(int argc, char **argv)
         rom.restore_clean();
         for (auto [o, v] : end.rom)
             rom.write_at_start(Target::ROM, o, v);
+        // Not drawn, and drawn when that drifts (#86: a corrupted game can read what only drawing sets).
         auto check = check_moment(*m, player, core_access, memory, clean);
+        check_ms += check.ms;
+        drawn_checks += check.drawn;
+        if (diag)
+        {
+            core_access.load_state(end.state);
+            CheckHooks only_plain;
+            only_plain.redraw = false;
+            auto plain = check_moment(*m, player, core_access, memory, clean, only_plain);
+            plain_ms += plain.ms;
+            printf("diag     %s: %s, not drawn %s\n", c.moment_file.c_str(),
+                   check.exact ? (check.drawn ? "exact drawn" : "exact") : "drifts", plain.exact ? "exact" : "drifts");
+            core_access.load_state(end.state);
+        }
         exact += check.exact;
         c.exact = check.exact;
         if (!check.exact)
             printf("check    %s: %s\n", c.moment_file.c_str(), check.text.c_str());
+        if (diag && !check.exact && lives.count(c.id))
+            diagnose(*m, lives[c.id]);
     }
-    printf("check    %zu of %zu candidates' moments play back exactly\n", exact, e.candidates.size());
+    printf("check    %zu of %zu candidates' moments play back exactly (%zu drawn; %.1f s%s)\n", exact,
+           e.candidates.size(), drawn_checks, check_ms / 1000,
+           diag ? (", only not drawn " + std::to_string(int(plain_ms)) + " ms").c_str() : "");
     S9xCorruptFrameHook = nullptr;
     save(true);
     printf("done     %u variants in %.0f s: %u kept running, %u visibly changed; %zu candidates in %s\n", e.variants,

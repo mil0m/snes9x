@@ -1,5 +1,7 @@
 #include "headless_core.h"
 
+#include "corrupt/core_access.h"
+
 #include "snes9x.h"
 #include "memmap.h"
 #include "gfx.h"
@@ -101,22 +103,18 @@ uint64_t frame_hash()
     return h;
 }
 
+// The engine's state bytes (corrupt::freeze_state: a save state and its trailer, #86), so a
+// state saved here loads through CoreAccess and the other way round.
 std::vector<uint8_t> save_state()
 {
-    std::vector<uint8_t> state(S9xFreezeSize());
-    if (!S9xFreezeGameMem(state.data(), uint32(state.size())))
-        state.clear();
+    std::vector<uint8_t> state;
+    corrupt::freeze_state(state);
     return state;
 }
 
 bool load_state(const std::vector<uint8_t> &state)
 {
-    if (S9xUnfreezeGameMem(state.data(), uint32(state.size())) != SUCCESS)
-        return false;
-    // The CPU flags come back from the state; the core's own stop switch (set by a deadlock)
-    // doesn't. Left set, every run after a deadlocked one looked dead.
-    Settings.StopEmulation = FALSE;
-    return true;
+    return corrupt::thaw_state(state);
 }
 
 } // namespace headless

@@ -1873,10 +1873,10 @@ TEST_SUITE("keep a golden moment (#47)")
         Pads pads{};
         int frame = 0;
 
-        Keeping()
+        explicit Keeping(const std::vector<uint8_t> &image = testrom::build_pads())
         {
             REQUIRE(headless::init());
-            REQUIRE(headless::load_rom_memory(testrom::build_pads()));
+            REQUIRE(headless::load_rom_memory(image));
             rom.game_loaded(SnesCoreAccess::locked_rom());
             Rule noise;
             noise.name = "noise";
@@ -1969,6 +1969,27 @@ TEST_SUITE("keep a golden moment (#47)")
         CHECK(!SnesCoreAccess::unseen());
         k.run(10);
         CHECK(k.rec.take());
+    }
+
+    TEST_CASE("a game that reads the sprite overflow flags plays back exactly: the state's trailer keeps them (#86)")
+    {
+        // The flags ($213E) are set while a frame is drawn and read in VBlank; a save state
+        // doesn't hold them. The explorer's corruptions made games read them.
+        Keeping k(testrom::build_overflow());
+        k.run(200);
+        CHECK(k.wram()[testrom::overflow::kSum] != 0); // the flags reach the game
+        auto m = k.rec.take();
+        REQUIRE(m);
+        auto drawn = k.check(*m, true);
+        CAPTURE(drawn.text);
+        CHECK(drawn.exact);
+        CHECK(k.check(*m, false).exact);
+        // Without the trailer (a moment kept before #86) the keyframe loads with the flags clear.
+        Moment old = *m;
+        old.state.resize(old.state.size() - 7);
+        auto without = k.check(old, true);
+        CHECK(without.played); // it still loads
+        CHECK(!without.exact);
     }
 
     TEST_CASE("a state loaded from elsewhere starts the history again")

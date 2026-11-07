@@ -188,6 +188,7 @@ struct MomentCheck
 {
     bool exact = false;
     bool played = false; // false: it couldn't be played (the state didn't load)
+    bool drawn = false;  // the answer is from a drawn playback
     std::vector<Target> differ;
     uint32_t frames = 0;
     double ms = 0;
@@ -199,6 +200,10 @@ struct CheckHooks
     std::function<void()> begin, end; // around the playback (the tracer's jump log)
     std::span<uint8_t> flags;         // the code map's flags, put back after
     bool draw = false; // draw the frames: no difference in 252 moments (corrupt-smoke --keep), and slower
+    // Not drawn and it drifts: play it again drawn (#86). A game can read what only drawing sets
+    // (the sprite overflow flags mid-frame), and the game drew its frames, so drawn is the answer
+    // then; in the usual case the check stays as fast as before.
+    bool redraw = true;
 };
 
 // Plays the moment unseen from its keyframe and compares every memory with now; everything is

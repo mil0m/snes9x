@@ -404,6 +404,32 @@ std::vector<uint8_t> build_pads()
     return rom;
 }
 
+std::vector<uint8_t> build_overflow()
+{
+    auto rom = build(Crash::None);
+    put(rom, 0x800E, { 0x4C, 0x90, 0x80 }); // JMP $8090 (instead of STA $4200)
+    put(rom, 0x8090, {
+        0x64, 0x20,       // STZ $20
+        0xA9, 0x10,       // LDA #$10
+        0x8D, 0x2C, 0x21, // STA $212C    sprites on the main screen (all 128 at 0,0: too many on a line)
+        0xA9, 0x80,       // LDA #$80
+        0x8D, 0x00, 0x42, // STA $4200    NMI on
+        0x4C, 0x11, 0x80, // JMP main
+    });
+    put(rom, 0x8030, { 0x4C, 0x40, 0x80 }); // nmi: JMP $8040
+    put(rom, 0x8040, {
+        0xAD, 0x3E, 0x21, // LDA $213E    the sprite overflow flags, set while the frame was drawn
+        0x29, 0xC0,       // AND #$C0
+        0x18,             // CLC
+        0x65, 0x20,       // ADC $20
+        0x85, 0x20,       // STA $20
+        0xE6, 0x11,       // INC $11
+        0x40,             // RTI
+    });
+    fix_checksum(rom);
+    return rom;
+}
+
 std::vector<uint8_t> build_bodies()
 {
     auto rom = build(Crash::None);

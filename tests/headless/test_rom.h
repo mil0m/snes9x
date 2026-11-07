@@ -155,6 +155,15 @@ constexpr uint32_t kPadSum = 0x20, kPadFold = 0x21, kNoise = 0x22, kMix = 0x23; 
 constexpr uint32_t kRomByte = 0x1000; // $9000
 } // namespace pads
 
+// Crash::None that reads the sprite overflow flags ($213E) every frame and adds them into
+// $7E:0020 (#86). All 128 sprites sit on the first lines, so the flags are set, but only on a
+// frame the core draws: a frame run without drawing leaves them clear.
+std::vector<uint8_t> build_overflow();
+namespace overflow
+{
+constexpr uint32_t kSum = 0x20; // WRAM
+} // namespace overflow
+
 // A main loop calling a function with a body worth changing (#58, #60): step adds 1 to a
 // counter with ADC #$01, counts every other frame past a BEQ, and calls a helper; another
 // near function is called beside it, for redirecting the helper's call.

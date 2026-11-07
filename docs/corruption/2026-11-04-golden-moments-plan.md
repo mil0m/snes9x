@@ -265,3 +265,70 @@ reverts. Since #47's `VBlankStarted` fix, the core's save state holds what these
 **Go.** In the app, a moment that spans a rollback shows the timeline that survived: the
 crash and the jump back aren't in it. Paint's crash watch and Back to Normal still start
 the history again.
+
+## Follow-up (7 Nov, roadmap #86): moments that read what drawing sets
+
+#84's explorer runs left one gap open. In Link's house, 3 of 24 candidates' moments didn't play
+back exactly, with and without #84's placebos, so the gap was older. A candidate that doesn't
+replay can't be rated with confidence.
+
+**Finding it.** `snes9x-explore` gained two switches for this. `SNES9X_EXPLORE_ONLY=567,399,407`
+plays only those tries, keeping them whatever their verdict. `SNES9X_EXPLORE_DIAG=1` also
+checks every moment without drawing, and with `ONLY` it remembers each frame of the runs and
+says where a replay first leaves its run. The diagnostics corrupt-smoke's `CORRUPT_KEEP_DIAG`
+used moved to `tests/headless/state_diag.cpp` so both share them. The three drifted on their
+own too, so nothing earlier in the exploration caused it. Every frame of the replay started
+exactly as the run's had; only the end differed.
+
+**Cause 1: the check didn't draw, the runs did.** `check_moment` plays unseen without drawing
+(#47 measured no difference in 252 moments and chose the faster way). The explorer's runs
+draw every frame. Snes9x sets the sprite overflow flags (`$213E`) line by line when a frame
+isn't drawn, but at each screen update when it is, so a game reading them in the middle of a
+frame sees other values; other state only drawing touches may matter the same way. Two code
+changes and a kill switch made Zelda's frames depend on drawing (which register they read
+wasn't traced). Drawn, all three replayed exactly; not drawn, all three drifted.
+
+**Cause 2: a save state doesn't hold the flags.** A test ROM that reads `$213E` in VBlank
+(`testrom::build_overflow`: all 128 sprites on the first lines) drifted even with a drawn
+check. The live game had the flags at `$40` at the keyframe, and a load left them at 0:
+`PPU.RangeTimeOver` isn't in a Snes9x save state, and neither is `GFX.EndY`, the line the next
+drawn update takes them from (#47 found that one and saw no effect then). The explorer never
+met this, as its runs and their replays both start from a load; a moment kept with F8 in live
+play does.
+
+**What changed.**
+- `corrupt::freeze_state` / `thaw_state`: every state the engine saves (keyframes, the guard's
+  checkpoints, runs ahead, the explorer's starts) ends in a 7-byte trailer holding the flags
+  and `GFX.EndY`. A state without it (a moment kept before) loads as before. The core itself
+  is untouched; `headless::save_state` uses the same two functions.
+- `check_moment` plays without drawing first, as before, and plays again drawn only when that
+  drifts (`CheckHooks::redraw`, on by default; `MomentCheck::drawn` says which answered).
+  The game drew its frames, so a drawn replay is the fair test, and the usual case costs
+  nothing more. The app's F8 check gets this too.
+
+Tests first: a unit case with the fake game (a game that reads drawing: one playback not drawn
+drifts, the redraw is exact; a game that doesn't: one playback, as before) and a real-core case
+with `build_overflow` (exact drawn and not; the same moment without its trailer still loads
+but drifts).
+
+### How it went (#86)
+
+The same three scenes as #84, 577 tries each, seed 2982870414:
+
+| | Pocky's temple | Zelda's field | Link's house |
+|---|---|---|---|
+| exact before | 24 of 24 | 24 of 24 | 21 of 24 |
+| exact now | 24 of 24 | 24 of 24 | 24 of 24 |
+| needed the drawn replay | 0 | 0 | 3 |
+| the check, all 24 | 5.9 s | 6.2 s | 8.3 s (6.1 s not drawn) |
+
+`corrupt-smoke --keep 3`, the same 12 runs as #47 and #79 (Goof, Pocky, FE4 × gentle WRAM noise,
+sprite jitter, live ROM drip, ROM code drip; 60 s seeds, guarded, the pseudo-player), with the
+trailer in every state: **252 of 252 exact drawing the frames and 252 of 252 not drawing**, as
+before; the 102 moments that span a rollback (64 rollbacks kept) all exact; the controls still
+drift (without the buttons 250 of 252, without the writes 249 of 252). A check costs what it
+did: 0.64-0.81 s not drawn, 0.94-1.38 s drawn. These recipes never made a game depend on
+drawing; the explorer's code changes did, 3 times in 72 candidates.
+
+**Go.** The redraw costs nothing in the usual case and answers fairly in the rare one. Moments
+kept before #86 have no trailer; they load with the flags clear, as they always did.

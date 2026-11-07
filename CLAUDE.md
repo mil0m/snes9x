@@ -94,6 +94,8 @@ tools/privacy_check.sh [--staged]            # nothing private in tracked files
 - A run ahead from a frame-start checkpoint must restore the engine's snapshot too: the
   frame hook fires at line 1, after the checkpoint.
 - A Snes9x save state doesn't hold everything the core runs on. `VBlankStarted` (a static in
-  `cpuexec.cpp`) is now set on load (#47); `GFX.EndY` isn't (no measured effect). A new
-  static in the core needs the same care. `corrupt-smoke --keep` with `CORRUPT_KEEP_DIAG=1`
+  `cpuexec.cpp`) is set on load (#47); the sprite overflow flags and `GFX.EndY` ride in a
+  trailer after the state (`corrupt::freeze_state`/`thaw_state`, #86): save and load states
+  through those (or `CoreAccess`), never `S9xFreezeGameMem` directly. A new static in the
+  core needs the same care. Drawn and undrawn frames can differ for a corrupted game (`$213E`). `corrupt-smoke --keep` with `CORRUPT_KEEP_DIAG=1`
   finds such gaps: the first frame a playback drifts and which globals differed.

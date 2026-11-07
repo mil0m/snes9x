@@ -25,7 +25,9 @@ struct Game : CoreAccess
     uint64_t loads = 0;
     uint32_t acc = 1;
     std::function<void()> hook;
-    int unseen = 0;
+    int unseen = 0, unseen_drawn = 0;
+    bool reads_drawing = false; // like a game reading the sprite overflow flags mid-frame (#86)
+    bool drawing = true;        // the live game draws its frames
 
     explicit Game(FakeMemory &m) : mem(m) {}
 
@@ -35,7 +37,7 @@ struct Game : CoreAccess
     void frame_once()
     {
         auto &w = wram();
-        acc = acc * 31 + held[0] + held[1] * 7 + w[4] + rom(0x10);
+        acc = acc * 31 + held[0] + held[1] * 7 + w[4] + rom(0x10) + (reads_drawing && !drawing);
         w[5] = uint8_t(acc);
         if (hook)
             hook();
@@ -69,10 +71,13 @@ struct Game : CoreAccess
     }
     FrameSignals sample() override { return {}; }
     void reset_console() override { loads++; }
-    void run_unseen_frame(bool) override
+    void run_unseen_frame(bool draw) override
     {
         unseen++;
+        unseen_drawn += draw;
+        drawing = draw;
         frame_once();
+        drawing = true;
     }
     Pads pads() override { return held; }
     void set_pads(const Pads &p) override { held = p; }
@@ -558,4 +563,36 @@ TEST_SUITE("keep a golden moment")
         CHECK(!lib.delete_moment(renamed.path).empty());
         fs::remove_all(root);
     }
+}
+
+TEST_CASE("a moment of a game that reads what drawing sets is checked drawn when not drawing drifts (#86)")
+{
+    Rig r;
+    r.game.reads_drawing = true;
+    r.play(1500);
+    auto m = r.rec.take();
+    REQUIRE(m);
+    auto c = r.check(*m);
+    CAPTURE(c.text);
+    CHECK(c.exact);
+    CHECK(c.drawn);
+    CHECK(r.game.unseen_drawn == int(m->frames.size())); // once not drawn, then once drawn
+    CHECK(r.game.unseen == 2 * int(m->frames.size()));
+    // Not drawn only: it drifts.
+    CheckHooks plain;
+    plain.redraw = false;
+    auto p = check_moment(*m, r.player, r.game, r.mem, r.clean, plain);
+    CHECK(p.played);
+    CHECK(!p.exact);
+    CHECK(!p.drawn);
+    // A game that doesn't: one playback, not drawn, as before.
+    Rig q;
+    q.play(1500);
+    auto n = q.rec.take();
+    REQUIRE(n);
+    auto d = q.check(*n);
+    CHECK(d.exact);
+    CHECK(!d.drawn);
+    CHECK(q.game.unseen == int(n->frames.size()));
+    CHECK(q.game.unseen_drawn == 0);
 }

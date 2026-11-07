@@ -10,6 +10,14 @@
 namespace corrupt
 {
 
+// The core's state as bytes: a Snes9x save state, then a short trailer of what the core runs
+// on that a save state doesn't hold (#86): the sprite overflow flags ($213E) and where the
+// last drawn update of the screen ended (GFX.EndY, which adds to them). Without them a
+// playback from a keyframe read other flags than the live game, and a corrupted game that
+// reads $213E drifted. A state without the trailer (older moments) loads as before.
+bool freeze_state(std::vector<uint8_t> &state);
+bool thaw_state(const std::vector<uint8_t> &state);
+
 // CoreAccess over the live Snes9x core. Only call between frames.
 class SnesCoreAccess : public CoreAccess
 {

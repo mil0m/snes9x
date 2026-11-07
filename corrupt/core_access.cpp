@@ -635,29 +635,66 @@ void SnesCoreAccess::unwatch_resets()
     reset_watch::uninstall();
 }
 
+namespace
+{
+constexpr uint8_t kTrailerTag[4] = { 'S', 'X', 'T', '1' };
+constexpr size_t kTrailer = 3 + sizeof kTrailerTag; // RangeTimeOver, GFX.EndY (2), the tag
+} // namespace
+
+bool freeze_state(std::vector<uint8_t> &state)
+{
+    size_t size = S9xFreezeSize();
+    state.resize(size + kTrailer); // keeps its memory when the size is the same, as it always is
+    if (!S9xFreezeGameMem(state.data(), uint32(size)))
+    {
+        state.clear();
+        return false;
+    }
+    uint8_t *t = state.data() + size;
+    t[0] = PPU.RangeTimeOver;
+    t[1] = uint8_t(GFX.EndY & 0xFF);
+    t[2] = uint8_t(GFX.EndY >> 8);
+    std::copy(std::begin(kTrailerTag), std::end(kTrailerTag), t + 3);
+    return true;
+}
+
+bool thaw_state(const std::vector<uint8_t> &state)
+{
+    size_t size = state.size();
+    bool trailer = size > kTrailer && std::equal(std::begin(kTrailerTag), std::end(kTrailerTag), state.end() - 4);
+    if (trailer)
+        size -= kTrailer;
+    if (size == 0 || S9xUnfreezeGameMem(state.data(), uint32(size)) != SUCCESS)
+        return false;
+    if (trailer)
+    {
+        const uint8_t *t = state.data() + size;
+        PPU.RangeTimeOver = t[0];
+        GFX.EndY = uint32(t[1] | t[2] << 8);
+    }
+    // The CPU flags come back from the state; the core's own stop switch (set by a deadlock)
+    // doesn't. Left set, every run after a deadlocked one looked dead.
+    Settings.StopEmulation = FALSE;
+    return true;
+}
+
 std::vector<uint8_t> SnesCoreAccess::save_state()
 {
-    std::vector<uint8_t> state(S9xFreezeSize());
-    if (!S9xFreezeGameMem(state.data(), uint32(state.size())))
-        state.clear();
+    std::vector<uint8_t> state;
+    freeze_state(state);
     return state;
 }
 
 bool SnesCoreAccess::save_state_into(std::vector<uint8_t> &state)
 {
-    state.resize(S9xFreezeSize()); // keeps its memory when the size is the same, as it always is
-    if (!S9xFreezeGameMem(state.data(), uint32(state.size())))
-        state.clear();
-    return !state.empty();
+    return freeze_state(state);
 }
 
 bool SnesCoreAccess::load_state(const std::vector<uint8_t> &state)
 {
-    if (state.empty() || S9xUnfreezeGameMem(state.data(), uint32(state.size())) != SUCCESS)
+    if (!thaw_state(state))
         return false;
     loads++;
-    // The CPU flags come back from the state; the core's own stop switch doesn't.
-    Settings.StopEmulation = FALSE;
     return true;
 }
 

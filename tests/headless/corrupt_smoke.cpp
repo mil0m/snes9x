@@ -97,6 +97,7 @@
 #include "corrupt/exploration.h"
 #include "corrupt/function_body.h"
 #include "png_out.h"
+#include "state_diag.h"
 
 #include "snes9x.h"
 #include "memmap.h"
@@ -2170,105 +2171,6 @@ int run_instant(const Recipe &recipe, int frames, int seeds)
 // whose start differs from the live game's, which blocks of the core's state differ after it,
 // and which of the core's globals differed at the keyframe (how #47 found VBlankStarted).
 
-// Every memory in one number, for finding where a playback drifts.
-uint64_t state_hash()
-{
-    uint64_t h = 1469598103934665603ull;
-    for (auto t : { Target::WRAM, Target::VRAM, Target::OAM, Target::CGRAM, Target::ARAM, Target::ROM })
-    {
-        const uint8_t *d = memory.data(t);
-        for (size_t i = 0, n = memory.size(t); i < n; i++)
-            h = (h ^ (d ? d[i] : memory.read(t, uint32_t(i)))) * 1099511628211ull;
-    }
-    return h;
-}
-
-// The core's globals as bytes, for finding state a save doesn't hold (diagnostics).
-std::map<std::string, std::vector<uint8_t>> core_globals()
-{
-    std::map<std::string, std::vector<uint8_t>> g;
-    auto add = [&](const char *name, const void *p, size_t n) {
-        g[name].assign(static_cast<const uint8_t *>(p), static_cast<const uint8_t *>(p) + n);
-    };
-    add("CPU", &CPU, sizeof CPU);
-    add("ICPU", &ICPU, sizeof ICPU);
-    add("Registers", &Registers, sizeof Registers);
-    add("Timings", &Timings, sizeof Timings);
-    add("PPU", &PPU, sizeof PPU);
-    add("IPPU", &IPPU, sizeof IPPU);
-    add("DMA", DMA, sizeof DMA);
-    add("Settings", &Settings, sizeof Settings);
-    add("FillRAM", Memory.FillRAM, 0x8000);
-    add("smp", &SNES::smp, sizeof SNES::smp);
-    add("dsp", &SNES::dsp, sizeof SNES::dsp);
-    add("Memory", &Memory, sizeof Memory);
-    add("GFX", &GFX, sizeof GFX);
-    add("BG", &BG, sizeof BG);
-    add("OpenBus", &OpenBus, 1);
-    return g;
-}
-
-void print_globals_diff(const std::map<std::string, std::vector<uint8_t>> &a,
-                        const std::map<std::string, std::vector<uint8_t>> &b)
-{
-    for (auto &[name, va] : a)
-    {
-        auto &vb = b.at(name);
-        std::string where;
-        int n = 0;
-        for (size_t i = 0; i < va.size(); i++)
-            if (va[i] != vb[i])
-            {
-                if (n++ < 12)
-                {
-                    char buf[48];
-                    snprintf(buf, sizeof buf, " +%zu:%02X/%02X", i, va[i], vb[i]);
-                    where += buf;
-                }
-            }
-        if (n)
-            printf("        %s: %d bytes differ:%s\n", name.c_str(), n, where.c_str());
-    }
-}
-
-// Which blocks of two saved states differ ("CPU", "SND", ...), and where in them.
-void print_state_diff(const std::vector<uint8_t> &a, const std::vector<uint8_t> &b)
-{
-    // A freeze: "#!s9xsnp:0011\n", then blocks "NAM:123456:" followed by that many bytes.
-    auto blocks = [](const std::vector<uint8_t> &s) {
-        std::map<std::string, std::pair<size_t, size_t>> out; // name -> (start, length)
-        size_t at = 14;
-        while (at + 11 <= s.size())
-        {
-            std::string name(s.begin() + at, s.begin() + at + 3);
-            size_t len = std::stoul(std::string(s.begin() + at + 4, s.begin() + at + 10));
-            out[name] = { at + 11, len };
-            at += 11 + len;
-        }
-        return out;
-    };
-    auto ba = blocks(a), bb = blocks(b);
-    for (auto &[name, ra] : ba)
-    {
-        auto it = bb.find(name);
-        if (it == bb.end() || it->second.second != ra.second)
-        {
-            printf("        block %s: missing or another size\n", name.c_str());
-            continue;
-        }
-        size_t first = SIZE_MAX, n = 0;
-        for (size_t i = 0; i < ra.second; i++)
-            if (a[ra.first + i] != b[it->second.first + i])
-            {
-                if (first == SIZE_MAX)
-                    first = i;
-                n++;
-            }
-        if (n)
-            printf("        block %s: %zu of %zu bytes differ, the first at %zu\n", name.c_str(), n, ra.second, first);
-    }
-}
-
 struct KeepTotals
 {
     int kept = 0, exact_drawn = 0, exact_plain = 0, short_ones = 0, none = 0;
@@ -2344,9 +2246,9 @@ void keep_seed(const Recipe &recipe, int frames, const CodeMap &learned, const s
         access.set_pads(pads);
         recorder.before_frame(access, memory, clean, access.timeline());
         if (diag)
-            live[recorder.frames_begun() - 1] = state_hash();
+            live[recorder.frames_begun() - 1] = headless::state_hash(memory);
         if (diag && recorder.frames_recorded() == 1)
-            live_globals[recorder.frames_begun() - 1] = core_globals();
+            live_globals[recorder.frames_begun() - 1] = headless::core_globals();
         if (diag)
             live_drawn[recorder.frames_begun() - 1] = IPPU.RenderThisFrame;
         headless::run_frames(1);
@@ -2422,6 +2324,7 @@ void keep_seed(const Recipe &recipe, int frames, const CodeMap &learned, const s
             hooks.draw = true;
             auto drawn = check_moment(*m, player, access, memory, clean, hooks);
             hooks.draw = false;
+            hooks.redraw = false; // measured as it is: not drawn
             auto plain = check_moment(*m, player, access, memory, clean, hooks);
             // The controls: the same moment without its buttons, and without its writes. Each
             // should drift, or the check proves nothing.
@@ -2471,11 +2374,11 @@ void keep_seed(const Recipe &recipe, int frames, const CodeMap &learned, const s
                 {
                     if (!player.before_frame(access, memory))
                         break;
-                    uint64_t h = state_hash();
+                    uint64_t h = headless::state_hash(memory);
                     if (auto lg = live_globals.find(m->from + f); f == 0 && lg != live_globals.end())
                     {
                         printf("      globals at the keyframe, live/playback:\n");
-                        print_globals_diff(lg->second, core_globals());
+                        headless::print_globals_diff(lg->second, headless::core_globals());
                     }
                     auto it = live.find(m->from + f);
                     if (it == live.end() || it->second != h)
@@ -2489,7 +2392,7 @@ void keep_seed(const Recipe &recipe, int frames, const CodeMap &learned, const s
                                    m->frames[f - 1].before.size(), m->frames[f - 1].during.size(), m->frames[f - 1].pads[0],
                                    int(live_drawn[m->from + f - 1]));
                         if (auto a = live_after.find(m->from + f - 1); f > 0 && a != live_after.end())
-                            print_state_diff(a->second, access.save_state());
+                            headless::print_state_diff(a->second, access.save_state());
                         // Is a playback consistent with itself? The keyframe, one frame, twice.
                         uint64_t hs[2];
                         for (auto &one : hs)
@@ -2498,7 +2401,7 @@ void keep_seed(const Recipe &recipe, int frames, const CodeMap &learned, const s
                             player.before_frame(access, memory);
                             access.run_unseen_frame(true);
                             player.before_frame(access, memory);
-                            one = state_hash();
+                            one = headless::state_hash(memory);
                         }
                         printf("      one frame from the keyframe, twice: %s (live %s)\n", hs[0] == hs[1] ? "the same" : "DIFFERENT",
                                hs[0] == live[m->from + 1] ? "matches" : "differs");

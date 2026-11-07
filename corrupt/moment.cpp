@@ -330,29 +330,47 @@ MomentCheck check_moment(const Moment &m, MomentPlayer &player, CoreAccess &core
     std::vector<uint8_t> flags(hooks.flags.begin(), hooks.flags.end());
     if (hooks.begin)
         hooks.begin();
-    core.begin_unseen();
-    if (player.start(m, core, mem, clean))
+    auto play = [&](bool draw) {
+        c.frames = 0;
+        c.differ.clear();
+        c.drawn = draw;
+        core.begin_unseen();
+        if (player.start(m, core, mem, clean))
+        {
+            c.played = true;
+            while (player.before_frame(core, mem))
+            {
+                core.run_unseen_frame(draw);
+                c.frames++;
+            }
+        }
+        core.end_unseen();
+        player.stop();
+        if (c.played)
+            for (auto t : kAllTargets)
+            {
+                auto &v = was[size_t(t)];
+                const uint8_t *d = mem.data(t);
+                bool same = mem.size(t) == v.size();
+                for (size_t i = 0; same && i < v.size(); i++)
+                    same = byte_at(mem, d, t, uint32_t(i)) == v[i];
+                if (!same)
+                    c.differ.push_back(t);
+            }
+    };
+    play(hooks.draw);
+    if (c.played && !c.differ.empty() && !hooks.draw && hooks.redraw)
     {
-        c.played = true;
-        while (player.before_frame(core, mem))
-        {
-            core.run_unseen_frame(hooks.draw);
-            c.frames++;
-        }
+        // Back to now first: the ROM as it was, the flags, the jump log's view.
+        core.load_state(state);
+        auto &rom = was[size_t(Target::ROM)];
+        const uint8_t *d = mem.data(Target::ROM);
+        for (size_t i = 0; i < rom.size(); i++)
+            if (byte_at(mem, d, Target::ROM, uint32_t(i)) != rom[i])
+                mem.write(Target::ROM, uint32_t(i), rom[i]);
+        std::copy(flags.begin(), flags.end(), hooks.flags.begin());
+        play(true);
     }
-    core.end_unseen();
-    player.stop();
-    if (c.played)
-        for (auto t : kAllTargets)
-        {
-            auto &v = was[size_t(t)];
-            const uint8_t *d = mem.data(t);
-            bool same = mem.size(t) == v.size();
-            for (size_t i = 0; same && i < v.size(); i++)
-                same = byte_at(mem, d, t, uint32_t(i)) == v[i];
-            if (!same)
-                c.differ.push_back(t);
-        }
     // Everything back as it was.
     core.load_state(state);
     {

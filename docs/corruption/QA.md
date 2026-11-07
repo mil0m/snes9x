@@ -854,6 +854,9 @@ Removed on 2026-11-01: it didn't pay off (see FEATURES.md, *Tried and removed*).
    - [ ] It keeps at once, from the frame on screen.
 10. Copy a moment's file to Erik's library (or open the shared library on another machine) and Play it there.
    - [ ] It plays the same. On another version of the ROM, Play says it was kept on another version.
+11. With a recipe that changes code (*ROM opcode swap* or *ROM code drip*), keep moments where sprites crowd the screen (#86).
+   - [ ] Each says *plays back exactly*; once in a while F8's pause is a little longer (the check plays it again drawn).
+   - [ ] Play shows the same frames, sprites flickering where they flickered.
 
 ## 56. Explore a moment (#45, #46)
 1. Keep a moment while playing (F8), then open the Workshop's **Moments** page and pick it.
