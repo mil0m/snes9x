@@ -14,6 +14,7 @@ clip wram    Final_Fantasy_6_T-Edition.sfc 5000 wram-chaos   4 WRAM chaos, Final
 clip classic Goof_Troop_(USA).sfc         1800 classic-heavy 1 Classic heavy, Goof Troop: 400 ROM bytes changed, then the console boots it
 clip code    Final_Fantasy_6_T-Edition.sfc 5000 code-rain    4 Code rain, Final Fantasy VI: two instructions swapped every half second
 clip pointers Pocky_&_Rocky_(USA).sfc     5000 pointer-mixup 3 Pointer mix-up, Pocky & Rocky: two jump-table entries swapped every second
+clip scripts Final_Fantasy_6_T-Edition.sfc 5000 script-swap  1 Script swap, Final Fantasy VI: 20 event commands swapped before it boots, and the march skips ahead
 clip g1      Pocky_&_Rocky_(USA).sfc      5000 tile-storm    1 Tile storm, Pocky & Rocky
 clip g2      Goof_Troop_(USA).sfc         1800 data-drip     3 Data drip, Goof Troop: the game's tables in ROM nudged live
 clip g3      Goof_Troop_(USA).sfc         1800 code-rain     2 Code rain, Goof Troop

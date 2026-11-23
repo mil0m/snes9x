@@ -187,3 +187,54 @@ handler, length and runs. `corrupt-smoke --scripts` writes the library file with
 The first file was 129 KB after 12,000 frames: most of it echo rules (other strides and
 biases fitting part of a real engine's dispatches). It now keeps per site the 32 busiest rules
 with at least 20 dispatches and 4 places: 50 KB.
+
+### Step 4: script ops (#44)
+
+Built: `script_swap` and `script_nudge` (`corrupt/script_swap.*`), fired like the pointer swap:
+the engine asks for the engines found when a run starts and keeps each rule's slots for the
+run. The rule editor has both, with an *Engine* choice; a starter, *Script swap*. A starter's
+ROM range is written for any game, so aimed ROM rules (pointer swaps, function kills, script
+ops) past a small ROM's end are trimmed when a recipe loads; that also fixes *Function
+flicker*, whose `0x7FFFFF` range didn't load on a 512 KB game.
+
+**Measured** with `corrupt-smoke --script-swaps`: the pseudo-player plays the lead while the
+tracer learns, then a window is played clean, learning on; changes go on the usable places the
+window read, and every arm replays the same frames with the same buttons from the same moment,
+unguarded. 30 seeds per row; every changed byte was read by the game in every run but a few
+nudges (a 1-byte command has no argument).
+
+| scene | arm | moving at the end | on another picture | moving and on another picture | moving and ran new code |
+|---|---|---|---|---|---|
+| FF6, 30 s, 1 change | swap | 29 | 20 | 19 | 23 |
+| | nudge | 26 of 26 | 7 | 7 | 0 |
+| | any command | 25 | 24 | 19 | 25 |
+| | random byte | 25 | 27 | 22 | 24 |
+| FF6, 60 s, 2 changes | swap | 25 | 15 | 10 | **20** |
+| | nudge | 29 of 29 | 7 | 7 | 0 |
+| | any command | 12 | 29 | 11 | 12 |
+| | random byte | 10 | 28 | 8 | 10 |
+| FE4, 60 s, 1 change | swap | 26 | 12 | 8 | 10 |
+| | nudge | 29 | 18 | **17** | 10 |
+| | any command | 26 | 16 | 12 | 11 |
+| | random byte | 12 | 22 | 4 | 8 |
+
+What it says:
+
+1. **The length rule keeps the game going** when changes stack up: on FF6 with two changes,
+   swaps left it moving in 25 of 30, any other command in 12, random bytes in 10. Nudges
+   almost never stop a game (55 of 55 on FF6).
+2. **Swaps change behaviour while the game survives** where it counts: FF6 with two changes,
+   20 of 30 still moving and running code the clean run never did, against 12 and 10. With
+   one change, or on FE4, they tie with the cruder changes on this measure.
+3. **Swaps show less at the end** (15-20 of 30 on another picture against 24-29): a swapped
+   command often changes what happens and the scene then settles, or the change is in what
+   the game decides, not what it draws. Nudges on FF6 rarely show (7), on FE4 they show
+   most (17 moving and visible).
+4. The samples are small: the windows read 7-18 usable places, so seeds pick the same ones
+   again. Pseudo-play is a poor player for scripts; kept moments of real play (#85) will
+   say more.
+
+So both ops ship: safer than random bytes in the same places, a real gain on FF6 when
+changes stack, not a clear gain everywhere. A classic swap (20 commands changed before the
+game boots) is the most visible: on FF6 the opening march jumped ahead to the narration, lost
+two of its three soldiers, or let another character wander alone (the docs page's clip).

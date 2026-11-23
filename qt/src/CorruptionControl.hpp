@@ -82,6 +82,7 @@ struct PanelStatus
     size_t script_commands = 0; // ...their commands
     size_t script_usable = 0;   // ...of which have a known length and don't branch
     size_t script_places = 0;   // places a script change may touch
+    std::vector<std::pair<uint32_t, std::string>> script_choices; // each engine's site and its name, for the rule editor
 
     // Kept moments (#47).
     double keep_seconds = 0;  // how far back Keep reaches now

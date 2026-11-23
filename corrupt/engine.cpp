@@ -22,6 +22,7 @@ void Engine::replace_rule(size_t index, Rule rule)
     aimed.erase(ids[index]);
     swaps.erase(ids[index]);
     kills.erase(ids[index]);
+    script_aims.erase(ids[index]);
     run_flags = {}; // an edited rule aims with the map as it is now
     ids[index] = next_id++;
     runtimes[index] = RuleRuntime{};
@@ -45,6 +46,7 @@ void Engine::remove_rule(size_t index)
     aimed.erase(ids[index]);
     swaps.erase(ids[index]);
     kills.erase(ids[index]);
+    script_aims.erase(ids[index]);
     ids.erase(ids.begin() + std::ptrdiff_t(index));
     runtimes.erase(runtimes.begin() + std::ptrdiff_t(index));
     mutes.erase(mutes.begin() + std::ptrdiff_t(index));
@@ -125,6 +127,8 @@ void Engine::restart()
     run_flags = {};
     swaps.clear();
     run_jumps.clear();
+    script_aims.clear();
+    run_scripts.clear();
     kills.clear();
     run_functions.clear();
     run_busy = {};
@@ -578,6 +582,27 @@ const AimedBytes *Engine::aim_for(uint32_t index, MemoryAccess &mem)
         aimed_now = { nullptr, {}, nullptr, &found->second };
         return &aimed_now;
     }
+    if (is_script_op(rule.op.type))
+    {
+        auto found = script_aims.find(ids[index]);
+        if (found == script_aims.end())
+        {
+            if (run_scripts.empty() && script_engines)
+                run_scripts = script_engines();
+            if (run_scripts.empty())
+            {
+                aimed_now = {}; // nothing found yet: try again next time
+                return &aimed_now;
+            }
+            found = script_aims
+                        .emplace(ids[index], script_slots(run_scripts, rule.range.first, rule.range.last, rule.op.engine,
+                                                          rule.op.type == OpType::ScriptNudge))
+                        .first;
+        }
+        aimed_now = {};
+        aimed_now.script_slots = &found->second;
+        return &aimed_now;
+    }
     if (is_jump_op(rule.op.type))
     {
         auto found = swaps.find(ids[index]);
@@ -649,6 +674,8 @@ size_t Engine::aimed_count(size_t index) const
         return s->second.size();
     if (auto k = kills.find(ids[index]); k != kills.end())
         return k->second.size();
+    if (auto sc = script_aims.find(ids[index]); sc != script_aims.end())
+        return sc->second.size();
     auto it = aimed.find(ids[index]);
     return it == aimed.end() ? 0 : it->second.size();
 }

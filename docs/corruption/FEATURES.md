@@ -331,6 +331,23 @@ the index a ROM byte just read (times 1-4, plus a table base)? Plan
   `build_script` ROM with two interpreters in `guard_integration_test.cpp`; smoke
   `--scripts` (FF6 2 engines, FE4 5, Goof and Pocky 0).
 
+### Script ops (#44)
+
+Corrupt scripts in their own vocabulary. Plan `2026-11-23-script-engines-plan.md`; QA 58.
+
+- `corrupt/script_swap.{h,cpp}`: `script_slots` (usable places in range, of one engine or all;
+  for a swap those with another command of the same length, for a nudge those with
+  arguments), `apply_script_swap`, `apply_script_nudge` (a delta in [min, max], never 0).
+- Ops `script_swap` and `script_nudge` (`ops.h`, `is_script_op`; `Op::engine`, JSON
+  `"engine": "0x009A8E"`); the engine asks `set_script_engines` when a run starts, like the
+  jump tables (`script_aims` per rule). `fit_aimed_ranges` (`rule.h`) trims aimed ROM rules
+  past a small ROM's end when a recipe loads, so starters for any game load anywhere.
+- App: the rule editor's *Swap script commands* and *Nudge script arguments* with an
+  *Engine* choice (`PanelStatus::script_choices`); starter `rom-script-swap.json`.
+- Tests: `tests/corrupt/script_swap_test.cpp`, `tests/qt/rule_editor_test.cpp`; smoke
+  `--script-swaps [seeds] [count]` (swap, nudge, any command, random byte and clean on the
+  same upcoming places); `--clip` learns scripts too (the docs page's FF6 clip).
+
 ## Phase 7: safety (#50-#52, #57; #55 and #56 tried and removed)
 
 Plan for all: `safety-plan` (one section per item, each with "How it went").

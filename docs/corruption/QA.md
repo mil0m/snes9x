@@ -916,3 +916,20 @@ Removed on 2026-11-01: it didn't pay off (see FEATURES.md, *Tried and removed*).
 4. Light and dark (switch the system's), and phone width: nothing scrolls sideways, text is readable.
 5. Rebuild after a change: `services/snes9x-docs/deploy.sh` in the homelab repo.
    - [ ] The footer names the new commit; a clip whose ROM is missing shows *isn't built yet*, the rest still do.
+
+## 58. Script engines and script changes (#43, #44)
+
+1. Open FF6 (or another RPG) with the panel showing and play through an event or two (the opening march, a conversation).
+   - [ ] Within a minute the ROM page says *1 script engine found…* (or more), with commands and how many have a known length.
+   - [ ] The library's game folder has `scripts.<you>.json`; Who's Here counts it.
+   - [ ] Memory page, rom, **Hex**, Colour by **Scripts**: go to the offset the dossier or the ROM page suggests (FF6: `0x0A0000`); commands are strong, their numbers lighter. Hover one: *script command $35 (2 bytes) for the script engine at $C0:9A8E, ran here …*.
+2. Goof Troop or Pocky & Rocky: play a few minutes.
+   - [ ] No script engine is found (action games): the ROM page has no script line.
+3. FF6, Add Rule…: What **Swap script commands**.
+   - [ ] **Engine** lists the engines found (*$C0:9A8E: 52 commands, 25 to swap*), Aim is hidden, How Much says *Commands each time*.
+   - [ ] On a game with none, the page says *No script engine found in this game yet…* and Engine is greyed.
+4. Load the **Script swap** starter on FF6 and Corrupt; walk into an event you've seen (or keep a moment with F8 and play it back with it on).
+   - [ ] Something in the event goes differently (another line, a missing character, the scene skips ahead) and the game keeps going more often than with random bytes.
+   - [ ] The starter loads on Goof Troop too (its range is trimmed to the ROM) and does nothing there.
+5. A rule *Nudge script arguments* −2..2, every 2 s, Corrupt in an event.
+   - [ ] Dialogue, positions or characters shift; the game rarely stops.

@@ -50,10 +50,15 @@ enum class OpType
 
     // Function op: ROM only, on functions the call graph found (calls.h, #34).
     Kill, // a return (RTS or RTL, as it's called) at a function's entry: the function is skipped
+
+    // Script ops: ROM only, on script commands the tracer found (script_swap.h, #44).
+    ScriptSwap,  // a command becomes another of the same engine and length
+    ScriptNudge, // one of a command's arguments gets a delta in [min, max]
 };
 
 constexpr bool is_jump_op(OpType t) { return t == OpType::PointerSwap; }
 constexpr bool is_function_op(OpType t) { return t == OpType::Kill; }
+constexpr bool is_script_op(OpType t) { return t == OpType::ScriptSwap || t == OpType::ScriptNudge; }
 
 enum class Axis
 {
@@ -123,6 +128,8 @@ struct Op
     bool any = false;
     // Kill: put each function back on after this many frames (#61); 0: it stays off.
     uint32_t put_back = 0;
+    // Script ops: only the engine dispatched from this ROM offset (#44); empty: any engine.
+    std::optional<uint32_t> engine;
 };
 
 // Per-rule state that has to survive between firings.

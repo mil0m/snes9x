@@ -36,6 +36,10 @@ class RuleEditor : public QDialog
     // really does (#73). 100% when not set.
     void setAllRules(double all_rules);
 
+    // The script engines found in this game (#43), for the script ops' engine choice (#44):
+    // each engine's dispatch site (a ROM offset) and how to name it.
+    void setScriptEngines(const std::vector<std::pair<uint32_t, QString>> &engines);
+
   protected:
     // Fits again once the style has polished everything: the Mac's controls are taller.
     void showEvent(QShowEvent *event) override;
@@ -91,6 +95,12 @@ class RuleEditor : public QDialog
     QCheckBox *swap_mutual;
     QCheckBox *kill_any;
     QDoubleSpinBox *kill_back;
+    QLabel *script_none;     // "no engine found yet", on both script pages
+    QLabel *nudge_none;
+    QComboBox *script_engine; // Swap script commands: which engine
+    QComboBox *nudge_engine;  // Nudge script arguments: which engine
+    QSpinBox *nudge_min;
+    QSpinBox *nudge_max;
     QLineEdit *shift_fill;
     QComboBox *flip_axis;
     QComboBox *levels_curve;

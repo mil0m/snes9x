@@ -1,0 +1,2 @@
+{ "format": 1, "name": "Script swap", "notes": "Docs page clip: before the game boots, 20 commands in its scripts swapped for others of the same length.", "seed": 7008,
+  "rules": [ { "name": "script", "target": "rom", "range": ["0x0", "0x7FFFFF"], "op": { "type": "script_swap" }, "when": { "at_load": true }, "count": 20 } ] }

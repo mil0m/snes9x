@@ -74,6 +74,9 @@ class Engine
     // Where pointer swaps learn the game's jump tables (everyone's). Called when a jump op
     // first fires in a run, and again while it returns none.
     void set_jump_tables(std::function<std::vector<JumpTable>()> tables) { jump_tables = std::move(tables); }
+    // The script engines found so far (#43), which script ops pick from (#44); asked when a run
+    // starts, like the jump tables.
+    void set_script_engines(std::function<std::vector<ScriptEngine>()> engines) { script_engines = std::move(engines); }
     // Where function ops learn the game's functions (the call graph, everyone's). Called when
     // one first fires in a run, and again while it returns none.
     void set_functions(std::function<std::vector<Function>()> functions) { learned_functions = std::move(functions); }
@@ -240,6 +243,9 @@ class Engine
     AimedBytes aimed_now;
     std::span<const uint8_t> run_flags; // the code map this run aims with
     std::function<std::vector<JumpTable>()> jump_tables;
+    std::function<std::vector<ScriptEngine>()> script_engines;
+    std::vector<ScriptEngine> run_scripts;                                // the engines this run's script ops pick from
+    std::unordered_map<uint64_t, std::vector<ScriptSlot>> script_aims;    // by rule id, for this run
     std::function<std::vector<Function>()> learned_functions;
     std::function<HotMask()> busy_code;
     HotMask run_busy;      // the busy functions' bodies this run aims inside

@@ -1,7 +1,7 @@
 // End-to-end check of the corruption engine inside the real emulator, no window
 // needed:
 //
-//   corrupt-smoke <rom> <recipe.json> [frames=600] [warmup=600] [--guard | --instant [seeds] | --ahead [seeds] | --keep [seeds] | --eyes [seeds] | --derail-fp [learn] | --learn [held=3] [from=0] | --replay | --copies | --map | --access [dir] | --codemap [file] | --jumps [file] | --calls | --bodies | --kill [seeds] [count] | --change [seeds] [count] | --risk [count] [trial] [number|branch|math|skip] | --foresee [count] [trial] [kind] | --try [count] [trial] [kind] | --dump <dir> | --clip <dir> [seeds] | --scripts]
+//   corrupt-smoke <rom> <recipe.json> [frames=600] [warmup=600] [--guard | --instant [seeds] | --ahead [seeds] | --keep [seeds] | --eyes [seeds] | --derail-fp [learn] | --learn [held=3] [from=0] | --replay | --copies | --map | --access [dir] | --codemap [file] | --jumps [file] | --calls | --bodies | --kill [seeds] [count] | --change [seeds] [count] | --risk [count] [trial] [number|branch|math|skip] | --foresee [count] [trial] [kind] | --try [count] [trial] [kind] | --dump <dir> | --clip <dir> [seeds] | --scripts | --script-swaps [seeds] [count]]
 //
 // Boots the ROM, runs `warmup` frames, saves a state, then runs `frames` twice
 // from that state: once clean, once with the recipe. Reports what the recipe
@@ -94,6 +94,7 @@
 #include "corrupt/moment.h"
 #include "corrupt/explore.h"
 #include "corrupt/script_engines.h"
+#include "corrupt/script_swap.h"
 #include "corrupt/envelope.h"
 #include "corrupt/exploration.h"
 #include "corrupt/function_body.h"
@@ -3190,6 +3191,193 @@ int run_placebo(const Recipe &recipe, int frames, int variants, int moments)
     return 0;
 }
 
+// --script-swaps [seeds=10] [count=2]: does a script swap (#44) beat cruder changes to the same
+// script bytes? The pseudo-player plays CORRUPT_CLIP_LEAD frames (default 5000) while the tracer
+// learns the script engines; then `frames` more are played clean from there, learning on, and the
+// usable places the game read in them are where changes go (each arm replays the same frames
+// from the same moment, so a change there runs unless an earlier one sent the game elsewhere). Per seed, `count` of those
+// are changed four ways from the same moment, with the same buttons, unguarded: swapped for
+// another command of the same length, one argument nudged by 1 or 2 (#44's other op), set to any
+// other command of the engine (any length), set
+// to a random byte, and left alone. Per arm: how often the game read a changed byte, and of those
+// runs how many are still running and moving at the end, ended on another picture than clean,
+// and ran code the clean run never did.
+int run_script_swaps(int frames, int seeds, int count)
+{
+    int lead = getenv("CORRUPT_CLIP_LEAD") ? atoi(getenv("CORRUPT_CLIP_LEAD")) : 5000;
+    std::span<const uint8_t> clean(rom.clean().data(), rom.clean().size());
+    ScriptLog log;
+    {
+        CodeMap map(Memory.CalculatedSize);
+        RomTracer tracer;
+        if (!tracer.start(map))
+            return 1;
+        tracer.note_scripts(&log, clean);
+        PseudoPlayer p(100);
+        for (int i = 0; i < lead; i++)
+        {
+            p.menus = i < lead * 7 / 10;
+            access.set_pads(p.next());
+            headless::run_frames(1);
+        }
+        tracer.stop();
+    }
+    auto start = headless::save_state();
+    std::vector<Pads> pads;
+    {
+        PseudoPlayer p(4242);
+        p.menus = false;
+        for (int i = 0; i < frames; i++)
+            pads.push_back(p.next());
+    }
+    struct Run
+    {
+        bool read = false, running = false, moving = false;
+        uint64_t last_picture = 0;
+        std::vector<uint8_t> code; // codeflag per ROM byte, as run
+    };
+    auto play = [&](const std::vector<uint32_t> &changed, ScriptLog *learn) {
+        Run r;
+        CodeMap seen(Memory.CalculatedSize);
+        RomTracer tracer;
+        tracer.start(seen);
+        if (learn)
+            tracer.note_scripts(learn, clean);
+        int moving_late = 0, nmi_late = 0;
+        uint32_t reboots = access.sample().reboots;
+        uint64_t picture = 0;
+        for (int i = 0; i < frames; i++)
+        {
+            access.set_pads(pads[size_t(i)]);
+            headless::run_frames(1);
+            auto signals = access.sample();
+            if (signals.picture_valid && signals.picture_hash != picture && i >= frames - 300)
+                moving_late++;
+            if (signals.nmi_enabled && i >= frames - 300)
+                nmi_late++;
+            if (signals.picture_valid)
+                picture = signals.picture_hash;
+        }
+        tracer.stop();
+        auto end = access.sample();
+        for (auto o : changed)
+            r.read |= (seen.at(o) & codeflag::Data) != 0;
+        r.running = !end.cpu_halted && !end.emulation_stopped && end.reboots == reboots && (nmi_late || moving_late);
+        r.moving = r.running && moving_late >= 3;
+        r.last_picture = picture;
+        r.code = seen.flags();
+        return r;
+    };
+    // The clean window teaches the log too: the places it runs, which every arm replays up to the
+    // change (as on a kept moment, or a script that runs again).
+    headless::load_state(start);
+    Run base = play({}, &log);
+    auto engines = find_script_engines(log);
+    auto slots = script_slots(engines, 0, uint32_t(clean.size() - 1), std::nullopt, false);
+    std::vector<size_t> upcoming; // slots the clean game reads in the window
+    for (size_t i = 0; i < slots.size(); i++)
+        if (base.code[slots[i].offset] & codeflag::Data)
+            upcoming.push_back(i);
+    printf("scripts  %zu engines after %d + %d frames of pseudo-play; %zu places to swap, %zu of them read in the last %d\n",
+           engines.size(), lead, frames, slots.size(), upcoming.size(), frames);
+    if (upcoming.empty())
+        return 1;
+    auto new_code = [&](const Run &r) {
+        size_t n = 0;
+        for (size_t o = 0; o < r.code.size(); o++)
+            n += (r.code[o] & codeflag::Opcode) && !(base.code[o] & codeflag::Opcode);
+        return n;
+    };
+    struct Arm
+    {
+        const char *name;
+        int runs = 0, read = 0, running = 0, moving = 0, differed = 0, new_code = 0, lively = 0, acting = 0;
+    };
+    Arm arms[5] = { { "swap" }, { "nudge" }, { "any-cmd" }, { "random" }, { "clean" } };
+    for (int seed = 1; seed <= seeds; seed++)
+    {
+        Rng pick_rng(uint64_t(seed) * 0x9E3779B97F4A7C15ULL);
+        std::vector<size_t> picks;
+        for (int i = 0; i < count && picks.size() < upcoming.size(); i++)
+        {
+            size_t p = upcoming[size_t(pick_rng.range(0, int64_t(upcoming.size()) - 1))];
+            if (std::find(picks.begin(), picks.end(), p) == picks.end())
+                picks.push_back(p);
+        }
+        for (int a = 0; a < 5; a++)
+        {
+            std::vector<uint32_t> changed;
+            headless::load_state(start);
+            rom.restore_clean();
+            Rng rng{ uint64_t(seed) * 31 + uint64_t(a) };
+            for (auto p : picks)
+            {
+                auto &sl = slots[p];
+                if (a == 1)
+                {
+                    // One argument a little off (a 1-byte command has none: nothing changes).
+                    if (sl.length < 2)
+                        continue;
+                    uint32_t at = sl.offset + uint32_t(rng.range(1, sl.length - 1));
+                    int delta = int(rng.range(1, 2)) * (rng.range(0, 1) ? 1 : -1);
+                    rom.write(Target::ROM, at, uint8_t(clean[at] + delta));
+                    changed.push_back(at);
+                    continue;
+                }
+                changed.push_back(sl.offset);
+                uint8_t now = sl.value;
+                if (a == 0)
+                    now = sl.others[size_t(rng.range(0, int64_t(sl.others.size()) - 1))];
+                else if (a == 2)
+                {
+                    // Any other command of the engine whose place this is, whatever its length.
+                    std::vector<uint8_t> any;
+                    for (auto &e : engines)
+                        for (auto &pl : e.places)
+                            if (pl.offset == sl.offset)
+                                for (auto &[v, c] : e.commands)
+                                    if (v != sl.value)
+                                        any.push_back(v);
+                    if (!any.empty())
+                        now = any[size_t(rng.range(0, int64_t(any.size()) - 1))];
+                }
+                else if (a == 3)
+                    do
+                        now = uint8_t(rng.range(0, 255));
+                    while (now == sl.value);
+                if (now != sl.value)
+                    rom.write(Target::ROM, sl.offset, now);
+            }
+            Run r = play(changed, nullptr);
+            auto &arm = arms[a];
+            arm.runs++;
+            bool counted = a == 4 || r.read;
+            arm.read += r.read;
+            if (!counted)
+                continue;
+            arm.running += r.running;
+            arm.moving += r.moving;
+            arm.differed += r.last_picture != base.last_picture;
+            arm.new_code += new_code(r) > 0;
+            arm.lively += r.moving && r.last_picture != base.last_picture; // kept going, and it shows
+            arm.acting += r.moving && new_code(r) > 0; // kept going, and the game acted otherwise (#81's clean signal)
+            if (getenv("CORRUPT_SCRIPT_VERBOSE"))
+                printf("  seed %2d %-7s %s%s, %zu new code bytes\n", seed, arm.name,
+                       r.moving ? "moving " : r.running ? "running" : "stopped", r.read ? ", read" : "", new_code(r));
+        }
+    }
+    rom.restore_clean();
+    for (auto &a : arms)
+    {
+        int n = std::string(a.name) == "clean" ? a.runs : a.read;
+        printf("%-8s read a changed byte in %2d of %d runs; of those %2d running, %2d moving, %2d ended on another "
+               "picture than clean, %2d ran new code, %2d moving and on another picture, %2d moving and ran new code\n",
+               a.name, a.read, a.runs, a.running, a.moving, a.differed, a.new_code, a.lively, a.acting);
+        (void)n;
+    }
+    return 0;
+}
+
 // --scripts: script engines (#43). The pseudo-player plays `frames` frames after the warmup
 // (Start and Select in the first half only) while the tracer notes every indexed jump with
 // the ROM data reads just before it; then prints the engines found: the jump, which read held
@@ -3319,9 +3507,13 @@ int run_clip(const Recipe &recipe, int frames, const std::string &dir, int seeds
     CodeMap map(Memory.CalculatedSize);
     JumpLog jumps;
     CallKeeper calls;
+    ScriptLog scripts; // and the clean window below: script ops change what's about to run (#44)
+    std::span<const uint8_t> clean_rom(rom.clean().data(), rom.clean().size());
     {
         RomTracer tracer;
         bool tracing = tracer.start(map, &jumps, &calls.mine());
+        if (tracing)
+            tracer.note_scripts(&scripts, clean_rom);
         PseudoPlayer p(100);
         for (int i = 0; i < lead; i++)
         {
@@ -3337,7 +3529,6 @@ int run_clip(const Recipe &recipe, int frames, const std::string &dir, int seeds
     std::vector<uint8_t> aim_flags = map.flags();
     for (auto &f : aim_flags)
         f &= codeflag::All;
-    std::span<const uint8_t> clean_rom(rom.clean().data(), rom.clean().size());
     auto tables = find_jump_tables(jumps, clean_rom, map.flags(), SnesCoreAccess::rom_offsets()).tables;
     auto functions = calls.functions();
     auto bodies = function_bodies(clean_rom, map.flags(), functions, SnesCoreAccess::rom_addresses());
@@ -3394,10 +3585,20 @@ int run_clip(const Recipe &recipe, int frames, const std::string &dir, int seeds
         headless::load_state(power_on);
         access.reset_console();
     }
-    play(clean);
-    printf("clip     %d frames from %d of pseudo-play%s; %zu code bytes, %zu jump tables, %zu functions known\n",
+    {
+        CodeMap window(Memory.CalculatedSize);
+        RomTracer tracer;
+        bool tracing = tracer.start(window);
+        if (tracing)
+            tracer.note_scripts(&scripts, clean_rom);
+        play(clean);
+    }
+    std::vector<ScriptEngine> engines = find_script_engines(scripts);
+    engine.set_script_engines([&] { return engines; });
+    printf("clip     %d frames from %d of pseudo-play%s; %zu code bytes, %zu jump tables, %zu functions, %zu script "
+           "engines known\n",
            frames, lead, boots ? ", played again after the power cycle" : "", map.coverage().code, tables.size(),
-           functions.size());
+           functions.size(), engines.size());
     int only = int(env("CORRUPT_CLIP_ONLY", 0)); // just that seed (the site's build)
     for (int seed = only ? only : 1; seed <= (only ? only : seeds); seed++)
     {
@@ -3424,6 +3625,8 @@ int run_clip(const Recipe &recipe, int frames, const std::string &dir, int seeds
         int moving = 0; // frames in the window's last 2 s that differ from the one before
         for (int i = std::max(from + 1, from + frames - 120); i < from + frames; i++)
             moving += picture_hash(got[size_t(i)]) != picture_hash(got[size_t(i - 1)]);
+        if (getenv("CORRUPT_CLIP_DEBUG"))
+            printf("  aimed %zu, events %zu\n", engine.aimed_count(0), engine.event_log().size());
         printf("seed %-3d %4.0f%% of the picture apart from clean on average; %3d of the last 120 frames move; %llu firings; "
                "first visible at %.1f s, clip from %.1f s\n",
                seed, 100 * apart / double(frames), moving, (unsigned long long)engine.status().firings,
@@ -3434,6 +3637,7 @@ int run_clip(const Recipe &recipe, int frames, const std::string &dir, int seeds
     engine.set_jump_tables({});
     engine.set_functions({});
     engine.set_busy_code({});
+    engine.set_script_engines({});
     return 0;
 }
 
@@ -3474,6 +3678,7 @@ int main(int argc, char **argv)
     printf("recipe   %s (seed %llu, %zu rules)\n", parsed.recipe->name.c_str(),
            (unsigned long long)parsed.recipe->seed, parsed.recipe->rules.size());
 
+    fit_aimed_ranges(parsed.recipe->rules, memory.size(Target::ROM)); // as the app does
     for (size_t i = 0; i < parsed.recipe->rules.size(); i++)
         if (auto err = validate_rule(parsed.recipe->rules[i], memory))
         {
@@ -3526,6 +3731,8 @@ int main(int argc, char **argv)
         return run_nmi(frames);
     if (argc > 5 && std::string(argv[5]) == "--eyes")
         return run_eyes(*parsed.recipe, frames, argc > 6 ? atoi(argv[6]) : 5);
+    if (argc > 5 && std::string(argv[5]) == "--script-swaps")
+        return run_script_swaps(frames, argc > 6 ? atoi(argv[6]) : 10, argc > 7 ? atoi(argv[7]) : 2);
     if (argc > 5 && std::string(argv[5]) == "--scripts")
         return run_scripts(frames);
     if (argc > 6 && std::string(argv[5]) == "--clip")

@@ -199,6 +199,17 @@ std::vector<Rule> sample_rules()
     r.op = { .type = OpType::PointerSwap, .likely = true, .mutual = true };
     r.when = { .type = TriggerType::Hotkey, .hotkey = 1 };
     rules.push_back(r);
+
+    r = base();
+    r.range = { Target::ROM, 0, 0xFFFFF };
+    r.op = { .type = OpType::ScriptSwap };
+    rules.push_back(r);
+
+    r = base();
+    r.range = { Target::ROM, 0, 0xFFFFF };
+    r.op = { .type = OpType::ScriptNudge, .min = -3, .max = 2 };
+    r.op.engine = 0x009A8E; // not among this game's engines: kept as it was
+    rules.push_back(r);
     return rules;
 }
 
@@ -591,7 +602,7 @@ TEST_CASE("What follows Where: grouped under headings, code ones only for the RO
     CHECK(op->findText("Bytes") >= 0);
     CHECK(op->findText("Areas, like a picture") >= 0);
     // The code ones are greyed for work RAM, say why, and lost their "(ROM)" tag.
-    for (auto name : { "opcode_swap", "branch_flip", "nop_out", "pointer_swap", "kill" })
+    for (auto name : { "opcode_swap", "branch_flip", "nop_out", "pointer_swap", "kill", "script_swap", "script_nudge" })
     {
         INFO(name);
         CHECK_FALSE(item_for(name)->isEnabled());
@@ -609,7 +620,7 @@ TEST_CASE("What follows Where: grouped under headings, code ones only for the RO
         op->hidePopup();
     }
     choose(e, "target", "rom");
-    for (auto name : { "opcode_swap", "branch_flip", "nop_out", "pointer_swap", "kill" })
+    for (auto name : { "opcode_swap", "branch_flip", "nop_out", "pointer_swap", "kill", "script_swap", "script_nudge" })
         CHECK(item_for(name)->isEnabled());
     // The pages still follow the choice, headings or not.
     choose(e, "op", "freeze");
@@ -650,4 +661,51 @@ TEST_CASE("under Strength, a line says what the rule does at it, times all rules
     CHECK(note->text().startsWith("At 25% (50% × 50% for all rules): changes 2 of its 8 bytes"));
     child<QSpinBox>(e, "count")->setValue(1); // follows the rest of the form too
     CHECK(note->text().contains("1 in 4 of its chances"));
+}
+
+TEST_CASE("script ops pick an engine of the game's, or any; without one the page says to play a while (#44)")
+{
+    SizedMemory sizes;
+    RuleEditor e(default_rule(), {}, sizes);
+    e.show();
+    choose(e, "target", "rom");
+    child<QLineEdit>(e, "first")->setText("0x0");
+    child<QLineEdit>(e, "last")->setText("0xFFFFF");
+    choose(e, "op", "script_swap");
+    QApplication::processEvents();
+    CHECK(ok_enabled(e));
+    CHECK_FALSE(child<QComboBox>(e, "role")->isVisible()); // it aims at script commands, not the code map
+    auto engine = child<QComboBox>(e, "script_engine");
+    CHECK_FALSE(engine->isEnabled());
+    bool says = false;
+    for (auto label : e.findChildren<QLabel *>())
+        says |= label->isVisible() && label->text().startsWith("No script engine found in this game yet");
+    CHECK(says);
+    CHECK_FALSE(e.rule().op.engine);
+
+    e.setScriptEngines({ { 0x009A8E, "$C0:9A8E: 52 commands, 25 to swap" },
+                         { 0x0077FE, "$C0:77FE: 10 commands, 7 to swap" } });
+    QApplication::processEvents();
+    CHECK(engine->isEnabled());
+    CHECK(engine->count() == 3);
+    engine->setCurrentIndex(2);
+    REQUIRE(e.rule().op.engine);
+    CHECK(*e.rule().op.engine == 0x0077FE);
+    CHECK(child<QLabel>(e, "summary")->text().contains("swap script commands"));
+    QApplication::processEvents(); // the dialog fits itself one turn later
+    maybe_shot(e, "rule-editor-script-swap");
+
+    choose(e, "op", "script_nudge");
+    child<QSpinBox>(e, "nudge_min")->setValue(-4);
+    child<QSpinBox>(e, "nudge_max")->setValue(4);
+    child<QComboBox>(e, "nudge_engine")->setCurrentIndex(1);
+    auto r = e.rule();
+    CHECK(r.op.type == OpType::ScriptNudge);
+    CHECK(r.op.min == -4);
+    CHECK(r.op.max == 4);
+    CHECK(r.op.engine == std::optional<uint32_t>(0x009A8E));
+    child<QSpinBox>(e, "nudge_min")->setValue(0);
+    child<QSpinBox>(e, "nudge_max")->setValue(0);
+    QApplication::processEvents();
+    CHECK_FALSE(ok_enabled(e)); // a nudge by nothing
 }

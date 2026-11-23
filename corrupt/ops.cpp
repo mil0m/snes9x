@@ -72,6 +72,8 @@ const char *op_name(OpType t)
     case OpType::NopOut: return "nop_out";
     case OpType::PointerSwap: return "pointer_swap";
     case OpType::Kill: return "kill";
+    case OpType::ScriptSwap: return "script_swap";
+    case OpType::ScriptNudge: return "script_nudge";
     }
     return "?";
 }
@@ -143,7 +145,8 @@ std::optional<OpType> parse_op(std::string_view name)
 {
     for (auto t : { OpType::Add, OpType::Random, OpType::Bitflip, OpType::Swap, OpType::Copy, OpType::Freeze,
                     OpType::Shuffle, OpType::Shift, OpType::Flip, OpType::Levels, OpType::Filter, OpType::Stamp,
-                    OpType::Fill, OpType::OpcodeSwap, OpType::BranchFlip, OpType::NopOut, OpType::PointerSwap, OpType::Kill })
+                    OpType::Fill, OpType::OpcodeSwap, OpType::BranchFlip, OpType::NopOut, OpType::PointerSwap, OpType::Kill,
+                    OpType::ScriptSwap, OpType::ScriptNudge })
         if (name == op_name(t))
             return t;
     return std::nullopt;
@@ -266,6 +269,9 @@ std::vector<WriteEvent> apply_op(const Op &op, OpState &state, MemoryAccess &mem
         break; // apply_pointer_swap
     case OpType::Kill:
         break; // tick_rule writes the returns
+    case OpType::ScriptSwap:
+    case OpType::ScriptNudge:
+        break; // apply_script_swap, apply_script_nudge
     }
 
     return w.events;
@@ -339,8 +345,19 @@ std::optional<std::string> validate_op(const Op &op, const AddressRange &range, 
     case OpType::NopOut:
     case OpType::PointerSwap:
     case OpType::Kill:
+    case OpType::ScriptSwap:
         if (range.target != Target::ROM)
             return std::string(op_name(op.type)) + " works on the rom target only";
+        break;
+    case OpType::ScriptNudge:
+        if (range.target != Target::ROM)
+            return std::string(op_name(op.type)) + " works on the rom target only";
+        if (op.min > op.max)
+            return "min must not be above max";
+        if (op.min < -255 || op.max > 255)
+            return "min and max must be within -255..255";
+        if (op.min == 0 && op.max == 0)
+            return "min and max can't both be 0";
         break;
     }
     return std::nullopt;

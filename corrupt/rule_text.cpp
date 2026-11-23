@@ -53,17 +53,20 @@ std::string describe_strength(const Rule &rule, double all_rules)
     const Op &op = rule.op;
     bool whole = is_area_op(op.type) || (op.type == OpType::Swap && op.a && op.b);
     const char *verb = op.type == OpType::Kill ? "turns off" : whole && op.type == OpType::Swap ? "swaps"
-                       : op.type == OpType::PointerSwap                                    ? "swaps"
+                       : op.type == OpType::PointerSwap || op.type == OpType::ScriptSwap   ? "swaps"
+                       : op.type == OpType::ScriptNudge                                    ? "nudges an argument of"
                                                                                            : "changes";
     auto things = [&](long n) {
         if (op.type == OpType::PointerSwap)
             return std::to_string(n) + (n == 1 ? " jump table entry" : " jump table entries");
+        if (is_script_op(op.type))
+            return std::to_string(n) + (n == 1 ? " script command" : " script commands");
         return plural(n, is_code_op(op.type) ? "instruction" : op.type == OpType::Kill ? "function" : "byte");
     };
     // Add and Flip bits also hit softer (scaled_op); the rest only do less of it.
     std::string how;
     Op scaled = scaled_op(op, e);
-    if (op.type == OpType::Add)
+    if (op.type == OpType::Add || op.type == OpType::ScriptNudge)
     {
         how = ", adding " + std::to_string(scaled.min) + ".." + std::to_string(scaled.max);
         if (scaled.min != op.min || scaled.max != op.max)
@@ -152,6 +155,19 @@ std::string describe_op(const Rule &rule)
     case OpType::PointerSwap:
         text = std::string("swap pointers") + (op.mutual ? " both ways" : "") + (op.likely ? " (unused entries too)" : "");
         break;
+    case OpType::ScriptSwap:
+    case OpType::ScriptNudge:
+    {
+        text = op.type == OpType::ScriptSwap ? "swap script commands"
+                                             : "nudge script arguments " + std::to_string(op.min) + ".." + std::to_string(op.max);
+        if (op.engine)
+        {
+            char site[24];
+            std::snprintf(site, sizeof site, " (engine at 0x%06X)", *op.engine);
+            text += site;
+        }
+        break;
+    }
     case OpType::Kill:
         text = op.any ? "turn functions off (any)" : "turn busy functions off";
         if (op.put_back)

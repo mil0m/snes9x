@@ -468,6 +468,7 @@ void CorruptionSession::gameLoaded()
     });
     // Pointer swaps pick from the jump tables found so far (everyone's), as a run starts.
     engine.set_jump_tables([this] { return jump_tables; });
+    engine.set_script_engines([this] { return script_engines; }); // script ops pick from them (#44)
     engine.set_functions([this] { return call_log.functions(); }); // what kill ops pick from (#34)
     // What rules aimed inside busy functions pick from (#60): the busiest functions' bodies.
     engine.set_busy_code([this] {
@@ -699,7 +700,7 @@ Library CorruptionSession::library()
     return Library(library_root);
 }
 
-std::vector<std::string> CorruptionSession::loadRecipe(const Recipe &recipe, const fs::path &path)
+std::vector<std::string> CorruptionSession::loadRecipe(const Recipe &given, const fs::path &path)
 {
     std::lock_guard lock(mutex);
     std::vector<std::string> problems;
@@ -708,6 +709,8 @@ std::vector<std::string> CorruptionSession::loadRecipe(const Recipe &recipe, con
         problems.push_back("load a game first");
         return problems;
     }
+    Recipe recipe = given;
+    fit_aimed_ranges(recipe.rules, memory.size(Target::ROM)); // a starter for any game, on a smaller one
     for (size_t i = 0; i < recipe.rules.size(); i++)
         if (auto err = validate_rule(recipe.rules[i], memory))
             problems.push_back("rules[" + std::to_string(i) + "] " + recipe.rules[i].name + ": " + *err);
@@ -1377,6 +1380,14 @@ CorruptionSession::Status CorruptionSession::status()
     s.script_engines = script_engines.size();
     for (auto &e : script_engines)
     {
+        auto site = rom_where.cpu_address(e.site);
+        char where[16];
+        std::snprintf(where, sizeof where, "$%02X:%04X", site ? (*site >> 16) & 0xFF : 0, site ? *site & 0xFFFF : 0);
+        size_t usable = 0;
+        for (auto &[v, c] : e.commands)
+            usable += c.usable();
+        s.script_choices.push_back({ e.site, std::string(where) + ": " + std::to_string(e.commands.size()) +
+                                                 " commands, " + std::to_string(usable) + " to swap" });
         s.script_commands += e.commands.size();
         for (auto &[v, c] : e.commands)
             s.script_usable += c.usable();

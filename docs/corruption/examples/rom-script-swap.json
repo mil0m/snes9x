@@ -1,0 +1,16 @@
+{
+  "format": 1,
+  "name": "Script swap",
+  "notes": "Swaps a command in the game's scripts every 5 seconds for another of the same length: an event shows another dialogue, a character does another move, the script keeps its shape. Only commands the game was seen running. Needs a script engine found first (RPGs: play a while where events, dialogue and battles run; the ROM page says when one is found). Action games usually have none.",
+  "seed": 4401,
+  "rules": [
+    {
+      "name": "script swap",
+      "target": "rom",
+      "range": [ "0x0", "0x7FFFFF" ],
+      "op": { "type": "script_swap" },
+      "when": { "every_frames": 300 },
+      "count": 1
+    }
+  ]
+}

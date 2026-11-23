@@ -67,10 +67,12 @@ Op scaled_op(const Op &op, double intensity)
     if (intensity >= 1.0)
         return op;
     Op out = op;
-    if (op.type == OpType::Add)
+    if (op.type == OpType::Add || op.type == OpType::ScriptNudge)
     {
         out.min = scale(op.min, intensity);
         out.max = scale(op.max, intensity);
+        if (op.type == OpType::ScriptNudge && out.min == 0 && out.max == 0) // a nudge of nothing isn't gentler
+            (op.max > 0 ? out.max : out.min) = op.max > 0 ? 1 : -1;
     }
     else if (op.type == OpType::Bitflip && !op.mask)
         out.bits = std::max(1, scale(op.bits, intensity));
@@ -104,12 +106,15 @@ std::vector<WriteEvent> tick_rule(const Rule &rule, RuleRuntime &rt, MemoryAcces
     // An aimed rule with nothing to aim at (no code map, or no jump tables yet) fires on nothing.
     bool swapping = is_jump_op(rule.op.type);
     bool killing = is_function_op(rule.op.type);
-    bool aiming = needs_aim(rule) && !swapping && !killing;
+    bool scripting = is_script_op(rule.op.type);
+    bool aiming = needs_aim(rule) && !swapping && !killing && !scripting;
     if (aiming && (!aimed || !aimed->bytes || aimed->bytes->empty()))
         return {};
     if (swapping && (!aimed || !aimed->swaps || aimed->swaps->empty()))
         return {};
     if (killing && (!aimed || !aimed->functions || aimed->functions->empty()))
+        return {};
+    if (scripting && (!aimed || !aimed->script_slots || aimed->script_slots->empty()))
         return {};
 
     Rng rng = Rng::for_firing(seed, rule_index, rt.firings++);
@@ -126,6 +131,8 @@ std::vector<WriteEvent> tick_rule(const Rule &rule, RuleRuntime &rt, MemoryAcces
             return pick_distinct({ rule.range.target, 0, uint32_t(aimed->swaps->size() - 1) }, n, rng);
         if (killing) // function numbers
             return pick_distinct({ rule.range.target, 0, uint32_t(aimed->functions->size() - 1) }, n, rng);
+        if (scripting) // slot numbers
+            return pick_distinct({ rule.range.target, 0, uint32_t(aimed->script_slots->size() - 1) }, n, rng);
         if (aiming)
         {
             auto &bytes = *aimed->bytes;
@@ -157,6 +164,13 @@ std::vector<WriteEvent> tick_rule(const Rule &rule, RuleRuntime &rt, MemoryAcces
         return apply_code_op(rule.op, mem, aimed->flags, addresses, rng, skip);
     if (swapping)
         return apply_pointer_swap(*aimed->swaps, addresses, rule.op.mutual, mem, rng, skip);
+    if (rule.op.type == OpType::ScriptSwap)
+        return apply_script_swap(*aimed->script_slots, addresses, mem, rng, skip);
+    if (rule.op.type == OpType::ScriptNudge)
+    {
+        Op scaled = scaled_op(rule.op, intensity); // gentler at lower strength, like Add
+        return apply_script_nudge(*aimed->script_slots, addresses, scaled.min, scaled.max, mem, rng, skip);
+    }
     if (killing)
     {
         std::vector<WriteEvent> events;
@@ -177,10 +191,27 @@ std::vector<WriteEvent> tick_rule(const Rule &rule, RuleRuntime &rt, MemoryAcces
     return apply_op(scaled_op(rule.op, intensity), rt.op_state, mem, rule.range, addresses, rng, skip);
 }
 
+size_t fit_aimed_ranges(std::vector<Rule> &rules, size_t rom_size)
+{
+    size_t fitted = 0;
+    for (auto &r : rules)
+    {
+        bool aimed = is_jump_op(r.op.type) || is_function_op(r.op.type) || is_script_op(r.op.type);
+        if (aimed && r.range.target == Target::ROM && !r.rect && rom_size && r.range.first < rom_size &&
+            r.range.last >= rom_size)
+        {
+            r.range.last = uint32_t(rom_size - 1);
+            fitted++;
+        }
+    }
+    return fitted;
+}
+
 std::vector<uint32_t> aim_rule(const Rule &rule, std::span<const uint8_t> rom, std::span<const uint8_t> flags,
                                const HotMask *busy, const HotMask *low_risk)
 {
-    if (rule.range.target != Target::ROM || flags.empty() || is_jump_op(rule.op.type) || is_function_op(rule.op.type))
+    if (rule.range.target != Target::ROM || flags.empty() || is_jump_op(rule.op.type) || is_function_op(rule.op.type) ||
+        is_script_op(rule.op.type))
         return {};
     auto out = is_code_op(rule.op.type) ? code_op_targets(rule.op.type, rom, flags, rule.range.first, rule.range.last, rule.aim)
                                         : aimed_bytes(rom, flags, rule.range.first, rule.range.last, rule.aim);

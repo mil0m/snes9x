@@ -420,6 +420,32 @@ safe); **Both ways** makes two entries trade routines.
 Starters: **Pointer swap** (3 at the start, classic), **Pointer roulette** (button 1: one
 more each press, live).
 
+**Scripts.** RPGs run their events, dialogue, characters' moves and battle AI as little
+scripts: lists of commands the game reads one by one, each a number with a few more numbers
+after it (*show dialogue 12*, *walk left 3 steps*). While you play, the app notices when the
+game reads a command and jumps to the code that runs it, and learns the game's **script
+engines**: which commands it has, how long each is, and where its scripts are. The ROM page
+says what it found (*2 script engines found: 63 commands, 28 with a known length*); the
+Memory page's **Scripts** colours show the commands it saw run (strong where a script change
+may touch them, their numbers lighter) and hovering one says which command it is. Action
+games usually have none. Play a while where scripts run: an event, a conversation, a battle.
+
+Two things in *What* (ROM) work on them:
+
+- **Swap script commands**: a command becomes another command of the same engine and the same
+  length, so the script keeps its shape: an event shows another dialogue, a character does
+  another move, the story takes a turn it shouldn't. **Engine** picks one when the game has
+  several (events, movements, battle AI); which is which shows when you try.
+- **Nudge script arguments**: the command stays, one of its numbers changes a little (−2..2
+  is a nudge): another dialogue, map, character or position.
+
+Both only touch commands the game was seen running whose length is sure, and never the ones
+that jump (a branch, a call, a loop), so they're much less likely to stop the game than
+random bytes in the same places. A change only shows when the game reaches that command
+again: a script that loops, an event you go back to, a battle, or a kept moment played again.
+Or the classic way, *Once, when the run starts*: the game boots with its scripts changed.
+Starter: **Script swap** (one every 5 seconds).
+
 **When the ROM crashes the game**, the crash guard looks at which changed bytes the game
 actually ran or read just before, and puts back only those, keeping the rest. That's what
 lets a classic run with hundreds of changes keep playing. The **Changes** overlay shows

@@ -6,6 +6,7 @@
 #include "memory.h"
 #include "ops.h"
 #include "pointer_swap.h"
+#include "script_swap.h"
 #include "trigger.h"
 
 #include <string>
@@ -58,7 +59,8 @@ struct RuleRuntime
 // op) or the jump tables (a jump op).
 inline bool needs_aim(const Rule &rule)
 {
-    return rule.aim.active() || is_code_op(rule.op.type) || is_jump_op(rule.op.type) || is_function_op(rule.op.type);
+    return rule.aim.active() || is_code_op(rule.op.type) || is_jump_op(rule.op.type) || is_function_op(rule.op.type) ||
+           is_script_op(rule.op.type);
 }
 
 // For a rule that needs aim: the ROM offsets it may pick (worked out once per run), and
@@ -70,6 +72,7 @@ struct AimedBytes
     std::span<const uint8_t> flags;
     const std::vector<SwapSlot> *swaps = nullptr; // not "slots": a Qt macro
     const std::vector<Function> *functions = nullptr;
+    const std::vector<ScriptSlot> *script_slots = nullptr; // a script op's places (#44)
 };
 
 // The offsets the rule may pick from the ROM and code map as they are now. With
@@ -77,6 +80,12 @@ struct AimedBytes
 // only those `low_risk` marks (likewise).
 std::vector<uint32_t> aim_rule(const Rule &rule, std::span<const uint8_t> rom, std::span<const uint8_t> flags,
                                const HotMask *busy = nullptr, const HotMask *low_risk = nullptr);
+
+// Rules that pick from what the game was seen doing (pointer swaps, turning functions off,
+// script ops) don't need their range to match the ROM: a starter written for any game covers a
+// big one. Their ROM ranges that start inside the ROM and end past it are trimmed to its last
+// byte. Returns how many were.
+size_t fit_aimed_ranges(std::vector<Rule> &rules, size_t rom_size);
 
 // Runs one rule for one frame. `frame` counts from activation, starting at 1.
 // `scale` multiplies the rule's intensity (the recipe's intensity). With rule.avoid_hot,

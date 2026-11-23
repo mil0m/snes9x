@@ -57,6 +57,10 @@ RecipeActions::RecipeActions(CorruptionControl &control, QWidget *parent, std::v
         sizes.sizes = status.sizes;
         RuleEditor dialog(rule, this->control.regions(), sizes, dialogParent());
         dialog.setAllRules(status.intensity);
+        std::vector<std::pair<uint32_t, QString>> engines;
+        for (auto &[site, name] : status.script_choices)
+            engines.push_back({ site, QString::fromStdString(name) });
+        dialog.setScriptEngines(engines);
         dialog.setWindowTitle(title);
         if (dialog.exec() != QDialog::Accepted)
             return std::nullopt;

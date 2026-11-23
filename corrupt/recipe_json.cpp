@@ -166,12 +166,13 @@ void parse_op_json(Ctx &ctx, const json &o, const std::string &path, Op &op, con
         return;
     check_keys(ctx, o, path, { "type", "min", "max", "mode", "bits", "mask", "width", "a", "b", "from", "length", "value",
                                "window", "dx", "dy", "wrap", "axis", "curve", "amount", "kernel", "reach", "mutual", "pick",
-                               "put_back" });
+                               "put_back", "engine" });
 
     if (!o.contains("type") || !o["type"].is_string() || !parse_op(o["type"].get<std::string>()))
     {
         ctx.fail(path + ".type", "expected one of add, random, bitflip, swap, copy, freeze, shuffle, shift, flip, "
-                                 "levels, filter, stamp, fill, opcode_swap, branch_flip, nop_out, pointer_swap, kill");
+                                 "levels, filter, stamp, fill, opcode_swap, branch_flip, nop_out, pointer_swap, kill, script_swap, "
+                                 "script_nudge");
         return;
     }
     op.type = *parse_op(o["type"].get<std::string>());
@@ -179,7 +180,7 @@ void parse_op_json(Ctx &ctx, const json &o, const std::string &path, Op &op, con
     // Useful defaults where a missing value would make the op do nothing.
     if (op.type == OpType::Random)
         op.max = 255;
-    if (op.type == OpType::Add)
+    if (op.type == OpType::Add || op.type == OpType::ScriptNudge)
     {
         op.min = -1;
         op.max = 1;
@@ -228,6 +229,22 @@ void parse_op_json(Ctx &ctx, const json &o, const std::string &path, Op &op, con
     {
         if (auto n = get_int_in(ctx, o["put_back"], path + ".put_back", 0, 3600000))
             op.put_back = uint32_t(*n);
+    }
+    if (o.contains("engine"))
+    {
+        // A script engine's dispatch site, as a ROM offset in hex.
+        std::optional<uint32_t> site;
+        if (o["engine"].is_string())
+        {
+            std::string t = o["engine"].get<std::string>();
+            if (t.rfind("0x", 0) == 0 && t.size() > 2 && t.size() <= 10 &&
+                t.find_first_not_of("0123456789abcdefABCDEF", 2) == std::string::npos)
+                site = uint32_t(std::stoul(t.substr(2), nullptr, 16));
+        }
+        if (site)
+            op.engine = site;
+        else
+            ctx.fail(path + ".engine", "expected a script engine's ROM offset, like \"0x009A8E\"");
     }
     if (o.contains("mutual"))
     {
@@ -621,6 +638,18 @@ ojson op_json(const Op &op)
             o["pick"] = "any";
         if (op.put_back)
             o["put_back"] = op.put_back;
+        break;
+    case OpType::ScriptNudge:
+        o["min"] = op.min;
+        o["max"] = op.max;
+        [[fallthrough]];
+    case OpType::ScriptSwap:
+        if (op.engine)
+        {
+            char site[16];
+            std::snprintf(site, sizeof site, "0x%06X", *op.engine);
+            o["engine"] = site;
+        }
         break;
     }
     return o;
