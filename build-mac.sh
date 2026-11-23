@@ -46,6 +46,8 @@ build_qt() {
   cmake -S tests -B build/explore -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH="$(brew --prefix qt)" >/dev/null
   if ! out=$(cmake --build build/explore --target snes9x-explore 2>&1); then echo "$out" | grep -v '^\[' >&2; exit 1; fi
   cp build/explore/snes9x-explore build/qt/snes9x-explore
+  # Which commit this is: the launcher (tools/make-mac-launcher.sh) rebuilds when HEAD moves on.
+  git rev-parse HEAD > build/qt/built-from 2>/dev/null || true
   echo "Qt: $(pwd)/build/qt/snes9x-qt (and snes9x-explore beside it)"
 }
 

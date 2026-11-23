@@ -15,7 +15,9 @@ build/qt/snes9x-qt path/to/game.sfc
 tools/make-mac-launcher.sh   # once: "Snes9x Corruptions" in ~/Applications (Spotlight, Dock)
 ```
 
-The launcher always starts the last build, so after a `./build-mac.sh qt` it opens the new one.
+The launcher keeps itself current: when the clone has commits the build doesn't (after a
+`git pull`, or a feature just landed), it rebuilds first, says so in a notification, and then
+opens. If that build fails it says so and opens the last one that built.
 
 **Windows:** every push to `master` builds the app on GitHub (`.github/workflows/windows.yml`,
 MSYS2 clang with its Qt); the run's page has a zip (*Artifacts*) with `snes9x-qt.exe` and

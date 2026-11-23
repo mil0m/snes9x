@@ -41,6 +41,8 @@ except for a few small, null-guarded hooks in the core.
 5. Commit straight to `master` as `mil0m <9479577+mil0m@users.noreply.github.com>`, push,
    no attribution lines. `tools/install-hooks.sh` once per clone: the pre-commit privacy
    check.
+6. Then `./build-mac.sh qt` once more, so Mikael's launcher (`Snes9x Corruptions.app`) opens
+   the new feature at once instead of building it on his next launch.
 
 ## Commands
 
@@ -48,7 +50,7 @@ except for a few small, null-guarded hooks in the core.
 ./build-mac.sh test       # unit, real-core and offscreen Qt tests, plus the privacy check
 ./build-mac.sh asan       # the same under AddressSanitizer
 ./build-mac.sh qt         # the app: build/qt/snes9x-qt
-tools/make-mac-launcher.sh  # "Snes9x Corruptions.app" in ~/Applications, starts the last build
+tools/make-mac-launcher.sh  # "Snes9x Corruptions.app" in ~/Applications; rebuilds first when HEAD is newer than the build
 build/tests/corrupt-smoke <rom> <recipe.json> <frames> <warmup> [--mode ...]   # see FEATURES.md
 tests/qt/ui_tour.sh <out dir> <rom>          # screenshots of every window, offscreen
 TOUR_LIBRARY=<dir> tests/qt/ui_tour.sh ...  # the same with a copy of a real library (real data)
