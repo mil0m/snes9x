@@ -12,7 +12,10 @@ Corruption panel. Start with its first section; it takes a minute.
 ```sh
 ./build-mac.sh qt        # macOS; needs: brew install qt pkgconf libpng ninja
 build/qt/snes9x-qt path/to/game.sfc
+tools/make-mac-launcher.sh   # once: "Snes9x Corruptions" in ~/Applications (Spotlight, Dock)
 ```
+
+The launcher always starts the last build, so after a `./build-mac.sh qt` it opens the new one.
 
 **Windows:** every push to `master` builds the app on GitHub (`.github/workflows/windows.yml`,
 MSYS2 clang with its Qt); the run's page has a zip (*Artifacts*) with `snes9x-qt.exe` and
