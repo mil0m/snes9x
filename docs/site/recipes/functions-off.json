@@ -1,0 +1,2 @@
+{ "format": 1, "name": "Functions off", "notes": "Docs page clip: busy functions switched off one after another.", "seed": 7007,
+  "rules": [ { "name": "off", "target": "rom", "range": ["0x0", "0x7FFFF"], "op": { "type": "kill", "put_back": 120 }, "when": { "every_frames": 60 }, "count": 1 } ] }

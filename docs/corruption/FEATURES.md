@@ -406,6 +406,8 @@ Plan for all: `safety-plan` (one section per item, each with "How it went").
 - `tests/qt/ui_tour_matrix.sh <out> [--mac]` runs the tour in Fusion light/dark at scale 1 and 2 (and Mac light/dark); `audit.txt` lists anything a screen reader would miss.
 - `tests/remote/remote_e2e.sh <out> <rom>` runs the real app offscreen with remote control on and a headless Chromium (via `~/scripts/kh-browser.mjs` or `BROWSER_HELPER`) at phone width, light and dark.
 - `tools/privacy_check.sh [--staged]`, `tools/install-hooks.sh` as above.
+- `tools/make-mac-launcher.sh`: *Snes9x Corruptions.app* in `~/Applications`, which rebuilds when HEAD is newer than `build/qt/built-from` and then starts the app.
+- `tools/site/build.sh [--no-clips] [--no-shots]`: the docs page (#87, plan `2026-11-23-docs-site-plan.md`) into `build/site`: the page from `docs/site/`, clips per `docs/site/media.txt` (`corrupt-smoke --clip` with `docs/site/recipes/`, then ffmpeg), screenshots from the UI tour at 2x on a copy of the library. Nothing it makes is committed (game art). Hosting lives in the private homelab repo. QA 57.
 - Run GUI tests on a ROM copy with a scratch `XDG_CONFIG_HOME` (`snes9x/snes9x-qt.conf` with `Mute=true`); the `.srm` is written next to the ROM.
 - Run at most 3 `corrupt-smoke` processes at once, with `nice`.
 
@@ -429,6 +431,7 @@ Plan for all: `safety-plan` (one section per item, each with "How it went").
 - `--eyes [seeds]`: the guard, #51 and #52 in both arms; the first blind after a landing, as before #57.
 - `--learn [held=3] [from=0]`: crash-map learning, then held-out seeds plain vs avoid vs random control.
 - `--dump <dir>`: write raw `.bin` per target (needs a recipe and frames; used for viewer pictures).
+- `--clip <dir> [seeds=3]`: pictures for the docs page (#87). The pseudo-player plays `CORRUPT_CLIP_LEAD` frames (learning the code map, jump tables and functions), then the same buttons clean and per seed with the recipe; writes `frames` PNGs each, from a second before the first visible difference. Prints how far each seed goes from clean. `CORRUPT_CLIP_MENUS`, `CORRUPT_CLIP_SKIP`, `CORRUPT_CLIP_ONLY`.
 - Env: `CORRUPT_CODEMAP`, `CORRUPT_LEARN_VERBOSE`, `CORRUPT_INSTANT_VERBOSE`, `CORRUPT_KILL_VERBOSE`, `CORRUPT_WATCH_BYTE` (one ROM byte's flags, value and PC each frame, the first 400), `CORRUPT_DUMP_DIR`, `CORRUPT_SHOTS_DIR`.
 
 ## Tried and removed (read before building a new safety feature)

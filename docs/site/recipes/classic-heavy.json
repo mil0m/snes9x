@@ -1,0 +1,2 @@
+{ "format": 1, "name": "Classic heavy", "notes": "Docs page clip: the classic way, many bytes changed before the game boots.", "seed": 7005,
+  "rules": [ { "name": "sprinkle", "target": "rom", "range": ["0x0", "0x7FFFF"], "op": { "type": "random", "min": 0, "max": 255 }, "when": { "at_load": true }, "count": 400 } ] }

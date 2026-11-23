@@ -1,0 +1,2 @@
+{ "format": 1, "name": "Data drip", "notes": "Docs page clip: the game's own tables and graphics in ROM, nudged live.", "seed": 7004,
+  "rules": [ { "name": "data", "target": "rom", "range": ["0x0", "0x7FFFF"], "op": { "type": "add", "min": -16, "max": 16 }, "when": { "every_frames": 20 }, "count": 24, "role": "data" } ] }

@@ -1,0 +1,2 @@
+{ "format": 1, "name": "Tile storm", "notes": "Docs page clip: graphics memory rots fast.", "seed": 7001,
+  "rules": [ { "name": "rot", "target": "vram", "range": ["0x0000", "0xFFFF"], "op": { "type": "bitflip", "bits": 1 }, "when": { "every_frames": 6 }, "count": 48 } ] }

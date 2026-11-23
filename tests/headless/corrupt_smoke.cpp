@@ -1,7 +1,7 @@
 // End-to-end check of the corruption engine inside the real emulator, no window
 // needed:
 //
-//   corrupt-smoke <rom> <recipe.json> [frames=600] [warmup=600] [--guard | --instant [seeds] | --ahead [seeds] | --keep [seeds] | --eyes [seeds] | --derail-fp [learn] | --learn [held=3] [from=0] | --replay | --copies | --map | --access [dir] | --codemap [file] | --jumps [file] | --calls | --bodies | --kill [seeds] [count] | --change [seeds] [count] | --risk [count] [trial] [number|branch|math|skip] | --foresee [count] [trial] [kind] | --try [count] [trial] [kind] | --dump <dir>]
+//   corrupt-smoke <rom> <recipe.json> [frames=600] [warmup=600] [--guard | --instant [seeds] | --ahead [seeds] | --keep [seeds] | --eyes [seeds] | --derail-fp [learn] | --learn [held=3] [from=0] | --replay | --copies | --map | --access [dir] | --codemap [file] | --jumps [file] | --calls | --bodies | --kill [seeds] [count] | --change [seeds] [count] | --risk [count] [trial] [number|branch|math|skip] | --foresee [count] [trial] [kind] | --try [count] [trial] [kind] | --dump <dir> | --clip <dir> [seeds]]
 //
 // Boots the ROM, runs `warmup` frames, saves a state, then runs `frames` twice
 // from that state: once clean, once with the recipe. Reports what the recipe
@@ -3189,6 +3189,157 @@ int run_placebo(const Recipe &recipe, int frames, int variants, int moments)
     return 0;
 }
 
+// --clip <dir> [seeds=3]: pictures for the documentation page (docs/site, #87). Plays the game
+// with the pseudo-player for CORRUPT_CLIP_LEAD frames (default 1800; Start and Select only in
+// the first CORRUPT_CLIP_MENUS share of it, default 0.5, so a title screen is passed and the
+// game isn't paused after), learning the code map, then saves a state and plays from it with
+// the same buttons each time: once clean, then once per seed with the recipe
+// (unguarded) into <dir>/s<seed>, with the clean frames of the same window in <dir>/clean-s<seed>.
+// The window is `frames` long and starts a second before the first visible difference, but
+// not before CORRUPT_CLIP_SKIP frames (default 0); one PNG a frame. A classic ROM
+// recipe boots the corrupted ROM, so for it every run (clean too) powers on and plays the
+// lead again. lead.png is the scene's first frame. Prints how far each seed is from clean and
+// whether it still moves at the end, so a lively one can be picked. CORRUPT_CLIP_ONLY=<n> plays
+// only seed n.
+int run_clip(const Recipe &recipe, int frames, const std::string &dir, int seeds)
+{
+    namespace fs = std::filesystem;
+    auto env = [](const char *name, double fallback) { return getenv(name) ? atof(getenv(name)) : fallback; };
+    int lead = int(env("CORRUPT_CLIP_LEAD", 1800));
+    int menus = int(lead * env("CORRUPT_CLIP_MENUS", 0.5));
+    int skip = int(env("CORRUPT_CLIP_SKIP", 0));
+    bool boots = classic(recipe);
+    auto play_lead = [&] {
+        PseudoPlayer p(100);
+        for (int i = 0; i < lead; i++)
+        {
+            p.menus = i < menus;
+            access.set_pads(p.next());
+            headless::run_frames(1);
+        }
+    };
+    auto power_on = headless::save_state(); // after the warmup, before any lead
+    CodeMap map(Memory.CalculatedSize);
+    JumpLog jumps;
+    CallKeeper calls;
+    {
+        RomTracer tracer;
+        bool tracing = tracer.start(map, &jumps, &calls.mine());
+        PseudoPlayer p(100);
+        for (int i = 0; i < lead; i++)
+        {
+            p.menus = i < menus;
+            access.set_pads(p.next());
+            headless::run_frames(1);
+            calls.end_frame();
+        }
+        if (tracing)
+            tracer.stop();
+    }
+    // What the code-aimed, pointer-swap and function rules aim at, as in the app.
+    std::vector<uint8_t> aim_flags = map.flags();
+    for (auto &f : aim_flags)
+        f &= codeflag::All;
+    std::span<const uint8_t> clean_rom(rom.clean().data(), rom.clean().size());
+    auto tables = find_jump_tables(jumps, clean_rom, map.flags(), SnesCoreAccess::rom_offsets()).tables;
+    auto functions = calls.functions();
+    auto bodies = function_bodies(clean_rom, map.flags(), functions, SnesCoreAccess::rom_addresses());
+    std::vector<InPlay> busy;
+    for (auto &f : busiest(functions, Engine::kBusiestFunctions))
+        busy.push_back({ f.entry, false });
+    auto busy_mask = guard_mask(busy, bodies, nullptr);
+    engine.set_code_flags([&] { return std::span<const uint8_t>(aim_flags); });
+    engine.set_jump_tables([&] { return tables; });
+    engine.set_functions([&] { return functions; });
+    engine.set_busy_code([&] { return busy_mask; });
+    auto start = headless::save_state();
+    fs::create_directories(dir);
+    {
+        Picture first;
+        access.picture(first, false);
+        headless::write_png(dir + "/lead.png", first);
+    }
+    // Each run plays skip + 2 x frames and keeps every picture; what's written is the `frames`
+    // window starting a second before the first visible difference from clean (never before
+    // `skip`), so a clip shows the game going wrong rather than seconds of nothing yet.
+    const int total = skip + 2 * frames;
+    std::vector<Pads> pads;
+    {
+        PseudoPlayer p(4242);
+        p.menus = false;
+        for (int i = 0; i < total; i++)
+            pads.push_back(p.next());
+    }
+    auto play = [&](std::vector<Picture> &got) {
+        if (boots)
+            play_lead();
+        for (int i = 0; i < total; i++)
+        {
+            access.set_pads(pads[size_t(i)]);
+            headless::run_frames(1);
+            Picture pic;
+            access.picture(pic, false);
+            got.push_back(std::move(pic));
+        }
+    };
+    auto write = [&](const std::string &sub, const std::vector<Picture> &got, int from) {
+        fs::create_directories(dir + "/" + sub);
+        for (int i = 0; i < frames; i++)
+        {
+            char name[32];
+            snprintf(name, sizeof name, "/%04d.png", i);
+            headless::write_png(dir + "/" + sub + name, got[size_t(from + i)]);
+        }
+    };
+    std::vector<Picture> clean;
+    if (boots)
+    {
+        headless::load_state(power_on);
+        access.reset_console();
+    }
+    play(clean);
+    printf("clip     %d frames from %d of pseudo-play%s; %zu code bytes, %zu jump tables, %zu functions known\n",
+           frames, lead, boots ? ", played again after the power cycle" : "", map.coverage().code, tables.size(),
+           functions.size());
+    int only = int(env("CORRUPT_CLIP_ONLY", 0)); // just that seed (the site's build)
+    for (int seed = only ? only : 1; seed <= (only ? only : seeds); seed++)
+    {
+        headless::load_state(boots ? power_on : start);
+        rom.restore_clean();
+        Recipe r = recipe;
+        r.seed = recipe.seed + uint64_t(seed) - 1;
+        engine.set_recipe(r);
+        start_run();
+        S9xCorruptFrameHook = &frame_hook;
+        std::vector<Picture> got;
+        play(got);
+        S9xCorruptFrameHook = nullptr;
+        int first = -1;
+        for (int i = 0; i < total && first < 0; i++)
+            if (differing_share(clean[size_t(i)], got[size_t(i)]) > 0.02)
+                first = i;
+        int from = std::clamp(first < 0 ? skip : first - 60, skip, total - frames);
+        write("s" + std::to_string(seed), got, from);
+        write("clean-s" + std::to_string(seed), clean, from);
+        double apart = 0;
+        for (int i = from; i < from + frames; i++)
+            apart += differing_share(clean[size_t(i)], got[size_t(i)]);
+        int moving = 0; // frames in the window's last 2 s that differ from the one before
+        for (int i = std::max(from + 1, from + frames - 120); i < from + frames; i++)
+            moving += picture_hash(got[size_t(i)]) != picture_hash(got[size_t(i - 1)]);
+        printf("seed %-3d %4.0f%% of the picture apart from clean on average; %3d of the last 120 frames move; %llu firings; "
+               "first visible at %.1f s, clip from %.1f s\n",
+               seed, 100 * apart / double(frames), moving, (unsigned long long)engine.status().firings,
+               first < 0 ? -1.0 : first / 60.0, from / 60.0);
+    }
+    rom.restore_clean();
+    engine.set_code_flags({});
+    engine.set_jump_tables({});
+    engine.set_functions({});
+    engine.set_busy_code({});
+    return 0;
+}
+
 } // namespace
 
 int main(int argc, char **argv)
@@ -3278,6 +3429,8 @@ int main(int argc, char **argv)
         return run_nmi(frames);
     if (argc > 5 && std::string(argv[5]) == "--eyes")
         return run_eyes(*parsed.recipe, frames, argc > 6 ? atoi(argv[6]) : 5);
+    if (argc > 6 && std::string(argv[5]) == "--clip")
+        return run_clip(*parsed.recipe, frames, argv[6], argc > 7 ? atoi(argv[7]) : 3);
     if (argc > 5 && std::string(argv[5]) == "--explore")
         return run_explore(*parsed.recipe, frames, argc > 6 ? atoi(argv[6]) : 300, argc > 7 ? atoi(argv[7]) : 2);
     if (argc > 5 && std::string(argv[5]) == "--placebo")

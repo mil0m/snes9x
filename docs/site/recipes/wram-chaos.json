@@ -1,0 +1,2 @@
+{ "format": 1, "name": "WRAM chaos", "notes": "Docs page clip: the game's variables get random values.", "seed": 7002,
+  "rules": [ { "name": "chaos", "target": "wram", "range": ["0x0200", "0x1FFFF"], "op": { "type": "random", "min": 0, "max": 255 }, "when": { "every_frames": 10 }, "count": 6 } ] }

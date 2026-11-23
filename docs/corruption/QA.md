@@ -902,3 +902,17 @@ Removed on 2026-11-01: it didn't pay off (see FEATURES.md, *Tried and removed*).
 14. Real moments (#85): keep 3-5 moments of real play with F8 (20 s+ in an action scene: Pocky, Zelda, Goof Troop out of the pause menu), then run `tools/explore_moments.sh "<library>" <rom> 30` overnight.
    - [ ] It explores each moment of that ROM (three at a time) and skips moments of other games.
    - [ ] Each shows up on the Explored page; rate the candidates after playing them, then run `build/tests/explore-ratings "<library>"`.
+
+## 57. The docs page (#87)
+
+1. Open the docs page's address (in the homelab runbook) in a private window.
+   - [ ] The Cloudflare login comes first; after the PIN the page shows. Erik's email gets in too.
+2. The hero.
+   - [ ] The clip plays by itself, muted; drag the slider: clean on the left, corrupted on the right, the same frames.
+3. The cards.
+   - [ ] Each clip plays when it scrolls into view and stops when it leaves; **Hold to see it clean** shows the clean run while pressed (mouse, touch, and Space with the keyboard) and goes back on release.
+   - [ ] The screenshots are sharp and about the size the window really is.
+   - [ ] In Safari on the Mac and on the iPhone the videos play (they need byte ranges).
+4. Light and dark (switch the system's), and phone width: nothing scrolls sideways, text is readable.
+5. Rebuild after a change: `services/snes9x-docs/deploy.sh` in the homelab repo.
+   - [ ] The footer names the new commit; a clip whose ROM is missing shows *isn't built yet*, the rest still do.

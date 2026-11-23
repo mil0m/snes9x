@@ -1,0 +1,2 @@
+{ "format": 1, "name": "Pointer mix-up", "notes": "Docs page clip: jump-table entries swapped, so the game runs the wrong routines.", "seed": 7006,
+  "rules": [ { "name": "pointers", "target": "rom", "range": ["0x0", "0x7FFFF"], "op": { "type": "pointer_swap" }, "when": { "every_frames": 60 }, "count": 2 } ] }

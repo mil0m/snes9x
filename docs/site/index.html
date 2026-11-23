@@ -1,0 +1,243 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Snes9x Corruptions</title>
+<meta name="description" content="A Snes9x fork that corrupts the game you're playing, and keeps it playable.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700;12..96,800&family=JetBrains+Mono:wght@500&family=Source+Sans+3:wght@400;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="site.css">
+</head>
+<body>
+<div class="wrap">
+
+<header class="hero">
+  <div class="hero-text">
+    <p class="kicker">A Snes9x fork by Mikael and Erik</p>
+    <h1>Snes9x Corruptions</h1>
+    <p class="lede">Change a game's memory, or the game itself, while it runs. Glitches you'd never see
+      otherwise, and a crash guard that steps back a second when one goes too far, so you keep playing.</p>
+    <p class="hero-how">Open a game, pick a starter recipe, press <kbd>F7</kbd>.</p>
+    <ul class="legend" aria-label="What the colours on the cards mean">
+      <li><span class="dot ram" aria-hidden="true"></span>Memory while you play</li>
+      <li><span class="dot rom" aria-hidden="true"></span>The game's own code and data</li>
+      <li><span class="dot safe" aria-hidden="true"></span>Staying playable</li>
+      <li><span class="dot keep" aria-hidden="true"></span>Keeping and finding the good ones</li>
+    </ul>
+  </div>
+  <figure class="compare" data-compare>
+    <div class="screen">
+      <video class="clean" src="media/hero-clean.mp4" poster="media/hero.jpg" muted loop playsinline preload="metadata" aria-hidden="true"></video>
+      <video class="dirty" src="media/hero.mp4" poster="media/hero.jpg" muted loop playsinline preload="metadata" aria-label="The same scene played twice with the same buttons: clean on the left of the divider, corrupted on the right"></video>
+      <div class="divider" aria-hidden="true"></div>
+      <span class="tag tag-left" aria-hidden="true">clean</span>
+      <span class="tag tag-right" aria-hidden="true">corrupted</span>
+    </div>
+    <label class="slider"><span class="sr">Move the divider between the clean and the corrupted game</span>
+      <input type="range" min="0" max="100" value="50"></label>
+    <figcaption data-caption="hero">Same scene, same buttons, played twice: drag to compare.</figcaption>
+  </figure>
+</header>
+
+<main>
+<h2 class="section-title">What it does</h2>
+<p class="section-lede">Every clip below was played by the real emulator, headless, from this repo's
+  current code: the same few seconds clean and corrupted, the same buttons pressed. Hold a clip to see it clean.</p>
+
+<article class="feature ram">
+  <div class="media">
+    <figure class="clip" data-clip="recipes"></figure>
+  </div>
+  <div class="copy">
+    <p class="kind">Memory while you play</p>
+    <h3>Recipes of rules</h3>
+    <p>A recipe is a list of rules: what to change, how, and when. <em>Every 2 seconds, put a random value in 1 byte
+      of work RAM.</em> Pick a starter, press Corrupt, and the game starts going wrong. Re-roll the dice for
+      different glitches from the same recipe; the same seed from the same moment plays out the same way again.</p>
+    <p class="how"><kbd>F7</kbd> starts and stops. <b>Strength</b> per rule and <b>Strength, all rules</b> tone it up or down while you play.</p>
+  </div>
+</article>
+
+<article class="feature ram flip">
+  <div class="media">
+    <figure class="clip" data-clip="wram"></figure>
+  </div>
+  <div class="copy">
+    <p class="kind">Memory while you play</p>
+    <h3>Seven memories to aim at</h3>
+    <p>Work RAM holds what the game keeps track of: positions, health, timers, enemies. Graphics memory holds
+      the tiles, the palette the colours, the sprite table where everything stands, the sound chip its music.
+      Each corrupts differently, and the guide says how: graphics garble until the next screen, sprites and
+      colours often bounce back because the game repaints them from its own copy.</p>
+    <p class="how">The rule editor's <b>Where</b>: wram, vram, cgram, oam, aram, sram or rom.</p>
+  </div>
+</article>
+
+<article class="feature ram">
+  <div class="media">
+    <figure class="shot" data-shot="memory"></figure>
+  </div>
+  <div class="copy">
+    <p class="kind">Memory while you play</p>
+    <h3>See inside, paint like a picture</h3>
+    <p>The memory viewer shows any memory as numbers, as one dot per byte, or as the game's own tiles. Colour it
+      by what the game reads and writes, what the code map knows, or where crashes came from. Then the old
+      Photoshop way, built in: draw a rectangle and shift, flip or filter it, or paint bytes straight in.
+      Painting the ROM is a draft until you press Apply, with ten seconds' watch for a crash after.</p>
+    <p class="how">Workshop, <b>Memory</b> page. Export a selection as a PNG, edit it anywhere, import it back.</p>
+  </div>
+</article>
+
+<article class="feature rom flip">
+  <div class="media">
+    <figure class="clip" data-clip="classic"></figure>
+  </div>
+  <div class="copy">
+    <p class="kind">The game's own code and data</p>
+    <h3>The classic ROM corruption</h3>
+    <p>Change bytes of the game itself before it boots, and the console restarts into a game that never
+      existed. Each seed is a different broken cartridge. Or drip changes in live while you play. The header and
+      the bytes that say where the game starts are never touched, and every run starts from the clean ROM.</p>
+    <p class="how">Starters <b>Classic ROM sprinkle</b> and <b>Live ROM drip</b>. <b>Export ROM…</b> saves the corrupted game as a .sfc for any emulator.</p>
+  </div>
+</article>
+
+<article class="feature rom">
+  <div class="media">
+    <figure class="clip" data-clip="code"></figure>
+  </div>
+  <div class="copy">
+    <p class="kind">The game's own code and data</p>
+    <h3>Aim at code, not just bytes</h3>
+    <p>While you play, a tracer notes what the game does with every ROM byte: runs it, reads it as data, or copies
+      it to the screen. Rules can then aim at what a byte is. Swap an instruction for another of the same size (add
+      into subtract), flip every <em>if</em> the other way, or make an instruction do nothing at all.</p>
+    <p class="how">Rule editor, <b>Aim</b>. Starters <b>Opcode swap</b>, <b>Branch flips</b>, <b>Code drip</b>.</p>
+  </div>
+</article>
+
+<article class="feature rom flip">
+  <div class="media">
+    <figure class="clip" data-clip="pointers"></figure>
+  </div>
+  <div class="copy">
+    <p class="kind">The game's own code and data</p>
+    <h3>Pointer swaps</h3>
+    <p>Games pick what to do next from jump tables: one routine per enemy type, menu screen or cut-scene step.
+      The app finds those tables as you play and swaps entries, so every jump still lands on a real routine,
+      just the wrong one. An enemy runs another enemy's behaviour; a menu opens the wrong screen.</p>
+    <p class="how">Starters <b>Pointer swap</b> (classic) and <b>Pointer roulette</b> (one more on each press of button 1).</p>
+  </div>
+</article>
+
+<article class="feature rom">
+  <div class="media">
+    <figure class="shot" data-shot="change"></figure>
+  </div>
+  <div class="copy">
+    <p class="kind">The game's own code and data</p>
+    <h3>Turn functions off, or change how they work</h3>
+    <p>The Functions page lists the game's functions, busiest first. Tick one off and the game skips it: try
+      the busy ones and watch what stops, then name it <em>gravity</em> for everyone in the library. <b>Change It…</b>
+      shows its code line by line, in plain words on hover, with what each line can become, how risky that
+      kind of change has been in tests, and <b>Try 5 s Ahead</b> to play it unseen first.</p>
+    <p class="how">Workshop, <b>Functions</b>. Put a switch or a change on a button, or on a timer.</p>
+  </div>
+</article>
+
+<article class="feature safe flip">
+  <div class="media">
+    <figure class="shot" data-shot="safety"></figure>
+  </div>
+  <div class="copy">
+    <p class="kind">Staying playable</p>
+    <h3>A crash guard that steps back</h3>
+    <p>The app keeps a save point every second. When the game stops, freezes, goes black or reboots, it goes back
+      to before the change that did it, changes that instead, and plays on: you lose a second or two. A bad
+      jump from changed code is caught the moment it happens, and live ROM changes are tried a few seconds
+      ahead, unseen, before they reach the game. Each game learns which bytes crash it, and rules can avoid them.</p>
+    <p class="how">Workshop, <b>Safety</b>. Each switch says what it watches for, what it costs, and what it did so far.</p>
+  </div>
+</article>
+
+<article class="feature keep">
+  <div class="media">
+    <figure class="shot" data-shot="moments"></figure>
+  </div>
+  <div class="copy">
+    <p class="kind">Keeping and finding the good ones</p>
+    <h3>Keep the moment</h3>
+    <p>Something wonderful just happened? <kbd>F8</kbd> keeps the last 10–20 seconds: the game from a little
+      before, every button you pressed and every byte corruption wrote. It's checked on the spot and plays
+      back exactly, on your machine or a friend's, about 100 KB a moment. Press any button during playback
+      to take over from there.</p>
+    <p class="how">Workshop, <b>Moments</b>. <b>Save</b> keeps a recipe with its dice and start, to play the same run again.</p>
+  </div>
+</article>
+
+<article class="feature keep flip">
+  <div class="media">
+    <figure class="shot" data-shot="explored"></figure>
+  </div>
+  <div class="copy">
+    <p class="kind">Keeping and finding the good ones</p>
+    <h3>An explorer that plays while you sleep</h3>
+    <p>Pick a kept moment and the explorer replays it thousands of times in the background, a different
+      corruption each time and your own button presses. First it learns what normal play does on its own, so
+      another path through the level isn't a find. What it keeps either looks different beyond anything normal
+      play did, or makes the game's code act in ways normal play never does.</p>
+    <p class="how">Moments page, <b>Explore</b>: ten minutes, an hour, or overnight. Rate finds with <b>Good Find</b> or <b>Not a Find</b>.</p>
+  </div>
+</article>
+
+<article class="feature keep">
+  <div class="media">
+    <figure class="shot" data-shot="sharing"></figure>
+  </div>
+  <div class="copy">
+    <p class="kind">Keeping and finding the good ones</p>
+    <h3>Two players, one library</h3>
+    <p>Recipes, named functions, code maps, crash maps, moments and explorations live in a shared library folder.
+      Sync it, and what each of you learns about a game adds up: names show who gave them. A friend can also run
+      the corruption from a browser, Twitch-style, while you stream the game.</p>
+    <p class="how">Workshop, <b>Sharing</b>: the library, who's here, and remote control.</p>
+  </div>
+</article>
+
+<section class="gallery" aria-labelledby="gallery-title">
+  <h2 id="gallery-title" class="section-title">More from the same scenes</h2>
+  <p class="section-lede">Other recipes on the same four games. Hover or focus one to play it.</p>
+  <div class="grid">
+    <figure class="mini" data-mini="g1"></figure>
+    <figure class="mini" data-mini="g2"></figure>
+    <figure class="mini" data-mini="g3"></figure>
+    <figure class="mini" data-mini="g4"></figure>
+    <figure class="mini" data-mini="g5"></figure>
+    <figure class="mini" data-mini="g6"></figure>
+  </div>
+</section>
+
+<section class="next" aria-labelledby="next-title">
+  <h2 id="next-title" class="section-title">Coming up</h2>
+  <p class="section-lede">Ideas on the roadmap, not built yet.</p>
+  <ul>
+    <li class="rom"><h3>State jump</h3><p>Set one of the game's state bytes to another value it has held: battle music in the field, the ending mid-game.</p></li>
+    <li class="rom"><h3>Random tables</h3><p>Flatten or skew the game's random numbers: every hit a critical, the same encounter every time.</p></li>
+    <li class="rom"><h3>Hardware operands</h3><p>Change only what the game tells the graphics chip: background mode, mosaic, colour maths, mode 7.</p></li>
+    <li class="rom"><h3>Record ops</h3><p>Swap two enemies' stats, shuffle one column of a table across every record.</p></li>
+    <li class="rom"><h3>Script engines</h3><p>Find the game's own little scripting language and corrupt events, battle AI and text in its own words.</p></li>
+    <li class="keep"><h3>Chat plays</h3><p>Chat commands and votes become buttons, recipes and the chaos level.</p></li>
+  </ul>
+</section>
+</main>
+
+<footer>
+  <p>Built from <span class="mono">{{built}}</span>. The full manual is
+    <a href="https://github.com/mil0m/snes9x/blob/master/docs/corruption/GUIDE.md">GUIDE.md</a>, also in the app under the <b>?</b> button.</p>
+</footer>
+</div>
+<script src="site.js"></script>
+</body>
+</html>

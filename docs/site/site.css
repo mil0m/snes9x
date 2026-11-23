@@ -1,0 +1,195 @@
+/* The roadmap pages' type, with the console's own colours: its grey and purple, and the four
+   face buttons marking what kind of feature a card is. */
+:root {
+  --bg: #e6e5ea;
+  --surface: #f7f7f9;
+  --ink: #1d1b29;
+  --muted: #5a5770;
+  --line: #cfcdd8;
+  --accent: #4b3f8f;
+  --screen: #0d0c12;
+  --ram: #2c5bb0;  --ram-soft: #dfe7f6;
+  --rom: #c22f3b;  --rom-soft: #f7e0e2;
+  --safe: #2b7f49; --safe-soft: #dff0e5;
+  --keep: #a87708; --keep-soft: #f6ecd2;
+  --shadow: 0 1px 2px rgb(29 27 41 / 8%), 0 10px 30px rgb(29 27 41 / 10%);
+  --font-display: 'Bricolage Grotesque', 'Segoe UI', system-ui, sans-serif;
+  --font-body: 'Source Sans 3', 'Segoe UI', system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, monospace;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #15141c; --surface: #1f1d29; --ink: #e9e7f2; --muted: #a29eb8; --line: #34314a;
+    --accent: #b0a4ea; --screen: #000;
+    --ram: #7ea6f0; --ram-soft: #1b2640; --rom: #f08690; --rom-soft: #3b1d22;
+    --safe: #74c592; --safe-soft: #17301f; --keep: #e6b84f; --keep-soft: #352a10;
+    --shadow: 0 1px 2px rgb(0 0 0 / 35%), 0 10px 30px rgb(0 0 0 / 35%);
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #15141c; --surface: #1f1d29; --ink: #e9e7f2; --muted: #a29eb8; --line: #34314a;
+  --accent: #b0a4ea; --screen: #000;
+  --ram: #7ea6f0; --ram-soft: #1b2640; --rom: #f08690; --rom-soft: #3b1d22;
+  --safe: #74c592; --safe-soft: #17301f; --keep: #e6b84f; --keep-soft: #352a10;
+  --shadow: 0 1px 2px rgb(0 0 0 / 35%), 0 10px 30px rgb(0 0 0 / 35%);
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--font-body);
+  font-size: 17px;
+  line-height: 1.55;
+}
+.wrap {
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: max(40px, env(safe-area-inset-top, 0px)) max(16px, env(safe-area-inset-right, 0px))
+    max(64px, env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-left, 0px));
+}
+h1, h2, h3 { font-family: var(--font-display); text-wrap: balance; margin: 0; }
+p { margin: 0; }
+a { color: var(--accent); }
+b { font-weight: 600; }
+kbd {
+  font-family: var(--font-mono); font-size: 0.8em; font-weight: 500;
+  padding: 1px 7px; border-radius: 6px;
+  background: var(--surface); border: 1px solid var(--line); border-bottom-width: 3px;
+}
+.mono { font-family: var(--font-mono); font-size: 0.9em; }
+.sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+:focus-visible { outline: 3px solid var(--accent); outline-offset: 3px; }
+
+/* The hero: the words, and the same scene clean and corrupted under one divider. */
+.hero {
+  display: grid;
+  grid-template-columns: minmax(0, 5fr) minmax(0, 7fr);
+  gap: clamp(24px, 4vw, 56px);
+  align-items: center;
+  margin-bottom: clamp(56px, 8vw, 96px);
+}
+.kicker { color: var(--muted); font-weight: 600; margin-bottom: 10px; }
+h1 {
+  font-size: clamp(44px, 7vw, 88px);
+  font-weight: 800;
+  line-height: 0.95;
+  letter-spacing: -0.03em;
+  margin-bottom: 22px;
+}
+.lede { font-size: clamp(18px, 1.6vw, 21px); max-width: 34em; margin-bottom: 14px; }
+.hero-how { color: var(--muted); margin-bottom: 26px; }
+.legend { list-style: none; padding: 0; margin: 0; display: grid; gap: 6px; font-size: 15px; color: var(--muted); }
+.legend li { display: flex; align-items: center; gap: 10px; }
+.dot { width: 14px; height: 14px; border-radius: 50%; flex: none; }
+.dot.ram { background: var(--ram); } .dot.rom { background: var(--rom); }
+.dot.safe { background: var(--safe); } .dot.keep { background: var(--keep); }
+
+.screen {
+  position: relative;
+  aspect-ratio: 8 / 7;
+  background: var(--screen);
+  border-radius: 14px;
+  overflow: hidden;
+  box-shadow: var(--shadow);
+}
+.screen video, .screen img {
+  position: absolute; inset: 0; width: 100%; height: 100%;
+  object-fit: contain; image-rendering: pixelated; display: block;
+}
+.compare { margin: 0; }
+.compare .dirty { clip-path: inset(0 0 0 var(--split, 50%)); }
+.compare .divider {
+  position: absolute; top: 0; bottom: 0; left: var(--split, 50%); width: 3px; margin-left: -1.5px;
+  background: #fff; box-shadow: 0 0 0 1px rgb(0 0 0 / 35%); pointer-events: none;
+}
+.tag {
+  position: absolute; top: 12px; font-size: 13px; font-weight: 600; color: #fff;
+  background: rgb(0 0 0 / 55%); padding: 2px 10px; border-radius: 999px; pointer-events: none;
+}
+.tag-left { left: 12px; } .tag-right { right: 12px; }
+.slider { display: block; margin-top: 14px; }
+.slider input { width: 100%; accent-color: var(--accent); }
+figcaption { font-size: 14px; color: var(--muted); margin-top: 8px; }
+
+/* Feature cards: big picture, few words. The kind colours the rail and the label. */
+.section-title { font-size: clamp(28px, 3.4vw, 40px); font-weight: 700; letter-spacing: -0.015em; margin-bottom: 10px; }
+.section-lede { color: var(--muted); max-width: 46em; margin-bottom: 36px; }
+.feature {
+  --kind: var(--ram); --kind-soft: var(--ram-soft);
+  display: grid;
+  grid-template-columns: minmax(0, 7fr) minmax(0, 5fr);
+  gap: clamp(20px, 3.5vw, 48px);
+  align-items: center;
+  background: var(--surface);
+  border-radius: 20px;
+  border-left: 8px solid var(--kind);
+  padding: clamp(16px, 2.5vw, 32px);
+  margin-bottom: clamp(20px, 3vw, 32px);
+  box-shadow: var(--shadow);
+}
+.feature.rom { --kind: var(--rom); --kind-soft: var(--rom-soft); }
+.feature.safe { --kind: var(--safe); --kind-soft: var(--safe-soft); }
+.feature.keep { --kind: var(--keep); --kind-soft: var(--keep-soft); }
+.feature.flip .media { order: 2; }
+.feature .copy { max-width: 36em; }
+.kind {
+  display: inline-block; font-size: 14px; font-weight: 600; color: var(--kind);
+  background: var(--kind-soft); padding: 2px 12px; border-radius: 999px; margin-bottom: 12px;
+}
+.feature h3 { font-size: clamp(26px, 2.8vw, 36px); font-weight: 700; line-height: 1.1; letter-spacing: -0.015em; margin-bottom: 14px; }
+.feature .copy p + p { margin-top: 12px; }
+.feature .how { color: var(--muted); font-size: 15px; border-top: 1px solid var(--line); padding-top: 12px; margin-top: 16px; }
+.media figure { margin: 0; }
+
+.hold {
+  position: absolute; left: 12px; bottom: 12px;
+  font: 600 14px var(--font-body); color: #fff;
+  background: rgb(0 0 0 / 60%); border: 1px solid rgb(255 255 255 / 35%);
+  padding: 6px 14px; border-radius: 999px; cursor: pointer;
+  user-select: none; -webkit-user-select: none; touch-action: none;
+}
+.hold[aria-pressed="true"] { background: #fff; color: #000; }
+.screen .clean-layer { opacity: 0; }
+.screen.showing-clean .clean-layer { opacity: 1; }
+
+.window {
+  width: fit-content; max-width: 100%; margin: 0 auto;
+  border-radius: 12px; overflow: hidden; background: var(--bg);
+  border: 1px solid var(--line); box-shadow: var(--shadow);
+}
+.window img { display: block; width: 100%; height: auto; }
+.missing {
+  display: grid; place-items: center; aspect-ratio: 8 / 7; border-radius: 14px;
+  border: 2px dashed var(--line); color: var(--muted); font-size: 15px; padding: 24px; text-align: center;
+}
+
+/* The gallery: small screens that play when you point at them. */
+.gallery { margin-top: clamp(56px, 8vw, 96px); }
+.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 20px; }
+.mini { margin: 0; }
+.mini .screen { border-radius: 10px; cursor: pointer; }
+.mini figcaption { color: var(--ink); font-size: 15px; }
+.mini figcaption span { color: var(--muted); display: block; font-size: 14px; }
+
+/* What's next: plain list, the kind as a dot. */
+.next { margin-top: clamp(56px, 8vw, 96px); }
+.next ul { list-style: none; padding: 0; margin: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 16px 28px; }
+.next li { padding-left: 24px; position: relative; }
+.next li::before { content: ""; position: absolute; left: 0; top: 0.5em; width: 12px; height: 12px; border-radius: 50%; background: var(--ram); }
+.next li.rom::before { background: var(--rom); } .next li.keep::before { background: var(--keep); }
+.next h3 { font-size: 19px; margin-bottom: 4px; }
+.next p { color: var(--muted); font-size: 16px; }
+
+footer { margin-top: 72px; padding-top: 20px; border-top: 1px solid var(--line); color: var(--muted); font-size: 15px; }
+
+@media (max-width: 860px) {
+  .hero, .feature { grid-template-columns: minmax(0, 1fr); }
+  .feature.flip .media { order: 0; }
+  .feature { border-left-width: 0; border-top: 8px solid var(--kind); }
+}

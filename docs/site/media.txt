@@ -1,0 +1,30 @@
+# The pictures the docs page uses; tools/site/build.sh makes them into build/site/media.
+#
+# clip <name> <rom file> <lead frames> <recipe in docs/site/recipes> <seed> <caption>
+#   The ROM's file name has _ for spaces. The scene: the pseudo-player plays <lead> frames, then
+#   the same buttons are played clean and with the recipe at that seed; the 8 s kept start a
+#   second before the first visible difference (and at least 2 s in). Seeds were picked with
+#   corrupt-smoke --clip (it prints how far each seed goes from clean).
+# shot <name> <UI tour picture> <crop WxH+X+Y, or -> <caption>   (the tour's pictures are at 2x)
+# tour-rom <rom file>: the game the UI tour runs.
+
+clip hero    Pocky_&_Rocky_(USA).sfc      5000 code-rain     3 Code rain on Pocky & Rocky
+clip recipes Goof_Troop_(USA).sfc         1800 tile-storm    1 Tile storm, Goof Troop: graphics memory rots a bit every tenth of a second
+clip wram    Final_Fantasy_6_T-Edition.sfc 5000 wram-chaos   4 WRAM chaos, Final Fantasy VI: random values in the game's variables
+clip classic Goof_Troop_(USA).sfc         1800 classic-heavy 1 Classic heavy, Goof Troop: 400 ROM bytes changed, then the console boots it
+clip code    Final_Fantasy_6_T-Edition.sfc 5000 code-rain    4 Code rain, Final Fantasy VI: two instructions swapped every half second
+clip pointers Pocky_&_Rocky_(USA).sfc     5000 pointer-mixup 3 Pointer mix-up, Pocky & Rocky: two jump-table entries swapped every second
+clip g1      Pocky_&_Rocky_(USA).sfc      5000 tile-storm    1 Tile storm, Pocky & Rocky
+clip g2      Goof_Troop_(USA).sfc         1800 data-drip     3 Data drip, Goof Troop: the game's tables in ROM nudged live
+clip g3      Goof_Troop_(USA).sfc         1800 code-rain     2 Code rain, Goof Troop
+clip g4      FE4ProjectNaga.sfc           3000 code-rain     1 Code rain, Fire Emblem 4
+clip g5      FE4ProjectNaga.sfc           3000 tile-storm    1 Tile storm, Fire Emblem 4
+clip g6      Final_Fantasy_6_T-Edition.sfc 5000 tile-storm   4 Tile storm, Final Fantasy VI
+
+tour-rom Pocky_&_Rocky_(USA).sfc
+shot memory   11-workshop-memory-vram-tiles.png 1600x1060+0+0 The Memory page showing graphics memory as the game's own tiles
+shot change   14a-function-editor-tried.png     - Change It on the game's busiest function, after Try 5 s Ahead
+shot safety   16-workshop-safety.png            1600x1180+0+0 The Safety page: each switch says what it watches for and what it costs
+shot moments  17b-cockpit-moment-playing.png    - The panel playing a kept moment: press any button to take over
+shot explored 17d-workshop-explored.png         1380x900+440+290 The Explored page: candidates best first, six pictures across each run
+shot sharing  17-workshop-sharing.png           1400x560+0+0 The Sharing page: the library, who's here, and remote control

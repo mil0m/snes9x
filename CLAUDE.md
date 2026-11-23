@@ -37,7 +37,9 @@ except for a few small, null-guarded hooks in the core.
    baseline. Report what the numbers say, including when a feature doesn't help.
 3. `./build-mac.sh test` and `./build-mac.sh asan` must pass. If the app changed:
    `./build-mac.sh qt` and the UI tour (`tests/qt/ui_tour.sh <out> <rom>`); read the PNGs.
-4. Update FEATURES.md, GUIDE.md and QA.md, and the plan's *How it went*.
+4. Update FEATURES.md, GUIDE.md and QA.md, and the plan's *How it went*. A core feature people
+   would show off gets a card on the docs page (`docs/site/index.html`, its picture in
+   `docs/site/media.txt`); redeploy with the homelab repo's `services/snes9x-docs/deploy.sh`.
 5. Commit straight to `master` as `mil0m <9479577+mil0m@users.noreply.github.com>`, push,
    no attribution lines. `tools/install-hooks.sh` once per clone: the pre-commit privacy
    check.
@@ -51,6 +53,7 @@ except for a few small, null-guarded hooks in the core.
 ./build-mac.sh asan       # the same under AddressSanitizer
 ./build-mac.sh qt         # the app: build/qt/snes9x-qt
 tools/make-mac-launcher.sh  # "Snes9x Corruptions.app" in ~/Applications; rebuilds first when HEAD is newer than the build
+tools/site/build.sh          # the docs page into build/site: clips from the real core, UI tour shots (#87)
 build/tests/corrupt-smoke <rom> <recipe.json> <frames> <warmup> [--mode ...]   # see FEATURES.md
 tests/qt/ui_tour.sh <out dir> <rom>          # screenshots of every window, offscreen
 TOUR_LIBRARY=<dir> tests/qt/ui_tour.sh ...  # the same with a copy of a real library (real data)

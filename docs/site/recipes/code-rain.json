@@ -1,0 +1,2 @@
+{ "format": 1, "name": "Code rain", "notes": "Docs page clip: live changes to the code the game runs.", "seed": 7003,
+  "rules": [ { "name": "code", "target": "rom", "range": ["0x0", "0x7FFFF"], "op": { "type": "opcode_swap" }, "when": { "every_frames": 30 }, "count": 2, "except": ["stack", "width"] } ] }
