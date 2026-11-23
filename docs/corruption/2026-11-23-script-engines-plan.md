@@ -171,3 +171,19 @@ coincidences with a dispatch or two each; only those with 20+ go in the file.
 Pseudo-play never reached a battle in FF6 (bank `$CF`'s AI scripts aren't in these runs), and
 reaches little new script after the first minutes: FF6's event engine went from 226 places at
 12,000 frames to 240 at 36,000. Real play will teach far more.
+
+### Step 3: in the app (#43)
+
+The session's tracer feeds the script log while you play (clean ROM, paused with jumps and
+calls), keeps it like the jump log (`scripts.<user>.json`, saved once a minute when it learned
+new places, with the clean ROM's CRC; Who's Here lists it), and finds engines every five
+seconds. The ROM page says *2 script engines found: 63 commands, 28 with a known length*; the
+Memory page's *Scripts* colours mark usable commands strong, their arguments lighter and
+other commands in between, and hovering says which command, its length, how often it ran
+there and whose engine; the dossier has a *Script engines* section with every command's
+handler, length and runs. `corrupt-smoke --scripts` writes the library file with
+`CORRUPT_SCRIPTS_OUT`, which is how the UI tour shows FF6's engines (`15a`).
+
+The first file was 129 KB after 12,000 frames: most of it echo rules (other strides and
+biases fitting part of a real engine's dispatches). It now keeps per site the 32 busiest rules
+with at least 20 dispatches and 4 places: 50 KB.

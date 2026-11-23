@@ -3195,6 +3195,7 @@ int run_placebo(const Recipe &recipe, int frames, int variants, int moments)
 // the ROM data reads just before it; then prints the engines found: the jump, which read held
 // the command and the bias (X = 2 x command + bias), how many dispatches the rule explains,
 // the commands, how many script bytes and where, and each command's length where it shows.
+// CORRUPT_SCRIPTS_OUT=<file> also writes the log in the library's format (scripts.<user>.json).
 int run_scripts(int frames)
 {
     CodeMap map(Memory.CalculatedSize);
@@ -3272,6 +3273,11 @@ int run_scripts(int frames)
             if (shown++ < 64)
                 printf(" %02X:%s%s", v, c.length ? std::to_string(c.length).c_str() : "?", c.branchy ? "b" : "");
         printf("\n");
+    }
+    if (const char *out = getenv("CORRUPT_SCRIPTS_OUT"))
+    {
+        std::ofstream(out, std::ios::binary) << encode_script_log(log, Memory.CalculatedSize, Memory.ROMCRC32);
+        printf("file     %s\n", out);
     }
     size_t candidates = 0;
     for (auto &[site, s] : log.all())

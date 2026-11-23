@@ -2,6 +2,7 @@
 #include "function_guard.h"
 #include "code_map.h"
 #include "jump_tables.h"
+#include "script_engines.h"
 #include "crash_map.h"
 #include "engine.h"
 #include "memory.h"
@@ -44,6 +45,9 @@ struct MemorySnapshot
     // ROM only: the jump tables found so far (everyone's), and a jumpmark per byte.
     std::vector<JumpTable> jump_tables;
     std::vector<uint8_t> jumps;
+    // ROM only: the script engines found so far (#43), and a scriptmark per byte.
+    std::vector<ScriptEngine> script_engines;
+    std::vector<uint8_t> scripts;
     // ROM only: what the game runs and reads right now, 255 this frame fading to 0 (RomHeat).
     std::vector<uint8_t> live;
     // ROM only: the functions' bodies (#58), a funcmark per byte, and the functions for hover.

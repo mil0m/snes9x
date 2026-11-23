@@ -19,6 +19,7 @@
 #include "corrupt/rule_text.h"
 
 #include <QApplication>
+#include <QLineEdit>
 #include <QCheckBox>
 #include <QComboBox>
 #include <QDialog>
@@ -457,6 +458,18 @@ void CorruptionDock::tour(const QString &dir)
     });
     steps->push_back([=, this] {
         shot(workshop, "15-workshop-memory-functions");
+        // The game's scripts (#43), where the busiest engine's commands start, when one is known.
+        choose(workshop->memoryPage(), "mode", "hex"); // a script's bytes are few: numbers show them
+        choose(workshop->memoryPage(), "overlay", "scripts");
+        if (auto first = CorruptionSession::get().firstScriptPlace())
+            if (auto go = workshop->memoryPage()->findChild<QLineEdit *>("goto"))
+            {
+                go->setText(QString("0x%1").arg(*first, 6, 16, QChar('0')));
+                emit go->returnPressed();
+            }
+    });
+    steps->push_back([=, this] {
+        shot(workshop, "15a-workshop-memory-scripts");
         openWorkshop(WorkshopPage::Safety);
     });
     steps->push_back([=, this] {

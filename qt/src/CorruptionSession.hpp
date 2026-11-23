@@ -44,6 +44,9 @@ class CorruptionSession
 
     using Status = PanelStatus;
 
+    // The first place of the busiest script engine found (#43), for the UI tour; none if none.
+    std::optional<uint32_t> firstScriptPlace();
+
     // Called by Snes9xController around ROM loading (emulation thread suspended).
     void gameLoaded();
     void gameClosing();
@@ -226,6 +229,9 @@ class CorruptionSession
     void loadCodeMap(); // emulation thread or suspended: the tracer's buffer is replaced
     void saveCodeMap();
     void saveJumpLog();
+    void saveScriptLog();
+    void findScriptEngines();
+    uint32_t romCrc() const;
     void saveCallLog();
     void findJumpTables(const corrupt::CodeMap &all); // when the log or the map grew since last time
     void findBodies(const corrupt::CodeMap &all);     // the same for function bodies (#58)
@@ -286,6 +292,7 @@ class CorruptionSession
     corrupt::CodeCoverage code_coverage;
     corrupt::RomHeat rom_heat;              // the viewer's Live overlay, while it shows the ROM
     corrupt::JumpLogKeeper jump_log;        // the tracer notes indirect jumps into it, kept like the code map
+    corrupt::ScriptLogKeeper script_log;    // ...and the ROM reads before them, for script engines (#43)
     corrupt::CallKeeper call_log;           // ...and calls (#26): the functions kill switches turn off
     corrupt::FunctionBodies bodies;         // each function's code (#58), from everyone's map, every few seconds
     uint64_t bodies_print = ~uint64_t(0);
@@ -305,6 +312,9 @@ class CorruptionSession
     std::vector<corrupt::JumpTable> jump_tables; // found from everyone's log and map, every few seconds
     std::vector<uint8_t> jump_shown;        // the viewer's marks for them
     uint64_t jumps_found_print = ~uint64_t(0);
+    std::vector<corrupt::ScriptEngine> script_engines; // found from everyone's script log, every few seconds
+    std::vector<uint8_t> script_shown;                 // the viewer's marks for them
+    uint64_t scripts_found_print = ~uint64_t(0);
     std::filesystem::path code_map_root;    // the library the map came from (and is saved to)
     bool code_map_reload = false;           // the library changed: reload between frames
     bool back_to_normal = false;            // asked for; done between frames

@@ -567,6 +567,42 @@ std::string make_dossier(const DossierInput &in)
         line("");
     }
 
+    // Script engines (#43).
+    line("## Script engines");
+    line("");
+    if (in.scripts.empty())
+        line("None found yet.");
+    for (auto &e : in.scripts)
+    {
+        auto o = owner.find(e.site);
+        auto site = in.where.cpu_address(e.site);
+        auto first = in.where.cpu_address(e.first), last = in.where.cpu_address(e.last);
+        line("### Dispatched from " + (site ? cpu(*site) : "?") +
+             (o != owner.end() ? " in " + label(o->second) : std::string()));
+        line("");
+        std::string rule = e.through_pointer
+                               ? "the handler's address is copied from a table at ROM offset 0x" + hex(e.bias, 6) +
+                                     " (entry = " + std::to_string(e.stride) + " x command) to RAM, then jumped through"
+                               : "X = " + std::to_string(e.stride) + " x command + $" + hex(e.bias, 4);
+        line(thousands(e.dispatches) + " dispatches; " + rule + ". Commands read from " +
+             thousands(e.places.size()) + " places, " + (first ? cpu(*first) : "?") + " to " + (last ? cpu(*last) : "?") +
+             ".");
+        line("");
+        for (auto &[v, c] : e.commands)
+        {
+            char cmd[8];
+            std::snprintf(cmd, sizeof cmd, "$%02X", v);
+            auto handler = in.offsets.offset(c.handler);
+            std::string what = std::string("- ") + cmd + ": " + (handler ? label(*handler) : cpu(c.handler)) + ", " +
+                               (c.length ? std::to_string(c.length) + (c.length == 1 ? " byte" : " bytes")
+                                         : std::string("length not known")) +
+                               (c.branchy ? ", goes elsewhere (a branch, call or jump)" : "") + ", ran " +
+                               thousands(c.runs) + (c.runs == 1 ? " time" : " times");
+            line(what);
+        }
+        line("");
+    }
+
     // The RAM index.
     line("## RAM index");
     line("");

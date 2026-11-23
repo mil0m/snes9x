@@ -244,6 +244,8 @@ void CorruptionSession::betweenFrames()
             saveCodeMap(); // to the library it came from
         if (jump_log.unsaved())
             saveJumpLog();
+        if (script_log.unsaved())
+            saveScriptLog();
         if (call_log.unsaved())
             saveCallLog();
         loadCodeMap();
@@ -254,6 +256,9 @@ void CorruptionSession::betweenFrames()
     jump_log.tick();
     if (jump_log.save_due())
         saveJumpLog();
+    script_log.tick();
+    if (script_log.save_due())
+        saveScriptLog();
     call_log.end_frame(); // the frame's calls count towards each function's frames (#26)
     if (call_log.save_due())
         saveCallLog();
@@ -276,6 +281,7 @@ void CorruptionSession::betweenFrames()
         code_coverage = all.coverage();
         findJumpTables(all);
         findBodies(all);
+        findScriptEngines();
         guard_dirty = true; // rollbacks may have undone flips; cheap enough every 5 s
     }
     if (guard_dirty)
@@ -502,6 +508,13 @@ void CorruptionSession::loadCodeMap()
     for (auto &e : jumps.errors)
         note("Jump log skipped: " + e);
     jump_log.reset(std::move(jumps));
+    ScriptLogs scripts;
+    if (!library_root.empty())
+        scripts = Library(library_root).load_script_logs(game, user_name(), size, romCrc());
+    for (auto &e : scripts.errors)
+        note("Script log skipped: " + e);
+    script_log.reset(std::move(scripts));
+    scripts_found_print = ~uint64_t(0);
     CallLogs calls;
     if (!library_root.empty())
         calls = Library(library_root).load_call_logs(game, user_name(), size);
@@ -515,6 +528,7 @@ void CorruptionSession::loadCodeMap()
     findJumpTables(all);
     bodies_print = ~uint64_t(0);
     findBodies(all);
+    findScriptEngines();
     loadNames();
     if (!library_root.empty())
         others_seen = Library(library_root).others_stamp(game, user_name());
@@ -522,6 +536,7 @@ void CorruptionSession::loadCodeMap()
         note("The code map isn't recording (no ROM?)");
     else
     {
+        tracer.note_scripts(&script_log.mine(), rom.clean());
         rom_blame.attach(code_map.mine().data(), code_map.mine().size());
         if (watching_derails)
             tracer.watch_derails(&derails); // a new tracer: watch again
@@ -549,6 +564,41 @@ void CorruptionSession::saveJumpLog()
         note("Couldn't save the jump log: " + err);
     else
         jump_log.saved();
+}
+
+std::optional<uint32_t> CorruptionSession::firstScriptPlace()
+{
+    std::lock_guard lock(mutex);
+    if (script_engines.empty() || script_engines.front().places.empty())
+        return std::nullopt;
+    return script_engines.front().first;
+}
+
+uint32_t CorruptionSession::romCrc() const
+{
+    return game.crc32.empty() ? 0 : uint32_t(std::stoul(game.crc32, nullptr, 16));
+}
+
+void CorruptionSession::saveScriptLog()
+{
+    if (code_map_root.empty())
+        return;
+    if (auto err = Library(code_map_root)
+                       .save_script_log(game, user_name(), script_log.mine(), memory.size(Target::ROM), romCrc());
+        !err.empty())
+        note("Couldn't save the script log: " + err);
+    else
+        script_log.saved();
+}
+
+void CorruptionSession::findScriptEngines()
+{
+    uint64_t print = script_log.fingerprint();
+    if (print == scripts_found_print)
+        return;
+    scripts_found_print = print;
+    script_engines = find_script_engines(script_log.combined());
+    script_shown = script_marks(script_engines, memory.size(Target::ROM));
 }
 
 void CorruptionSession::saveCallLog()
@@ -608,6 +658,8 @@ void CorruptionSession::gameClosing()
         saveCodeMap();
     if (jump_log.unsaved())
         saveJumpLog();
+    if (script_log.unsaved())
+        saveScriptLog();
     if (call_log.unsaved())
         saveCallLog();
     rom_blame.attach(nullptr, 0);
@@ -740,6 +792,8 @@ MemorySnapshot CorruptionSession::memorySnapshot()
         snap.rom_where = rom_where;
         snap.jump_tables = jump_tables;
         snap.jumps = jump_shown;
+        snap.script_engines = script_engines;
+        snap.scripts = script_shown;
         snap.live = rom_heat.levels();
         snap.functions = function_shown;
         snap.function_list = function_list;
@@ -1320,6 +1374,14 @@ CorruptionSession::Status CorruptionSession::status()
     s.jump_tables = jump_tables.size();
     for (auto &t : jump_tables)
         s.jump_swappable += t.swappable();
+    s.script_engines = script_engines.size();
+    for (auto &e : script_engines)
+    {
+        s.script_commands += e.commands.size();
+        for (auto &[v, c] : e.commands)
+            s.script_usable += c.usable();
+        s.script_places += e.usable_places().size();
+    }
     s.message = message;
     s.message_detail = message_detail;
     s.rom_name = rom_name;

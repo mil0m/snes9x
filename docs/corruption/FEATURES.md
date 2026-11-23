@@ -311,6 +311,26 @@ Plan: `rom-corruption-plan` (six phases, each with "Phase N in detail"). QA 20-2
 - Tests: `tests/corrupt/timed_switch_test.cpp`; `guard_integration_test.cpp` ("a switch on a timer").
 - Docs: `function-changes-plan`; GUIDE; QA 36.
 
+### Script engines (#43)
+
+The tracer finds the game's bytecode interpreters while you play: at every indirect jump, is
+the index a ROM byte just read (times 1-4, plus a table base)? Plan
+`2026-11-23-script-engines-plan.md`; QA 58.
+
+- Core: `S9xRomReads`/`S9xRomReadCount` in `getset.h`/`cpuexec.cpp`, the last 16 ROM data
+  reads, written inside `S9xMarkRom` only while the code map records.
+- `corrupt/script_engines.{h,cpp}`: `ScriptLog` (candidate rules per site, places and their
+  steps, merge, file `scripts.<user>.json` with the clean ROM's CRC), `find_script_engines`
+  (rules: 90% of an indexed site, 60% read forwards, places per command, 5 commands through
+  RAM), lengths per place, branchy commands, `usable_places`, `script_marks`/`script_at`
+  for the viewer, `ScriptLogKeeper`.
+- `RomTracer::note_scripts(log, clean)` in `core_access.cpp`; paused by `note_jumps(false)`.
+- App: `CorruptionSession` (load, feed, save, `findScriptEngines`), the ROM page's line, the
+  Memory page's *Scripts* overlay with hover, the dossier's *Script engines*.
+- Tests: `tests/corrupt/script_engines_test.cpp` (a fake interpreter), the real-core
+  `build_script` ROM with two interpreters in `guard_integration_test.cpp`; smoke
+  `--scripts` (FF6 2 engines, FE4 5, Goof and Pocky 0).
+
 ## Phase 7: safety (#50-#52, #57; #55 and #56 tried and removed)
 
 Plan for all: `safety-plan` (one section per item, each with "How it went").

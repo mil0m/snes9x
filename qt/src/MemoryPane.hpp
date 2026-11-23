@@ -29,6 +29,7 @@ class MemoryPane
         Jumps,   // jump table entries (seen strong, likely lighter) and the instructions that jump through them
         Live,    // what the game runs and reads in the ROM right now, fading
         Functions, // the functions' code (#58): guarded stronger, an entry that's off strongest
+        Scripts,   // the script engines' commands (#43): usable strong, arguments lighter
         None,
     };
 
@@ -47,6 +48,7 @@ class MemoryPane
                : overlay == Overlay::Jumps   ? QColor(95, 110, 255)
                : overlay == Overlay::Live    ? QColor(255, 225, 60)
                : overlay == Overlay::Functions ? QColor(60, 190, 120)
+               : overlay == Overlay::Scripts ? QColor(185, 125, 55)
                                             : QColor(235, 110, 40);
     }
 
@@ -138,6 +140,13 @@ class MemoryPane
                    : m == corrupt::funcmark::Guarded ? 0.8f
                    : m == corrupt::funcmark::Body    ? 0.35f
                                                      : 0.0f;
+        }
+        case Overlay::Scripts: {
+            uint8_t m = offset < snap.scripts.size() ? snap.scripts[offset] : 0;
+            return m == corrupt::scriptmark::Usable    ? 1.0f
+                   : m == corrupt::scriptmark::Command ? 0.6f
+                   : m                                 ? 0.3f
+                                                       : 0.0f;
         }
         case Overlay::None:
             return 0.0f;

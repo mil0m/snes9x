@@ -202,6 +202,45 @@ std::string Library::save_code_map(const GameId &game, const std::string &user, 
     return write_file_atomic(code_map_path(game, user), encode_code_map(map));
 }
 
+fs::path Library::script_log_path(const GameId &game, const std::string &user) const
+{
+    return game_dir(game) / ("scripts." + recipe_file_stem(user) + ".json");
+}
+
+ScriptLogs Library::load_script_logs(const GameId &game, const std::string &user, size_t rom_size,
+                                     uint32_t rom_crc) const
+{
+    ScriptLogs out;
+    std::error_code ec;
+    auto mine = script_log_path(game, user).filename().string();
+    for (auto &entry : fs::directory_iterator(game_dir(game), ec))
+    {
+        auto name = entry.path().filename().string();
+        if (name.rfind("scripts.", 0) != 0 || entry.path().extension() != ".json" || is_sync_leftover(name))
+            continue;
+        auto text = read_file(entry.path());
+        std::string error;
+        auto log = text ? decode_script_log(*text, rom_size, rom_crc, error) : std::nullopt;
+        if (!text)
+            error = "couldn't read it";
+        if (!log)
+        {
+            out.errors.push_back(name + ": " + error);
+            continue;
+        }
+        (name == mine ? out.mine : out.others).merge(*log);
+    }
+    return out;
+}
+
+std::string Library::save_script_log(const GameId &game, const std::string &user, const ScriptLog &log,
+                                     size_t rom_size, uint32_t rom_crc) const
+{
+    if (auto err = ensure_game_dir(game); !err.empty())
+        return err;
+    return write_file_atomic(script_log_path(game, user), encode_script_log(log, rom_size, rom_crc));
+}
+
 fs::path Library::jump_log_path(const GameId &game, const std::string &user) const
 {
     return game_dir(game) / ("jumps." + recipe_file_stem(user) + ".json");
@@ -371,7 +410,7 @@ std::string Library::others_stamp(const GameId &game, const std::string &user) c
 {
     std::string me = "." + recipe_file_stem(user) + ".";
     return stamp_of(game_dir(game), [&](const std::string &name) {
-        for (auto prefix : { "crashmap.", "codemap.", "jumps.", "calls.", "names." })
+        for (auto prefix : { "crashmap.", "codemap.", "jumps.", "calls.", "scripts.", "names." })
             if (name.rfind(prefix, 0) == 0)
                 return name.find(me) != std::string(prefix).size() - 1;
         return false;
@@ -396,7 +435,7 @@ std::vector<Library::Player> Library::players(const GameId &game) const
         auto name = file.path().filename().string();
         if (is_sync_leftover(name))
             continue;
-        for (auto prefix : { "crashmap.", "codemap.", "jumps.", "calls.", "names.", "journal." })
+        for (auto prefix : { "crashmap.", "codemap.", "jumps.", "calls.", "scripts.", "names.", "journal." })
         {
             std::string pre = prefix;
             auto last_dot = name.rfind('.');

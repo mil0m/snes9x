@@ -1,5 +1,9 @@
 #include "doctest/doctest.h"
 #include "corrupt/script_engines.h"
+#include "corrupt/library.h"
+
+#include <chrono>
+#include <filesystem>
 
 #include <random>
 #include <set>
@@ -398,4 +402,90 @@ TEST_CASE("the script engine file round-trips and refuses another game")
     CHECK(error == "recorded for another ROM size");
     CHECK_FALSE(decode_script_log("{\"format\": \"snes9x-jumps\"}", size, 0xDEADBEEF, error));
     CHECK_FALSE(decode_script_log("not json", size, 0xDEADBEEF, error));
+}
+
+TEST_CASE("the script log keeper saves once a minute when it learned new places")
+{
+    Interpreter in;
+    in.lengths = { { 0x10, 1 }, { 0x11, 2 } };
+    in.script(0x10000, { 0x10, 0x11, 0x10, 0x11 });
+    ScriptLogKeeper keeper;
+    keeper.reset();
+    CHECK_FALSE(keeper.unsaved());
+    in.run(keeper.mine(), 0x1234, 0x10000, 4);
+    CHECK(keeper.unsaved());
+    CHECK_FALSE(keeper.save_due());
+    for (uint64_t i = 0; i < ScriptLogKeeper::kSaveEveryFrames; i++)
+        keeper.tick();
+    CHECK(keeper.save_due());
+    keeper.saved();
+    in.run(keeper.mine(), 0x1234, 0x10000, 4); // the same places again
+    CHECK_FALSE(keeper.unsaved());
+}
+
+TEST_CASE("the library keeps one script file per person and loads them all")
+{
+    auto stamp = std::chrono::steady_clock::now().time_since_epoch().count();
+    auto dir = std::filesystem::temp_directory_path() / ("corrupt-scripts-test-" + std::to_string(stamp));
+    std::filesystem::create_directories(dir);
+    {
+        Library lib(dir);
+        GameId game{ "TEST", "abcdef0123456789" };
+        Interpreter in;
+        in.lengths = { { 0x10, 1 }, { 0x11, 2 }, { 0x12, 3 } };
+        std::vector<uint8_t> cmds;
+        for (int i = 0; i < 30; i++)
+            cmds.push_back(uint8_t(0x10 + i % 3));
+        in.script(0x10000, cmds);
+        ScriptLog mine, erik;
+        for (int i = 0; i < 2; i++)
+        {
+            in.run(mine, 0x1234, 0x10000, 30);
+            in.run(erik, 0x1234, 0x10000, 30);
+        }
+        const size_t size = in.rom.size();
+        CHECK(lib.save_script_log(game, "mikael", mine, size, 0xCAFE).empty());
+        CHECK(lib.save_script_log(game, "erik", erik, size, 0xCAFE).empty());
+        CHECK(lib.script_log_path(game, "mikael").filename() == "scripts.mikael.json");
+        CHECK(lib.save_script_log(game, "old", erik, size, 0xBEEF).empty()); // another version
+        auto logs = lib.load_script_logs(game, "mikael", size, 0xCAFE);
+        CHECK(logs.errors.size() == 1);
+        ScriptLogKeeper keeper;
+        keeper.reset(std::move(logs));
+        auto es = find_script_engines(keeper.combined());
+        REQUIRE(es.size() == 1);
+        CHECK(es[0].dispatches == 120);
+        bool listed = false;
+        for (auto &p : lib.players(game))
+            listed |= p.who == "erik";
+        CHECK(listed);
+    }
+    std::filesystem::remove_all(dir);
+}
+
+TEST_CASE("the viewer marks usable commands, their arguments and other commands, and says which is which")
+{
+    ScriptEngine e;
+    e.commands[0x35] = { 0x35, 0xC09000, 9, 2, 9, 0, false };
+    e.commands[0xB0] = { 0xB0, 0xC09100, 9, 0, 0, 9, true };
+    e.places = { { 0x100, 0x35, 3, true }, { 0x102, 0xB0, 3, false }, { 0x110, 0x35, 1, false } };
+    auto marks = script_marks({ e }, 0x200);
+    REQUIRE(marks.size() == 0x200);
+    CHECK(marks[0x100] == scriptmark::Usable);
+    CHECK(marks[0x101] == scriptmark::Argument);
+    CHECK(marks[0x102] == scriptmark::Command); // branchy
+    CHECK(marks[0x103] == 0);
+    CHECK(marks[0x110] == scriptmark::Command); // not steady here
+    CHECK(marks[0x111] == 0);
+
+    std::vector<ScriptEngine> es{ e };
+    auto at = script_at(es, 0x101);
+    REQUIRE(at.place);
+    CHECK(at.place->offset == 0x100);
+    CHECK(at.argument);
+    at = script_at(es, 0x102);
+    REQUIRE(at.place);
+    CHECK_FALSE(at.argument);
+    CHECK(script_at(es, 0x111).place == nullptr);
+    CHECK(script_at(es, 0x50).place == nullptr);
 }

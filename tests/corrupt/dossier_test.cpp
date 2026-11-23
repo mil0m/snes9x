@@ -197,6 +197,23 @@ TEST_SUITE("dossier")
         has("### Table at $00:8100, dispatched from $00:8004 in $00:8000");
         has("- 0: $00:8300, jumped through 7 times");
         has("- 1: $00:8400, likely (not seen used)");
+        has("## Script engines\n\nNone found yet.");
+        // With an engine: where it dispatches, its rule and its commands.
+        ScriptEngine e;
+        e.site = 0x0004;
+        e.stride = 2;
+        e.dispatches = 50;
+        e.places = { { 0x0100, 0x35, 10, true }, { 0x0102, 0x91, 40, false } };
+        e.first = 0x0100;
+        e.last = 0x0102;
+        e.commands[0x35] = { 0x35, 0x008300, 10, 2, 9, 0, false };
+        e.commands[0x91] = { 0x91, 0x008400, 40, 0, 0, 30, true };
+        g.in.scripts = { e };
+        text = make_dossier(g.in);
+        has("### Dispatched from $00:8004 in $00:8000");
+        has("50 dispatches; X = 2 x command + $0000. Commands read from 2 places, $00:8100 to $00:8102.");
+        has("- $35: $00:8300, 2 bytes, ran 10 times");
+        has("- $91: $00:8400, length not known, goes elsewhere (a branch, call or jump), ran 40 times");
         // The RAM index: $10 read by two, written by one.
         has("- $7E:0010: read by 2 ($00:8000, $00:8400); written by 1 ($00:8300)");
     }

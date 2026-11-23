@@ -149,12 +149,62 @@ struct ScriptRules
 // The engines in a log, busiest first.
 std::vector<ScriptEngine> find_script_engines(const ScriptLog &log, const ScriptRules &rules = {});
 
+// The viewer's Scripts overlay: one mark per ROM byte.
+namespace scriptmark
+{
+constexpr uint8_t Argument = 1; // after a usable command, within its length
+constexpr uint8_t Command = 2;  // a command byte seen run, whose length isn't trusted
+constexpr uint8_t Usable = 3;   // a command byte a script change may touch
+} // namespace scriptmark
+std::vector<uint8_t> script_marks(const std::vector<ScriptEngine> &engines, size_t rom_size);
+
+// What the viewer says about one ROM byte: the place whose command or argument it is.
+struct ScriptAt
+{
+    const ScriptEngine *engine = nullptr;
+    const ScriptEnginePlace *place = nullptr;
+    bool argument = false; // the byte is one of the place's arguments, not its command
+};
+ScriptAt script_at(const std::vector<ScriptEngine> &engines, uint32_t offset);
+
+// What the library holds for a game: this person's log and everyone else's, merged.
+struct ScriptLogs
+{
+    ScriptLog mine;
+    ScriptLog others;
+    std::vector<std::string> errors; // files that couldn't be read or are for another ROM
+};
+
+// The session's script log, kept like the jump log: the tracer notes into mine, saved once a
+// minute when it learned new places, everyone's combined for finding engines.
+class ScriptLogKeeper
+{
+  public:
+    static constexpr uint64_t kSaveEveryFrames = 3600;
+    void reset(ScriptLogs loaded = {});
+    void tick() { frames++; }
+    ScriptLog &mine() { return own; }
+    const ScriptLog &mine() const { return own; }
+    ScriptLog combined() const;
+    uint64_t fingerprint() const { return own.fingerprint() + others.fingerprint(); }
+    bool save_due(); // once a minute, when mine has new places; starts the minute over
+    bool unsaved() const { return own.fingerprint() != saved_print; }
+    void saved() { saved_print = own.fingerprint(); }
+
+  private:
+    ScriptLog own, others;
+    uint64_t saved_print = 0;
+    uint64_t frames = 0;
+};
+
 // The file: JSON, {"format": "snes9x-scripts", "version": 1, "rom_size": N, "rom_crc": "8 hex",
 // "sites": [{"site": "0x009A8E", "through_pointer": true, "dispatches": N, "rules": [{"stride":
 // 2, "bias": "0x978F", "dispatches": N, "commands": [["35", "0xC09B12", runs]...], "places":
-// [["0x0A1234", "35", runs, wild, [[step, count]...]]...]}]}]}. Only candidates with at least
-// `keep` dispatches are written. A file for another ROM (size or CRC) is refused.
-std::string encode_script_log(const ScriptLog &log, size_t rom_size, uint32_t rom_crc, uint32_t keep = 20);
+// [["0x0A1234", "35", runs, wild, [[step, count]...]]...]}]}]}. Only the busiest `per_site`
+// candidates of a site with at least `keep` dispatches and `min_places` places are written: the
+// rest are coincidences or echoes of an engine. A file for another ROM (size or CRC) is refused.
+std::string encode_script_log(const ScriptLog &log, size_t rom_size, uint32_t rom_crc, uint32_t keep = 20,
+                              size_t min_places = 4, size_t per_site = 32);
 std::optional<ScriptLog> decode_script_log(std::string_view file, size_t rom_size, uint32_t rom_crc, std::string &error);
 
 } // namespace corrupt

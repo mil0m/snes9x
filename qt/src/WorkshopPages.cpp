@@ -555,6 +555,11 @@ void RomPage::refresh(const PanelStatus &status)
             learned << tr("%1, %2 with entries to swap.")
                            .arg(plural(status.jump_tables, tr("1 jump table found"), tr("%1 jump tables found")))
                            .arg(QLocale().toString(qulonglong(status.jump_swappable)));
+        if (status.script_engines)
+            learned << tr("%1: %2, %3 with a known length.")
+                           .arg(plural(status.script_engines, tr("1 script engine found"), tr("%1 script engines found")))
+                           .arg(plural(status.script_commands, tr("1 command"), tr("%1 commands")))
+                           .arg(QLocale().toString(qulonglong(status.script_usable)));
     }
     learned_label->setText(learned.join(" "));
     learned_label->setVisible(!learned.isEmpty());

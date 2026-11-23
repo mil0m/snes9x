@@ -14,6 +14,7 @@
 #include "corrupt/dossier.h"
 #include "corrupt/function_names.h"
 #include "corrupt/jump_tables.h"
+#include "corrupt/script_engines.h"
 
 #include "snes9x.h"
 #include "memmap.h"
@@ -85,6 +86,7 @@ int main(int argc, char **argv)
     CodeMap map(size);
     CallLog calls;
     JumpLog jumps;
+    ScriptLog scripts;
     for (auto &entry : fs::directory_iterator(argv[2]))
     {
         auto name = entry.path().filename().string();
@@ -116,6 +118,16 @@ int main(int argc, char **argv)
             else
                 fprintf(stderr, "skipped %s: %s\n", name.c_str(), error.c_str());
         }
+        else if (!(w = who(name, "scripts.", ".json")).empty())
+        {
+            if (auto s = decode_script_log(read_file(entry.path()), size, Memory.ROMCRC32, error))
+            {
+                scripts.merge(*s);
+                in.sources.push_back(name);
+            }
+            else
+                fprintf(stderr, "skipped %s: %s\n", name.c_str(), error.c_str());
+        }
         else if (!(w = who(name, "names.", ".json")).empty())
         {
             if (auto n = decode_names(read_file(entry.path()), error))
@@ -136,6 +148,7 @@ int main(int argc, char **argv)
     in.functions = keeper.functions();
     in.calls = calls;
     in.tables = find_jump_tables(jumps, rom, map.flags(), in.offsets).tables;
+    in.scripts = find_script_engines(scripts);
 
     auto text = make_dossier(in);
     double seconds = std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count();

@@ -313,7 +313,69 @@ std::vector<ScriptEngine> find_script_engines(const ScriptLog &log, const Script
     return out;
 }
 
-std::string encode_script_log(const ScriptLog &log, size_t rom_size, uint32_t rom_crc, uint32_t keep)
+std::vector<uint8_t> script_marks(const std::vector<ScriptEngine> &engines, size_t rom_size)
+{
+    std::vector<uint8_t> marks(rom_size, 0);
+    for (auto &e : engines)
+        for (auto &p : e.places)
+        {
+            if (p.offset >= rom_size)
+                continue;
+            auto c = e.commands.find(p.value);
+            bool usable = p.steady && c != e.commands.end() && c->second.usable();
+            marks[p.offset] = std::max(marks[p.offset], usable ? scriptmark::Usable : scriptmark::Command);
+            if (usable)
+                for (int i = 1; i < c->second.length && p.offset + uint32_t(i) < rom_size; i++)
+                    marks[p.offset + uint32_t(i)] = std::max(marks[p.offset + uint32_t(i)], scriptmark::Argument);
+        }
+    return marks;
+}
+
+ScriptAt script_at(const std::vector<ScriptEngine> &engines, uint32_t offset)
+{
+    ScriptAt out;
+    for (auto &e : engines)
+    {
+        // The last place at or before the byte.
+        auto it = std::upper_bound(e.places.begin(), e.places.end(), offset,
+                                   [](uint32_t o, const ScriptEnginePlace &p) { return o < p.offset; });
+        if (it == e.places.begin())
+            continue;
+        --it;
+        if (it->offset == offset)
+            return { &e, &*it, false };
+        auto c = e.commands.find(it->value);
+        if (it->steady && c != e.commands.end() && c->second.usable() && offset < it->offset + uint32_t(c->second.length))
+            out = { &e, &*it, true };
+    }
+    return out;
+}
+
+void ScriptLogKeeper::reset(ScriptLogs loaded)
+{
+    own = std::move(loaded.mine);
+    others = std::move(loaded.others);
+    saved_print = own.fingerprint();
+    frames = 0;
+}
+
+ScriptLog ScriptLogKeeper::combined() const
+{
+    ScriptLog all = own;
+    all.merge(others);
+    return all;
+}
+
+bool ScriptLogKeeper::save_due()
+{
+    if (frames < kSaveEveryFrames)
+        return false;
+    frames = 0;
+    return unsaved();
+}
+
+std::string encode_script_log(const ScriptLog &log, size_t rom_size, uint32_t rom_crc, uint32_t keep,
+                              size_t min_places, size_t per_site)
 {
     char crc[16];
     std::snprintf(crc, sizeof crc, "%08X", rom_crc);
@@ -322,11 +384,21 @@ std::string encode_script_log(const ScriptLog &log, size_t rom_size, uint32_t ro
     bool first_site = true;
     for (auto &[site, s] : log.all())
     {
-        json rules = json::array();
+        std::vector<std::pair<ScriptRuleKey, const ScriptCandidateStats *>> chosen;
         for (auto &[key, c] : s.candidates)
+            if (c.dispatches >= keep && c.places.size() >= min_places)
+                chosen.push_back({ key, &c });
+        std::sort(chosen.begin(), chosen.end(), [](auto &a, auto &b) {
+            return a.second->dispatches != b.second->dispatches ? a.second->dispatches > b.second->dispatches
+                                                                 : a.first < b.first;
+        });
+        if (chosen.size() > per_site)
+            chosen.resize(per_site);
+        std::sort(chosen.begin(), chosen.end(), [](auto &a, auto &b) { return a.first < b.first; });
+        json rules = json::array();
+        for (auto &[key, cp] : chosen)
         {
-            if (c.dispatches < keep)
-                continue;
+            auto &c = *cp;
             json commands = json::array();
             for (auto &[v, n] : c.runs)
             {

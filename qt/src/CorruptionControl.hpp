@@ -78,6 +78,10 @@ struct PanelStatus
     corrupt::CodeCoverage code; // the code map (everyone's), updated every few seconds
     size_t jump_tables = 0;     // jump tables found (everyone's), updated with it
     size_t jump_swappable = 0;  // ...of which have another entry to swap with
+    size_t script_engines = 0;  // script engines found (everyone's, #43)
+    size_t script_commands = 0; // ...their commands
+    size_t script_usable = 0;   // ...of which have a known length and don't branch
+    size_t script_places = 0;   // places a script change may touch
 
     // Kept moments (#47).
     double keep_seconds = 0;  // how far back Keep reaches now

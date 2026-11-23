@@ -3,6 +3,7 @@
 #include "calls.h"
 #include "function_names.h"
 #include "jump_tables.h"
+#include "script_engines.h"
 #include "moment.h"
 #include "crash_map.h"
 #include "exploration.h"
@@ -89,6 +90,12 @@ class Library
     std::filesystem::path code_map_path(const GameId &game, const std::string &user) const;
     CodeMaps load_code_maps(const GameId &game, const std::string &user, size_t rom_size) const;
     std::string save_code_map(const GameId &game, const std::string &user, const CodeMap &map) const; // error or empty
+    // Script logs (script_engines.h, #43): scripts.<user>.json, one per person, for the clean ROM
+    // with this size and CRC.
+    std::filesystem::path script_log_path(const GameId &game, const std::string &user) const;
+    ScriptLogs load_script_logs(const GameId &game, const std::string &user, size_t rom_size, uint32_t rom_crc) const;
+    std::string save_script_log(const GameId &game, const std::string &user, const ScriptLog &log, size_t rom_size,
+                                uint32_t rom_crc) const;
     // Jump logs (jump_tables.h): jumps.<user>.json beside the code maps, one per person.
     std::filesystem::path jump_log_path(const GameId &game, const std::string &user) const;
     JumpLogs load_jump_logs(const GameId &game, const std::string &user, size_t rom_size) const;

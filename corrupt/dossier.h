@@ -3,6 +3,7 @@
 #include "code_map.h"
 #include "function_names.h"
 #include "jump_tables.h"
+#include "script_engines.h"
 
 #include <cstdint>
 #include <optional>
@@ -26,6 +27,7 @@ struct DossierInput
     std::vector<Function> functions;   // everyone's (CallKeeper::functions)
     CallLog calls;                     // everyone's, for who calls whom
     std::vector<JumpTable> tables;     // find_jump_tables on everyone's jump logs
+    std::vector<ScriptEngine> scripts; // find_script_engines on everyone's script logs (#43)
     FunctionNames names;               // people's names (and a model's, marked by who)
     std::vector<std::string> sources;  // the files that went in, for the header
     size_t max_functions = 120;        // the busiest this many, plus every named one

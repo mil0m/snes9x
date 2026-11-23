@@ -132,6 +132,7 @@ MemoryViewer::MemoryViewer(MemorySource &source, QWidget *parent)
     overlay_combo->addItem(tr("Jumps: the game's tables of routines, for pointer swaps (ROM)"), QString("jumps"));
     overlay_combo->addItem(tr("Live: what the game runs and reads right now (ROM)"), QString("live"));
     overlay_combo->addItem(tr("Functions: the game's functions, guarded ones stronger (ROM)"), QString("functions"));
+    overlay_combo->addItem(tr("Scripts: the commands of the game's scripts, for script changes (ROM)"), QString("scripts"));
     overlay_combo->addItem(tr("Plain"), QString("none"));
     goto_edit = new QLineEdit(this);
     goto_edit->setObjectName("goto");
@@ -709,6 +710,32 @@ void MemoryViewer::hovered(std::optional<uint32_t> offset)
         else if (at.site_tables)
             text += tr(" · jumps through a table of routines: %1 entries known (Jumps shows them)").arg(at.site_entries);
     }
+    // Which script command or argument it is (ROM only, #43).
+    if (snap.target == Target::ROM)
+    {
+        auto at = script_at(snap.script_engines, *offset);
+        if (at.place)
+        {
+            auto &c = at.engine->commands.at(at.place->value);
+            auto site = snap.rom_where.cpu_address(at.engine->site);
+            QString engine = site ? QString("$%1:%2")
+                                        .arg(*site >> 16, 2, 16, QChar('0'))
+                                        .arg(*site & 0xFFFF, 4, 16, QChar('0'))
+                                        .toUpper()
+                                  : hexa(at.engine->site, snap.target);
+            QString cmd = QString("$%1").arg(at.place->value, 2, 16, QChar('0')).toUpper();
+            QString len = c.length ? tr("%n byte(s)", nullptr, c.length) : tr("length not known");
+            QString runs = at.place->runs == 1 ? tr("ran here once")
+                                                : tr("ran here %1 times").arg(QLocale().toString(qulonglong(at.place->runs)));
+            if (at.argument)
+                text += tr(" · an argument of script command %1 (%2), for the script engine at %3").arg(cmd, len, engine);
+            else
+                text += tr(" · script command %1 (%2) for the script engine at %3, %4%5")
+                            .arg(cmd, len, engine, runs,
+                                 c.branchy ? tr("; it goes elsewhere (a branch, call or jump), so script changes leave it alone")
+                                           : QString());
+        }
+    }
     // Which function's code it is (ROM only): its names, size, and whether it's guarded or off.
     if (auto *fn = function_at(snap.function_list, *offset))
     {
@@ -803,6 +830,7 @@ MemoryPane::Overlay MemoryViewer::overlayNamed(const QString &o)
            : o == "jumps"   ? MemoryPane::Overlay::Jumps
            : o == "live"    ? MemoryPane::Overlay::Live
            : o == "functions" ? MemoryPane::Overlay::Functions
+           : o == "scripts" ? MemoryPane::Overlay::Scripts
            : o == "none"    ? MemoryPane::Overlay::None
                             : MemoryPane::Overlay::Activity;
 }
@@ -817,7 +845,7 @@ void MemoryViewer::filterOverlays()
     {
         QString o = overlay_combo->itemData(i).toString();
         bool rom_only = o == "code" || o == "data" || o == "dma" || o == "changes" || o == "jumps" || o == "live" ||
-                        o == "functions";
+                        o == "functions" || o == "scripts";
         bool fits = (o != "reads" && o != "writes" && !rom_only) ||
                     ((o == "reads" || o == "writes") && t == "wram") || (t == "rom" && o != "reads" && o != "writes");
         if (view)
@@ -852,6 +880,8 @@ void MemoryViewer::showLegend()
                    : o == "functions" ? tr("the code of the game's functions: light, guarded from other corruption "
                                            "stronger (paint and rules leave it alone), the entry of one that's off "
                                            "strongest")
+                   : o == "scripts"  ? tr("the game's scripts: commands a script change may swap strong, their "
+                                          "arguments lighter, other commands seen run in between")
                                      : tr("no colours: just the bytes");
     auto overlay = overlayNamed(o);
     QString base = mode() == "pixels" ? tr(" Under it, each dot's grey is the byte's value.")
