@@ -1,7 +1,7 @@
 // End-to-end check of the corruption engine inside the real emulator, no window
 // needed:
 //
-//   corrupt-smoke <rom> <recipe.json> [frames=600] [warmup=600] [--guard | --instant [seeds] | --ahead [seeds] | --keep [seeds] | --eyes [seeds] | --derail-fp [learn] | --learn [held=3] [from=0] | --replay | --copies | --map | --access [dir] | --codemap [file] | --jumps [file] | --calls | --bodies | --kill [seeds] [count] | --change [seeds] [count] | --risk [count] [trial] [number|branch|math|skip] | --foresee [count] [trial] [kind] | --try [count] [trial] [kind] | --dump <dir> | --clip <dir> [seeds]]
+//   corrupt-smoke <rom> <recipe.json> [frames=600] [warmup=600] [--guard | --instant [seeds] | --ahead [seeds] | --keep [seeds] | --eyes [seeds] | --derail-fp [learn] | --learn [held=3] [from=0] | --replay | --copies | --map | --access [dir] | --codemap [file] | --jumps [file] | --calls | --bodies | --kill [seeds] [count] | --change [seeds] [count] | --risk [count] [trial] [number|branch|math|skip] | --foresee [count] [trial] [kind] | --try [count] [trial] [kind] | --dump <dir> | --clip <dir> [seeds] | --scripts]
 //
 // Boots the ROM, runs `warmup` frames, saves a state, then runs `frames` twice
 // from that state: once clean, once with the recipe. Reports what the recipe
@@ -93,6 +93,7 @@
 #include "corrupt/memory_map.h"
 #include "corrupt/moment.h"
 #include "corrupt/explore.h"
+#include "corrupt/script_engines.h"
 #include "corrupt/envelope.h"
 #include "corrupt/exploration.h"
 #include "corrupt/function_body.h"
@@ -3189,6 +3190,96 @@ int run_placebo(const Recipe &recipe, int frames, int variants, int moments)
     return 0;
 }
 
+// --scripts: script engines (#43). The pseudo-player plays `frames` frames after the warmup
+// (Start and Select in the first half only) while the tracer notes every indexed jump with
+// the ROM data reads just before it; then prints the engines found: the jump, which read held
+// the command and the bias (X = 2 x command + bias), how many dispatches the rule explains,
+// the commands, how many script bytes and where, and each command's length where it shows.
+int run_scripts(int frames)
+{
+    CodeMap map(Memory.CalculatedSize);
+    JumpLog jumps;
+    ScriptLog log;
+    RomTracer tracer;
+    if (!tracer.start(map, &jumps))
+        return 1;
+    tracer.note_scripts(&log, std::span<const uint8_t>(rom.clean().data(), rom.clean().size()));
+    auto start = headless::save_state();
+    auto play = [&] {
+        PseudoPlayer p(100);
+        auto t0 = std::chrono::steady_clock::now();
+        for (int i = 0; i < frames; i++)
+        {
+            p.menus = i < frames / 2;
+            access.set_pads(p.next());
+            headless::run_frames(1);
+        }
+        return std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count();
+    };
+    double with_s = play();
+    tracer.stop();
+    // What noting scripts costs: the same frames from the same start, the tracer without it.
+    headless::load_state(start);
+    {
+        CodeMap again(Memory.CalculatedSize);
+        JumpLog jumps_again;
+        RomTracer plain;
+        plain.start(again, &jumps_again);
+        double without_s = play();
+        plain.stop();
+        printf("time     %.2f s with the script log, %.2f s without (the tracer and jumps both times)\n", with_s, without_s);
+    }
+    auto where = SnesCoreAccess::rom_addresses();
+    auto addr = [&](uint32_t o) { return hex_address(o, Target::ROM) + " ($" + hex(where.cpu_address(o).value_or(0)) + ")"; };
+    size_t total = 0;
+    for (auto &[site, s] : log.all())
+        total += s.dispatches;
+    printf("scripts  %zu indirect-jump sites, %zu dispatches noted in %d frames\n", log.size(), total, frames);
+    {
+        std::map<std::pair<uint32_t, uint8_t>, std::pair<uint32_t, size_t>> by_site; // hits, targets
+        for (auto &[k, seen] : jumps.all())
+        {
+            auto &b = by_site[{ k.site, seen.opcode }];
+            b.first += seen.hits;
+            b.second++;
+        }
+        std::vector<std::pair<uint32_t, std::pair<uint32_t, uint8_t>>> top;
+        for (auto &[k, b] : by_site)
+            top.push_back({ b.first, k });
+        std::sort(top.rbegin(), top.rend());
+        printf("jumps    %zu indirect-jump sites; busiest:\n", by_site.size());
+        for (size_t i = 0; i < top.size() && i < 25; i++)
+        {
+            auto [site, op] = top[i].second;
+            printf("         %s op %02X: %u hits, %zu targets\n", addr(site).c_str(), op, top[i].first,
+                   by_site[{ site, op }].second);
+        }
+    }
+    auto engines = find_script_engines(log);
+    for (auto &e : engines)
+    {
+        int known = 0, usable = 0;
+        for (auto &[v, c] : e.commands)
+            known += c.length > 0, usable += c.usable();
+        printf("ENGINE site %s%s: index = %d x command + %X fits %u of %u dispatches; %zu commands (%d with a length, %d usable), %zu places (%zu usable), %.0f%% sequential\n",
+               addr(e.site).c_str(), e.through_pointer ? " (through RAM)" : "", e.stride, e.bias, e.dispatches,
+               e.site_dispatches, e.commands.size(), known, usable, e.places.size(), e.usable_places().size(),
+               100 * e.sequential);
+        printf("         places %s .. %s\n", addr(e.first).c_str(), addr(e.last).c_str());
+        printf("        ");
+        int shown = 0;
+        for (auto &[v, c] : e.commands)
+            if (shown++ < 64)
+                printf(" %02X:%s%s", v, c.length ? std::to_string(c.length).c_str() : "?", c.branchy ? "b" : "");
+        printf("\n");
+    }
+    size_t candidates = 0;
+    for (auto &[site, s] : log.all())
+        candidates += s.candidates.size();
+    printf("log      %zu sites, %zu candidate rules kept\n", log.size(), candidates);
+    return 0;
+}
+
 // --clip <dir> [seeds=3]: pictures for the documentation page (docs/site, #87). Plays the game
 // with the pseudo-player for CORRUPT_CLIP_LEAD frames (default 1800; Start and Select only in
 // the first CORRUPT_CLIP_MENUS share of it, default 0.5, so a title screen is passed and the
@@ -3429,6 +3520,8 @@ int main(int argc, char **argv)
         return run_nmi(frames);
     if (argc > 5 && std::string(argv[5]) == "--eyes")
         return run_eyes(*parsed.recipe, frames, argc > 6 ? atoi(argv[6]) : 5);
+    if (argc > 5 && std::string(argv[5]) == "--scripts")
+        return run_scripts(frames);
     if (argc > 6 && std::string(argv[5]) == "--clip")
         return run_clip(*parsed.recipe, frames, argv[6], argc > 7 ? atoi(argv[7]) : 3);
     if (argc > 5 && std::string(argv[5]) == "--explore")

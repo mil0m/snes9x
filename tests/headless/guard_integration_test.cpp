@@ -14,6 +14,7 @@
 #include "corrupt/try_change.h"
 #include "corrupt/moment.h"
 #include "corrupt/jump_tables.h"
+#include "corrupt/script_engines.h"
 #include "corrupt/pointer_swap.h"
 #include "corrupt/rom_heat.h"
 #include "corrupt/rom_keeper.h"
@@ -1030,6 +1031,98 @@ TEST_SUITE("jump tables in the real core")
         CHECK(through.likely() == 0);
         CHECK(found.pointer_jumps == 0);
         CHECK(found.ambiguous == 0);
+    }
+
+    TEST_CASE("the tracer finds both script engines, their commands and lengths (#43)")
+    {
+        namespace sc = testrom::script;
+        auto image = testrom::build_script();
+        REQUIRE(headless::init());
+        REQUIRE(headless::load_rom_memory(image));
+        std::vector<uint8_t> clean(Memory.ROM, Memory.ROM + Memory.CalculatedSize);
+        CodeMap map(Memory.CalculatedSize);
+        JumpLog jumps;
+        ScriptLog log;
+        RomTracer tracer;
+        REQUIRE(tracer.start(map, &jumps));
+        tracer.note_scripts(&log, clean);
+        headless::run_frames(300);
+        tracer.stop();
+        CHECK(!(CPU.Flags & HALTED_FLAG));
+        CHECK(Memory.RAM[0x50] != 0); // A's command 1 ran
+
+        auto engines = find_script_engines(log);
+        REQUIRE(engines.size() == 2);
+        const ScriptEngine *a = nullptr, *b = nullptr;
+        for (auto &e : engines)
+            (e.site == sc::kSiteA ? a : b) = &e;
+        REQUIRE(a);
+        REQUIRE(b);
+
+        CHECK_FALSE(a->through_pointer);
+        CHECK(a->stride == 2);
+        CHECK(a->bias == 0);
+        CHECK(a->dispatches == a->site_dispatches);
+        CHECK(a->places.size() == size_t(sc::kCommandsA));
+        CHECK(a->first == sc::kScriptA);
+        REQUIRE(a->commands.size() == 4);
+        CHECK(a->commands.at(0).length == 1);
+        CHECK(a->commands.at(1).length == 2);
+        CHECK(a->commands.at(2).length == 3);
+        CHECK_FALSE(a->commands.at(3).usable()); // back to the start: it never steps forward
+        CHECK(a->commands.at(1).handler == 0x008110);
+
+        CHECK(b->site == sc::kSiteB);
+        CHECK(b->through_pointer);
+        CHECK(b->stride == 2);
+        CHECK(b->bias == sc::kTableB);
+        CHECK(b->places.size() == size_t(sc::kCommandsB));
+        REQUIRE(b->commands.size() == 5);
+        CHECK(b->commands.at(0).length == 1);
+        CHECK(b->commands.at(1).length == 2);
+        CHECK(b->commands.at(2).length == 1);
+        CHECK(b->commands.at(3).length == 3);
+        CHECK(b->same_length(1) == std::vector<uint8_t>{ 0, 2 });
+    }
+
+    TEST_CASE("the script log learns only from real frames and from the clean ROM (#43)")
+    {
+        namespace sc = testrom::script;
+        REQUIRE(headless::init());
+        REQUIRE(headless::load_rom_memory(testrom::build_script()));
+        std::vector<uint8_t> clean(Memory.ROM, Memory.ROM + Memory.CalculatedSize);
+        CodeMap map(Memory.CalculatedSize);
+        ScriptLog log;
+        RomTracer tracer;
+        REQUIRE(tracer.start(map));
+        tracer.note_scripts(&log, clean);
+        // A run ahead (test-ahead, Try 5 s Ahead, F8's check) pauses it.
+        tracer.note_jumps(false);
+        headless::run_frames(30);
+        CHECK(log.empty());
+        tracer.note_jumps(true);
+        // A rule changed A's first command from 0 to 1 in the live ROM: the game now runs 1 there,
+        // but the log keeps what the script says.
+        Memory.ROM[sc::kScriptA] = 0x01;
+        headless::run_frames(60);
+        tracer.stop();
+        Memory.ROM[sc::kScriptA] = clean[sc::kScriptA];
+        REQUIRE(log.all().count(sc::kSiteA));
+        bool seen = false;
+        for (auto &[key, c] : log.all().at(sc::kSiteA).candidates)
+            if (auto p = c.places.find(sc::kScriptA); p != c.places.end())
+            {
+                seen = true;
+                CHECK(p->second.value == 0x00);
+            }
+        CHECK(seen);
+        // Without a clean ROM of the right size it notes nothing.
+        ScriptLog none;
+        REQUIRE(tracer.start(map));
+        tracer.note_scripts(&none, std::span<const uint8_t>(clean.data(), 16));
+        headless::run_frames(10);
+        tracer.stop();
+        CHECK(none.empty());
     }
 
     TEST_CASE("a pointer swap makes the dispatcher run another real routine, both kinds")

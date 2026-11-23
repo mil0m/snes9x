@@ -181,4 +181,22 @@ constexpr uint32_t kStepBytes = 17;
 constexpr uint32_t kCounter = 0x20, kHelperRuns = 0x21, kBranchRuns = 0x22, kOtherRuns = 0x23;
 } // namespace bodies
 
+// Crash::None, with two script engines in its NMI handler (#43). Engine A reads a command with
+// LDA ($40),Y, then ASL / TAX / JSR ($9300,X), four commands a frame; its commands are 0 (1
+// byte), 1 (2: adds its argument to $50), 2 (3: two arguments to $51/$52) and 3 (back to the
+// script's start). Engine B, one command a frame, reads LDA ($42),Y, then copies the entry from
+// $9400,X to $14 and JMPs ($0014); its commands are 0 (1), 1 (2), 2 (1), 3 (3) and 4 (back to
+// the start). ROM offsets.
+std::vector<uint8_t> build_script();
+namespace script
+{
+constexpr uint32_t kSiteA = 0x009A;   // JSR ($9300,X)
+constexpr uint32_t kSiteB = 0x00B1;   // JMP ($0014)
+constexpr uint32_t kTableB = 0x1400;  // $9400
+constexpr uint32_t kScriptA = 0x2000; // $A000
+constexpr uint32_t kScriptB = 0x2100; // $A100
+constexpr int kCommandsA = 13;        // in script A, the restart included
+constexpr int kCommandsB = 12;
+} // namespace script
+
 } // namespace testrom

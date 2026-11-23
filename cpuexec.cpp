@@ -26,6 +26,7 @@ uint32 *S9xWramReads = nullptr, *S9xWramWrites = nullptr;
 // Corruption tooling (getset.h, dma.cpp): the code map's flags per ROM byte, when recording.
 uint8 *S9xRomFlags = nullptr;
 uint32 S9xRomFetchFrom = 0, S9xRomFetchTo = 0;
+uint32 S9xRomReads[16] = {}, S9xRomReadCount = 0;
 // Whether VBlank (and so the frame's end) has started in this frame. A game that flips the
 // overscan bit ($2133) between lines 225 and 240 could otherwise slip past both lines, and
 // S9xMainLoop would never return: the emulator freezes. Found by corrupted games.

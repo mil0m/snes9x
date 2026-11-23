@@ -65,9 +65,15 @@ extern uint32	S9xRomFetchFrom, S9xRomFetchTo;
 #define S9X_ROM_DMA		0x20
 #define S9X_ROM_TOUCHED	0x80 // used since the crash blame last looked; set with every mark
 
+// The last 16 ROM data reads (offsets of their first byte), newest at (S9xRomReadCount - 1) & 15,
+// while the code map records: what a script engine read just before it dispatched (#43).
+extern uint32	S9xRomReads[16], S9xRomReadCount;
+
 static inline void S9xMarkRom (const uint8 *p, int bytes, uint8 flag)
 {
 	uintptr_t	o = (uintptr_t) p - (uintptr_t) Memory.ROM; // wraps to huge below the ROM
+	if (flag == S9X_ROM_DATA && o < Memory.CalculatedSize && (o < S9xRomFetchFrom || o >= S9xRomFetchTo))
+		S9xRomReads[S9xRomReadCount++ & 15] = (uint32) o;
 	for (int i = 0; i < bytes; i++, o++)
 		if (o < Memory.CalculatedSize && (o < S9xRomFetchFrom || o >= S9xRomFetchTo))
 			S9xRomFlags[o] |= flag | S9X_ROM_TOUCHED;

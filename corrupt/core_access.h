@@ -6,6 +6,7 @@
 #include "jump_tables.h"
 #include "memory_map.h"
 #include "memory_watch.h"
+#include "script_engines.h"
 
 namespace corrupt
 {
@@ -134,6 +135,11 @@ class RomTracer
     // Stops and resumes noting indirect jumps and calls, for frames that aren't real (a run
     // ahead, #52): a rejected change's jumps would teach it garbage tables.
     void note_jumps(bool on);
+    // Indirect jumps and the ROM data reads just before each, for finding script engines
+    // (#43); null stops. Values are taken from `clean` (the clean ROM, sized like the ROM; any
+    // other size notes nothing), never the live ROM a rule may have changed. note_jumps(false)
+    // pauses it too. Only while tracing; stop() forgets it.
+    void note_scripts(ScriptLog *log, std::span<const uint8_t> clean);
     std::optional<DerailWatch::Note> take_derail();
 
     // Every entry of the CPU's six opcode tables, for tests: what the tracer and the reset
@@ -144,6 +150,7 @@ class RomTracer
     bool mine = false;
     JumpLog *paused_jumps = nullptr;
     CallLog *paused_calls = nullptr;
+    ScriptLog *paused_scripts = nullptr;
 };
 
 } // namespace corrupt

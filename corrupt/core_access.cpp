@@ -1,6 +1,7 @@
 #include "core_access.h"
 #include "derail.h"
 #include "jump_tables.h"
+#include "script_engines.h"
 #include "opcodes.h"
 
 #include <algorithm>
@@ -66,6 +67,8 @@ bool installed = false;
 uint8 *flags = nullptr;     // the map being recorded into, sized like the ROM
 JumpLog *jumps = nullptr;   // where indirect jumps are noted, if anywhere
 CallLog *calls = nullptr;   // where calls are noted, if anywhere (#26)
+ScriptLog *scripts = nullptr; // where indirect jumps and the ROM reads before them go, if anywhere (#43)
+std::span<const uint8_t> clean_rom; // what script bytes and table entries hold, for the script log
 DerailWatch *derails = nullptr; // fed every instruction, for the instant revert, if anyone listens
 // After a landing (#57): mark nothing at all, as before, instead of the changed bytes run.
 bool blind_after_landing = false;
@@ -141,6 +144,48 @@ void note_jump(uint8 op)
                 note_changed(o, 1);
     uint32_t bank = op == jumpop::JmlPointer ? uint32_t(*p2) << 16 : pb;
     uint32_t target = bank | uint32_t(*p1 << 8) | *p0;
+    if (scripts && clean_rom.size() == Memory.CalculatedSize)
+    {
+        // Values from the clean ROM: a byte a rule changed isn't a command, and a swapped table
+        // entry isn't the game's own.
+        ScriptObservation o;
+        o.target = target;
+        o.through_pointer = !indexed;
+        uint32 n = std::min<uint32>(S9xRomReadCount, uint32(kScriptReads));
+        for (uint32 i = 0; i < n; i++)
+        {
+            uint32 at = S9xRomReads[(S9xRomReadCount - 1 - i) & (kScriptReads - 1)];
+            o.offset[i] = at;
+            o.value[i] = at < clean_rom.size() ? clean_rom[at] : 0;
+        }
+        o.reads = uint8_t(n);
+        if (indexed)
+        {
+            o.index = Registers.X.W;
+            o.has_index = true;
+        }
+        else
+        {
+            // Through RAM: the table entry is the newest read holding the target's address.
+            int width = op == jumpop::JmlPointer ? 3 : 2;
+            for (uint32 i = 0; i < n && !o.has_index; i++)
+            {
+                uint32 at = o.offset[i];
+                if (at + uint32(width) > clean_rom.size())
+                    continue;
+                uint32 held = clean_rom[at] | (uint32(clean_rom[at + 1]) << 8);
+                if (width == 3)
+                    held |= uint32(clean_rom[at + 2]) << 16;
+                if (held == (width == 3 ? target : (target & 0xFFFF)))
+                {
+                    o.index = at;
+                    o.has_index = true;
+                    o.entry = int8_t(i);
+                }
+            }
+        }
+        scripts->note(site, o);
+    }
     if (calls && op == callop::JsrIndexed)
         if (uint32_t entry = rom_offset_of(target); entry != kNoEntry)
             calls->note(site, op, entry);
@@ -193,7 +238,7 @@ void see_changed_slow(uint8 op)
 
 void trace_slow(uint8 op)
 {
-    if ((jumps || derails || calls) && jumpop::noted(op))
+    if ((jumps || derails || calls || scripts) && jumpop::noted(op))
         note_jump(op);
     if (calls && (op == callop::Jsr || op == callop::Jsl))
         note_call(op);
@@ -269,7 +314,7 @@ void traced()
         return;
     }
     if constexpr (T != kSlow && jumpop::noted(uint8_t(Op)))
-        if (jumps || derails || calls)
+        if (jumps || derails || calls || scripts)
             note_jump(uint8(Op));
     if constexpr (T != kSlow && (Op == callop::Jsr || Op == callop::Jsl))
         if (calls)
@@ -807,6 +852,7 @@ bool RomTracer::start(CodeMap &map, JumpLog *jumps, CallLog *calls)
     rom_trace::blind_after_landing = false;
     rom_trace::seen_after_landing = 0;
     S9xRomFetchFrom = S9xRomFetchTo = 0;
+    S9xRomReadCount = 0;
     S9xRomFlags = map.data();
     rom_trace::wrap();
     mine = true;
@@ -822,10 +868,22 @@ void RomTracer::stop()
     rom_trace::flags = nullptr;
     rom_trace::jumps = nullptr;
     rom_trace::calls = nullptr;
+    rom_trace::scripts = nullptr;
+    rom_trace::clean_rom = {};
+    paused_scripts = nullptr;
     rom_trace::derails = nullptr;
     paused_jumps = nullptr;
     paused_calls = nullptr;
     mine = false;
+}
+
+void RomTracer::note_scripts(ScriptLog *log, std::span<const uint8_t> clean)
+{
+    if (!mine)
+        return;
+    rom_trace::scripts = log;
+    rom_trace::clean_rom = log ? clean : std::span<const uint8_t>();
+    paused_scripts = nullptr;
 }
 
 void RomTracer::note_jumps(bool on)
@@ -838,6 +896,8 @@ void RomTracer::note_jumps(bool on)
             paused_jumps = std::exchange(rom_trace::jumps, nullptr);
         if (rom_trace::calls)
             paused_calls = std::exchange(rom_trace::calls, nullptr);
+        if (rom_trace::scripts)
+            paused_scripts = std::exchange(rom_trace::scripts, nullptr);
     }
     else
     {
@@ -845,6 +905,8 @@ void RomTracer::note_jumps(bool on)
             rom_trace::jumps = std::exchange(paused_jumps, nullptr);
         if (paused_calls)
             rom_trace::calls = std::exchange(paused_calls, nullptr);
+        if (paused_scripts)
+            rom_trace::scripts = std::exchange(paused_scripts, nullptr);
     }
 }
 
